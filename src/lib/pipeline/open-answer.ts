@@ -138,11 +138,11 @@ const PHONE_RUN = /[+@]?\(?\d[\d\s().-]{7,}\d/g;
 const HIDDEN = "[number hidden]";
 
 /** PURE. Phone numbers out of any text the model is shown. */
-function scrubPhones(text: string): string {
+export function scrubPhones(text: string): string {
   return text.replace(PHONE_RUN, (m) => (m.replace(/\D/g, "").length >= 9 ? HIDDEN : m));
 }
 
-function scrubAuthor(author: string | null): string {
+export function scrubAuthor(author: string | null): string {
   if (!author) return "a member";
   const a = author.trim();
   if (!/\p{L}/u.test(a) || scrubPhones(a) !== a) return "a member";
@@ -156,7 +156,7 @@ function scrubAuthor(author: string | null): string {
  * under it and its words cut at `CHAT_LINE_MAX_CHARS`. The newest
  * `OPEN_ANSWER_CHAT_MAX_LINES` that fit `OPEN_ANSWER_CHAT_MAX_CHARS`.
  */
-function chatLines(history: OpenAnswerInput["history"]): Array<{ body: string; line: string; who: string }> {
+export function chatLines(history: OpenAnswerInput["history"]): Array<{ body: string; line: string; who: string }> {
   const out: Array<{ body: string; line: string; who: string }> = [];
   let chars = 0;
   for (const h of history.slice(-OPEN_ANSWER_CHAT_MAX_LINES).reverse()) {

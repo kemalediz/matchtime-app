@@ -39,6 +39,7 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
 import { FORM_SIZES } from "../form-scale";
 import { HELP_BADGES, HELP_FEATURES } from "./types";
+import { parseUnifiedQuestion, UNIFIED_QUESTION_PROMPT, UNIFIED_QUESTION_SCHEMA } from "./unified-question";
 import type {
   PersonKind,
   AdminFacts,
@@ -1660,6 +1661,12 @@ export interface ExtractorMessage {
   games?: readonly string[];
   /** The time the NOW line states (club time). Defaults to now. */
   now?: Date;
+  /**
+   * UNIFIED_ANSWERS is on (2026-11-10, `unified-question.ts`): the question
+   * extractor reads only list, help, the asker's own stats, or anything
+   * else, with its own prompt. Absent or false: exactly as before.
+   */
+  unified?: boolean;
 }
 
 export interface ExtractionResult {
@@ -1748,6 +1755,9 @@ export async function extractForRoute(
   context.push(msg.body);
 
   const call = EXTRACTOR_CALLS[kind];
+  // UNIFIED_ANSWERS (2026-11-10): the small question prompt, its own schema
+  // and its own label. Only for the question extractor; off, unchanged.
+  const unified = msg.unified === true && kind === "question";
   const req: ModelRequest = {
     // The model and its thinking posture, as one value (`EXTRACTOR_CALLS`).
     // On Sonnet 5 that is THINKING OFF. Measured, not assumed — see
@@ -1757,11 +1767,11 @@ export async function extractForRoute(
     // the live club. On Haiku 5.5 it is adaptive at `HAIKU_EFFORT`, which
     // answered that same message with text on every arm (2026-10-20).
     ...call,
-    system: EXTRACTOR_PROMPTS[kind],
+    system: unified ? UNIFIED_QUESTION_PROMPT : EXTRACTOR_PROMPTS[kind],
     user: context.join("\n"),
     maxTokens: maxTokensFor(call),
-    schema: SCHEMAS[kind],
-    label: `extractor:${kind}`,
+    schema: unified ? (UNIFIED_QUESTION_SCHEMA as unknown as Record<string, unknown>) : SCHEMAS[kind],
+    label: unified ? "extractor:question-unified" : `extractor:${kind}`,
   };
 
   // ── ONE RETRY, AND ONLY WHERE SILENCE COSTS A SLOT (§10 step 8) ────
@@ -1805,7 +1815,7 @@ export async function extractForRoute(
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const resp = await model.complete(req);
-      const parsed = parseFacts(kind, resp.text, msg.id);
+      const parsed = unified ? parseUnifiedFacts(resp.text, msg.id) : parseFacts(kind, resp.text, msg.id);
       return {
         ...parsed,
         usage: {
@@ -1848,6 +1858,23 @@ export async function extractForRoute(
       ),
     ],
   };
+}
+
+/** The unified question extractor's reply as `QuestionFacts`
+ *  (`unified-question.ts`), failing to parse the same way as every other. */
+export function parseUnifiedFacts(text: string, messageId: string): ParsedFacts {
+  let raw: Record<string, unknown>;
+  try {
+    raw = extractJson(text) as Record<string, unknown>;
+    if (typeof raw !== "object" || raw === null) throw new Error("not an object");
+  } catch (err) {
+    return {
+      facts: { kind: "none" },
+      degradations: [degradation("extractor", messageId, `question extractor output could not be parsed: ${(err as Error).message}`)],
+    };
+  }
+  const { facts, problems } = parseUnifiedQuestion(raw);
+  return { facts, degradations: problems.map((p) => degradation("extractor", messageId, p)) };
 }
 
 export function defaultExtractorModel(): PipelineModel {

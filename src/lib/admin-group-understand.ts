@@ -222,6 +222,8 @@ export interface UnderstandInput {
   /** The pool switch as the request read it (`pool/switch-env.ts`):
    *  the platform switch row, or the e2e seam under MT_TEST_MODE=1. */
   poolEnv?: Record<string, string | undefined>;
+  /** UNIFIED_ANSWERS as the route read it (`unified-answers-flag.ts`). */
+  unifiedAnswers?: boolean;
   /** Injected in tests only. */
   deps?: {
     routerModel?: PipelineModel;
@@ -695,6 +697,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         reply: replyShown,
         gates: hqGates,
         ...(input.poolEnv ? { poolEnv: input.poolEnv } : {}),
+        ...(input.unifiedAnswers !== undefined ? { unified: input.unifiedAnswers } : {}),
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
 

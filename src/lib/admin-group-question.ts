@@ -56,7 +56,12 @@ export interface HqQuestionInput {
   gates: HqHelpGates;
   /** The pool switch as the request read it, for the pool's help. */
   poolEnv?: Record<string, string | undefined>;
-  deps?: Pick<AnswerBatchDeps, "model" | "loadFeatures" | "loadClub" | "loadStats"> & {
+  /** UNIFIED_ANSWERS as the route read it. Absent: the environment's flag. */
+  unified?: boolean;
+  deps?: Pick<
+    AnswerBatchDeps,
+    "model" | "loadFeatures" | "loadClub" | "loadStats" | "loadStatsPeriod" | "loadChemistry" | "loadResults" | "loadPayments" | "loadRatingProgress"
+  > & {
     loadState?: (orgId: string, now: Date) => Promise<SquadState>;
     /** The club's pool and partner clubs, for the help (tests). */
     loadClubFacts?: () => Promise<HelpClubFacts>;
@@ -100,11 +105,21 @@ export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcom
     expectedMatchId: state.matchId,
     enabled: enabledStepSevenRoutes(process.env),
     audience: "organisers",
+    ...(input.unified !== undefined ? { unified: input.unified } : {}),
+    // Read by the unified answer's pool facts only; the help below is HQ's own.
+    ...(input.poolEnv ? { poolEnv: async () => input.poolEnv! } : {}),
     deps: {
       ...(deps.model ? { model: deps.model } : {}),
       ...(deps.loadFeatures ? { loadFeatures: deps.loadFeatures } : {}),
       ...(deps.loadClub ? { loadClub: deps.loadClub } : {}),
       ...(deps.loadStats ? { loadStats: deps.loadStats } : {}),
+      ...(deps.loadStatsPeriod ? { loadStatsPeriod: deps.loadStatsPeriod } : {}),
+      ...(deps.loadChemistry ? { loadChemistry: deps.loadChemistry } : {}),
+      ...(deps.loadResults ? { loadResults: deps.loadResults } : {}),
+      ...(deps.loadPayments ? { loadPayments: deps.loadPayments } : {}),
+      ...(deps.loadRatingProgress ? { loadRatingProgress: deps.loadRatingProgress } : {}),
+      // The unified answer's pool and partner facts: the help's own read.
+      ...(deps.loadClubFacts ? { loadClubFacts: async () => deps.loadClubFacts!() } : {}),
       loadState: async () => state,
       // The menu for MatchTime as a whole; one part's help, for the
       // organisers, with public links (a group), for a part.

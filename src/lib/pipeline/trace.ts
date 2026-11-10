@@ -203,6 +203,9 @@ function extractionKey(model: PipelineModel, route: Route, msg: ExtractorMessage
     // The club's members the message names (2026-10-24).
     msg.members ?? null,
     msg.now?.toISOString() ?? null,
+    // UNIFIED_ANSWERS (2026-11-10): another prompt, another read. Only
+    // when set, so the key is exactly what it was with the flag off.
+    ...(msg.unified ? ["unified"] : []),
   ]);
 }
 

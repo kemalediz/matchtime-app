@@ -34,6 +34,7 @@ import { anthropicModel, HAIKU_CALL, TruncatedResponseError, type ModelCall } fr
 import { loadMyPayments, type LoadedMyPayments } from "./my-payments";
 import { formatMyPaymentsBlock } from "./my-payments-rules";
 import { isAiBudgetExceeded, withOrgAiBudget } from "@/lib/ai-budget";
+import { isUnifiedAnswersEnabled } from "./unified-answers-flag";
 import {
   loadDmReplyContext,
   noReplyContext,
@@ -161,7 +162,7 @@ async function mostRecentOrg(orgIds: string[]): Promise<string | null> {
  *  are NEVER selected or emitted — only a derived boolean. For
  *  non-admins this is false, so the flags never enter their context at
  *  all (nothing to extract). Default false keeps existing behaviour. */
-async function buildScopedContext(
+export async function buildScopedContext(
   orgId: string,
   userId: string,
   includePhoneFlags = false,
@@ -332,14 +333,7 @@ export function formatScopedContext(input: ScopedContextInput, lang: Lang = "en"
   const s = input.stats;
   if (s) {
     lines.push("");
-    lines.push("YOUR STATS:");
-    lines.push(`- Games played: ${s.gamesPlayed}/${s.totalOrgMatches} (${s.attendanceRate}% attendance)`);
-    lines.push(`- Average rating: ${s.avgRating?.toFixed(1) ?? "—"} (squad avg ${s.fieldAvgSeason?.toFixed(1) ?? "—"})`);
-    lines.push(`- Man of the Match: ${s.momCount}`);
-    lines.push(`- Record: ${s.record.w}W ${s.record.d}D ${s.record.l}L`);
-    lines.push(`- Form (last 5): ${s.form.last5Avg?.toFixed(1) ?? "—"} (${s.form.trend})`);
-    if (s.bestPartner) lines.push(`- Best partnership: ${s.bestPartner}`);
-    if (s.nemesis) lines.push(`- Nemesis: ${s.nemesis}`);
+    lines.push(...formatOwnStatsLines(s));
   }
 
   if (input.payments) {
@@ -353,6 +347,20 @@ export function formatScopedContext(input: ScopedContextInput, lang: Lang = "en"
   }
 
   return lines.join("\n");
+}
+
+/** PURE. The asker's own stats block, as the DM has always shown it; the
+ *  unified answer's DM context shows the same lines (2026-11-10). */
+export function formatOwnStatsLines(s: NonNullable<ScopedContextInput["stats"]>): string[] {
+  const lines = ["YOUR STATS:"];
+  lines.push(`- Games played: ${s.gamesPlayed}/${s.totalOrgMatches} (${s.attendanceRate}% attendance)`);
+  lines.push(`- Average rating: ${s.avgRating?.toFixed(1) ?? "—"} (squad avg ${s.fieldAvgSeason?.toFixed(1) ?? "—"})`);
+  lines.push(`- Man of the Match: ${s.momCount}`);
+  lines.push(`- Record: ${s.record.w}W ${s.record.d}D ${s.record.l}L`);
+  lines.push(`- Form (last 5): ${s.form.last5Avg?.toFixed(1) ?? "—"} (${s.form.trend})`);
+  if (s.bestPartner) lines.push(`- Best partnership: ${s.bestPartner}`);
+  if (s.nemesis) lines.push(`- Nemesis: ${s.nemesis}`);
+  return lines;
 }
 
 export interface ScopedAnswer {
@@ -377,6 +385,8 @@ export async function answerScopedQuestion(args: {
   /** Where DMs to this player are queued (digits, no "+"), for the chat
    *  context's recent messages. */
   phone?: string | null;
+  /** UNIFIED_ANSWERS as the caller read it. Absent: the environment's flag. */
+  unified?: boolean;
 }): Promise<ScopedAnswer | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   // TEST-ONLY seam: the e2e suite runs with no Anthropic key. Instead of
@@ -402,6 +412,13 @@ export async function answerScopedQuestion(args: {
   });
   if (!org) return null;
   const lang = normaliseLang(org.language);
+
+  // UNIFIED_ANSWERS (Kemal, 2026-11-10): the same answer step as the groups,
+  // over the same context with the DM's audience (`unified-dm.ts`). Off:
+  // everything below, unchanged.
+  if (args.unified ?? isUnifiedAnswersEnabled()) {
+    return answerScopedQuestionUnified({ ...args, orgName: org.name, lang, apiKey: apiKey ?? null, stubMode });
+  }
 
   const context = await buildScopedContext(args.orgId, args.userId, args.includePhoneFlags ?? false, lang);
   // What MatchTime said to them (quoted-reply context S3), loaded once.
@@ -469,6 +486,63 @@ export async function answerScopedQuestion(args: {
     );
   }
   return { answer: composed.answer, orgId: args.orgId, orgName: org.name };
+}
+
+/**
+ * A DM question under UNIFIED_ANSWERS: the unified answer with the DM's
+ * audience. The stub seam returns the context, as the old path does. A call
+ * that fails or a reply the grounding check refuses gets the DM's apology;
+ * the daily cap still means no answer at all.
+ */
+async function answerScopedQuestionUnified(args: {
+  userId: string;
+  orgId: string;
+  question: string;
+  askerName?: string | null;
+  includePhoneFlags?: boolean;
+  quoted?: QuotedBotMessage | null;
+  phone?: string | null;
+  orgName: string;
+  lang: Lang;
+  apiKey: string | null;
+  stubMode: boolean;
+}): Promise<ScopedAnswer | null> {
+  const replyContext = await loadDmReplyContext(db, {
+    userId: args.userId,
+    phone: args.phone ?? null,
+    quoted: args.quoted ?? null,
+    orgIds: [args.orgId],
+  });
+  const { loadUnifiedDmInput } = await import("./unified-dm");
+  const { answerUnified, buildUnifiedContext } = await import("./pipeline/unified-answer");
+  const input = await loadUnifiedDmInput({
+    orgId: args.orgId,
+    userId: args.userId,
+    askerName: args.askerName ?? null,
+    askerIsAdmin: args.includePhoneFlags ?? false,
+    question: args.question,
+    lang: args.lang,
+    replyContext,
+    now: new Date(),
+  });
+  if (args.stubMode) {
+    return { answer: `[unified-dm-stub]\n${buildUnifiedContext(input).text}`, orgId: args.orgId, orgName: args.orgName };
+  }
+  const model = anthropicModel({ apiKey: args.apiKey ?? undefined });
+  try {
+    const g = await withOrgAiBudget(args.orgId, () => answerUnified({ ...input, model }));
+    if ("rejected" in g.result) {
+      console.error(`[dm-qa] org=${args.orgId}: unified answer not used (${g.result.rejected}); the apology instead`);
+      return { answer: buildDmQaApology(args.lang), orgId: args.orgId, orgName: args.orgName };
+    }
+    return { answer: applyHouseStyle(g.result.text, args.lang), orgId: args.orgId, orgName: args.orgName };
+  } catch (err) {
+    if (isAiBudgetExceeded(err)) {
+      console.log(`[dm-qa] org=${args.orgId} is at its daily AI cap; no answer composed`);
+      return null;
+    }
+    throw err;
+  }
 }
 
 /** The model, as one function: the text it wrote (null for none) and
