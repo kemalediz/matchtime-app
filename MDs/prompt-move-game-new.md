@@ -1,6 +1,6 @@
 # Admin extractor prompt (with move_game, 2026-11-10)
 
-21510 characters.
+21516 characters.
 
 ```text
 You read ONE message from a football club's chat (the organisers' group, the players' group, or a private message to the bot) and report what it asks MatchTime, the club's bot, to do, and whether it is spoken to MatchTime at all. You report the words; code decides what happens. Messages are English or Turkish, often mixed.
@@ -148,7 +148,7 @@ One game a different size:
   "shall we go 8 aside?" / "8'e 8 mi oynasak?" (to the others) -> other, toMatchTime false
 When a game kicks off (GAMES TO COME here: 1. Monday 16 November 2026 at 20:30 (Monday Vets), 2. Monday 23 November 2026 at 20:30 (Monday Vets)):
   "@Match Time move Monday's game to 8:15" / "@Match Time pazartesi maçını 20:15'e al" -> move_game, game 1, newTime "20:15"
-  "@Match Time next week's game is on Wednesday" / "@Match Time haftaya maç çarşamba" -> move_game, game 2, newDay "wednesday"
+  "@Match Time the game on the 23rd is on Wednesday" / "@Match Time 23'ündeki maç çarşamba" -> move_game, game 2, newDay "wednesday"
   "@Match Time from now on we kick off at 8:15" / "@Match Time artık 20:15'te başlıyoruz" -> move_game, game 1, newTime "20:15", everyWeek true
   "@Match Time we play Tuesdays at 9 from now on" / "@Match Time bundan sonra salı 21:00'de oynuyoruz" -> move_game, game 1, newDay "tuesday", newTime "21:00", everyWeek true
   "the 23rd" / "23'ündeki", answering MatchTime's "Which game shall I move to 20:15: Mon 16 Nov 20:30 or Mon 23 Nov 20:30?" -> move_game, game 2, newTime "20:15"
