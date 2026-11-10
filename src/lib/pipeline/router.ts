@@ -372,6 +372,30 @@ import { isAiBudgetExceeded, withAttendanceOverflow } from "../ai-budget-context
  * the teams group (a reply to MatchTime's line and a tagged cancel, EN and
  * TR). 21,195 to 21,689 characters. Old and new:
  * MDs/prompt-form-note-amount-2026-11-10.md.
+ *
+ * ── 2026-11-10, LATER: "HELP <TOPIC>" IS HELP, WHATEVER THE TOPIC ─────
+ *
+ * The short help menus (#591) end "tag me with help and the topic" and
+ * list the topic words. On this prompt "@Match Time help teams" and
+ * "@Match Time yardım takımlar" in the players' group routed balancer (the
+ * teams extractor then read "show", so MatchTime re-posted the teams or
+ * said none were made), and "@Match Time help pool" once admin_ops (the
+ * admin extractor read "other": "Sorry, I can't do that one yet"). help
+ * was an organisers'-only route and question held "how MatchTime works
+ * here" without saying a part named after "help" is not asked for. help
+ * is now ONE route for both groups, defined once among the routes:
+ * "help X" / "yardım X", "how does X work?" and "what is X?" ask how X
+ * works, whatever X names, and never ask for X to be done, shown or
+ * changed. question keeps what the bot holds; the teams ruling says HOW
+ * they are picked is help; the help examples are one shared group (bare
+ * help, an action word after help beside the action itself, telling the
+ * others), EN and TR side by side, and the organisers' copy of them went.
+ * In the players' group code still reads help as question (the question
+ * extractor answers it), now without a degradation note. The menus' own
+ * topic words are kept out of the examples so the live check is held out.
+ * 21,689 to 22,377 characters (count_tokens, claude-haiku-5-5: 8,214 to
+ * 8,496). Old and new: MDs/prompt-router-help-topics-2026-11-10.md; the
+ * paid check: scripts/live-check-help-topics.ts.
  */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, finding players when the club is short, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
 
@@ -400,25 +424,25 @@ self_att    the SENDER joins or leaves this match, bench included, or says when 
 other_att   adds, drops, benches, moves, swaps or replaces SOMEONE ELSE in the squad, relays a place already settled ("Ayoub snatched that spot", "Trevell got injured so he had to drop out"), or reposts one list of players: the squad roster, however long or numbered and however it is headed (a date, a venue, "In sha Allah").
 offer       a tentative or conditional commitment by anyone ("if you're short", "if my back holds up"), or asking the group for a player when nobody named is leaving.
 unsure      about a place, but you cannot tell who or what it does. A bare "confirmed" or "confirm" is unsure, never none: it may be somebody confirming their place. Never use it for plain banter.
-question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked). Asking how the bench or the list works asks for no place.
+question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), and how the club is run (who the organisers are, who collects the money, the fee, when the teams come out).
+help        asks MatchTime for help with itself: what it can do here, a bare "help" or "yardım", how to get it to do something, or how one part of it works, what that part is and how to use it or switch it on. "help X" and "yardım X" ask how X works, whatever X names (the teams, the squad, players, the bench, the game, payments, the pool, the settings), as "how does X work?" and "what is X?" do: help never asks for X to be done, shown or changed, and it settles nobody's place. Telling the others what MatchTime does or will do asks it nothing, tagged or not: none.
 balancer    the TWO team line-ups (red and yellow): asks to see them, make them, shuffle or rename them, change them as they stand (swap two players between the teams, move a player to the other team, swap the two teams' colours) or clear them; or tells MatchTime how a player will play in this match, so the teams are made with it in mind (tired, ill, injured, hungover, in top form, or "rate me down for this match"), or changes or cancels the amount MatchTime said it will use for a player in this match ("make it -1", "just -0.25 for me", "cancel my adjustment"). A player's strength for one match is not a setting. Swapping between the teams changes nobody's place in the squad, so it is balancer, never attendance, in both groups.
 score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), answers which team won or who was its Man of the Match while MatchTime is WAITING for that (a team named alone, "Yellow", "sarılar kazandı"; praise alone answers nothing), or says a recorded result is wrong ("you've got it the wrong way round", "no, 5-7 to Red", "yanlış, sarılar kazandı"). A professional scoreline somebody is watching is none.
 admin_ops   tells the bot to do something now: find new players (from the MatchTime player pool, from one partner club or all of them, from several places, or with no place named), credit a payment, set a reminder, send a link, change a setting (any of them, for example the club's pitch, its quiet hours, or the fewest and most players it plays a game with: "we can play with 12", "we play 12 to 16", "back to full teams"), switch one game to a different number a side ("make it 8 aside"), call a match off (one still to come, or one that never took place) or put it back on. A bare yes replying to MatchTime's own offer to switch a game's size is admin_ops, whoever sends it: code checks who may. A reply to that offer that says somebody plays or not ("yes, I'm in") settles a place: attendance, as question 1 says. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
 none        everything else, as in question 3. A member asking another member something that settles nothing is none ("are you injured?", "which two of you can play tomorrow?"); as soon as a message STATES that somebody plays or does not, it is attendance.
-approve, poster, team_sheet, help and ask_group exist ONLY in the organisers' group; see that section.
+approve, poster, team_sheet and ask_group exist ONLY in the organisers' group; see that section.
 
 RULINGS. Each one settles a confusion that has really happened in a group.
 - A replacement is an attendance statement about two people and is other_att: "X is replacing Y", "X in for Y", "Y is out, X is in", "X takes Y's place". A swap between the two teams is not a replacement: both players stay in the squad and only change team, so it is balancer ("swap me with Elvin", "Raihan ile yer değiştirelim", "put Sam in yellow"). The bench is not a team: moving a player to or from the bench changes their place, so it is other_att ("move Tom to the bench", "Ali yedeğe geçsin").
 - Asking for a player: WHO is asked decides. A question to the members of this group ("anyone able to replace me?", "anyone else want to join us?", "can we have more INs please?") is attendance, not question, with or without a question mark or a tag: other_att when a named or implied person is leaving, otherwise offer; the ask is often buried in praise, worry or a pitch, and that changes nothing. An instruction to MATCHTIME to go and find, ask, invite or get players (from the player pool, from a partner club by name, from the partner clubs or other groups, or from nowhere named) is admin_ops, even when it ends "if anyone can play".
 - ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something: admin_ops. "Who hasn't paid?" asks for what the bot knows: question.
-- Asking to SEE the squad ("who's in?", "list the players") is question. Asking to SEE or MAKE the teams ("teams?", "show me the teams") is balancer; asking WHEN they come out or HOW they are picked is question, because it asks for no line-up.
+- Asking to SEE the squad ("who's in?", "list the players") is question. Asking to SEE or MAKE the teams ("teams?", "show me the teams") is balancer; asking WHEN they come out is question, and HOW they are picked is help, because neither asks for a line-up.
 - A match already played: asking about it ("did we win on tuesday?") is question; reporting its result ("we won 5-3") is score; telling the bot it never took place ("@Match Time Tuesday's game didn't happen", "@Match Time dünkü maç oynanmadı") is admin_ops, because it calls that game off. A question mark alone does not make a question.
 
-IN THE ORGANISERS' GROUP. The organisers mostly talk to each other there, and the header says whether this sender is one of them; route on what a message does whoever sends it, because code decides what each sender may do. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") changes the squad, other_att, however chatty. Otherwise a message is for the bot only when it asks the bot for something it holds, tells the bot to do something, or answers what the bot is WAITING for; other talk there is none, even when it names teams or players or asks the others something ("who's bringing the bibs?"), and so is a reply to another member's message unless it plainly tells the bot to act.
+IN THE ORGANISERS' GROUP. The organisers mostly talk to each other there, and the header says whether this sender is one of them; route on what a message does whoever sends it, because code decides what each sender may do. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") changes the squad, other_att, however chatty. Otherwise a message is for the bot only when it asks the bot for something it holds, tells the bot to do something, or answers what the bot is WAITING for, or asks it for help; other talk there is none, even when it names teams or players or asks the others something ("who's bringing the bibs?"), and so is a reply to another member's message unless it plainly tells the bot to act.
 approve     a yes to what MatchTime is WAITING for ("yes", "go ahead", "looks good", "evet", "tamam", "olur"), even if it might be for somebody else: code checks who it was for. With nothing waiting, it is none.
 poster      asks for the squad list as an image or graphic to share.
 team_sheet  asks for the teams as an image or graphic to share. A bare "teams" asks to see them: balancer.
-help        asks MatchTime what it can do here, or how to get it to do something: there, that is help, not question. Telling the others what MatchTime does or will do asks it nothing, tagged or not: none.
 ask_group   tells the bot to find players, from anywhere or with no place named, or to ask the players' group whether anyone can play: there, that is ask_group, not admin_ops. Only a request made TO the bot ("can you ask the group", "find us one"): a shortage or a question put to the other organisers ("one short this week, any ideas?", "anyone got a mate who can play?"), or an organiser saying they will ask the group themselves, is their own conversation, none.
 
 LANGUAGE. Messages may be in English or Turkish; route on meaning, and every rule applies in both. "var", "varım", "ben varım" and "geliyorum" are the sender joining, like "in"; "yok", "yokum", "ben yokum" and "gelemiyorum" are the sender leaving, like "out". "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are offer. "X de geliyor" or "X de var" adds X and "X gelemiyor" or "X yok" drops X: other_att. "X, Y'nin yerine geliyor", "Y yerine X" and "Y çıkıyor X giriyor" are replacements.
@@ -501,8 +525,8 @@ A tagged message asks the bot, however short:
   "@Match Time cheers 👍" -> none
 
 Replies, read against the message they quote:
-  "Bench? We do bench now?" replying to MatchTime's "the bench is open, say IN to go on the bench" -> question
-  "yedek ne demek?" replying to that post -> question
+  "Bench? We do bench now?" replying to MatchTime's "the bench is open, say IN to go on the bench" -> help
+  "yedek ne demek?" replying to that post -> help
   "IN" replying to that post, or to an older squad list of MatchTime's -> self_att
   "yes" / "evet" replying to MatchTime's "We've got 16 for Monday, 2 on the bench. Shall we go 8-a-side?" -> admin_ops
   "yes I'm in" / "evet ben varım" replying to that post -> self_att
@@ -518,7 +542,22 @@ Questions about the squad, the matches and the club:
   "Where is my name?" -> question
   "MatchTime who runs this club?" -> question
 
-The two teams: seeing or making them, how a player will play in them, or the amount MatchTime said it will use for that, is balancer; asking when or how they are made, or what a rating is, is question:
+Asking MatchTime for help, whatever part it names, is help; asking for the part itself goes to that part's route; telling the others about MatchTime is none:
+  "@Match Time help" -> help
+  "@Match Time yardım" -> help
+  "@Match Time what can you do?" -> help
+  "neler yapabiliyorsun?" -> help
+  "@Match Time help swap" -> help
+  "@Match Time yardım değiştirme" -> help
+  "@Match Time swap Tom and Ali" -> balancer
+  "@Match Time help bench" -> help
+  "@Match Time yardım yedek" -> help
+  "@Match Time how does the player pool work?" -> help
+  "@Match Time oyuncu havuzu nedir?" -> help
+  "once it's enabled, tag @Match Time here and ask it to cancel, and it will cancel the next match" -> none
+  "MatchTime'ı etiketleyip iptal et derseniz maçı iptal eder" -> none
+
+The two teams: seeing or making them, how a player will play in them, or the amount MatchTime said it will use for that, is balancer; asking when they come out, or a player's rating, is question:
   "Teams?" -> balancer
   "@Match Time takımları göster" -> balancer
   "@Match Time regenerate the teams once more" -> balancer
@@ -587,11 +626,6 @@ Calling a match off in the organisers' group, and putting it back on:
   "it's back on, uncancel Friday" -> admin_ops
   "maç yapılıyor, iptali geri al" -> admin_ops
   "with this storm the session should be cancelled anyway" -> none
-Asking MatchTime what it can do, against telling the others about it:
-  "@Match Time what can you do?" -> help
-  "neler yapabiliyorsun?" -> help
-  "once it's enabled, tag @Match Time here and ask it to cancel, and it will cancel the next match" -> none
-  "MatchTime'ı etiketleyip iptal et derseniz maçı iptal eder" -> none
 
 THE ANSWER. For every id give its route and two facts about the message; neither changes the route.
 to_bot       true when the message speaks TO MatchTime as question 2 defines it (a tag, the bot's name used to speak to it, or a players' group reply to MatchTime's own message); false when it only talks about MatchTime or does not mention it at all.
@@ -842,10 +876,10 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
         continue;
       }
       if (route === "help" && !organiserIds.has(id)) {
-        // Asking MatchTime what it can do, in the players' group: there it
-        // is a how-it-works question, which the question extractor reads
-        // (2026-10-28). Never `unsure`: that reaches the attendance reader.
-        degradations.push(degradation("router", id, `router gave the organisers' route "help" to a players' group message; question`));
+        // Help in the players' group is the how-it-works question the
+        // question extractor reads there (2026-10-28). Since 2026-11-10 the
+        // prompt defines help for both groups ("help teams" is help, never
+        // the teams), so this is the expected reading, not a degradation.
         byId.set(id, "question");
         continue;
       }

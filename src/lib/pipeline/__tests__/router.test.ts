@@ -735,7 +735,8 @@ describe("the organisers' group", () => {
     const section = ROUTER_SYSTEM_PROMPT.indexOf("IN THE ORGANISERS' GROUP.");
     expect(section).toBeGreaterThan(ROUTER_SYSTEM_PROMPT.indexOf("RULINGS."));
     expect(ROUTER_SYSTEM_PROMPT.indexOf("RULINGS.")).toBeGreaterThan(0);
-    for (const r of ["approve", "poster", "team_sheet", "help", "ask_group"]) {
+    // help is both groups' since 2026-11-10: defined among THE ROUTES.
+    for (const r of ["approve", "poster", "team_sheet", "ask_group"]) {
       expect(ROUTER_SYSTEM_PROMPT.indexOf(`\n${r} `)).toBeGreaterThan(section);
     }
     // Code, not the model, decides who a YES was for.
@@ -841,7 +842,8 @@ describe("the two teams: seeing or making them is balancer, asking when is quest
     expect(balancer).toMatch(/never attendance, in both groups/);
     const question = lines.find((l) => l.startsWith("question "))!;
     expect(question).toMatch(/when the teams come out/);
-    expect(question).toMatch(/how the teams are picked/);
+    // How they are picked is how a part of MatchTime works: help (2026-11-10).
+    expect(lines.find((l) => l.startsWith("help "))).toMatch(/how one part of it works/);
   });
 
   it("states the boundary in one ruling, not on every route", () => {
@@ -877,5 +879,94 @@ describe("the two teams: seeing or making them is balancer, asking when is quest
   it("in the organisers' group, asking the bot something is for the bot", () => {
     const hq = ROUTER_SYSTEM_PROMPT.slice(ROUTER_SYSTEM_PROMPT.indexOf("IN THE ORGANISERS' GROUP."));
     expect(hq.split("\n")[0]).toMatch(/only when it asks the bot for something it holds, tells the bot to do something, or answers/);
+  });
+});
+
+// ── 2026-11-10: HELP WITH A PART IS HELP, NEVER THAT PART'S ACTION ──────
+//
+// The short help menus (#591) teach "@Match Time help <topic>" with the
+// topic words. Measured on main (dev key): "@Match Time help teams" and
+// "@Match Time yardım takımlar" in the players' group routed balancer (the
+// teams extractor then read "show"), and "@Match Time help pool" once
+// admin_ops. help was only an organisers' route, and question held "how
+// MatchTime works here" without saying that a part named after "help" is
+// not asked for. help is now one route for both groups (code still reads it
+// as question in the players' group, where the question extractor answers
+// it), defined once among THE ROUTES.
+describe("help with a part of MatchTime is help, whatever the part (2026-11-10)", () => {
+  const lines = ROUTER_SYSTEM_PROMPT.split("\n");
+  const taught = new Map(
+    [...ROUTER_SYSTEM_PROMPT.matchAll(/^\s*"([^"]+)"\s+->\s*([a-z_]+)\s*$/gm)].map((m) => [m[1]!, m[2]!]),
+  );
+  const routesStart = ROUTER_SYSTEM_PROMPT.indexOf("THE ROUTES");
+  const hqStart = ROUTER_SYSTEM_PROMPT.indexOf("IN THE ORGANISERS' GROUP.");
+
+  it("defines help once, among the routes both groups share", () => {
+    const defs = lines.filter((l) => l.startsWith("help "));
+    expect(defs).toHaveLength(1);
+    const at = ROUTER_SYSTEM_PROMPT.indexOf(`\n${defs[0]}`);
+    expect(at).toBeGreaterThan(routesStart);
+    expect(at).toBeLessThan(ROUTER_SYSTEM_PROMPT.indexOf("RULINGS."));
+    expect(at).toBeLessThan(hqStart);
+    const only = lines.find((l) => /exist ONLY in the organisers' group/.test(l))!;
+    expect(only).not.toMatch(/\bhelp\b/);
+  });
+
+  it("says help about a part asks how it works, whatever the part, never for its action", () => {
+    const help = lines.find((l) => l.startsWith("help "))!;
+    expect(help).toMatch(/"help X"/);
+    expect(help).toMatch(/"yardım X"/);
+    expect(help).toMatch(/whatever X names/);
+    expect(help).toMatch(/never asks for X/);
+    expect(help).toMatch(/settles nobody's place/);
+    // Telling the others what MatchTime does is still none.
+    expect(help).toMatch(/Telling the others what MatchTime does .* none\.$/);
+  });
+
+  it("question no longer holds how MatchTime works: that is help's, said once", () => {
+    const question = lines.find((l) => l.startsWith("question "))!;
+    expect(question).not.toMatch(/how MatchTime works/);
+    const teams = lines.find((l) => l.startsWith("- ") && /WHEN they come out/.test(l))!;
+    expect(teams).toMatch(/HOW they are picked is help/);
+    // The organisers' group still listens when it is asked for help.
+    const hq = ROUTER_SYSTEM_PROMPT.slice(hqStart).split("\n")[0]!;
+    expect(hq).toMatch(/or asks it for help/);
+  });
+
+  it("teaches help with an action word beside the action itself, English and Turkish side by side, for both groups", () => {
+    const start = lines.findIndex((l) => l.startsWith("Asking MatchTime for help"));
+    expect(start).toBeGreaterThan(-1);
+    // Among the examples both groups share, before the organisers' own.
+    expect(start).toBeLessThan(lines.indexOf("In the organisers' group:"));
+    const end = lines.findIndex((l, i) => i > start && l.trim() === "");
+    const group = lines.slice(start + 1, end).map((l) => l.trim());
+    const at = (s: string) => group.indexOf(s);
+    expect(at('"@Match Time help" -> help')).toBeGreaterThanOrEqual(0);
+    expect(at('"@Match Time yardım" -> help')).toBe(at('"@Match Time help" -> help') + 1);
+    expect(at('"@Match Time help swap" -> help')).toBeGreaterThanOrEqual(0);
+    expect(at('"@Match Time yardım değiştirme" -> help')).toBe(at('"@Match Time help swap" -> help') + 1);
+    expect(at('"@Match Time swap Tom and Ali" -> balancer')).toBeGreaterThanOrEqual(0);
+    expect(at('"@Match Time help bench" -> help')).toBeGreaterThanOrEqual(0);
+    expect(at('"@Match Time yardım yedek" -> help')).toBe(at('"@Match Time help bench" -> help') + 1);
+    expect(taught.get("@Match Time what can you do?")).toBe("help");
+    expect(taught.get("neler yapabiliyorsun?")).toBe("help");
+    // Taught once, in this group only.
+    for (const body of ["@Match Time what can you do?", "neler yapabiliyorsun?"]) {
+      expect(ROUTER_SYSTEM_PROMPT.split(`"${body}" ->`).length - 1, body).toBe(1);
+    }
+  });
+
+  it("keeps the menus' own topic words OUT of the examples, so the live check is held out", () => {
+    for (const body of ["help teams", "yardım takımlar", "help players", "yardım oyuncu", "help payments", "yardım ödeme", "help squad", "yardım kadro", "help pool", "yardım havuz"]) {
+      expect(ROUTER_SYSTEM_PROMPT, body).not.toContain(body);
+    }
+  });
+
+  it("reads help in the players' group as the question it is there, and says nothing about it", () => {
+    const r = parseRouterResponse(JSON.stringify({ routes: [{ id: "p", route: "help", to_bot: true }] }), ["p"]);
+    expect(r.routes[0]).toMatchObject({ messageId: "p", route: "question", toBot: true });
+    expect(r.degradations).toEqual([]);
+    const hq = parseRouterResponse(JSON.stringify({ routes: [{ id: "h", route: "help" }] }), ["h"], new Set(["h"]));
+    expect(hq.routes[0]).toMatchObject({ messageId: "h", route: "help" });
   });
 });

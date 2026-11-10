@@ -94,9 +94,11 @@ export type Route =
  * The routes the router may give a message from a club's organisers'
  * (admin) group and never one from the players' group. A players' group
  * message routed to one of them is read as `unsure` (`router.ts`), the
- * same bias toward action as a missing route.
+ * same bias toward action as a missing route. `help` is not one of them
+ * since 2026-11-10: it is both groups' route, read as `question` in the
+ * players' group, where the question extractor answers it (`router.ts`).
  */
-export const ORGANISER_ONLY_ROUTES: readonly Route[] = ["approve", "poster", "team_sheet", "help", "ask_group"];
+export const ORGANISER_ONLY_ROUTES: readonly Route[] = ["approve", "poster", "team_sheet", "ask_group"];
 
 export const ALL_ROUTES: readonly Route[] = [
   "none",
