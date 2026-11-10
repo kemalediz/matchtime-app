@@ -210,6 +210,7 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
         `📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.`,
         `💬 Tag *@Match Time* when you want me to do or tell you something:`,
         `   • who won last week? / past stats`,
+        `❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.`,
         `👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.`,
         `🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.`,
         `🏆 After each game I announce the *Man of the Match* in the group.`,

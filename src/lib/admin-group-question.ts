@@ -49,7 +49,7 @@ export interface HqQuestionInput {
   hqHelp: string;
   /** The pool switch as the request read it, for the pool's help. */
   poolEnv?: Record<string, string | undefined>;
-  deps?: Pick<AnswerBatchDeps, "model" | "loadFeatures" | "loadClub"> & {
+  deps?: Pick<AnswerBatchDeps, "model" | "loadFeatures" | "loadClub" | "loadStats"> & {
     loadState?: (orgId: string, now: Date) => Promise<SquadState>;
   };
 }
@@ -94,6 +94,7 @@ export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcom
       ...(deps.model ? { model: deps.model } : {}),
       ...(deps.loadFeatures ? { loadFeatures: deps.loadFeatures } : {}),
       ...(deps.loadClub ? { loadClub: deps.loadClub } : {}),
+      ...(deps.loadStats ? { loadStats: deps.loadStats } : {}),
       loadState: async () => state,
       // The menu for MatchTime as a whole; one part's help, for the
       // organisers, with public links (a group), for a part.

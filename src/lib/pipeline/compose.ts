@@ -109,7 +109,7 @@ export interface ComposedOutput {
 const RAW_PHONE = /(?:\+\d[\d\s().-]{8,}\d)|(?:\b0\d{9,10}\b)|(?:\b\d{11,}\b)/;
 
 /** `fallback` is the table's `fallback_player` ("a player"). */
-function safeName(name: string, fallback: string): string {
+export function safeName(name: string, fallback: string): string {
   const trimmed = (name ?? "").trim();
   if (!trimmed) return fallback;
   if (RAW_PHONE.test(trimmed) || !/\p{L}/u.test(trimmed)) return fallback;
@@ -125,13 +125,13 @@ function firstName(name: string, fallback: string): string {
  *  it, else the plain name. Matching never reads this. A row user who is no
  *  longer a member is printed by the name load-state carried for him
  *  (`rowNames`), never as "a player" (FNF, 2026-10-24). */
-function printedNames(state: SquadState): Map<string, string> {
+export function printedNames(state: SquadState): Map<string, string> {
   const out = new Map(Object.entries(state.rowNames ?? {}));
   for (const m of state.roster) out.set(m.userId, m.displayName ?? m.name);
   return out;
 }
 
-function namesByStatus(state: SquadState, status: "CONFIRMED" | "BENCH", fallback: string): string[] {
+export function namesByStatus(state: SquadState, status: "CONFIRMED" | "BENCH", fallback: string): string[] {
   const byId = printedNames(state);
   return state.rows
     .filter((r) => r.status === status)
@@ -442,6 +442,22 @@ export function compose(result: EngineResult): ComposedOutput {
             forOrganisers: club.forOrganisers === true,
           }),
         });
+        break;
+      }
+
+      case "answer_open": {
+        // ANYTHING ELSE (2026-11-10): the grounded open answer, written by
+        // `open-answer.ts` and already checked there. Not usable: say
+        // nothing, and `answer-batch.ts` disowns the message, which keeps
+        // today's line for the asker.
+        const a = state.openAnswers?.[sp.messageId];
+        if (!a || !("text" in a)) {
+          operatorNotes.push(
+            `compose: answer_open for ${sp.messageId} ${a ? `rejected (${a.rejected})` : "with no open answer loaded"}; saying nothing`,
+          );
+          break;
+        }
+        utterances.push({ messageId: sp.messageId, text: a.text });
         break;
       }
 

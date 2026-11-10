@@ -426,6 +426,8 @@ export interface ClubRecordTables {
    *  recorded, and the first Man of the Match award (which the club may
    *  have backfilled from before MatchTime). */
   recordsStart: { matches: Date | null; mom: Date | null };
+  /** How many completed matches MatchTime has recorded (2026-11-10). */
+  completedMatches: number;
 }
 
 /**
@@ -490,6 +492,7 @@ export async function loadClubRecordTables(
     appearances,
     mom,
     recordsStart: { matches: completed[0]?.date ?? null, mom: earliestDate(wins.map((w) => w.date)) },
+    completedMatches: completed.length,
   };
 }
 

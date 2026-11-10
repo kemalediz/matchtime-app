@@ -343,6 +343,18 @@ const TEAM_POST_INTENTS: ReadonlySet<string> = new Set(["generate_teams_request"
  */
 export const ORGANISERS_SPACE_INTENT = "organisers_space";
 
+/**
+ * The intent of the open answer (2026-11-10, `pipeline/open-answer.ts`): a
+ * tagged question that fits no set answer, answered by one grounded model
+ * call. Model-written, so a suggested line-up or a list of regulars would
+ * read as a roster to the squad-composition pass and be swapped for the
+ * real squad, which answers a different question: skipped by intent, like
+ * the stats answers. NOT exempt from the organisers-mode net
+ * (`passesOrganisersNet`): in a club whose organisers announce the list,
+ * a reply that shows squad state still becomes their line.
+ */
+export const OPEN_ANSWER_INTENT = "open_answer";
+
 /** PURE. Does the squad-composition pass skip a reply with this intent?
  *  `help` (2026-10-16): the help explainer, which a how-it-works question
  *  now reaches through the pipeline; its "Squad & availability" heading
@@ -358,6 +370,7 @@ export function skipsSquadComposition(intent: string | null | undefined): boolea
     STATS_ANSWER_INTENTS.has(intent) ||
     intent === "help" ||
     intent === ORGANISERS_SPACE_INTENT ||
+    intent === OPEN_ANSWER_INTENT ||
     (VENUE_WORDS_OUTCOMES as readonly string[]).includes(intent)
   );
 }

@@ -40,6 +40,7 @@ describe("buildHqHelp, English", () => {
         `🕗 *"@Match Time move Monday's game to 20:15"*, *"@Match Time from now on we kick off at 20:15"*: one game to another time or day of its week, or your weekly game from now on, with its games still to be played. Quietly: I don't post it in the players' group.`,
         ``,
         `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`,
+        `❓ Anything else: ask in your own words. I answer from what I know (the squad, the bench, the stats and this chat), or say if I don't know, and I change nothing.`,
         `Ask *@Match Time what can you do?* here any time to see this again.`,
       ].join("\n"),
     );
@@ -85,6 +86,7 @@ describe("buildHqHelp, Turkish", () => {
         `🕗 *"@Match Time pazartesi maçını 20:15'e al"*, *"@Match Time artık 20:15'te başlıyoruz"*: tek bir maçın saati ya da haftası içindeki günü, ya da bundan sonra haftalık maçınız, oynanmamış maçlarıyla birlikte. Sessizce: oyuncu grubuna yazmam.`,
         ``,
         `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *@Match Time partner kulüpler nasıl çalışır?* ya da *@Match Time ayarlar nerede?*`,
+        `❓ Başka bir şey: kendi cümlelerinizle sorun. Bildiklerimden (kadro, yedekler, istatistikler ve bu sohbet) yanıtlarım, bilmiyorsam söylerim, hiçbir şeyi değiştirmem.`,
         `Bunu tekrar görmek için burada istediğiniz zaman *@Match Time neler yapabilirsin?* diye sorun.`,
       ].join("\n"),
     );

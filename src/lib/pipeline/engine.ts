@@ -1957,6 +1957,19 @@ export function decide(input: EngineInput): EngineResult {
           speech.push({ kind: "answer_club", messageId: msg.id });
           out.reasons.push(`club question answered from the roster and the club's settings (${state.club ? "loaded" : "not loaded"})`);
           break;
+        case "other": {
+          // ANYTHING ELSE (Kemal, 2026-11-10): the grounded open answer,
+          // one model call `answer-batch.ts` made from the club's context
+          // (`open-answer.ts`). The decision only: a speech intent, no
+          // write. A rejected or missing answer composes nothing, and the
+          // batch disowns the message so it keeps today's line.
+          const a = state.openAnswers?.[msg.id];
+          speech.push({ kind: "answer_open", messageId: msg.id });
+          out.reasons.push(
+            `open question: the grounded open answer (${!a ? "not loaded" : "text" in a ? "answered" : "rejected"})`,
+          );
+          break;
+        }
         default:
           // The `question` route is the least designed part of the
           // proposal (§14.3) and this is where that shows. Saying so is

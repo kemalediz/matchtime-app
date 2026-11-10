@@ -1280,6 +1280,14 @@ export interface SquadState {
    * (`loadClubSnapshot`). Optional; absent means NOT LOADED.
    */
   club?: ClubSnapshot | null;
+  /**
+   * THE OPEN ANSWERS (2026-11-10), by message id: a tagged question whose
+   * topic is `other`, answered by one grounded model call
+   * (`open-answer.ts`). Filled by `answer-batch.ts` only when one survived
+   * ownership; `rejected` means the composer says nothing and the message
+   * keeps today's line. Optional; absent means NOT LOADED.
+   */
+  openAnswers?: Record<string, { text: string } | { rejected: string }> | null;
 }
 
 /** What a `club` question is answered from, beside the roster's admins. */
@@ -1412,6 +1420,10 @@ export interface StatsSnapshot {
    * began", and says so.
    */
   recordsStart: { matches: Date | null; mom: Date | null };
+  /** How many completed matches MatchTime has recorded for this club
+   *  (2026-11-10), so the open answer can say when the data is thin.
+   *  Optional so fixtures that predate it keep their shape. */
+  completedMatches?: number;
   /** The cut tables, for the periods this batch's questions asked
    *  about, by `periodKey`. Filled by `answer-batch.ts`. */
   periods: Record<string, StatsPeriodTables>;
@@ -1762,6 +1774,9 @@ export type SpeechIntent =
   | { kind: "answer_fixture"; messageId: string }
   /** The club's setup, for the organisers (`QuestionTopic.club`). */
   | { kind: "answer_club"; messageId: string }
+  /** Anything else (`QuestionTopic.other`, 2026-11-10): the grounded open
+   *  answer from `state.openAnswers`, or nothing when it was not usable. */
+  | { kind: "answer_open"; messageId: string }
   | { kind: "answer_person_status"; messageId: string; personRef: string; userId: string | null }
   | { kind: "answer_phones"; messageId: string }
   /**
