@@ -20,10 +20,7 @@
  * it does can break the page.
  */
 import { useEffect, useRef, type ReactNode, type SyntheticEvent } from "react";
-import { funnelControlValue, personEntryVerdict } from "./funnel-start";
-// TEMPORARY (2026-11-10): the `funnelDebugNote` calls below do nothing
-// unless the page was opened with ?mtdebug=1 (`funnel-debug.ts`).
-import { funnelDebugNote } from "./funnel-debug";
+import { funnelControlValue, isPersonEntry } from "./funnel-start";
 
 const ENDPOINT = "/api/play/visit";
 
@@ -32,35 +29,22 @@ function send(step: "opened" | "started", src: string | null, refCode: string | 
     // The visit's key is the one /play has used since 2026-11-03, so a tab
     // already counted before the steps is not counted again.
     const key = `${step === "opened" ? "mt-play-visit" : "mt-play-started"}:${src ?? ""}:${refCode ?? ""}`;
-    if (window.sessionStorage.getItem(key)) {
-      funnelDebugNote({ k: "b:send", step, held: true });
-      return;
-    }
+    if (window.sessionStorage.getItem(key)) return;
     window.sessionStorage.setItem(key, "1");
-    funnelDebugNote({ k: "b:send", step, held: false });
   } catch {
     // No storage (private mode): count it anyway.
-    funnelDebugNote({ k: "b:send", step, st: "blocked" });
   }
   try {
     const body = JSON.stringify({ src, ref: refCode, step });
     const sent = typeof navigator.sendBeacon === "function" && navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "text/plain" }));
-    funnelDebugNote({ k: "b:beacon", step, ok: sent });
-    if (!sent)
-      void fetch(ENDPOINT, { method: "POST", body, keepalive: true })
-        .then((r) => funnelDebugNote({ k: "b:fetch", step, n: r.status }))
-        .catch(() => funnelDebugNote({ k: "b:fetch", step, ok: false }));
+    if (!sent) void fetch(ENDPOINT, { method: "POST", body, keepalive: true }).catch(() => {});
   } catch {
     // A count is nice to know, never worth an error.
-    funnelDebugNote({ k: "b:send-error", step });
   }
 }
 
 export function PoolFunnelBeacon({ src, refCode, children }: { src: string | null; refCode: string | null; children: ReactNode }) {
-  useEffect(() => {
-    funnelDebugNote({ k: "b:effect" });
-    send("opened", src, refCode);
-  }, [src, refCode]);
+  useEffect(() => send("opened", src, refCode), [src, refCode]);
 
   const started = useRef(false);
   /** What each control held when first focused, to tell a real change. Only read, never written back. */
@@ -71,7 +55,6 @@ export function PoolFunnelBeacon({ src, refCode, children }: { src: string | nul
     if (started.current || before.current.has(e.target)) return;
     const value = funnelControlValue(e.target);
     if (value !== null) before.current.set(e.target, value);
-    funnelDebugNote({ k: "b:focus", bl: value?.length });
   };
   const clicked = (e: SyntheticEvent) => {
     if (!started.current) lastClick.current = { target: e.target, trusted: e.nativeEvent.isTrusted };
@@ -79,10 +62,7 @@ export function PoolFunnelBeacon({ src, refCode, children }: { src: string | nul
   const entered = (e: SyntheticEvent) => {
     if (started.current) return;
     const click = lastClick.current?.target === e.target ? lastClick.current.trusted : undefined;
-    const seenBefore = before.current.get(e.target);
-    const verdict = personEntryVerdict({ type: e.type, isTrusted: e.nativeEvent.isTrusted, target: e.target }, { before: seenBefore, clickTrusted: click });
-    funnelDebugNote({ k: "b:entry", ev: e.type, v: verdict, tr: e.nativeEvent.isTrusted, bl: seenBefore?.length, len: funnelControlValue(e.target)?.length });
-    if (verdict !== "counts") return;
+    if (!isPersonEntry({ type: e.type, isTrusted: e.nativeEvent.isTrusted, target: e.target }, { before: before.current.get(e.target), clickTrusted: click })) return;
     started.current = true;
     send("started", src, refCode);
   };

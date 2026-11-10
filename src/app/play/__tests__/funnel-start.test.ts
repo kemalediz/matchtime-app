@@ -7,7 +7,7 @@
  * click and a script's synthetic event count nothing.
  */
 import { describe, expect, it } from "vitest";
-import { funnelControlValue, isPersonEntry, personEntryVerdict } from "../funnel-start";
+import { funnelControlValue, isPersonEntry } from "../funnel-start";
 
 /** A stand-in for a DOM control: only what the rule reads. */
 function control(tagName: string, props: { type?: string; value?: string; checked?: boolean; inForm?: boolean } = {}) {
@@ -93,23 +93,5 @@ describe("isPersonEntry: the event that counts started", () => {
   it("an input or change on something that is not a form control a person fills in counts nothing", () => {
     expect(isPersonEntry({ type: "change", isTrusted: true, target: control("INPUT", { type: "text", value: "x", inForm: false }) }, { before: "" })).toBe(false);
     expect(isPersonEntry({ type: "input", isTrusted: true, target: control("BUTTON") }, { clickTrusted: true })).toBe(false);
-  });
-});
-
-describe("personEntryVerdict: why an event counts or not (the /play debug diagnostic, 2026-11-10)", () => {
-  it("names each reason, and counts exactly when isPersonEntry does", () => {
-    const TEXT = (value: string) => control("INPUT", { type: "text", value });
-    const cases: Array<[Parameters<typeof personEntryVerdict>[0], Parameters<typeof personEntryVerdict>[1], string]> = [
-      [{ type: "input", isTrusted: true, target: TEXT("S") }, { before: "" }, "counts"],
-      [{ type: "focusin", isTrusted: true, target: TEXT("S") }, {}, "not-input-or-change"],
-      [{ type: "input", isTrusted: false, target: TEXT("S") }, { before: "" }, "untrusted"],
-      [{ type: "input", isTrusted: true, target: control("BUTTON") }, {}, "not-a-control"],
-      [{ type: "change", isTrusted: true, target: control("INPUT", { type: "checkbox", checked: true }) }, {}, "tick-without-trusted-click"],
-      [{ type: "change", isTrusted: true, target: TEXT("Sam") }, { before: "Sam" }, "value-unchanged"],
-    ];
-    for (const [e, seen, why] of cases) {
-      expect(personEntryVerdict(e, seen)).toBe(why);
-      expect(isPersonEntry(e, seen)).toBe(why === "counts");
-    }
   });
 });
