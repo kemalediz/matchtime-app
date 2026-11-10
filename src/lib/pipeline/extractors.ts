@@ -307,6 +307,20 @@ export function extractorFor(route: Route): ExtractorKind {
 // (scripts/live-check-help-friend.ts, then one full pass of
 // live-check-question-extractor.ts and live-check-help-routing.ts).
 
+// QUESTION, 2026-11-10: SHORT HELP MENUS. Kemal: "why this long menu
+// when we say @mt help". Both menus now end "tag me with help and the
+// topic", and the admin group's topics are squad, teams, players, game,
+// settings and graphics. The `feature` section was rewritten as one list,
+// not appended to: each part carries the word the menus use for it
+// (English, Turkish), `feature` gains find_players and graphics, schedule
+// is "the games themselves" (moving and cancelling one, its size),
+// settings takes quiet hours and the fewest and most players, and the
+// "Help with MatchTime" examples are regrouped with the menu words, EN | TR
+// side by side. 13,849 to 15,222 characters. OLD and NEW in
+// MDs/prompt-question-help-topics-{old,new}-2026-11-10.txt; live results in
+// the PR (scripts/live-check-help-routing.ts, then one full pass of
+// scripts/live-check-question-extractor.ts).
+
 export const EXTRACTOR_PROMPTS: Record<Exclude<ExtractorKind, "none">, string> = {
   attendance: `You read ONE message from a football club's WhatsApp group and report what it says about who is playing in the club's match. You report facts about the words. You never decide what happens next: code does that, from the club's records.
 
@@ -444,19 +458,21 @@ statedCount
 A number the message ASSERTS about the squad, for checking: "we're 9/14 right?" is 9. -1 otherwise.
 
 feature
-For how_it_works only, the part of MatchTime it asks about. Every other topic is none.
-  availability     signing in and out, the squad list, the bench, saying maybe
-  friend           bringing a friend to a match: the personal link a player is sent to forward, how the friend joins, pulls out or pays
-  teams            how the two teams are made
+For how_it_works only, the part of MatchTime it asks about. Every other topic is none. The help menus name each part by one word after "help" ("help squad", "yardım kadro"); that word is in brackets below, English then Turkish, and on its own it means that part.
+  availability     the squad (squad, kadro): saying In, Out or maybe, the squad list and changes to it, the bench
+  friend           bringing a friend to a match (friend, arkadaş): the personal link a player is sent to forward, how the friend joins, pulls out or pays
+  teams            the two teams (teams, takımlar): how they are made, shown and changed
+  find_players     finding players for an open place (players, oyuncu bulma): asking the players' group, DMing the people a message tagged, the organisers picking who fills a place
+  graphics         the poster and the team sheet pictures (graphics, görseller)
   mom              Man of the Match
   ratings          player ratings
   reminders        reminders
-  payments         the match fee: how to pay it, how it is collected, switching fee collection on
-  schedule         changing the schedule: match days, kick-off times, block bookings, cancelling a week, a match's format
+  payments         the match fee (payments, ödeme): how to pay it, how it is collected, a free place, switching fee collection on
+  schedule         the games themselves (game, maç): match days and kick-off times, moving or cancelling a game, a game's size or format, block bookings
   badges           the badges on the stats page and how to earn them
-  partners         partner clubs, which lend each other players when one is short
-  pool             the MatchTime player pool: players nearby who are asked when the club is short, and playing for other clubs too
-  settings         the settings page itself: where a setting is, or the settings in general
+  partners         partner clubs, which lend each other players when one is short: what they are, pairing up, asking them
+  pool             the MatchTime player pool: players nearby who are asked when the club is short, switching it on, playing for other clubs too
+  settings         the settings (settings, ayarlar): where a setting is, quiet hours, the fewest and most players a club plays with, or the settings in general
   none             MatchTime as a whole ("help", "what can you do?"), or a part not listed
 
 badge
@@ -511,15 +527,21 @@ The upcoming match:
 Help with MatchTime:
   "@Match Time help" | "@Match Time yardım" -> how_it_works
   "@Match Time what can you do?" | "@Match Time neler yapabiliyorsun?" -> how_it_works
+  "@Match Time help squad" | "@Match Time yardım kadro" -> how_it_works, feature availability
   "Bench? We do bench now?" | "yedek ne demek?" -> how_it_works, feature availability
   "@Match Time how do I bring a friend?" | "@Match Time arkadaşımı nasıl getiririm?" -> how_it_works, feature friend
   "@Match Time how are the teams picked?" | "@Match Time yardım takımlar" -> how_it_works, feature teams
+  "@Match Time help players" | "@Match Time yardım oyuncu bulma" -> how_it_works, feature find_players
+  "@Match Time how do I get you to ask the group for a player?" | "@Match Time gruba oyuncu sormanı nasıl isterim?" -> how_it_works, feature find_players
+  "@Match Time help graphics" | "@Match Time yardım görseller" -> how_it_works, feature graphics
+  "@Match Time help game" | "@Match Time yardım maç" -> how_it_works, feature schedule
+  "@Match Time how do I move the kick-off time?" | "@Match Time maç saatini nasıl değiştiririm?" -> how_it_works, feature schedule
   "@Match Time how do we pay?" | "@Match Time ödemeyi nasıl yapıyoruz?" -> how_it_works, feature payments
   "@Match Time how do I turn off Man of the Match?" | "@Match Time maçın adamı oylamasını nasıl kapatırım?" -> how_it_works, feature mom
-  "@Match Time how do I move the kick-off time?" | "@Match Time maç saatini nasıl değiştiririm?" -> how_it_works, feature schedule
   "@Match Time how do I turn on the player pool?" | "@Match Time havuz nasıl açılır?" -> how_it_works, feature pool
   "@Match Time how do partner clubs work?" | "@Match Time partner kulüp nedir?" -> how_it_works, feature partners
   "@Match Time where are the settings?" | "@Match Time ayarlar nerede?" -> how_it_works, feature settings
+  "@Match Time how do quiet hours work?" | "@Match Time sessiz saatler nasıl çalışır?" -> how_it_works, feature settings
   "@Match Time help badges" | "@Match Time rozetler nasıl kazanılır?" -> how_it_works, feature badges
   "@Match Time how do I get Mr Reliable?" | "@Match Time yardım rozet demir adam" -> how_it_works, feature badges, badge reliable | ironman
 

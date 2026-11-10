@@ -55,7 +55,7 @@ import { clubHelpReply } from "@/lib/help-answer";
 import { extractForRoute } from "@/lib/pipeline/extractors";
 import { extractorStubFromEnv } from "@/lib/pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "@/lib/pipeline/llm";
-import type { HelpRequest } from "@/lib/pipeline/types";
+import { playersHelpTopic, type HelpRequest } from "@/lib/pipeline/types";
 import { hasFeeToSettle, type MyPayments } from "@/lib/my-payments-rules";
 import { readMyPayments } from "@/lib/my-payments";
 
@@ -198,12 +198,14 @@ export async function handleDmHelp(args: {
 
   const audience: HelpAudience = runs(membership) ? "admin" : "player";
   const links: Partial<Record<HelpAdminPage, string>> = {};
+  // The admin group's own two topics read as the nearest players' one here.
+  const pageTopic = req.topic === null ? null : playersHelpTopic(req.topic);
   if (audience === "admin" && ownPhone) {
-    for (const page of helpPagesNeeded(req.topic, audience)) {
+    for (const page of helpPagesNeeded(pageTopic, audience)) {
       links[page] = await buildAdminLink({
         userId: args.userId,
         orgId: membership.orgId,
-        nextPath: helpAdminPagePath(page, req.topic),
+        nextPath: helpAdminPagePath(page, pageTopic),
       });
     }
   }
@@ -220,6 +222,7 @@ export async function handleDmHelp(args: {
     links,
     poolEnv: args.poolEnv ?? (async () => ({})),
     adminGroupLinked: !!membership.org.adminGroupId,
+    dm: true,
   });
   const text = clubCount > 1 ? `${t(lang).onbHelpForClub({ club: membership.org.name })}\n\n${body}` : body;
 
@@ -234,5 +237,5 @@ export async function handleDmHelp(args: {
       data: { orgId: membership.orgId, kind: "dm", phone: replyTo.replace(/^\+/, ""), text, ...REPLY_PRIORITY },
     });
   }
-  return { handled: "dm-help", topic: req.topic, orgId: membership.orgId, audience };
+  return { handled: "dm-help", topic: pageTopic, orgId: membership.orgId, audience };
 }

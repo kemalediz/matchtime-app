@@ -72,7 +72,7 @@ describe("a how-it-works question", () => {
     const schema = factsSchemaFor("question") as { properties: Record<string, { enum?: string[] }>; required: string[] };
     expect(schema.properties.topic.enum).toContain("how_it_works");
     expect(schema.properties.feature.enum).toEqual([
-      "availability", "friend", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges", "partners", "pool", "settings", "none",
+      "availability", "friend", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges", "partners", "pool", "settings", "find_players", "graphics", "none",
     ]);
     expect(schema.properties.badge.enum).toEqual([...HELP_BADGES, "none"]);
     expect(schema.required).toContain("feature");

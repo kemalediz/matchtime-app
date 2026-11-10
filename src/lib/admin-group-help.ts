@@ -7,6 +7,16 @@
  * yapabiliyorsun?"). The shared router reads it as its `help` route
  * (`admin-group-understand.ts`) and this module writes the answer.
  *
+ * SHORT MENU, FULL TOPICS (2026-11-10, Kemal: "why this long menu when we
+ * say @mt help"). The answer is a menu of at most 12 lines
+ * (`buildHqHelp`): one line per topic, what is not switched on yet, and
+ * how to ask about one topic. "@Match Time help <topic>" (squad, teams,
+ * players, game, settings, graphics, payments; the question extractor's
+ * `feature`, never a word list) gives that topic's full lines
+ * (`buildHqTopicLines`), then how that part works for the organisers
+ * (`hqHelpTopicReply`). Every line of the old long menu is in exactly one
+ * topic (help-short-menus.test.ts).
+ *
  * WHAT EACH LINE OF THE ANSWER IS DONE BY:
  *
  *   squad list pasted, YES       admin-group-paste.ts (structured: the
@@ -57,10 +67,13 @@ import { t } from "./i18n/t";
 import { poolOffersOpenForClub } from "./pool/flags";
 import { organisersAnnounce } from "./list-announcer";
 import { effectiveTeamsReadyTime } from "./team-proposal-rules";
+import { helpFeaturesFrom, helpNotOnLine, helpTopicsAskable, type HelpFeatures, type HelpTopic } from "./onboarding-conversation";
+import type { HelpFeature, HelpRequest } from "./pipeline/types";
+import type { OrgFeatures } from "./org-features";
+import type { HelpClubFacts } from "./help-club-facts";
 
-/** The HQ command list, in the club's language. */
-export function buildHqHelp(p: {
-  lang: string | null | undefined;
+/** Which HQ commands a club gets (`hqHelpGates`). */
+export interface HqHelpGates {
   /** A live weekly club: the pasted list, one change, the team commands. */
   squad: boolean;
   /** A live club: the poster and the team sheet. */
@@ -73,8 +86,135 @@ export function buildHqHelp(p: {
   free?: boolean;
   /** A weekly club the player pool is open for: asking it in words. */
   pool?: boolean;
-}): string {
-  return t(p.lang).hq_help({ squad: p.squad, graphics: p.graphics, picks: p.picks, paid: p.paid, free: p.free === true, pool: p.pool === true });
+}
+
+/** The admin group's help topics (Kemal, 2026-11-10): the short menu's
+ *  lines, each one the whole of its topic on "@Match Time help <topic>".
+ *  Every line of the old long menu is in exactly one of them. */
+export const HQ_HELP_TOPICS = ["squad", "teams", "players", "game", "settings", "graphics", "payments"] as const;
+export type HqHelpTopic = (typeof HQ_HELP_TOPICS)[number];
+
+/** The extractor's feature for each HQ topic: what "help <word>" is read
+ *  as (`HELP_FEATURES`, the question extractor's `feature`). */
+const HQ_TOPIC_FEATURE: Record<HqHelpTopic, HelpFeature> = {
+  squad: "availability",
+  teams: "teams",
+  players: "find_players",
+  game: "schedule",
+  settings: "settings",
+  graphics: "graphics",
+  payments: "payments",
+};
+
+/** The players' help topic said after an HQ topic's own lines: how that
+ *  part works and how to switch it (`buildHelpReply`). None for the two
+ *  that exist only here. */
+const HQ_TOPIC_EXPLAINER: Record<HqHelpTopic, HelpTopic | null> = {
+  squad: "availability",
+  teams: "teams",
+  players: null,
+  game: "schedule",
+  settings: "settings",
+  graphics: null,
+  payments: "payments",
+};
+
+/** The HQ topic a help feature is answered with, or null when the
+ *  players' explainer answers it alone (MoM, ratings, the pool, ...). */
+export function hqTopicFor(f: HelpFeature): HqHelpTopic | null {
+  return HQ_HELP_TOPICS.find((tp) => HQ_TOPIC_FEATURE[tp] === f) ?? null;
+}
+
+/** The players' topics an admin can also ask about here, in the menu's
+ *  closing list after the HQ topics, each when on or switchable on. */
+const HQ_MORE_TOPICS: HelpTopic[] = ["payments", "partners", "pool", "mom", "ratings", "reminders"];
+
+/** One HQ topic's full lines for this club, under its heading; "" when the
+ *  club has nothing in it. */
+export function buildHqTopicLines(topic: HqHelpTopic, p: HqHelpGates & { lang: string | null | undefined }): string {
+  return t(p.lang).hq_help_topic({ topic, squad: p.squad, graphics: p.graphics, picks: p.picks, paid: p.paid, free: p.free === true, pool: p.pool === true });
+}
+
+/**
+ * The SHORT HQ menu (Kemal, 2026-11-10: "why this long menu when we say
+ * @mt help"), in the club's language, at most 12 lines. `features`: the
+ * club's help features (`helpFeaturesFrom` with its pool and partner
+ * clubs), for the line naming what is not switched on yet and the topics
+ * it can ask about. Absent, neither is known: no not-on line, and only the
+ * HQ topics and payments are listed.
+ */
+export function buildHqHelp(p: HqHelpGates & { lang: string | null | undefined; features?: HelpFeatures }): string {
+  const s = t(p.lang);
+  const hqTopics = HQ_HELP_TOPICS.filter((tp) => tp !== "payments" && buildHqTopicLines(tp, p) !== "");
+  const askable = p.features ? helpTopicsAskable(p.features) : (["payments"] as HelpTopic[]);
+  const more = HQ_MORE_TOPICS.filter((tp) => askable.includes(tp));
+  const words = [...hqTopics.map((tp) => s.hq_help_word({ topic: tp })), ...more.map((tp) => s.onbHelpTopicWord({ topic: tp }))];
+  return s.hq_help_menu({
+    squad: p.squad,
+    graphics: p.graphics,
+    pool: p.pool === true,
+    notOn: p.features ? helpNotOnLine(p.features, p.lang ?? "en") : "",
+    // The example is payments: the router read "yardım takımlar" as a
+    // teams request once in three live runs here (2026-11-10).
+    more: s.help_more({ words, example: s.hq_help_word({ topic: "payments" }) }),
+  });
+}
+
+/** The HQ menu for a club, read from its settings: its features and its
+ *  pool and partner clubs. A failed read leaves out what it could not
+ *  know (the not-on line), never the menu. */
+export async function hqHelpMenu(args: {
+  orgId: string;
+  lang: string | null | undefined;
+  gates: HqHelpGates;
+  features?: OrgFeatures;
+  poolEnv?: Record<string, string | undefined>;
+  club?: HelpClubFacts;
+}): Promise<string> {
+  try {
+    const features = args.features ?? (await (await import("./org-features")).getOrgFeatures(args.orgId));
+    const club = args.club ?? (await (await import("./help-club-facts")).loadHelpClubFacts(args.orgId, args.poolEnv ?? {}));
+    return buildHqHelp({ lang: args.lang, ...args.gates, features: helpFeaturesFrom(features, club) });
+  } catch (err) {
+    console.error(`[admin-group] ${args.orgId}: help menu settings read failed:`, err);
+    return buildHqHelp({ lang: args.lang, ...args.gates });
+  }
+}
+
+/**
+ * "@Match Time help <topic>" in the admin group: the topic's own lines
+ * (`buildHqTopicLines`), then how that part works and how to switch it,
+ * for the organisers (`clubHelpReply`), then the way back to the menu. A
+ * topic only the players' help explains (MoM, the pool, ...) is that
+ * explainer alone. An off feature still says how it works and how to
+ * switch it on.
+ */
+export async function hqHelpTopicReply(args: {
+  orgId: string;
+  lang: string | null | undefined;
+  gates: HqHelpGates;
+  req: HelpRequest & { topic: HelpFeature };
+  features: OrgFeatures;
+  poolEnv?: Record<string, string | undefined>;
+  club?: HelpClubFacts;
+}): Promise<string> {
+  const hq = hqTopicFor(args.req.topic);
+  const own = hq ? buildHqTopicLines(hq, { lang: args.lang, ...args.gates }) : "";
+  const explainerTopic = hq ? HQ_TOPIC_EXPLAINER[hq] : args.req.topic;
+  const { clubHelpReply } = await import("./help-answer");
+  const explainer = explainerTopic
+    ? await clubHelpReply({
+        orgId: args.orgId,
+        req: { ...args.req, topic: explainerTopic },
+        features: args.features,
+        audience: "admin",
+        poolEnv: async () => args.poolEnv ?? {},
+        adminGroup: true,
+        noBackLine: true,
+        ...(args.club ? { club: args.club } : {}),
+      })
+    : "";
+  return [own, explainer, t(args.lang).help_back({})].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -95,14 +235,7 @@ export function hqHelpGates(
   /** The pool switch as the request resolved it (`pool/switch-env.ts`).
    *  Absent (the introduction): the pool line is left out. */
   poolEnv?: Record<string, string | undefined>,
-): {
-  squad: boolean;
-  graphics: boolean;
-  picks: boolean;
-  paid: boolean;
-  free: boolean;
-  pool: boolean;
-} {
+): Required<HqHelpGates> {
   const monthly = org.squadMode === "monthly";
   return {
     squad: !monthly,

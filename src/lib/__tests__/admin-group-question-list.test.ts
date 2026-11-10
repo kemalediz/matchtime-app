@@ -60,7 +60,7 @@ function hq(raw: string, body: string, over: Parameters<typeof fnf>[0] = {}) {
     now: NOW,
     history: [{ author: null, body: "Naim out" }],
     lastBotPost: null,
-    hqHelp: "*MatchTime in your admin group*",
+    gates: { squad: true, graphics: true, picks: false, paid: false, free: false, pool: false },
     deps: {
       model: stub(raw),
       loadState: async () => fnf(over),

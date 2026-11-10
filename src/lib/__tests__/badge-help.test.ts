@@ -181,8 +181,8 @@ describe("the badge list", () => {
   });
 
   it("is listed in bare help even when every feature is off", () => {
-    expect(buildHelpReply(null, MINIMAL)).toContain("*@Match Time help badges*");
-    expect(buildHelpReply(null, ALL_ON, "tr")).toContain("*@Match Time yardım rozetler*");
+    expect(buildHelpReply(null, MINIMAL)).toMatch(/Topics: .*badges/);
+    expect(buildHelpReply(null, ALL_ON, "tr")).toMatch(/Konular: .*rozetler/);
   });
 
   it("Turkish: every badge, Turkish rules and decimal comma", () => {

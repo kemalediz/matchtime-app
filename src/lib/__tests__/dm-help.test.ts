@@ -99,6 +99,9 @@ function questionModel(fields: Record<string, unknown> | Error): PipelineModel &
   return m as PipelineModel & { calls: number };
 }
 
+/** The last line of every topic answered by DM (2026-11-10). */
+const BACK = "\n\n↩️ *help* for the menu.";
+
 describe("readDmHelp: the question extractor reads it (2026-10-28)", () => {
   const read = (text: string, model: PipelineModel) => readDmHelp({ text, authorName: "Kemal", now: new Date(), model });
 
@@ -195,7 +198,7 @@ describe("handleDmHelp", () => {
       buildHelpReply("payments", FEATS_PAY_OFF, "en", {
         audience: "admin",
         links: { topic: "https://mt.example/r/-admin-settings-payments" },
-      }),
+      }) + BACK,
     );
   });
 
@@ -216,7 +219,7 @@ describe("handleDmHelp", () => {
     });
     expect(job.text).toBe(
       "MatchTime hasn't started in your group yet. Nothing below works there until you reply *GO* here or press *Go live* on your settings page." +
-        `\n\n${help}`,
+        `\n\n${help}${BACK}`,
     );
   });
 
@@ -246,7 +249,7 @@ describe("handleDmHelp", () => {
     expect(out).toMatchObject({ audience: "player" });
     expect(buildAdminLink).not.toHaveBeenCalled();
     const text = botJobCreate.mock.calls[0][0].data.text as string;
-    expect(text).toBe(buildHelpReply("payments", FEATS_PAY_OFF, "en", { audience: "player" }));
+    expect(text).toBe(buildHelpReply("payments", FEATS_PAY_OFF, "en", { audience: "player" }) + BACK);
     expect(text).not.toMatch(/https?:\/\//);
   });
 
@@ -261,7 +264,9 @@ describe("handleDmHelp", () => {
       await handleDmHelp(args("help"));
       const text = botJobCreate.mock.calls[0][0].data.text as string;
       expect(text).toContain(POINTER);
-      expect(text.endsWith("⚙️ Your club's settings, signed in:\nhttps://mt.example/r/-admin-settings")).toBe(true);
+      expect(text).toContain("⚙️ Your club's settings, signed in:\nhttps://mt.example/r/-admin-settings\n");
+      // The short menu ends by teaching "help <topic>", typed without the tag in a DM.
+      expect(text.split("\n").at(-1)).toMatch(/^ℹ️ To learn more about anything, message me \*help\* and the topic, for example \*help payments\*\. Topics: /);
       expect(membershipFindMany.mock.calls[0][0].select.org.select).toMatchObject({ adminGroupId: true });
     });
 
@@ -282,10 +287,14 @@ describe("handleDmHelp", () => {
     });
   });
 
-  it("group and DM agree: a player's bare help is the group's bare help", async () => {
+  it("group and DM agree: a player's bare help is the group's bare help, but for typing help without the tag", async () => {
     membershipFindMany.mockResolvedValue([mem("org-mt", "PLAYER")]);
     await handleDmHelp(args("help"));
-    expect(botJobCreate.mock.calls[0][0].data.text).toBe(buildHelpReply(null, FEATS_PAY_OFF, "en"));
+    const dm = botJobCreate.mock.calls[0][0].data.text as string;
+    expect(dm).toBe(buildHelpReply(null, FEATS_PAY_OFF, "en", { audience: "player", dm: true }));
+    const group = buildHelpReply(null, FEATS_PAY_OFF, "en");
+    const same = (l: string) => !l.startsWith("💬") && !l.startsWith("ℹ️ To learn more");
+    expect(dm.split("\n").filter(same)).toEqual(group.split("\n").filter(same));
   });
 
   it("'help badges Mr Reliable' (an admin too): that badge's rules, plain drill-down, no link minted", async () => {

@@ -68,7 +68,7 @@ test('tagged "help payments" (payments OFF) → how fee collection works and how
   expect(r.reply).not.toContain("/r/");
 });
 
-test('tagged bare "help" → topic menu, omits the disabled payments topic', async ({
+test('tagged bare "help" → the short menu; payments off is a topic word, never the organiser\'s pointer', async ({
   request,
   db,
 }) => {
@@ -76,10 +76,12 @@ test('tagged bare "help" → topic menu, omits the disabled payments topic', asy
   const r = await sim.post("pete", "@Match Time help", { tag: true, ...asHelp() });
   expect(r.intent).toBe("help");
   expect(r.reply).toMatch(/MatchTime help/);
-  expect(r.reply).toMatch(/help ratings/); // an enabled topic
-  // payments off → not in the topic menu, and the organiser's 💷 fees
-  // pointer is left out of the group's help too (FNF, 2026-10-15)
-  expect(r.reply).not.toMatch(/• \*@Match Time help payments\*/);
+  // The short menu (2026-11-10): one closing line teaches "help <topic>"
+  // and names every topic, off ones too (Kemal: off features must be
+  // findable); the organiser's not-on line is not for the players' group.
+  expect(r.reply).toMatch(/for example \*@Match Time help payments\*\. Topics: .*ratings/);
+  expect(r.reply).toMatch(/Topics: .*payments/);
+  expect(r.reply).not.toContain("💡");
 });
 
 // The friend link's own topic (2026-10-31), in the words a player uses.
@@ -97,7 +99,7 @@ test('tagged "how do I bring a friend?" → how the friend link works', async ({
 test('tagged bare "help" lists the friend topic', async ({ request, db }) => {
   const sim = await group(request, db);
   const r = await sim.post("pete", "@Match Time help", { tag: true, ...asHelp() });
-  expect(r.reply).toMatch(/• \*@Match Time help friend\*: bringing a friend/);
+  expect(r.reply).toMatch(/Topics: availability, friend, /);
 });
 
 test('UNtagged "help" → ignored (no help reply produced)', async ({

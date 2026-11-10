@@ -1245,13 +1245,62 @@ export const en = {
     return lines.join("\n");
   },
 
-  /** Bare "@Match Time help": the lead line above the topic list. */
-  onbHelpHead: (): string => `ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:`,
+  /** Bare "@Match Time help" in the players' group and by DM: the short
+   *  menu (Kemal, 2026-11-10: "why this long menu"). The rest is one topic
+   *  away (`help_more`); each line here is what the how-to block says,
+   *  shortened. `asks`: what a tag can ask, as the how-to block gates it. */
+  onbHelpMenu: (p: {
+    attendance: boolean;
+    organisers: boolean;
+    asks: Array<"squad" | "teams" | "stats">;
+    /** The member's own profile page, and what it shows. */
+    profileUrl: string;
+    playerRating: boolean;
+    momVoting: boolean;
+    dm?: boolean;
+  }): string => {
+    const lines = [`ℹ️ *MatchTime help*`];
+    lines.push(
+      p.attendance
+        ? `✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.`
+        : `📋 Paste your squad list and I'll read who's playing, no need to tag me.`,
+    );
+    if (p.organisers) {
+      lines.push(
+        p.attendance
+          ? `📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.`
+          : `📣 The organisers share the squad list and the teams.`,
+      );
+    }
+    const asks = p.asks.map((a) => ({ squad: "who's in", teams: "the teams", stats: "the stats" })[a]);
+    const what = asks.length > 0 ? `and ask in your own words: ${asks.join(", ")} or anything else` : `and ask anything in your own words`;
+    lines.push(
+      p.dm
+        ? `💬 In the group, tag me (type *@*, pick *Match Time*) ${what}. Replying to my message is not enough.`
+        : `💬 Tag me (type *@*, pick *Match Time*) ${what}. Typing my name or replying to my message is not enough.`,
+    );
+    lines.push(`🤐 I don't reply to banter and jokes, so they're safe.`);
+    const parts = ["games", ...(p.playerRating ? ["ratings"] : []), ...(p.momVoting ? ["Man of the Match awards"] : [])];
+    const shows = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+    lines.push(`📊 Your own profile page shows your ${shows}: ${p.profileUrl}`);
+    return lines.join("\n");
+  },
 
-  /** One line of the bare-help topic list. `word` is what the player
-   *  types after "help" in this language; `label` names the topic. */
-  onbHelpTopicLine: (p: { word: string; label: string }): string =>
-    `   • *@Match Time help ${p.word}*: ${p.label}`,
+  /** The features switched off for this club (2026-11-10, Kemal: "why it
+   *  never mentions not used features such as payments"), worded as
+   *  available. `word` is the first one's help word, the example. */
+  help_not_on: (p: { labels: string[]; word: string; dm?: boolean }): string =>
+    `💡 *Not on here yet*: ${p.labels.join(", ")}. Ask *${p.dm ? "" : "@Match Time "}help ${p.word}* to see how ${p.labels.length > 1 ? "they work and how to switch them" : "it works and how to switch it"} on.`,
+
+  /** The menu's closing line: how to ask about one topic, with a real
+   *  example, and every topic word this club can ask about, on or off. */
+  help_more: (p: { words: string[]; example: string; dm?: boolean }): string =>
+    p.dm
+      ? `ℹ️ To learn more about anything, message me *help* and the topic, for example *help ${p.example}*. Topics: ${p.words.join(", ")}.`
+      : `ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help ${p.example}*. Topics: ${p.words.join(", ")}.`,
+
+  /** The last line of every topic's answer: the way back to the menu. */
+  help_back: (p: { dm?: boolean }): string => (p.dm ? `↩️ *help* for the menu.` : `↩️ *@Match Time help* for the menu.`),
 
   /** The word a player types after "help" for each topic, in this language. */
   onbHelpTopicWord: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
@@ -1296,6 +1345,10 @@ export const en = {
     /** Organisers mode: a format switch's line-up goes to them
      *  (actions/matches.ts), not the group. Absent: off. */
     organisers?: boolean;
+    /** Answered in the club's admin group, where one game's time or day
+     *  IS moved by message (activity-kickoff-move.ts, 2026-11-10): the
+     *  "can't be moved on its own" line is left out there. */
+    adminGroup?: boolean;
   }): string => {
     if (p.audience === "player") {
       return `🗓️ Match days, kick-off times, cancellations and block bookings are set by your organiser on the admin page. Ask them if something needs changing.`;
@@ -1307,8 +1360,8 @@ export const en = {
       `1️⃣ *Weekly game (day, kick-off time, venue):* on *Activities*, tap *Edit* on the game, change it, then *Save changes*. Only future matches change. The group isn't told.\n${p.activities}\n\n` +
       `2️⃣ *Block booking for the season:* on *Block bookings*, tap *New block booking*, pick the start date and an end date or a number of matches, tap *Preview dates*, then *Create block*. The group isn't told.\n${p.blockBookings}\n\n` +
       `3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Cancel or restore several matches*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.\n${p.bulk}\n\n` +
-      `4️⃣ *Switch one match to another format:* open the match from your match list, tap *Switch format*, pick the format, then *Confirm switch*. ${switchTold}\n${p.matches}\n\n` +
-      `One week's kick-off time can't be moved on its own yet: change the weekly game instead, for the weeks ahead.` +
+      `4️⃣ *Switch one match to another format:* open the match from your match list, tap *Switch format*, pick the format, then *Confirm switch*. ${switchTold}\n${p.matches}` +
+      (p.adminGroup ? `` : `\n\nOne week's kick-off time can't be moved on its own yet: change the weekly game instead, for the weeks ahead.`) +
       (p.audience === "group"
         ? `\nAdmins: DM me *help schedule* and I'll send these as links that sign you straight in.`
         : ``)
@@ -1361,10 +1414,6 @@ export const en = {
    *  and, for an organiser, where to switch it off or change it. */
   onbHelpOnStatus: (p: { audience: "group" | "admin" | "player"; url: string }): string =>
     p.audience === "admin" ? `✅ It's on for your club. To switch it off or change how it works:\n${p.url}` : `✅ It's on for this club.`,
-
-  /** Bare help for an organiser (2026-10-28): the topics switched off. */
-  onbHelpOffTopics: (p: { labels: string[] }): string =>
-    `🔧 Switched off for your club: ${p.labels.join(", ")}. Ask me about one and I'll show you how to switch it on.`,
 
   /** "help partners" (2026-10-28). `active`: the club's active
    *  partnerships it asks. An active pairing is the one switch (Kemal,
@@ -1584,42 +1633,81 @@ export const en = {
   onbHelpAdminOrganisers: `📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).`,
 
   /** "help" in a club's admin group (admin-group-help.ts), asked in any
-   *  words (the shared router's `help` route). Every line is something the
-   *  admin group really does. `squad`: a live weekly club (pasted list,
-   *  squad changes, the teams). `graphics`: a live club. `picks`:
-   *  organiser pick. `paid`: a monthly club's collector. `free`: a club
-   *  that takes match fees (free places, 2026-10-16). */
-  hq_help: (p: { squad: boolean; graphics: boolean; picks: boolean; paid: boolean; free?: boolean; pool?: boolean }): string => {
-    const lines = [
-      `🛠️ *MatchTime in your admin group*`,
-      `Tag me in every message here: type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough. Then ask in your own words, for example:`,
-      ``,
-    ];
+   *  words (the shared router's `help` route): the SHORT menu (Kemal,
+   *  2026-11-10: "why this long menu when we say @mt help"). One line per
+   *  topic, shown when the club has something in that topic; the full
+   *  lines are `hq_help_topic`. The not-on line (`help_not_on`) and the
+   *  closing line (`help_more`) are passed in, already worded. `squad`: a
+   *  live weekly club. `graphics`: a live club. `pool`: the pool is open. */
+  hq_help_menu: (p: { squad: boolean; graphics: boolean; pool?: boolean; notOn: string; more: string }): string => {
+    const lines = [`🛠️ *MatchTime in your admin group*`, `Tag me (type *@*, pick *Match Time*), then ask in your own words:`, ``];
     if (p.squad) {
+      lines.push(`📋 *Squad*: "put Bilal in", "Tom to the bench", "swap Tom for Ben", or paste the list`);
+      lines.push(`🟥🟦 *Teams*: "make the teams", "swap Sam and Alex", then *YES* to confirm`);
+      lines.push(`📣 *Finding players*: "ask the group", ${p.pool ? `"ask the player pool for 2", ` : ""}"DM them"`);
+    }
+    lines.push(`🗓️ *The game*: ${p.squad ? `"cancel Friday", ` : ""}"make it 8 a side", "move Monday's game to 20:15"`);
+    lines.push(`⚙️ *Settings*: "quiet hours 23:00 to 09:00", "we play with 12 to 16"`);
+    if (p.graphics) lines.push(`🖼️ *Graphics*: "send the poster"`);
+    lines.push(`❓ *Anything else*: just ask, I answer from what I know`);
+    if (p.notOn) lines.push(p.notOn);
+    lines.push(p.more);
+    return lines.join("\n");
+  },
+
+  /** The word typed after "help" for each admin group topic. */
+  hq_help_word: (p: { topic: "squad" | "teams" | "players" | "game" | "settings" | "graphics" | "payments" }): string => p.topic,
+
+  /** "@Match Time help <topic>" in the admin group: that topic's full
+   *  lines, each one the long menu had, under the topic's heading. Empty
+   *  when the club has nothing in the topic. Gates as `hq_help_menu`, plus
+   *  `picks` (organiser pick), `paid` (a monthly club's collector) and
+   *  `free` (a club that takes match fees, 2026-10-16). */
+  hq_help_topic: (p: {
+    topic: "squad" | "teams" | "players" | "game" | "settings" | "graphics" | "payments";
+    squad: boolean;
+    graphics: boolean;
+    picks: boolean;
+    paid: boolean;
+    free?: boolean;
+    pool?: boolean;
+  }): string => {
+    const lines: string[] = [];
+    if (p.topic === "squad" && p.squad) {
       lines.push(`📋 *Tag me and paste the whole squad list*: I show you what would change, and *@Match Time YES* within 30 minutes applies it.`);
       lines.push(`✏️ *"@Match Time put Bilal in"*, *"@Match Time Sam can't make it"*, *"@Match Time Tom to the bench"*, *"@Match Time swap Tom for Ben"*: changes to the squad (a swap brings Ben up from the bench and puts Tom on it).`);
+    }
+    if (p.topic === "teams" && p.squad) {
       lines.push(`🟥🟦 *"@Match Time show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`);
       lines.push(`↩️ Reply to one of my earlier team sheets with *"@Match Time use these"*, or tag me and paste the two teams: I bring those teams back for your *@Match Time YES*.`);
       lines.push(`🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams. On match day after kickoff, these and *"@Match Time put Ben in for Sam"* fix the game just played, and nothing is posted in the players' group.`);
       lines.push(`✅ *@Match Time YES*: make the proposed teams final.`);
-      lines.push(`📣 *"@Match Time ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
-      lines.push(`📨 Reply to a message that tags people with *"@Match Time DM them"*, or say *"@Match Time DM the people above"*: I DM each of them the invite for the next game. Only numbers I already know, up to 10 at a time.`);
-      if (p.pool) lines.push(`🌍 *"@Match Time ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
-      lines.push(`❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`);
     }
-    if (p.graphics) lines.push(`🖼️ *"@Match Time send the poster"*, *"@Match Time team sheet please"*: the list or the teams as a graphic, ready to forward.`);
-    if (p.picks) lines.push(`🙋 When I ask you to pick who plays, tag me with the numbers or names from my list, or *ALL* or *NONE* (for example *@Match Time 2 3*).`);
-    if (p.paid) lines.push(`💷 *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*: the money collector's answer to my list of payment claims.`);
-    if (p.free) lines.push(`🎁 *"@Match Time Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
-    lines.push(`🌙 *"@Match Time turn on quiet hours from 23:00 to 09:00"*, *"@Match Time turn off quiet hours"*: I hold my own messages overnight, or send at any time. A new club starts with quiet hours off.`);
-    lines.push(`👥 *"@Match Time we play with 12 to 16"*, *"@Match Time we can play with 12"*: the fewest and most you play with. I only warn you about low numbers, or offer to cancel, below the fewest, and when two are waiting on the bench I suggest going up a size (with one waiting, the list says one more would do it). *"@Match Time back to full teams"* undoes the fewest.`);
-    lines.push(`🔁 *"@Match Time make it 8 a side"*, *"@Match Time 6 a side on Monday"*: one game a different size, inside those numbers. Going up, the bench moves in; going down, the last to join go to the bench. Each is told by DM, and I post the new list.`);
-    lines.push(`🕗 *"@Match Time move Monday's game to 20:15"*, *"@Match Time from now on we kick off at 20:15"*: one game to another time or day of its week, or your weekly game from now on, with its games still to be played. Quietly: I don't post it in the players' group.`);
-    lines.push(``, `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`);
-    // The open answer (2026-11-10, pipeline/open-answer.ts).
-    lines.push(`❓ Anything else: ask in your own words. I answer from what I know (the squad, the bench, the stats and this chat), or say if I don't know, and I change nothing.`);
-    lines.push(`Ask *@Match Time what can you do?* here any time to see this again.`);
-    return lines.join("\n");
+    if (p.topic === "players") {
+      if (p.squad) {
+        lines.push(`📣 *"@Match Time ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
+        lines.push(`📨 Reply to a message that tags people with *"@Match Time DM them"*, or say *"@Match Time DM the people above"*: I DM each of them the invite for the next game. Only numbers I already know, up to 10 at a time.`);
+        if (p.pool) lines.push(`🌍 *"@Match Time ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
+      }
+      if (p.picks) lines.push(`🙋 When I ask you to pick who plays, tag me with the numbers or names from my list, or *ALL* or *NONE* (for example *@Match Time 2 3*).`);
+    }
+    if (p.topic === "game") {
+      if (p.squad) lines.push(`❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`);
+      lines.push(`🔁 *"@Match Time make it 8 a side"*, *"@Match Time 6 a side on Monday"*: one game a different size, inside those numbers. Going up, the bench moves in; going down, the last to join go to the bench. Each is told by DM, and I post the new list.`);
+      lines.push(`🕗 *"@Match Time move Monday's game to 20:15"*, *"@Match Time from now on we kick off at 20:15"*: one game to another time or day of its week, or your weekly game from now on, with its games still to be played. Quietly: I don't post it in the players' group.`);
+    }
+    if (p.topic === "settings") {
+      lines.push(`🌙 *"@Match Time turn on quiet hours from 23:00 to 09:00"*, *"@Match Time turn off quiet hours"*: I hold my own messages overnight, or send at any time. A new club starts with quiet hours off.`);
+      lines.push(`👥 *"@Match Time we play with 12 to 16"*, *"@Match Time we can play with 12"*: the fewest and most you play with. I only warn you about low numbers, or offer to cancel, below the fewest, and when two are waiting on the bench I suggest going up a size (with one waiting, the list says one more would do it). *"@Match Time back to full teams"* undoes the fewest.`);
+    }
+    if (p.topic === "graphics" && p.graphics) lines.push(`🖼️ *"@Match Time send the poster"*, *"@Match Time team sheet please"*: the list or the teams as a graphic, ready to forward.`);
+    if (p.topic === "payments") {
+      if (p.paid) lines.push(`💷 *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*: the money collector's answer to my list of payment claims.`);
+      if (p.free) lines.push(`🎁 *"@Match Time Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
+    }
+    if (lines.length === 0) return "";
+    const head = { squad: "📋 *Squad*", teams: "🟥🟦 *Teams*", players: "📣 *Finding players*", game: "🗓️ *The game*", settings: "⚙️ *Settings*", graphics: "🖼️ *Graphics*", payments: "💷 *Payments*" }[p.topic];
+    return [`${head}: tag me in every message here (type *@*, pick *Match Time*), for example:`, ...lines].join("\n");
   },
 
   // ── The safe YES in the admin group (2026-10-16, admin-group-confirm-rules.ts) ──

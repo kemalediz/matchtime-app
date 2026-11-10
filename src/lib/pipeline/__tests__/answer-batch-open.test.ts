@@ -270,7 +270,7 @@ describe("in HQ (answerHqQuestion), the same path", () => {
       now: NOW,
       history: [{ author: fullName("elvin"), body: "we should bring the regulars up from the bench" }],
       lastBotPost: null,
-      hqHelp: "menu",
+      gates: { squad: true, graphics: true, picks: false, paid: false, free: false, pool: false },
       deps: { model, loadState: async () => state, loadFeatures: async () => FEATURES, loadClub: async () => CLUB, loadStats: async () => TABLES },
     });
     expect(out).toEqual({ outcome: "hq-answered", replyText: ANSWER });
@@ -290,7 +290,7 @@ describe("in HQ (answerHqQuestion), the same path", () => {
       now: NOW,
       history: [],
       lastBotPost: null,
-      hqHelp: "menu",
+      gates: { squad: true, graphics: true, picks: false, paid: false, free: false, pool: false },
       deps: { model, loadState: async () => state, loadFeatures: async () => FEATURES, loadClub: async () => CLUB, loadStats: async () => TABLES },
     });
     expect(out).toBeNull();

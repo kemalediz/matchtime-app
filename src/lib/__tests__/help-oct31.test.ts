@@ -19,7 +19,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildHelpReply, buildHowToUseMe, type HelpFeatures } from "@/lib/onboarding-conversation";
-import { buildHqHelp } from "@/lib/admin-group-help";
+import { buildHqHelp, buildHqTopicLines } from "@/lib/admin-group-help";
 import { buildGettingReady, type GettingReadyClub } from "@/lib/admin-onboarding-rules";
 import { t } from "@/lib/i18n/t";
 
@@ -84,9 +84,10 @@ describe("the bare help (and the setup post's how-to block)", () => {
   it("says how to make a real tag, and that the name or a reply is not enough, EN and TR", () => {
     for (const f of [BASE, { ...BASE, organisersAnnounce: true }]) {
       const en = buildHelpReply(null, f, "en", { audience: "group" });
-      expect(en).toContain(`👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.`);
+      // The short menu (2026-11-10) says it in its one tag line.
+      expect(en).toMatch(/Tag me \(type \*@\*, pick \*Match Time\*\) and ask .*\. Typing my name or replying to my message is not enough\./);
       const tr = buildHelpReply(null, f, "tr", { audience: "group" });
-      expect(tr).toContain(`👉 Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin. Adımı yazmak ya da mesajıma yanıt vermek yetmez.`);
+      expect(tr).toMatch(/Beni etiketleyin \(\*@\* yazıp \*Match Time\*'ı seçin\) ve .*\. Adımı yazmak ya da mesajıma yanıt vermek yetmez\./);
       expect(en).not.toMatch(DASH);
       expect(tr).not.toMatch(DASH);
     }
@@ -94,12 +95,14 @@ describe("the bare help (and the setup post's how-to block)", () => {
 });
 
 describe("quiet hours by tag", () => {
-  it("HQ's help lists it for every club, EN and TR", () => {
+  it("HQ's help lists it for every club, EN and TR: in the menu, and in full under settings", () => {
     for (const squad of [true, false]) {
-      expect(buildHqHelp({ lang: "en", squad, graphics: true, picks: false, paid: false })).toContain(
+      expect(buildHqHelp({ lang: "en", squad, graphics: true, picks: false, paid: false })).toContain(`⚙️ *Settings*: "quiet hours 23:00 to 09:00"`);
+      expect(buildHqHelp({ lang: "tr", squad, graphics: true, picks: false, paid: false })).toContain(`⚙️ *Ayarlar*: "sessiz saatler 23:00 ile 09:00 arası"`);
+      expect(buildHqTopicLines("settings", { lang: "en", squad, graphics: true, picks: false, paid: false })).toContain(
         `🌙 *"@Match Time turn on quiet hours from 23:00 to 09:00"*, *"@Match Time turn off quiet hours"*: I hold my own messages overnight, or send at any time. A new club starts with quiet hours off.`,
       );
-      expect(buildHqHelp({ lang: "tr", squad, graphics: true, picks: false, paid: false })).toContain(
+      expect(buildHqTopicLines("settings", { lang: "tr", squad, graphics: true, picks: false, paid: false })).toContain(
         `🌙 *"@Match Time sessiz saatleri 23:00 ile 09:00 arası aç"*, *"@Match Time sessiz saatleri kapat"*: kendi mesajlarımı gece bekletirim ya da her saatte gönderirim. Yeni bir kulüpte sessiz saatler kapalı başlar.`,
       );
     }

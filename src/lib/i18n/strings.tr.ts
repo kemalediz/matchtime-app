@@ -1044,10 +1044,43 @@ export const tr: Strings = {
     return lines.join("\n");
   },
 
-  onbHelpHead: (): string => `ℹ️ *MatchTime yardım*, açıklayabileceklerim şunlar. Beni şunlardan biriyle etiketleyin:`,
+  onbHelpMenu: (p) => {
+    const lines = [`ℹ️ *MatchTime yardım*`];
+    lines.push(
+      p.attendance
+        ? `✅ Sıradaki maç için grupta *varım* ya da *yokum* yazın, beni etiketlemenize gerek yok. Emin değil misiniz? *belki* yazın.`
+        : `📋 Kadro listesini yapıştırın, kimin oynadığını okurum, beni etiketlemenize gerek yok.`,
+    );
+    if (p.organisers) {
+      lines.push(
+        p.attendance
+          ? `📣 Kadro listesini ve takımları organizatörler paylaşır. Kimin var kimin yok olduğunu onlar için ben takip ederim.`
+          : `📣 Kadro listesini ve takımları organizatörler paylaşır.`,
+      );
+    }
+    const asks = p.asks.map((a) => ({ squad: "kim var", teams: "takımlar", stats: "istatistikler" })[a]);
+    const what = asks.length > 0 ? `ve kendi cümlelerinizle sorun: ${asks.join(", ")} ya da başka bir şey` : `ve kendi cümlelerinizle ne isterseniz sorun`;
+    lines.push(
+      p.dm
+        ? `💬 Grupta beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ${what}. Mesajıma yanıt vermek yetmez.`
+        : `💬 Beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ${what}. Adımı yazmak ya da mesajıma yanıt vermek yetmez.`,
+    );
+    lines.push(`🤐 Sohbete ve şakalara yanıt vermem, rahat olun.`);
+    const parts = ["maçlarınızı", ...(p.playerRating ? ["puanlarınızı"] : []), ...(p.momVoting ? ["maçın oyuncusu ödüllerinizi"] : [])];
+    const shows = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} ve ${parts[parts.length - 1]}` : parts[0];
+    lines.push(`📊 Kendi profil sayfanız ${shows} gösterir: ${p.profileUrl}`);
+    return lines.join("\n");
+  },
 
-  onbHelpTopicLine: (p: { word: string; label: string }): string =>
-    `   • *@Match Time yardım ${p.word}*, ${p.label}`,
+  help_not_on: (p) =>
+    `💡 *Burada henüz açık değil*: ${p.labels.join(", ")}. ${p.labels.length > 1 ? "Nasıl çalıştıklarını ve nasıl açıldıklarını" : "Nasıl çalıştığını ve nasıl açıldığını"} görmek için *${p.dm ? "" : "@Match Time "}yardım ${p.word}* yazın.`,
+
+  help_more: (p) =>
+    p.dm
+      ? `ℹ️ Herhangi bir konuda daha fazlası için bana *yardım* ve konuyu yazın, örneğin *yardım ${p.example}*. Konular: ${p.words.join(", ")}.`
+      : `ℹ️ Herhangi bir konuda daha fazlası için beni *yardım* ve konuyla etiketleyin, örneğin *@Match Time yardım ${p.example}*. Konular: ${p.words.join(", ")}.`,
+
+  help_back: (p) => (p.dm ? `↩️ Menü için *yardım* yazın.` : `↩️ Menü için *@Match Time yardım* yazın.`),
 
   onbHelpTopicWord: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
     ({
@@ -1094,6 +1127,7 @@ export const tr: Strings = {
     bulk: string;
     matches: string;
     organisers?: boolean;
+    adminGroup?: boolean;
   }): string => {
     if (p.audience === "player") {
       return `🗓️ Maç günlerini, saatleri, iptalleri ve blok rezervasyonları organizatör yönetici sayfasından ayarlar. Bir şeyin değişmesi gerekiyorsa ona söyle.`;
@@ -1105,8 +1139,8 @@ export const tr: Strings = {
       `1️⃣ *Haftalık maç (gün, başlama saati, saha):* *Activities* › maçta *Edit* › *Save changes*. Yalnızca ileriki maçlar değişir, gruba bir şey yazılmaz.\n${p.activities}\n\n` +
       `2️⃣ *Sezonluk blok rezervasyon:* *Block bookings* › *New block booking* › başlangıç tarihi ile bitiş tarihi ya da maç sayısı › *Preview dates* › *Create block*. Gruba bir şey yazılmaz.\n${p.blockBookings}\n\n` +
       `3️⃣ *Bir haftayı (ya da birkaç tarihi) iptal etmek:* *Block bookings* › *Cancel or restore several matches* › *From* ve *To* alanlarına o tarih › *Find matches* › gruba duyurmamı istiyorsanız *Announce to the group* › onay. Geri almak da aynı şekilde.\n${p.bulk}\n\n` +
-      `4️⃣ *Bir maçı başka bir formata çevirmek:* maç listesinden maçı aç › *Switch format* › formatı seç › *Confirm switch*. ${switchTold}\n${p.matches}\n\n` +
-      `Tek bir haftanın başlama saati henüz ayrıca değiştirilemiyor: ileriki haftalar için haftalık maçı değiştirmek gerekiyor.` +
+      `4️⃣ *Bir maçı başka bir formata çevirmek:* maç listesinden maçı aç › *Switch format* › formatı seç › *Confirm switch*. ${switchTold}\n${p.matches}` +
+      (p.adminGroup ? `` : `\n\nTek bir haftanın başlama saati henüz ayrıca değiştirilemiyor: ileriki haftalar için haftalık maçı değiştirmek gerekiyor.`) +
       (p.audience === "group"
         ? `\nYöneticiler: bana özelden *yardım program* yazın, bunları sizi doğrudan giriş yapmış olarak açan bağlantılar olarak göndereyim.`
         : ``)
@@ -1151,8 +1185,6 @@ export const tr: Strings = {
 
   onbHelpOnStatus: (p) =>
     p.audience === "admin" ? `✅ Kulübünde açık. Kapatmak ya da nasıl çalıştığını değiştirmek için:\n${p.url}` : `✅ Bu kulüpte açık.`,
-
-  onbHelpOffTopics: (p) => `🔧 Kulübünde kapalı olanlar: ${p.labels.join(", ")}. Birini sor, nasıl açılacağını göstereyim.`,
 
   onbHelpPartners: (p) => {
     const head = `🤝 *Partner kulüpler nasıl çalışır*`;
@@ -1301,38 +1333,64 @@ export const tr: Strings = {
   onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda beni etiketleyip orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *@Match Time neler yapabilirsin?*).`,
 
   // Yönetici grubunda her şey kendi cümlelerinizle sorulur (paylaşılan
-  // yönlendiricinin `help` rotası, 2026-10-16). Örnekler gerçekten
-  // yapılanlardır.
-  hq_help: (p) => {
-    const lines = [
-      `🛠️ *Yönetici grubunda MatchTime*`,
-      `Burada her mesajda beni etiketleyin: *@* yazıp listeden *Match Time*'ı seçin. Adımı yazmak ya da mesajıma yanıt vermek yetmez. Sonra kendi cümlelerinizle sorun, örneğin:`,
-      ``,
-    ];
+  // yönlendiricinin `help` rotası). Kısa menü (Kemal, 2026-11-10); her
+  // konunun tam satırları `hq_help_topic`.
+  hq_help_menu: (p) => {
+    const lines = [`🛠️ *Yönetici grubunda MatchTime*`, `Beni etiketleyin (*@* yazıp *Match Time*'ı seçin), sonra kendi cümlelerinizle sorun:`, ``];
     if (p.squad) {
+      lines.push(`📋 *Kadro*: "Bilal'i ekle", "Tom yedeğe", "Tom yedeğe, Ben kadroya" ya da listeyi yapıştırın`);
+      lines.push(`🟥🟦 *Takımlar*: "takımları kur", "Sam ile Alex'i değiştir", sonra onay için *EVET*`);
+      lines.push(`📣 *Oyuncu bulmak*: "gruba sor", ${p.pool ? `"havuzdan 2 oyuncu iste", ` : ""}"onlara özelden yaz"`);
+    }
+    lines.push(`🗓️ *Maç*: ${p.squad ? `"cuma maçını iptal et", ` : ""}"8'e 8 yapalım", "pazartesi maçını 20:15'e al"`);
+    lines.push(`⚙️ *Ayarlar*: "sessiz saatler 23:00 ile 09:00 arası", "12 ile 16 kişi arası oynuyoruz"`);
+    if (p.graphics) lines.push(`🖼️ *Görseller*: "posteri gönder"`);
+    lines.push(`❓ *Başka bir şey*: sormanız yeter, bildiklerimden yanıtlarım`);
+    if (p.notOn) lines.push(p.notOn);
+    lines.push(p.more);
+    return lines.join("\n");
+  },
+
+  hq_help_word: (p) =>
+    ({ squad: "kadro", teams: "takımlar", players: "oyuncu bulma", game: "maç", settings: "ayarlar", graphics: "görseller", payments: "ödeme" })[p.topic],
+
+  hq_help_topic: (p) => {
+    const lines: string[] = [];
+    if (p.topic === "squad" && p.squad) {
       lines.push(`📋 *Beni etiketleyip kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *@Match Time EVET* yazarsanız uygularım.`);
       lines.push(`✏️ *"@Match Time Bilal'i ekle"*, *"@Match Time Sam gelemiyor"*, *"@Match Time Tom yedek"*, *"@Match Time Tom yedeğe, Ben kadroya"*: kadroda değişiklik.`);
+    }
+    if (p.topic === "teams" && p.squad) {
       lines.push(`🟥🟦 *"@Match Time takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`);
       lines.push(`↩️ Önceki takım listelerimden birine *"@Match Time bunları kullan"* diye yanıt verin ya da beni etiketleyip iki takımı yapıştırın: o takımları *@Match Time EVET* yazmanız için geri getiririm.`);
       lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik. Maç günü başlama saatinden sonra bunlar ve *"@Match Time Sam yerine Ben'i koy"* oynanan maçı düzeltir; oyuncu grubuna bir şey gönderilmez.`);
       lines.push(`✅ *@Match Time EVET*: önerilen takımları kesinleştiririm.`);
-      lines.push(`📣 *"@Match Time gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`);
-      lines.push(`📨 Kişileri etiketleyen bir mesaja *"@Match Time onlara özelden yaz"* diye yanıt verin ya da *"@Match Time yukarıdakilere özelden yaz"* deyin: her birine sıradaki maçın davetini özelden gönderirim. Yalnızca tanıdığım numaralara, bir seferde en fazla 10 kişiye.`);
-      if (p.pool) lines.push(`🌍 *"@Match Time havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
-      lines.push(`❌ *"@Match Time cuma maçını iptal et"*, *"@Match Time maç yapılıyor"*: sıradaki maçı iptal ederim ya da yeniden açarım, oyuncu grubuna da haber veririm.`);
     }
-    if (p.graphics) lines.push(`🖼️ *"@Match Time posteri gönder"*, *"@Match Time takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
-    if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde beni etiketleyip listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın (örneğin *@Match Time 2 3*).`);
-    if (p.paid) lines.push(`💷 *@Match Time ÖDENDİ HEPSİ*, *@Match Time ÖDENDİ 1 3* ya da *@Match Time ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
-    if (p.free) lines.push(`🎁 *"@Match Time Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`);
-    lines.push(`🌙 *"@Match Time sessiz saatleri 23:00 ile 09:00 arası aç"*, *"@Match Time sessiz saatleri kapat"*: kendi mesajlarımı gece bekletirim ya da her saatte gönderirim. Yeni bir kulüpte sessiz saatler kapalı başlar.`);
-    lines.push(`👥 *"@Match Time 12 ile 16 kişi arası oynuyoruz"*, *"@Match Time 12 kişiyle de oynarız"*: oynadığınız en az ve en fazla kişi sayısı. Az oyuncu uyarısını ya da iptal önerisini ancak en azın altında yaparım, yedekte iki kişi beklerse de bir büyük formata geçmeyi öneririm (bir kişi beklerken listede bir kişi daha yeteceğini yazarım). *"@Match Time yine tam takım"* en azı geri alır.`);
-    lines.push(`🔁 *"@Match Time 8'e 8 yapalım"*, *"@Match Time pazartesi 6'ya 6 oynayalım"*: bu sayılar içinde tek bir maçın formatı. Büyürken yedekler kadroya girer, küçülürken en son katılanlar yedeğe geçer. Herkese mesajla haber verir, yeni listeyi atarım.`);
-    lines.push(`🕗 *"@Match Time pazartesi maçını 20:15'e al"*, *"@Match Time artık 20:15'te başlıyoruz"*: tek bir maçın saati ya da haftası içindeki günü, ya da bundan sonra haftalık maçınız, oynanmamış maçlarıyla birlikte. Sessizce: oyuncu grubuna yazmam.`);
-    lines.push(``, `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *@Match Time partner kulüpler nasıl çalışır?* ya da *@Match Time ayarlar nerede?*`);
-    lines.push(`❓ Başka bir şey: kendi cümlelerinizle sorun. Bildiklerimden (kadro, yedekler, istatistikler ve bu sohbet) yanıtlarım, bilmiyorsam söylerim, hiçbir şeyi değiştirmem.`);
-    lines.push(`Bunu tekrar görmek için burada istediğiniz zaman *@Match Time neler yapabilirsin?* diye sorun.`);
-    return lines.join("\n");
+    if (p.topic === "players") {
+      if (p.squad) {
+        lines.push(`📣 *"@Match Time gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`);
+        lines.push(`📨 Kişileri etiketleyen bir mesaja *"@Match Time onlara özelden yaz"* diye yanıt verin ya da *"@Match Time yukarıdakilere özelden yaz"* deyin: her birine sıradaki maçın davetini özelden gönderirim. Yalnızca tanıdığım numaralara, bir seferde en fazla 10 kişiye.`);
+        if (p.pool) lines.push(`🌍 *"@Match Time havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
+      }
+      if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde beni etiketleyip listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın (örneğin *@Match Time 2 3*).`);
+    }
+    if (p.topic === "game") {
+      if (p.squad) lines.push(`❌ *"@Match Time cuma maçını iptal et"*, *"@Match Time maç yapılıyor"*: sıradaki maçı iptal ederim ya da yeniden açarım, oyuncu grubuna da haber veririm.`);
+      lines.push(`🔁 *"@Match Time 8'e 8 yapalım"*, *"@Match Time pazartesi 6'ya 6 oynayalım"*: bu sayılar içinde tek bir maçın formatı. Büyürken yedekler kadroya girer, küçülürken en son katılanlar yedeğe geçer. Herkese mesajla haber verir, yeni listeyi atarım.`);
+      lines.push(`🕗 *"@Match Time pazartesi maçını 20:15'e al"*, *"@Match Time artık 20:15'te başlıyoruz"*: tek bir maçın saati ya da haftası içindeki günü, ya da bundan sonra haftalık maçınız, oynanmamış maçlarıyla birlikte. Sessizce: oyuncu grubuna yazmam.`);
+    }
+    if (p.topic === "settings") {
+      lines.push(`🌙 *"@Match Time sessiz saatleri 23:00 ile 09:00 arası aç"*, *"@Match Time sessiz saatleri kapat"*: kendi mesajlarımı gece bekletirim ya da her saatte gönderirim. Yeni bir kulüpte sessiz saatler kapalı başlar.`);
+      lines.push(`👥 *"@Match Time 12 ile 16 kişi arası oynuyoruz"*, *"@Match Time 12 kişiyle de oynarız"*: oynadığınız en az ve en fazla kişi sayısı. Az oyuncu uyarısını ya da iptal önerisini ancak en azın altında yaparım, yedekte iki kişi beklerse de bir büyük formata geçmeyi öneririm (bir kişi beklerken listede bir kişi daha yeteceğini yazarım). *"@Match Time yine tam takım"* en azı geri alır.`);
+    }
+    if (p.topic === "graphics" && p.graphics) lines.push(`🖼️ *"@Match Time posteri gönder"*, *"@Match Time takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
+    if (p.topic === "payments") {
+      if (p.paid) lines.push(`💷 *@Match Time ÖDENDİ HEPSİ*, *@Match Time ÖDENDİ 1 3* ya da *@Match Time ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
+      if (p.free) lines.push(`🎁 *"@Match Time Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`);
+    }
+    if (lines.length === 0) return "";
+    const head = { squad: "📋 *Kadro*", teams: "🟥🟦 *Takımlar*", players: "📣 *Oyuncu bulmak*", game: "🗓️ *Maç*", settings: "⚙️ *Ayarlar*", graphics: "🖼️ *Görseller*", payments: "💷 *Ödemeler*" }[p.topic];
+    return [`${head}: burada her mesajda beni etiketleyin (*@* yazıp *Match Time*'ı seçin), örneğin:`, ...lines].join("\n");
   },
 
   hq_confirm_teams: (p) => `Bu EVET, ${p.day} için önerilen takımlara mı?`,

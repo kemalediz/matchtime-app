@@ -116,15 +116,17 @@ describe("help friend, attendance off", () => {
 });
 
 describe("the bare help menu lists the friend topic", () => {
-  it("English and Turkish, one short line, while attendance is on", () => {
-    expect(buildHelpReply(null, BASE, "en")).toContain(`   • *@Match Time help friend*: bringing a friend`);
-    expect(buildHelpReply(null, BASE, "tr")).toContain(`   • *@Match Time yardım arkadaş*, arkadaş getirmek`);
+  // The short menu (2026-11-10): one closing line names every topic word.
+  it("English and Turkish, by its word in the topic list, while attendance is on", () => {
+    expect(buildHelpReply(null, BASE, "en")).toMatch(/Topics: availability, friend, teams/);
+    expect(buildHelpReply(null, BASE, "tr")).toMatch(/Konular: kadro, arkadaş, takımlar/);
   });
 
   it("right after squad and availability", () => {
     const menu = buildHelpReply(null, BASE, "en");
-    expect(menu.indexOf("help availability")).toBeLessThan(menu.indexOf("help friend"));
-    expect(menu.indexOf("help friend")).toBeLessThan(menu.indexOf("help teams"));
+    const topics = menu.slice(menu.indexOf("Topics: "));
+    expect(topics.indexOf("availability")).toBeLessThan(topics.indexOf("friend"));
+    expect(topics.indexOf("friend")).toBeLessThan(topics.indexOf("teams"));
   });
 
   it("not while attendance is off; an organiser hears it is off", () => {

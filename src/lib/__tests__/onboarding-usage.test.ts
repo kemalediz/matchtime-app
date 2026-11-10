@@ -119,11 +119,10 @@ describe("buildHowToUseMe — feature awareness", () => {
 });
 
 describe("buildHelpReply in Turkish lists the Turkish topic words", () => {
-  it("bare help names each enabled topic by the word a player types", () => {
+  it("bare help names each topic by the word a player types, off ones too (2026-11-10)", () => {
     const r = buildHelpReply(null, { ...ALL_ON, paymentTracking: false }, "tr");
-    expect(r).toContain("@Match Time yardım takımlar");
-    expect(r).toContain("@Match Time yardım kadro");
-    expect(r).not.toContain("• *@Match Time yardım ödeme*");
+    expect(r).toContain("@Match Time yardım ödeme");
+    expect(r).toMatch(/Konular: kadro, .*takımlar.*ödeme/);
     expect(r).not.toMatch(/[—–]/);
   });
   it("a topic that is off explains itself in Turkish", () => {
@@ -247,7 +246,8 @@ describe("buildHelpReply — a topic that is ON, by audience", () => {
   });
   it("bare help, admin DM: the menu plus the settings link", () => {
     const r = buildHelpReply(null, ALL_ON, "en", { audience: "admin", links: { settings: LINK } });
-    expect(r.startsWith(buildHelpReply(null, ALL_ON))).toBe(true);
+    const menu = buildHelpReply(null, ALL_ON).split("\n");
+    expect(r.split("\n").filter((l) => menu.includes(l))).toEqual(menu);
     expect(r).toContain(LINK);
   });
   it("bare help, player DM: identical to the group's", () => {
@@ -256,26 +256,25 @@ describe("buildHelpReply — a topic that is ON, by audience", () => {
 });
 
 describe("buildHelpReply — bare help (topic null)", () => {
-  it("lists only enabled topics + includes the how-to block", () => {
+  // The short menu (2026-11-10, Kemal: "why this long menu"): the
+  // how-to block's other lines are said by their topics (help-short-menus.test.ts).
+  it("the short menu: how to say In or Out, how to tag, every topic word", () => {
     const feats = { ...ALL_ON, paymentTracking: false };
     const r = buildHelpReply(null, feats);
-    // Lead line.
     expect(r).toMatch(/MatchTime help/);
-    // Enabled topic present, disabled topic absent.
-    expect(r).toMatch(/help ratings/);
-    // Not in the topic MENU (it is off). In the players' group the how-to
-    // block leaves out the organiser's 💷 fees pointer too (FNF, 2026-10-15);
-    // an organiser's DM keeps it.
-    expect(r).not.toMatch(/• \*@Match Time help payments\*/);
-    expect(r).not.toMatch(/help payments/);
-    // The feature-aware how-to block is appended.
-    expect(r).toContain(buildHowToUseMe({ ...feats, feesNudge: false }));
-    expect(buildHelpReply(null, feats, "en", { audience: "admin" })).toContain(buildHowToUseMe(feats));
+    expect(r).toContain("✅ Say *In* or *Out* in the group for the next game");
+    expect(r).toMatch(/Topics: .*ratings/);
+    // Payments are off: a word in the list, never the organiser's pointer in the players' group.
+    expect(r).toMatch(/Topics: .*payments/);
+    expect(r).not.toContain("💡");
+    expect(buildHelpReply(null, feats, "en", { audience: "admin" })).toMatch(/💡 \*Not on here yet\*: [^\n]*match fees/);
+    expect(r).not.toContain(buildHowToUseMe({ ...feats, feesNudge: false }));
   });
 
-  it("with payments ON the payments topic IS listed", () => {
-    const r = buildHelpReply(null, FEES_ON);
-    expect(r).toMatch(/help payments/);
+  it("with payments ON the payments topic IS listed and nothing is named as off", () => {
+    const r = buildHelpReply(null, FEES_ON, "en", { audience: "admin" });
+    expect(r).toMatch(/Topics: .*payments/);
+    expect(r).not.toContain("match fees");
   });
 });
 
@@ -331,8 +330,8 @@ describe("help schedule (2026-09-30)", () => {
 
   it("bare help lists the schedule topic, whatever is switched on", () => {
     const NONE = { attendance: false, teamBalancing: false, momVoting: false, playerRating: false, statsQa: false, reminders: false, bench: false, paymentTracking: false };
-    expect(buildHelpReply(null, NONE)).toMatch(/• \*@Match Time help schedule\*/);
-    expect(buildHelpReply(null, NONE, "tr")).toMatch(/• \*@Match Time yardım program\*/);
+    expect(buildHelpReply(null, NONE)).toMatch(/Topics: .*schedule/);
+    expect(buildHelpReply(null, NONE, "tr")).toMatch(/Konular: .*program/);
   });
 
   it("helpPagesNeeded: schedule needs its four pages, a topic its own card, bare help the settings page", () => {

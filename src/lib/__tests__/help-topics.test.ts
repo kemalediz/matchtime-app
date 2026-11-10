@@ -23,7 +23,7 @@ vi.mock("@/lib/db", () => ({
 import { buildHelpReply, helpFeaturesFrom, helpPagesNeeded, type HelpFeatures, type HelpTopic } from "@/lib/onboarding-conversation";
 import { HELP_TOPIC_ANCHOR, SETTINGS_ANCHORS, helpTopicSettingsPath, settingsAnchorPath } from "@/lib/help-links";
 import { HELP_CLUB_FACTS_OFF, loadHelpClubFacts } from "@/lib/help-club-facts";
-import { HELP_FEATURES } from "@/lib/pipeline/types";
+import { HELP_FEATURES, playersHelpTopic } from "@/lib/pipeline/types";
 
 const BASE: HelpFeatures = {
   attendance: true,
@@ -190,28 +190,31 @@ describe("every flag topic says whether it is on, and an organiser where to swit
 });
 
 describe("bare help lists what applies to this club", () => {
-  it("the pool and partner clubs only while they are on", () => {
-    const off = buildHelpReply(null, { ...BASE, pool: POOL.off, partners: PARTNERS.none });
-    expect(off).not.toContain("help pool*");
-    expect(off).not.toContain("help partners*");
-    // An active pairing is the switch: one partner club means partner help applies.
-    const on = buildHelpReply(null, { ...BASE, pool: POOL.on, partners: PARTNERS.one });
-    expect(on).toContain("• *@Match Time help pool*: the player pool");
-    expect(on).toContain("• *@Match Time help partners*: partner clubs");
-    expect(on).toContain("• *@Match Time help settings*: where your settings are");
+  // The short menu (2026-11-10): one closing line names every topic the
+  // club can ask about, on or off (Kemal: off features must be findable).
+  const topicsOf = (r: string) => r.slice(r.indexOf("Topics: "));
+  it("the pool and partner clubs are listed while on or switchable on; a pool the platform has closed is not", () => {
+    const off = topicsOf(buildHelpReply(null, { ...BASE, pool: POOL.off, partners: PARTNERS.none }));
+    expect(off).toContain("partners");
+    expect(off).toContain("pool");
+    expect(topicsOf(buildHelpReply(null, { ...BASE, pool: POOL.closed, partners: PARTNERS.none }))).not.toContain("pool");
+    const on = topicsOf(buildHelpReply(null, { ...BASE, pool: POOL.on, partners: PARTNERS.one }));
+    expect(on).toContain("pool");
+    expect(on).toContain("partners");
+    expect(on).toContain("settings");
   });
 
   it("an organiser also hears what is switched off; the pool only when it could be switched on", () => {
     const admin = (pool: (typeof POOL)[keyof typeof POOL]) =>
       buildHelpReply(null, { ...BASE, momVoting: false, pool, partners: PARTNERS.none }, "en", { audience: "admin", links: { settings: SIGNED } });
-    expect(admin(POOL.off)).toContain("🔧 Switched off for your club: Man of the Match, partner clubs, the player pool.");
-    expect(admin(POOL.closed)).toContain("🔧 Switched off for your club: Man of the Match, partner clubs.");
-    expect(buildHelpReply(null, { ...BASE, momVoting: false }, "en", { audience: "group" })).not.toContain("Switched off");
+    expect(admin(POOL.off)).toContain("💡 *Not on here yet*: Man of the Match, partner clubs, the player pool. Ask *@Match Time help mom* to see how they work and how to switch them on.");
+    expect(admin(POOL.closed)).toContain("💡 *Not on here yet*: Man of the Match, partner clubs. Ask *@Match Time help mom*");
+    expect(buildHelpReply(null, { ...BASE, momVoting: false }, "en", { audience: "group" })).not.toContain("Not on here yet");
   });
 
   it("an organiser in a group gets the public settings address, not 'signed in'", () => {
     const r = buildHelpReply(null, BASE, "en", { audience: "admin" });
-    expect(r.endsWith(`⚙️ Your club's settings:\n${PUBLIC}/admin/settings`)).toBe(true);
+    expect(r).toContain(`⚙️ Your club's settings:\n${PUBLIC}/admin/settings\n`);
     expect(buildHelpReply(null, BASE, "en", { audience: "admin", links: { settings: SIGNED } })).toContain(`signed in:\n${SIGNED}`);
   });
 });
@@ -241,7 +244,7 @@ describe("the house rules hold on every new answer", () => {
   });
 
   it("every topic the extractor can name has an answer", () => {
-    for (const tp of HELP_FEATURES) expect(buildHelpReply(tp, BASE, "en", { audience: "admin" }).length).toBeGreaterThan(40);
+    for (const tp of HELP_FEATURES) expect(buildHelpReply(playersHelpTopic(tp), BASE, "en", { audience: "admin" }).length).toBeGreaterThan(40);
   });
 });
 
