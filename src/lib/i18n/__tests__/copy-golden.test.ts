@@ -499,6 +499,7 @@ import { renderGuestNameAsk } from "../../guest-name-ask";
 import { composeStatsBlastDm, composeStatsBlastReply } from "../../stats-blast";
 import { buildBulkCancelAnnouncement } from "../../block-booking";
 import { buildAttendanceFailureReply } from "../../attendance-write-outcome";
+import { formNoteSavedReply } from "../../form-note-rules";
 import { composePaymentAck, composeReminderDm, type PaymentApplyResult } from "../../admin-ops-engine";
 import {
   composeBalancerRefusal,
@@ -1365,6 +1366,21 @@ function cases(lang: Lang): Case[] {
   add("form note / teams not made", formNoteReply({ lang, matchId: "m1", teamsMade: false }));
   add("form note / teams made", formNoteReply({ lang, matchId: "m1", teamsMade: true }));
   add("form note / no match", formNoteReply({ lang, matchId: null, teamsMade: false }));
+  // NEW copy (2026-11-10, Kemal): the amount said, never a rating.
+  const day = lang === "tr" ? "Salı" : "Tuesday";
+  const note = (o: Partial<{ name: string; delta: number; reason: string; changed: boolean; clamped: boolean }>) => ({
+    name: "Kemal",
+    delta: -0.5,
+    reason: lang === "tr" ? "yorgun" : "tired",
+    changed: false,
+    clamped: false,
+    ...o,
+  });
+  add("form note amount / new", formNoteSavedReply({ lang, dayName: day, teamsMade: false, saved: [note({})], othersToo: false }));
+  add("form note amount / teams made", formNoteSavedReply({ lang, dayName: day, teamsMade: true, saved: [note({})], othersToo: false }));
+  add("form note amount / changed, capped", formNoteSavedReply({ lang, dayName: day, teamsMade: false, saved: [note({ delta: -1, changed: true, clamped: true })], othersToo: false }));
+  add("form note amount / cancelled", formNoteSavedReply({ lang, dayName: day, teamsMade: false, saved: [note({ delta: 0, reason: "", changed: true })], othersToo: false }));
+  add("form note amount / two, and others", formNoteSavedReply({ lang, dayName: day, teamsMade: false, saved: [note({ name: "Tom", delta: -1 }), note({ name: "Ali", delta: 0.5 })], othersToo: true }));
 
   // ── self-join slice 4: the organiser web (2026-09-29) ──
   const sj = ratings;

@@ -51,6 +51,7 @@ import { balanceTeams, type BalancingStrategy } from "./team-balancer";
 import type { PlayerWithRating } from "@/types";
 import { formatLondon } from "./london-time";
 import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
+import { formNotesWin, type StoredFormNote } from "./form-note-rules";
 import { withOrgAiBudget } from "./ai-budget";
 import { computeClubRating } from "./player-rating";
 import { DEFAULT_SEED_RATING } from "./default-seed";
@@ -177,6 +178,20 @@ export async function generateTeamsForMatch(
   //
   // Base ratings are the fallback and they are complete on their own —
   // the deltas are a margin adjustment, never the rating.
+  //
+  // FORM NOTES WIN (Kemal, 2026-11-10). A player told MatchTime how they
+  // will play and MatchTime said the amount ("Noted: -0.5 for Ayse (tired)
+  // in Friday's game"), which they or an organiser may have changed since
+  // (`FormNote`, `form-note.ts`). That stated amount is the one used for
+  // that player, whatever the adjuster reads from the chat, and it applies
+  // even when the adjuster gives nothing. Read on their own: a failure
+  // here (the table not yet migrated) leaves the adjuster to decide alone.
+  let notes: StoredFormNote[] = [];
+  try {
+    notes = await db.formNote.findMany({ where: { matchId: match.id }, select: { userId: true, delta: true, reason: true } });
+  } catch (err) {
+    console.error("[team-generation] form notes could not be read, the adjuster decides alone:", err);
+  }
   let adjustments: Awaited<ReturnType<typeof runRatingAdjuster>> = new Map();
   try {
     adjustments = await runRatingAdjuster({
@@ -185,10 +200,12 @@ export async function generateTeamsForMatch(
       sportName: sport.name,
       matchDate: match.date,
       basePlayers,
+      notes,
     });
   } catch (err) {
     console.error("[team-generation] rating adjuster failed, using base ratings:", err);
   }
+  adjustments = formNotesWin(adjustments, notes, basePlayers.map((p) => p.id));
 
   const players: PlayerWithRating[] = basePlayers.map((p) => {
     const adj = adjustments.get(p.id);
@@ -263,6 +280,9 @@ async function runRatingAdjuster(args: {
   sportName: string;
   matchDate: Date;
   basePlayers: PlayerWithRating[];
+  /** Stored form notes: those players' amounts are already decided, so
+   *  the adjuster is not asked about them, and their audit rows say so. */
+  notes: StoredFormNote[];
 }) {
   const cutoff = new Date(args.matchDate.getTime() - 7 * 24 * 60 * 60 * 1000);
   // The NEWEST 300 of the week, then oldest first for the prompt (Kemal,
@@ -300,23 +320,32 @@ async function runRatingAdjuster(args: {
     timestamp: r.createdAt,
   }));
 
-  const adjusterPlayers = args.basePlayers.map((p) => ({
-    id: p.id,
-    name: p.name,
-    baseRating: p.rating,
-  }));
+  const noted = new Set(args.notes.map((n) => n.userId));
+  const adjusterPlayers = args.basePlayers
+    .filter((p) => !noted.has(p.id))
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      baseRating: p.rating,
+    }));
 
   // Spent from this match's club (the daily AI cap, lib/ai-budget.ts).
   // At the cap the adjuster returns no adjustments and the deterministic
   // balancer runs on the base ratings, as it does on any adjuster failure.
-  const adjustments = await withOrgAiBudget(args.orgId, () =>
-    adjustRatings({
-      players: adjusterPlayers,
-      messages,
-      sportName: args.sportName,
-      matchDate: args.matchDate,
-    }),
-  );
+  // Every player noted: nothing left to ask, no call.
+  const read =
+    adjusterPlayers.length === 0
+      ? new Map()
+      : await withOrgAiBudget(args.orgId, () =>
+          adjustRatings({
+            players: adjusterPlayers,
+            messages,
+            sportName: args.sportName,
+            matchDate: args.matchDate,
+          }),
+        );
+  // The notes' amounts, in the audit rows too.
+  const adjustments = formNotesWin(read ?? new Map(), args.notes, args.basePlayers.map((p) => p.id));
 
   // Persist audit rows. Upsert so re-running team generation for the
   // same match overwrites prior adjustments cleanly.

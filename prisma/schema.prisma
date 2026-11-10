@@ -121,6 +121,7 @@ model User {
   teamAssignments         TeamAssignment[]
   activityPositions       PlayerActivityPosition[]
   ratingAdjustments       RatingAdjustment[]
+  formNotes               FormNote[]
   aliases                 UserAlias[]
   rosterSurveyDMs         RosterSurveyDM[]
   rosterSurveyResponses   RosterSurveyResponse[]
@@ -649,6 +650,7 @@ model Organisation {
   rosterSurveys      RosterSurvey[]
   groupMessages      GroupMessage[]
   messageMentions    MessageMentions[]
+  formNotes          FormNote[]
   windowVerdicts     WindowVerdict[]
   badgeAnnouncements BadgeAnnouncement[]
   clubBilling        ClubBilling?
@@ -1260,6 +1262,7 @@ model Match {
   benchConfirmations      PendingBenchConfirmation[]
   benchSlotOffers         BenchSlotOffer[]
   ratingAdjustments       RatingAdjustment[]
+  formNotes               FormNote[]
   paymentCredits          PaymentCredit[]
   tentativeAvailabilities TentativeAvailability[]
   organiserPickRounds     OrganiserPickRound[]
@@ -2596,6 +2599,40 @@ model RoleChange {
   createdAt   DateTime   @default(now())
 
   @@index([orgId, userId])
+}
+
+/**
+ * A FORM NOTE WITH ITS AMOUNT (Kemal, 2026-11-10): how much a player's
+ * rating moves for ONE match, said in the chat and confirmed by MatchTime
+ * ("Noted: -0.5 for Kemal (tired) in Tuesday's game"), so the player or an
+ * organiser can change it ("make it -1", "cancel my adjustment"). Set by
+ * the player for themselves or by an organiser for anyone
+ * (src/lib/form-note-rules.ts). When the teams are made a note WINS over
+ * the rating adjuster's delta for that player, and the RatingAdjustment
+ * row records it. delta is in [-1, +1] (form-scale.ts MAX_DELTA); 0 is
+ * "no adjustment" (a cancel), which also keeps the adjuster off the player.
+ * One row per (match, user): a change updates it.
+ */
+model FormNote {
+  id              String       @id @default(cuid())
+  orgId           String
+  org             Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  matchId         String
+  match           Match        @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta           Float
+  /// A few words on why, as the message gave them ("tired"); "" when none.
+  reason          String       @default("") @db.Text
+  /// Who set it last: the player, or an organiser.
+  setByUserId     String?
+  /// The WhatsApp message that set it last.
+  sourceMessageId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([matchId, userId])
+  @@index([orgId])
 }
 
 /**

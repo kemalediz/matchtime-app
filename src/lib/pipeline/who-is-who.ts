@@ -488,7 +488,7 @@ export function stubPicks(req: WhoRequest): Map<string, Map<string, PersonPick>>
  * EVERY NAME A MESSAGE'S FACTS QUOTE THAT CODE WILL LOOK UP, read from
  * the structured facts (never from the text): third-party attendance
  * claims and who they replace, the person a question is about, the
- * teams' includes, pins, pairings and moves, a payment's payer and who
+ * teams' includes, pins, pairings, moves and form notes, a payment's payer and who
  * it covers, and a score's Man of the Match. A claim the extractor read
  * as a relation, a group or a placeholder is never looked up, so it is
  * not asked about. First-person words ("me", "ben") are the sender, which
@@ -518,6 +518,8 @@ export function personRefsIn(facts: Facts, isSelf: (ref: string) => boolean = ()
       for (const s of facts.swaps ?? []) add(s.personRef);
       for (const g of facts.pairings ?? []) for (const r of g) add(r);
       for (const r of facts.moves ?? []) add(r);
+      // A form note's players (2026-11-10): whose amount is stored.
+      for (const f of facts.form ?? []) add(f.personRef);
       break;
     case "score":
       add(facts.momRef);

@@ -648,7 +648,17 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
       outcome: "form-noted",
       replyText: "Noted: I'll take it into account when the teams are made, for this match only.",
     });
-    expect(formNote.formNoteReplyFor).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", lang: "en", now: NOW }));
+    // The facts and the sender go with it: an organiser, so the amount is
+    // stored for whoever it names (2026-11-10, the amount said).
+    expect(formNote.formNoteReplyFor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: "org-fnf",
+        lang: "en",
+        now: NOW,
+        facts: expect.objectContaining({ action: "form" }),
+        sender: expect.objectContaining({ userId: "u-admin", isOrganiser: true }),
+      }),
+    );
     expect(teams.handleTeamCommand).not.toHaveBeenCalled();
   });
 

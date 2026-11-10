@@ -134,13 +134,16 @@ export function requestNotHandledAdminReply(lang?: Lang | string | null): string
 /**
  * PURE. The answer to a form note, the teams extractor's `form` (Sutton FC,
  * 2026-11-10): "@Match Time reduce my strength for this match as I am quite
- * tired" was sent to the settings page. Nothing is written for it: the
+ * tired" was sent to the settings page. THE PLAIN LINE: said when no
+ * amount is stored for the note (a player talking about somebody else, a
+ * name nobody is sure of, no match, a failed write; `form-note.ts`), so the
  * rating adjuster (`rating-adjuster.ts`, run by `generateTeamsForMatch`)
- * reads the week's chat, this message included, when the teams are made.
- * So the line only says what will really happen. The caller says it only
- * for a club whose teams MatchTime makes (`teamBalancing`); with no match
- * it says nothing about the teams, and with the teams already made it says
- * the note counts only if they are made again. No number is promised.
+ * reads it from the week's chat when the teams are made. So the line only
+ * says what will really happen, and promises no number. A stored amount is
+ * said by `formNoteSavedReply` (`form-note-rules.ts`). The caller says it
+ * only for a club whose teams MatchTime makes (`teamBalancing`); with no
+ * match it says nothing about the teams, and with the teams already made it
+ * says the note counts only if they are made again.
  */
 export function formNoteReply(args: { lang?: Lang | string | null; matchId: string | null; teamsMade: boolean }): string {
   const s = t(args.lang);

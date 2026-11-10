@@ -906,9 +906,11 @@ export const en = {
   teams_clear_nothing: "There are no teams to clear.",
   teams_clear_admin_only: "Only an admin can clear the teams.",
   /** A player tells MatchTime how they (or a team-mate) will play in this
-   *  match: tired, injured, in form (2026-11-10, Sutton FC). Nothing is
-   *  written: the rating adjuster reads the week's chat when the teams are
-   *  made (rating-adjuster.ts). Said only when MatchTime makes this club's
+   *  match: tired, injured, in form (2026-11-10, Sutton FC). The PLAIN
+   *  line, when no amount is stored (a player talking about somebody else,
+   *  a name nobody is sure of, a failed write): the rating adjuster reads
+   *  the week's chat when the teams are made (rating-adjuster.ts). A stored
+   *  amount is said by `i18n/form-note.ts`. Said only when MatchTime makes this club's
    *  teams; with the teams already made, it counts only if they are made
    *  again; with no match, nothing is said about the teams. */
   form_noted: "Noted: I'll take it into account when the teams are made, for this match only.",
@@ -1471,7 +1473,7 @@ export const en = {
         `🟥🟦 *Fair teams: how it works*\n` +
         `On match day, anyone in the group can tag me and ask for the teams (for example *@Match Time generate the teams*) and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
         `I post the line-ups straight into the chat. Not happy with a pairing? Tag me and say what to change, in your own words (e.g. _"@Match Time swap Sam and Alex"_), or ask me to show the teams again any time.\n` +
-        `Tired, ill, injured or flying? Tag me and say so (e.g. _"@Match Time I'm tired, go easy on my rating for this match"_) and I'll take it into account when the teams are made, for that match only.\n` +
+        `Tired, ill, injured or flying? Tag me and say so (e.g. _"@Match Time I'm tired, go easy on my rating for this match"_). I'll tell you the adjustment I'll make, for that match only, and you can change it (e.g. _"@Match Time make it -1"_).\n` +
         `One short of two full sides? If the club has set the fewest it plays with, I make the teams from that number up, for example 7 against 6, balanced so the side a player down gets the stronger players.\n` +
         `Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.`,
       mom:
