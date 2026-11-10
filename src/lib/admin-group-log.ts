@@ -1,23 +1,28 @@
 /**
- * WHAT WAS SAID IN A CLUB'S ADMIN GROUP (HQ), FOR ONE DAY (2026-10-16).
+ * WHAT WAS SAID IN A CLUB'S ADMIN GROUP (HQ), FOR A WEEK (2026-10-16; a
+ * day until 2026-11-10).
  *
- * Two readers, both in `admin-group-understand.ts`:
+ * Readers, each reading its own window (a day or less, unless it says so):
  *
  *   - the safe-YES rule (`admin-group-confirm-rules.ts`): was anybody else
  *     talking between MatchTime's question and this YES? Does the message
  *     a YES quotes match a question MatchTime asked?
  *   - the shared router's context: the last few messages, so a "yes" to
  *     another organiser reads as their conversation.
+ *   - the open answer (`week-chat.ts`, Kemal 2026-11-10: "recent chat
+ *     should be all messages since last 1 week"): the whole week, which is
+ *     why rows are now kept seven days rather than one.
  *
  * Every forwarded HQ message of a live club is recorded, whoever sent it.
  * MatchTime's own QUESTIONS (teams waiting for YES, a pasted list waiting
  * for YES, "Is that YES to ...?") are recorded with `askRef` naming what
- * they asked about. Text is cut to 500 characters; rows older than a day
+ * they asked about. Text is cut to 500 characters; rows older than a week
  * are deleted on every write. Logs carry ids and counts only.
  */
 import { db } from "./db";
 
-export const HQ_LOG_TTL_MS = 24 * 60 * 60 * 1000;
+/** Seven days: the open answer reads the week (`week-chat.ts`). */
+export const HQ_LOG_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_TEXT = 500;
 
 /** The players' group's rows (2026-10-28, below): MatchTime's question
@@ -25,7 +30,7 @@ const MAX_TEXT = 500;
  *  Never in what HQ reads. */
 export const GROUP_QUESTION_ID_PREFIX = "mt:group:";
 export const GROUP_LINE_ID_PREFIX = "group:";
-const NOT_GROUP_ROWS = { NOT: [{ waMessageId: { startsWith: GROUP_QUESTION_ID_PREFIX } }, { waMessageId: { startsWith: GROUP_LINE_ID_PREFIX } }] };
+export const NOT_GROUP_ROWS = { NOT: [{ waMessageId: { startsWith: GROUP_QUESTION_ID_PREFIX } }, { waMessageId: { startsWith: GROUP_LINE_ID_PREFIX } }] };
 
 /**
  * THE ORDER EVERY READER GETS THE ROWS IN, oldest first (2026-11-04).

@@ -41,6 +41,9 @@ export interface HqQuestionInput {
   now: Date;
   /** The recent HQ chat, oldest first; MatchTime's own lines as "MatchTime". */
   history: Array<{ author: string | null; body: string }>;
+  /** HQ's week of chat, for an open question (`week-chat.ts`
+   *  `hqWeekChat`): read only when one is asked. */
+  weekChat?: () => Promise<Array<{ author: string | null; body: string; at: Date | null }>>;
   /** MatchTime's last line in HQ, never the players' group's. */
   lastBotPost: string | null;
   /** The message the question is a WhatsApp reply to (slice S4), whoever
@@ -92,6 +95,7 @@ export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcom
       },
     ],
     history: input.history,
+    ...(input.weekChat ? { weekChat: input.weekChat } : {}),
     // The state is loaded once, here, so the two cannot disagree.
     expectedMatchId: state.matchId,
     enabled: enabledStepSevenRoutes(process.env),

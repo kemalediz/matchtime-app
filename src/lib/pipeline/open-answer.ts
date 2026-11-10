@@ -21,9 +21,14 @@
  *      squad), the club's setup (the `club` answer's facts), the last
  *      result, the stats tables exactly as the generic stats answer sees
  *      them (top of each list, no other player's nemesis, no seed), the
- *      count of games recorded, and the recent chat. Never payments, who
- *      has rated, who has a phone number, DMs, or another club. Phone
- *      numbers are scrubbed from the chat. What the model is not told it
+ *      count of games recorded, and the chat of THIS group over the last
+ *      7 days with each line's day and time (`week-chat.ts`, Kemal
+ *      2026-11-10; the players' group never sees HQ's, nor HQ the
+ *      players'). Never payments, who has rated, who has a phone number,
+ *      DMs, or another club. Phone numbers are scrubbed from the chat;
+ *      a club whose organisers post the list is told MatchTime names
+ *      nobody in the squad even when the chat shows the list. What the
+ *      model is not told it
  *      cannot leak.
  *   2. WHAT IT MAY SAY. Every number and every member it names must be in
  *      that context (`stats-grounding.ts`, the same check), so an invented
@@ -50,11 +55,13 @@ import { namesByStatus, printedNames, safeName } from "./compose";
 import { renderGroupReplyContext, type QuotedGroupMessage } from "../reply-context";
 import { activityFeeText } from "../activity-fee";
 import { stripLongDashes } from "../house-style";
+import { formatLondon } from "../london-time";
+import { WEEK_CHAT_MAX_LINES } from "../week-chat-window";
 import type { SquadState, StatsSnapshot } from "./types";
 
 export const OPEN_ANSWER_SYSTEM = `You are MatchTime, the assistant in a football club's WhatsApp groups. Someone tagged you with a message that none of your ready-made answers covers. Write the reply to THAT MESSAGE, using only the CONTEXT you are given.
 
-The CONTEXT is everything you know about this club, and it is true: its members and admins, its setup (who collects the money, the fee, when the teams are made), the upcoming match (the squad and the bench in order, the places left, who fills an open place), the last result, the stats tables, how many games MatchTime has recorded, and the recent chat, oldest first, with MatchTime's own lines and the message being replied to. Read the chat to see what the message is about. What the CONTEXT does not say, you do not know: the weather, the news, other clubs, anything said in private.
+The CONTEXT is everything you know about this club, and it is true: its members and admins, its setup (who collects the money, the fee, when the teams are made), the upcoming match (the squad and the bench in order, the places left, who fills an open place), the last result, the stats tables, how many games MatchTime has recorded, the group's chat of the last 7 days, oldest first, each line with its day and time and MatchTime's own lines included, and the message being replied to. Read the chat to see what the message is about and to answer what was said in it. What the CONTEXT does not say, you do not know: the weather, the news, other clubs, anything said in private.
 
 Return "answer": the reply MatchTime posts in the group.
 
@@ -70,15 +77,24 @@ The reply:
 Examples, English and Turkish:
 - "who should come up from the bench?" / "yedekten kim çıksın?", with Ali Kaya then Can Demir on the bench and appearances Ali Kaya 12, Can Demir 3: "A suggestion, by games played: Ali Kaya (12), then Can Demir (3). It's the organisers' call." / "Önerim, oynanan maça göre: Ali Kaya (12), sonra Can Demir (3). Karar organizatörlerin."
 - "is it going to rain tonight?" / "bu akşam yağmur var mı?": "I can't see the weather. Kickoff is Fri 20:30 at Goals." / "Hava durumunu göremiyorum. Maç: Cuma 20:30, Goals."
-- "what did Sam say about parking?" / "Sam park yeri hakkında ne dedi?": what Sam said, in a few words, when his line is in the chat; otherwise "I can't see Sam saying anything about parking in the recent chat." / "Son mesajlarda Sam'in park yeri hakkında bir şey yazdığını göremiyorum."
+- "what did Sam say about parking?" / "Sam park yeri hakkında ne dedi?": what Sam said, in a few words, when his line is in the chat; otherwise "I can't see Sam saying anything about parking in this week's chat." / "Bu haftaki mesajlarda Sam'in park yeri hakkında bir şey yazdığını göremiyorum."
 - "can you book the pitch for next week?" / "gelecek hafta için sahayı ayırır mısın?": "I can't book pitches. The admins (Ali Kaya, Can Demir) can." / "Saha ayıramam. Yöneticiler (Ali Kaya, Can Demir) ayırabilir."`;
 
 /** Haiku 5.5, adaptive thinking at the shared effort, like every Haiku site. */
 export const OPEN_ANSWER_CALL: ModelCall = HAIKU_CALL;
 /** The hard cap. Haiku's thinking shares it; the answer is a few lines. */
 export const OPEN_ANSWER_MAX_TOKENS = HAIKU_SHORT_ANSWER_MAX_TOKENS;
-/** The chat lines shown: the same window the extractors read. */
-export const OPEN_ANSWER_CHAT_LINES = 8;
+/** The chat lines shown: the group's week, newest 300 (`week-chat.ts`;
+ *  Kemal 2026-11-10, "all messages since last 1 week"). */
+export const OPEN_ANSWER_CHAT_MAX_LINES = WEEK_CHAT_MAX_LINES;
+/** The input budget for the chat, in characters (about 15k tokens at the
+ *  measured 2.6 characters a token): past it the OLDEST lines go, so a
+ *  week of long posts cannot run the call's cost up. */
+export const OPEN_ANSWER_CHAT_MAX_CHARS = 40_000;
+/** The members named in the chat's message counts, most first. */
+const CHAT_COUNTS_SHOWN = 10;
+/** One line's words, at most: a long post is cut, not dropped. */
+const CHAT_LINE_MAX_CHARS = 600;
 
 const SCHEMA = {
   type: "object",
@@ -98,8 +114,15 @@ export interface OpenAnswerInput {
   /** False when the batch could not vouch for the upcoming squad (no match,
    *  the route's match and the state's disagree, a format of 0 players). */
   squadKnown: boolean;
-  /** The recent chat, oldest first, MatchTime's lines as "MatchTime". */
-  history: Array<{ author: string | null; body: string }>;
+  /** The group's chat of the last 7 days, oldest first, MatchTime's lines
+   *  as "MatchTime", each with when it was said (`week-chat.ts`). Lines
+   *  with no `at` are the extractors' few recent lines, the fallback when
+   *  the week could not be read. */
+  history: Array<{ author: string | null; body: string; at?: Date | null }>;
+  /** Which chat `history` is: the group's week (`week-chat.ts`), or the
+   *  extractors' few recent lines when the week could not be read. Absent:
+   *  the week when the lines carry their times. */
+  chatWindow?: "week" | "recent";
   lastBotPost: string | null;
   /** The message this one is a WhatsApp reply to, whoever wrote it. */
   reply: QuotedGroupMessage | null;
@@ -124,6 +147,28 @@ function scrubAuthor(author: string | null): string {
   const a = author.trim();
   if (!/\p{L}/u.test(a) || scrubPhones(a) !== a) return "a member";
   return a;
+}
+
+/**
+ * PURE. The chat as the model reads it: "[Mon 9 Nov 19:33] Ali Kaya: ..."
+ * (London), MatchTime's lines as MatchTime, an author that is a phone
+ * number or no name as "a member", a long post's later lines indented
+ * under it and its words cut at `CHAT_LINE_MAX_CHARS`. The newest
+ * `OPEN_ANSWER_CHAT_MAX_LINES` that fit `OPEN_ANSWER_CHAT_MAX_CHARS`.
+ */
+function chatLines(history: OpenAnswerInput["history"]): Array<{ body: string; line: string; who: string }> {
+  const out: Array<{ body: string; line: string; who: string }> = [];
+  let chars = 0;
+  for (const h of history.slice(-OPEN_ANSWER_CHAT_MAX_LINES).reverse()) {
+    const who = (h.author ?? "").toLowerCase() === "matchtime" ? "MatchTime" : scrubAuthor(h.author);
+    const words = h.body.trim().length > CHAT_LINE_MAX_CHARS ? `${h.body.trim().slice(0, CHAT_LINE_MAX_CHARS)}...` : h.body.trim();
+    const when = h.at ? `[${formatLondon(h.at, "EEE d MMM HH:mm")}] ` : "";
+    const line = `  ${when}${who}: ${words.replace(/\n/g, "\n    ")}`;
+    if (chars + line.length + 1 > OPEN_ANSWER_CHAT_MAX_CHARS) break;
+    chars += line.length + 1;
+    out.push({ body: h.body, line, who });
+  }
+  return out.reverse();
 }
 
 const numbered = (names: string[]) => names.map((n, i) => `  ${i + 1}. ${n}`);
@@ -178,7 +223,7 @@ export function buildOpenAnswerContext(input: OpenAnswerInput): { text: string; 
     );
     const hideNames = audience === "players" && state.features.listAnnouncer === "organisers";
     if (hideNames) {
-      L.push(`SQUAD: ${confirmed.length} of ${state.maxPlayers}. The organisers post the list, so no squad or bench names are given here.`);
+      L.push(`SQUAD: ${confirmed.length} of ${state.maxPlayers}. The organisers post the list, so no squad or bench names are given here, and MatchTime names nobody in the squad or on the bench, even when the chat shows the list.`);
       L.push(`BENCH: ${bench.length} on the bench.`);
     } else {
       L.push(`SQUAD, ${confirmed.length} of ${state.maxPlayers}, in the order they joined:`);
@@ -223,22 +268,28 @@ export function buildOpenAnswerContext(input: OpenAnswerInput): { text: string; 
     }
   }
 
-  // THE CHAT: the extractors' window, the message itself left out (the
-  // Pi's history already carries it; it is shown once, last).
-  const recent = input.history
-    .filter((h) => !(h.body === input.question))
-    .slice(-OPEN_ANSWER_CHAT_LINES);
+  // THE CHAT: the group's week, each line with its day and time (London),
+  // the message itself left out (the history carries it; it is shown
+  // once, last). The newest lines that fit the input budget.
+  const recent = chatLines(input.history.filter((h) => !(h.body === input.question)));
+  const timed = (input.chatWindow ?? (input.history.some((h) => h.at) ? "week" : "recent")) === "week";
   L.push("");
   if (recent.length) {
-    L.push("RECENT CHAT, oldest first:");
-    for (const h of recent) {
-      const who = (h.author ?? "").toLowerCase() === "matchtime" ? "MatchTime" : scrubAuthor(h.author);
-      L.push(`  ${who}: ${h.body}`);
+    L.push(timed ? "CHAT OF THE LAST 7 DAYS, oldest first (day and time, London):" : "RECENT CHAT (the last few messages only), oldest first:");
+    L.push(...recent.map((r) => r.line));
+    // Who said the most, counted here so the model never counts a week of
+    // lines in its head (the live check, 2026-11-10: it ran out the cap).
+    // Members only: not MatchTime, not an author nobody could name.
+    if (timed) {
+      const said = new Map<string, number>();
+      for (const r of recent) if (r.who !== "MatchTime" && r.who !== "a member") said.set(r.who, (said.get(r.who) ?? 0) + 1);
+      const top = [...said].sort((a, b) => b[1] - a[1]).slice(0, CHAT_COUNTS_SHOWN);
+      if (top.length) L.push(`MESSAGES PER MEMBER IN THIS CHAT, most first: ${top.map(([n, c]) => `${n} ${c}`).join(", ")}`);
     }
   } else {
-    L.push("RECENT CHAT: nothing");
+    L.push(timed ? "CHAT OF THE LAST 7 DAYS: nothing" : "RECENT CHAT: nothing");
   }
-  const lastPostInChat = !!input.lastBotPost && recent.some((h) => h.body.trim() === input.lastBotPost!.trim());
+  const lastPostInChat = !!input.lastBotPost && recent.some((r) => r.body.trim() === input.lastBotPost!.trim());
   if (input.lastBotPost && !lastPostInChat) L.push(`MATCHTIME'S LAST POST: ${input.lastBotPost}`);
   L.push(renderGroupReplyContext({ now: input.now, quoted: input.reply }));
 
