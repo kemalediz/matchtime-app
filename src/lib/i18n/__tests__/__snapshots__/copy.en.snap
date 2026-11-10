@@ -2388,7 +2388,7 @@ Your club can team up with nearby clubs to lend each other players. When a partn
 ⚙️ *Settings*
 The club's settings are on the admin page, grouped in tabs, and only admins can change them. Admins: type a setting's name in *Find a setting* at the top to jump to it:
 https://matchtime.ai/admin/settings
-Admins can change some by tagging me too, for example *@Match Time we play with 12 to 16* (the fewest and most the club plays with), *@Match Time make it 8 a side* (one game a different size) or *@Match Time turn off quiet hours*.
+Admins can change some by tagging me too, for example *@Match Time we play with 12 to 16* (the fewest and most the club plays with), *@Match Time make it 8 a side* (one game a different size), *@Match Time move Monday's game to 20:15* (a game's kickoff) or *@Match Time turn off quiet hours*.
 
 ### R153 buildHelpReply / pool closed / admin
 🌍 *The MatchTime player pool: how it works*
@@ -2435,7 +2435,7 @@ https://mt.example/r/topic
 ⚙️ *Your settings*
 Every switch for your club is on one settings page, grouped in tabs. Not sure where something is? Type its name in *Find a setting* at the top and it takes you straight there:
 https://mt.example/r/topic
-Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we play with 12 to 16* for the fewest and most you play with (I only warn you about low numbers below the fewest, and any one game can then be made bigger or smaller inside them, for example *@Match Time make it 8 a side*).
+Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we play with 12 to 16* for the fewest and most you play with (I only warn you about low numbers below the fewest, and any one game can then be made bigger or smaller inside them, for example *@Match Time make it 8 a side*). A game's kickoff too: *@Match Time move Monday's game to 20:15*, or *@Match Time from now on we kick off at 20:15* for every week.
 
 ### R153 buildHelpReply / pool closed / player
 🌍 *The MatchTime player pool: how it works*

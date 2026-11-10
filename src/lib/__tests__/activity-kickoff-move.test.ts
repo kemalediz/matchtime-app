@@ -151,7 +151,7 @@ describe("moveGamesWithActivity", () => {
     t = makeTx([{ id: "block", date: at("2026-11-09", "20:00") }]);
     const res = await moveGamesWithActivity(t.tx as never, { activityId: "vets", orgId: "club", before: MONDAY_2030, after: MONDAY_2015, now: NOW });
     expect(t.calls.matchUpdates).toEqual([]);
-    expect(res.stayed).toEqual([{ matchId: "block", reason: "set-by-hand" }]);
+    expect(res.stayed).toEqual([{ matchId: "block", reason: "set-by-hand", at: at("2026-11-09", "20:00") }]);
   });
 
   it("a save that changes neither the day nor the time reads nothing and writes nothing", async () => {

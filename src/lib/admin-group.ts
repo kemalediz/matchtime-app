@@ -154,6 +154,16 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-named-full",
   "hq-named-none-sent",
   "hq-named-failed",
+  // A game's kickoff asked to move (2026-11-10, game-move-words.ts) and
+  // nothing moved: a question back (which game, to what), no game, a time
+  // that could not be used, already that time, or the game stayed put.
+  "hq-game-move-which",
+  "hq-game-move-which-weekly",
+  "hq-game-move-say-what",
+  "hq-game-move-no-games",
+  "hq-game-move-invalid",
+  "hq-game-move-weekly-unchanged",
+  ...["started", "set-by-hand", "into-the-past", "other-month", "unreadable-time", "unchanged", "gone"].map((r) => `hq-game-move-stayed-${r}`),
 ]);
 export const HQ_TICK = "✅";
 

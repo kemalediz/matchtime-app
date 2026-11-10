@@ -225,6 +225,7 @@ import type { VenueFromWordsResult } from "./venue-from-words";
 import { perSideOf, playerRangeWordsOf } from "./flex-format-rules";
 import type { PlayerRangeWords } from "./player-range-words";
 import { organisersOnlyKindOfAction, type OrganisersOnlyKind } from "./organisers-only-kind";
+import { gamesToComeLines, moveGameWordsOf, type GameToCome, type MoveGameWords } from "./game-move-rules";
 
 export { ADMIN_OPS_APPLY_DEGRADED_PREFIX, ADMIN_OPS_HANDLED_BY };
 
@@ -413,6 +414,20 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     quotedId: string | null;
     explicit: boolean;
   }) => Promise<{ outcome: string; replyText: string | null }>;
+  /** The club's games to come, shown to the admin extractor as GAMES TO
+   *  COME (2026-11-10, move_game). Defaults to `game-move-words.ts`;
+   *  injected so tests need no database. */
+  gamesToCome?: (orgId: string, now: Date) => Promise<GameToCome[]>;
+  /** "Move Monday's game to 8:15", "from now on we kick off at 8:15"
+   *  (2026-11-10). Defaults to `game-move-words.ts`, the door HQ uses;
+   *  injected so tests need no database. */
+  applyMoveGameWords?: (a: {
+    orgId: string;
+    words: MoveGameWords;
+    games: readonly GameToCome[];
+    lang: string | null;
+    now: Date;
+  }) => Promise<{ outcome: string; replyText: string }>;
 }
 
 function empty(degradations: string[] = []): AdminOpsBatchResult {
@@ -489,6 +504,17 @@ export async function runAdminOpsBatch(args: {
     state.lastBotPost ??
     null;
   state = { ...state, lastBotPost };
+  // The club's games to come (2026-11-10, move_game): shown to the model,
+  // numbered, and its game number checked against this same list. A failed
+  // read shows "none", so no game can be named and nothing is moved.
+  const gamesShown: GameToCome[] =
+    (await (deps.gamesToCome ?? (async (o: string, n: Date) => (await import("./game-move-words")).loadGamesToCome(o, n)))(orgId, now).catch(
+      (err: unknown) => {
+        console.error("[admin-ops-engine] reading the games to come failed:", err instanceof Error ? err.message : "failed");
+        return null;
+      },
+    )) ?? [];
+  const gameLines = gamesToComeLines(gamesShown);
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, Facts>();
@@ -504,6 +530,7 @@ export async function runAdminOpsBatch(args: {
         history,
         lastBotPost,
         reply: m.reply ?? null,
+        games: gameLines,
         now,
       });
       for (const d of res.degradations) {
@@ -616,6 +643,8 @@ export async function runAdminOpsBatch(args: {
   const rangeAsks = new Map<string, PlayerRangeWords>();
   /** switch_format (2026-11-03): an organiser's one game to another size. */
   const switchAsks = new Map<string, { perSide: number; matchDay: string | null; actorUserId: string; quotedId: string | null; explicit: boolean }>();
+  /** move_game (2026-11-10): an organiser's game to another day or time. */
+  const moveAsks = new Map<string, MoveGameWords>();
   /** "Try again" with nothing stored to repeat: one short line. */
   const nothingToRetry = new Set<string>();
   /** "Try again" acted on as the stored ask (for the reasoning row). */
@@ -671,7 +700,9 @@ export async function runAdminOpsBatch(args: {
     // now" got "I can't change that by message"): the same gates.
     // A game's fewest and most players (2026-11-03, the Vets play 6, 7 or 8
     // a side): the same gates.
-    if (facts.action === "season_break" || facts.action === "quiet_hours" || facts.action === "player_numbers") {
+    // A game's day or time (2026-11-10, "@Match Time move Monday's game to
+    // 8:15"): the same gates, through the door HQ uses.
+    if (facts.action === "season_break" || facts.action === "quiet_hours" || facts.action === "player_numbers" || facts.action === "move_game") {
       if (!(m.tagged && (m.taggedExplicitly === true))) {
         hand(`${facts.action} without an explicit MatchTime tag`);
         continue;
@@ -684,6 +715,8 @@ export async function runAdminOpsBatch(args: {
         quietAsks.set(m.waMessageId, { off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null });
       } else if (facts.action === "player_numbers") {
         rangeAsks.set(m.waMessageId, playerRangeWordsOf(facts));
+      } else if (facts.action === "move_game") {
+        moveAsks.set(m.waMessageId, moveGameWordsOf(facts));
       } else {
         breakAsks.set(m.waMessageId, { breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [] });
       }
@@ -994,6 +1027,18 @@ export async function runAdminOpsBatch(args: {
       console.error(`[admin-ops-engine] ${id}: switch_format threw:`, err);
       degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: switch_format threw (${detail}); nothing was said`);
       cancelOutcomes.push(replyOnly(id, null, "noise", `switch_format threw (${detail}); the write FAILED and nothing was said`, true));
+    }
+  }
+  for (const [id, words] of moveAsks) {
+    try {
+      const apply = deps.applyMoveGameWords ?? (async (a) => (await import("./game-move-words")).applyMoveGameWords(a));
+      const r = await apply({ orgId, words, games: gamesShown, lang: state.features.language, now });
+      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `move_game by an organiser: ${r.outcome}`));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[admin-ops-engine] ${id}: move_game threw:`, err);
+      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: move_game threw (${detail}); nothing was said`);
+      cancelOutcomes.push(replyOnly(id, null, "noise", `move_game threw (${detail}); the write FAILED and nothing was said`, true));
     }
   }
   for (const id of nothingToRetry) {

@@ -9,7 +9,7 @@
 
 /** The closed set of things the organisers-only line can name. "settings"
  *  is a change to how the club runs (the pitch, quiet hours, the player
- *  numbers, the format, a season break); "other" is anything else, or
+ *  numbers, the format, a game's kickoff, a season break); "other" is anything else, or
  *  unknown, and says "do that". */
 export type OrganisersOnlyKind = "players" | "cancel" | "restore" | "teams" | "score" | "settings" | "other";
 
@@ -27,6 +27,7 @@ export function organisersOnlyKindOfAction(action: string | null | undefined): O
     case "quiet_hours":
     case "player_numbers":
     case "switch_format":
+    case "move_game":
     case "season_break":
       return "settings";
     default:

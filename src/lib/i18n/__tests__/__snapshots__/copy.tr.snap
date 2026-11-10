@@ -2389,7 +2389,7 @@ Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir.
 ⚙️ *Ayarlar*
 Kulübün ayarları yönetici sayfasında, sekmelere ayrılmış olarak durur ve yalnızca yöneticiler değiştirebilir. Yöneticiler: üstteki *Ayar bul* kutusuna bir ayarın adını yazınca doğrudan oraya gidersiniz:
 https://matchtime.ai/admin/settings
-Yöneticiler bazılarını beni etiketleyerek de değiştirebilir, örneğin *@Match Time 12 ile 16 kişi arası oynuyoruz* (kulübün oynadığı en az ve en fazla kişi), *@Match Time 8'e 8 yapalım* (tek bir maçın formatı) ya da *@Match Time sessiz saatleri kapat*.
+Yöneticiler bazılarını beni etiketleyerek de değiştirebilir, örneğin *@Match Time 12 ile 16 kişi arası oynuyoruz* (kulübün oynadığı en az ve en fazla kişi), *@Match Time 8'e 8 yapalım* (tek bir maçın formatı), *@Match Time pazartesi maçını 20:15'e al* (bir maçın saati) ya da *@Match Time sessiz saatleri kapat*.
 
 ### R153 buildHelpReply / pool closed / admin
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
@@ -2436,7 +2436,7 @@ https://mt.example/r/topic
 ⚙️ *Ayarların*
 Kulübünün tüm ayarları tek bir ayarlar sayfasında, sekmelere ayrılmış olarak durur. Bir şeyin nerede olduğundan emin değil misin? Üstteki *Ayar bul* kutusuna adını yaz, seni doğrudan oraya götürür:
 https://mt.example/r/topic
-Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*, ya da en az ve en fazla kaç kişiyle oynadığınız için *@Match Time 12 ile 16 kişi arası oynuyoruz* (az oyuncu uyarısını ancak en azın altında yaparım, ve herhangi bir maç bu sayılar içinde büyütülüp küçültülebilir, örneğin *@Match Time 8'e 8 yapalım*).
+Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*, ya da en az ve en fazla kaç kişiyle oynadığınız için *@Match Time 12 ile 16 kişi arası oynuyoruz* (az oyuncu uyarısını ancak en azın altında yaparım, ve herhangi bir maç bu sayılar içinde büyütülüp küçültülebilir, örneğin *@Match Time 8'e 8 yapalım*). Bir maçın saatini de: *@Match Time pazartesi maçını 20:15'e al*, ya da her hafta için *@Match Time artık 20:15'te başlıyoruz*.
 
 ### R153 buildHelpReply / pool closed / player
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*

@@ -330,6 +330,17 @@ describe("anyone in HQ: questions for all, changes for the organisers", () => {
     expect((await handleAdminGroupMessage(msg("Zed is free this week")))).toMatchObject({ outcome: "hq-fee-free-none", react: null });
   });
 
+  it("a game's kickoff moved (2026-11-10): ticked; a question back or nothing moved: no tick", async () => {
+    understand.understandAdminMessage.mockResolvedValue({ route: "admin_ops", outcome: "hq-game-move-moved", replyText: "✅ Done: the game on Mon 16 Nov is now at 20:15 (it was 20:30)." });
+    expect(await handleAdminGroupMessage(msg("@Match Time move Monday's game to 8:15"))).toMatchObject({ react: "✅" });
+    understand.understandAdminMessage.mockResolvedValue({ route: "admin_ops", outcome: "hq-game-move-weekly-moved", replyText: "✅ Done." });
+    expect(await handleAdminGroupMessage(msg("@Match Time from now on 8:15"))).toMatchObject({ react: "✅" });
+    for (const outcome of ["hq-game-move-which", "hq-game-move-which-weekly", "hq-game-move-say-what", "hq-game-move-no-games", "hq-game-move-invalid", "hq-game-move-weekly-unchanged", "hq-game-move-stayed-started"]) {
+      understand.understandAdminMessage.mockResolvedValue({ route: "admin_ops", outcome, replyText: "Which game?" });
+      expect(await handleAdminGroupMessage(msg("@Match Time move the game")), outcome).toMatchObject({ react: null });
+    }
+  });
+
   it("a club that is not live: a non-admin is still ignored, nothing read", async () => {
     dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, whatsappBotEnabled: false });
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
