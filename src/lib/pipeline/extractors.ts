@@ -445,7 +445,7 @@ What the asker wants back. Exactly one. A message that asks two things gets the 
   payments         WHO has or has not paid the match fee, or how many still owe
   rating_progress  who has or has not SUBMITTED ratings or Man of the Match votes for the last match. Telling people to rate, reminding or thanking them asks for nothing: other.
   my_stats         the asker's OWN stats, ratings, form or season summary, asked to see (they are sent privately)
-  stats            numbers about players across matches (ratings, appearances, Man of the Match, Elo and the rest): a table, a ranking, another player's numbers, or the asker's own pairings
+  stats            numbers about players (ratings, appearances, Man of the Match, Elo and the rest): a table or ranking across matches, another player's numbers, the asker's own pairings, or who was Man of the Match in one match and with how many votes
   options          what to do about being short of players: a smaller format, alternatives
   how_it_works     help with MatchTime itself: what it can do, a bare "help", how one part of it works, whether a part is on here and how to switch it on or off, where a setting is, what a badge means. Asks HOW something works, never for today's names or numbers.
   club             how the club itself is run: who the admins or organisers are, who collects the money, what the fee is, WHEN (what time or day) the teams are made or come out
@@ -484,13 +484,13 @@ table
 The one stats table that answers the question:
   ratings          players' ratings. A bare "leaderboard", "the table", "rankings", "standings", "best players" or "top N" with no other measure named is ratings.
   appearances      who plays, turns up or attends the most. "Most consistent" on its own means turning up.
-  mom              Man of the Match awards
+  mom              who has won Man of the Match the most: the awards counted across matches
   elo              Elo
   team_of_season   the team, XI or line-up of the season
   movers           whose rating or position is improving, climbing or in form
   chemistry        who a player plays best with, their best team-mates, their nemesis or toughest opponent
   mr_reliable      "Mr Reliable" or the most reliable player: the stats page badge for steady, strong ratings, never appearances
-  other            a question no single table answers: a win rate, or two or more tables together ("is anyone in both the Elo top ten and the Man of the Match table?")
+  other            a question no single table answers: a win rate, two or more tables together ("is anyone in both the Elo top ten and the Man of the Match table?"), or one match's Man of the Match (who won it, the votes they got, who else got votes)
   none             the question names no measure at all
 
 listSize
@@ -505,7 +505,7 @@ A stretch of time asked about, on stats or score, with periodCount and periodUni
   this             the current calendar week, month or year: "this month", "bu ay", "bu yıl". periodCount -1.
   season           "this season", "the season", "bu sezon". periodCount -1, periodUnit "none".
   all_time         "ever", "all-time", "tüm zamanlar", "bugüne kadar". periodCount -1, periodUnit "none".
-  none             no stretch of time stated. "The last 3 matches" counts matches, not time (on score it is listSize 3). A score question about ONE match ("last night", "on Tuesday", "last week", "geçen hafta") is period "none", listSize -1.
+  none             no stretch of time stated. "The last 3 matches" counts matches, not time (on score it is listSize 3). A question about ONE match ("last night", "on Tuesday", "last week", "geçen hafta"), its score or its Man of the Match, is period "none", listSize -1.
 
 EXAMPLES
 Each line is a message, English | Turkish, then the fields that are not empty.
@@ -571,6 +571,7 @@ Stats:
   "@Match Time who's the worst player" | "@Match Time en kötü oyuncu kim" -> stats, ratings, listEnd bottom
   "@Match Time bottom 5 on elo" | "@Match Time elo'da son 5" -> stats, elo, listSize 5, listEnd bottom
   "@Match Time who's got the most MoMs" | "@Match Time en çok maçın adamı kim" -> stats, mom
+  "@Match Time who won Man of the Match on Tuesday, with how many votes?" | "@Match Time son maçın adamı kimdi, kaç oy aldı?" -> stats, other
   "@Match Time what is the team of the season?" | "@Match Time sezonun takımı ne" -> stats, team_of_season
   "@Match Time who's climbing the most lately?" | "@Match Time son maçlarda en çok kim yükseldi" -> stats, movers
   "@Match Time who is the most Mr. Reliable?" | "@Match Time en güvenilir oyuncu kim?" -> stats, mr_reliable

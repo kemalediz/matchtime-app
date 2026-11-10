@@ -723,7 +723,7 @@ export interface AnswerBatchDeps {
   loadRatingProgress?: (orgId: string, lang?: string) => Promise<RatingProgress>;
   /** The THIRD targeted read (2026-09-23): the stats tables, only when a
    *  `stats` question named one. Injected so a test can prove both. */
-  loadStats?: (orgId: string) => Promise<Omit<StatsSnapshot, "chemistry" | "generic" | "periods">>;
+  loadStats?: (orgId: string, now: Date) => Promise<Omit<StatsSnapshot, "chemistry" | "generic" | "periods">>;
   /** One named player's chemistry, only for a player a stats question
    *  named and the roster resolved to exactly one member. */
   loadChemistry?: (orgId: string, userId: string) => Promise<StatsChemistry | null>;
@@ -1542,11 +1542,11 @@ export async function runAnswerBatch(args: {
     try {
       const load =
         deps.loadStats ??
-        (async (o: string) => {
+        (async (o: string, at: Date) => {
           const mod = await import("./load-stats");
-          return mod.loadStatsTables(o);
+          return mod.loadStatsTables(o, at);
         });
-      const tables = await load(orgId);
+      const tables = await load(orgId, now);
       const chemistry: Record<string, StatsChemistry> = {};
       const generic: StatsSnapshot["generic"] = {};
       const periods: StatsSnapshot["periods"] = {};
@@ -1711,11 +1711,11 @@ export async function runAnswerBatch(args: {
       try {
         const load =
           deps.loadStats ??
-          (async (o: string) => {
+          (async (o: string, at: Date) => {
             const mod = await import("./load-stats");
-            return mod.loadStatsTables(o);
+            return mod.loadStatsTables(o, at);
           });
-        stats = { ...(await load(orgId)), chemistry: {}, generic: {}, periods: {} };
+        stats = { ...(await load(orgId, now)), chemistry: {}, generic: {}, periods: {} };
       } catch (err) {
         console.error("[answer-engine] open-answer stats load failed:", err);
         degradations.push(

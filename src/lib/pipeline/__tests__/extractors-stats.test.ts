@@ -185,6 +185,31 @@ describe("the question prompt's structure", () => {
     expect((p.match(/covers both/g) ?? []).length).toBe(1);
   });
 
+  // 2026-11-10, Sutton FC: "who was the last MoM and for which game it was?
+  // How many votes did he get out of how many votes?" was read as the `mom`
+  // table and answered with the all-time top 10. One match's Man of the
+  // Match is not a ranking: it is `other`, whose grounded answer is given
+  // that match's facts. No new topic or table.
+  it("the mom table is the ranking across matches; one match's Man of the Match is other", () => {
+    const line = (t: string) => {
+      const tables = p.slice(p.search(/^table\b/m), p.search(/^listSize\b/m));
+      return tables.match(new RegExp(`^  ${t}\\b[^\\n]*`, "m"))?.[0] ?? "";
+    };
+    expect(line("mom")).toMatch(/across matches/i);
+    expect(line("other")).toMatch(/one match's Man of the Match/i);
+    const stats = p.match(/^  stats\b[^\n]*/m)?.[0] ?? "";
+    expect(stats).toMatch(/one match/i);
+    // Said once: the period's ONE-match rule covers stats as well as score.
+    expect((p.match(/ONE match/g) ?? []).length).toBe(1);
+  });
+
+  it("the one-match Man of the Match question is a worked example, English and Turkish, beside the ranking", () => {
+    const ex = p.match(/^  "@Match Time who won Man of the Match[^\n]*/m)?.[0] ?? "";
+    expect(ex).toMatch(/-> stats, other$/);
+    expect(ex).toMatch(/maçın adamı/);
+    expect(p).toMatch(/"@Match Time who's got the most MoMs"[^\n]*-> stats, mom/);
+  });
+
   it("has Turkish beside English for every group of examples", () => {
     const examples = p.slice(p.indexOf("EXAMPLES"));
     const groups = examples.split(/\n(?=[A-Z][^\n]*:\n)/).slice(1);

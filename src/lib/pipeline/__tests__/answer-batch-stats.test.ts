@@ -256,6 +256,64 @@ describe("the grounded generic path", () => {
   });
 });
 
+/**
+ * Sutton FC, 2026-11-10 19:25: the last Man of the Match, for ONE match, was
+ * answered with the all-time table. The question extractor now reads it as
+ * `stats`, table `other` (no new topic); this pins the rest of the path: the
+ * grounded generic call is given that match's facts, read at the batch's
+ * clock, and its grounded reply is what the group hears.
+ */
+describe("the last Man of the Match, through the batch", () => {
+  const Q = "@Match Time who was the last MoM and for which game it was? How many votes did he get out of how many votes?";
+  const FACTS = { topic: "stats", personRef: "", statedCount: -1, table: "other", listSize: -1, listEnd: "top" };
+  const LAST: StatsSnapshot["lastMom"] = {
+    last: {
+      date: new Date("2026-10-20T19:30:00Z"),
+      teamLabels: ["Red", "Yellow"],
+      score: { red: 7, yellow: 9 },
+      winners: [{ userId: "u-sait", name: "Sait Demir", votes: 4 }],
+      tally: [
+        { userId: "u-sait", name: "Sait Demir", votes: 4 },
+        { userId: "u-mustafa", name: "Mustafa Kaya", votes: 3 },
+      ],
+      totalVotes: 7,
+      pickedByOrganisers: false,
+    },
+    openVoteDate: null,
+  };
+
+  it("the generic answer is given the match, the winner and the votes, and its grounded reply is posted", async () => {
+    const users: string[] = [];
+    const { model: inner } = stubModel({
+      [Q]: FACTS,
+      [`stats-generic|QUESTION: ${Q}`]: { answer: "Sait Demir, Tue 20 Oct (Yellow won 9 to 7), with 4 of the 7 votes." },
+    });
+    const model: PipelineModel = {
+      name: "stub",
+      async complete(req) {
+        users.push(req.user);
+        return inner.complete(req);
+      },
+    };
+    const seen: Array<Date | undefined> = [];
+    const { res } = await run({
+      messages: [msg({ body: Q })],
+      model,
+      loadStats: async (_orgId, now) => {
+        seen.push(now);
+        return { ...TABLES, lastMom: LAST };
+      },
+    });
+    const o = res.outcomes.get("wa-1")!;
+    expect(o.intent).toBe("stats_generic");
+    expect(o.reply).toBe("Sait Demir, Tue 20 Oct (Yellow won 9 to 7), with 4 of the 7 votes.");
+    const generic = users.find((u) => u.includes(`QUESTION: ${Q}`))!;
+    expect(generic).toContain("LAST MAN OF THE MATCH");
+    expect(generic).toContain("Man of the Match: Sait Demir, with 4 of the 7 votes cast");
+    expect(seen).toEqual([NOW]);
+  });
+});
+
 describe("asking, and understanding the answer", () => {
   const Q = "@Match Time Zork's chemistry";
   const ASKED: StatsClarification = {

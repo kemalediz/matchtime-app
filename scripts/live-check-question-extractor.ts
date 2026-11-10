@@ -158,6 +158,18 @@ const CASES: Case[] = [
   { id: "T8", body: "@Match Time tüm zamanların en çok maçın adamı kim", topic: "stats", check: (f) => f.table === "mom" && f.period?.kind === "all_time", want: "mom, all time" },
   { id: "T9", body: "@Match Time what are Wasim's stats", topic: "stats", check: (f) => /wasim/i.test(f.personRef ?? ""), want: "personRef Wasim" },
   { id: "T10", body: "@Match Time whose performance is improving most based on the last 3 matches?", topic: "stats", check: (f) => f.table === "movers", want: "movers" },
+  // ONE match's Man of the Match is not the ranking (Sutton FC, 2026-11-10:
+  // V1 was answered with the all-time top 10). `other`, no period, no list;
+  // the ranking questions stay `mom`. A named player on `mom` also reaches
+  // the grounded answer (`planStatsQuestion`), so V3 accepts either.
+  { id: "V1", body: "@Match Time who was the last MoM and for which game it was? How many votes did he get out of how many votes?", topic: "stats", check: (f) => f.table === "other" && f.period == null && f.listSize == null, want: "other, one match" },
+  { id: "V2", body: "@Match Time who won MoM last week?", topic: "stats", check: (f) => f.table === "other" && f.period == null, want: "other, no period" },
+  { id: "V3", body: "@Match Time how many votes did Mojib get?", topic: "stats", check: (f) => (f.table === "other" || f.table === "mom") && /mojib/i.test(f.personRef ?? ""), want: "other or mom, personRef Mojib" },
+  { id: "V4", body: "@Match Time geçen haftanın maçın adamı kim?", topic: "stats", check: (f) => f.table === "other" && f.period == null, want: "other, no period" },
+  { id: "V5", body: "@Match Time son maçta maçın adamı kaç oyla seçildi?", topic: "stats", check: (f) => f.table === "other", want: "other" },
+  { id: "V6", body: "@Match Time who came second in the last MoM vote?", topic: "stats", check: (f) => f.table === "other", want: "other" },
+  { id: "V7", body: "@Match Time who has the most MoM?", topic: "stats", check: (f) => f.table === "mom", want: "mom (the ranking)" },
+  { id: "V8", body: "@Match Time top 5 MoM", topic: "stats", check: (f) => f.table === "mom" && f.listSize === 5, want: "mom, 5" },
 ];
 
 async function main() {
