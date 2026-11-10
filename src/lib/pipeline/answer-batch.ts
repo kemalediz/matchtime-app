@@ -873,6 +873,16 @@ export async function runAnswerBatch(args: {
    * the monthly squad works instead (Vets sandbox, 2026-11-03). Absent: false.
    */
   monthNotStarted?: boolean;
+  /**
+   * THE GROUP'S WEEK OF CHAT, for the open answer (Kemal, 2026-11-10:
+   * "recent chat should be all messages since last 1 week"). Read only
+   * when an open question is owned, from THE GROUP THIS BATCH IS IN (the
+   * caller's loader: `week-chat.ts` `playersWeekChat` or `hqWeekChat`), so
+   * the two groups never mix. Absent, or a read that fails: the open
+   * answer reads `history`, the extractors' few recent lines, and is told
+   * so.
+   */
+  weekChat?: () => Promise<Array<{ author: string | null; body: string; at: Date | null }>>;
 }): Promise<AnswerBatchResult> {
   const { orgId, now, history, expectedMatchId, enabled, deps } = args;
   const alsoAsks: ReadonlySet<string> = args.alsoAsks ?? new Set<string>();
@@ -1686,7 +1696,8 @@ export async function runAnswerBatch(args: {
   // A tagged question whose topic is `other`: ONE grounded model call per
   // message (`open-answer.ts`), from the state above (the club's setup
   // read in 2f), the stats tables (read here when stats Q&A is on and no
-  // stats question already read them) and the recent chat. Fails soft: a
+  // stats question already read them) and the group's week of chat
+  // (`args.weekChat`, else the recent lines). Fails soft: a
   // stats read that throws leaves the stats out of the context; a call
   // that fails or a reply that is refused composes nothing, and the
   // silent-id check below disowns the message, which keeps today's line.
@@ -1714,6 +1725,22 @@ export async function runAnswerBatch(args: {
         );
       }
     }
+    // The group's week, once for every open question in the batch.
+    let chat: Array<{ author: string | null; body: string; at?: Date | null }> = history;
+    let chatWindow: "week" | "recent" = "recent";
+    if (args.weekChat) {
+      try {
+        chat = await args.weekChat();
+        chatWindow = "week";
+      } catch (err) {
+        console.error("[answer-engine] open-answer week of chat not read:", err);
+        degradations.push(
+          `${ANSWER_DEGRADED_PREFIX} the week of chat for the open answer was not read (${
+            err instanceof Error ? err.message : String(err)
+          }); answered from the recent lines`,
+        );
+      }
+    }
     const byId = new Map(messages.map((m) => [m.waMessageId, m]));
     const openAnswers: NonNullable<SquadState["openAnswers"]> = {};
     for (const id of openIds) {
@@ -1724,7 +1751,8 @@ export async function runAnswerBatch(args: {
         stats,
         audience: organisers ? "organisers" : "players",
         squadKnown: squadBlock === null,
-        history,
+        history: chat,
+        chatWindow,
         lastBotPost,
         reply: m?.reply ?? null,
         now,

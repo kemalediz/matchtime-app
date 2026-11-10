@@ -13,6 +13,7 @@ import { HAIKU_CALL } from "../llm";
 import { HAIKU_SHORT_ANSWER_MAX_TOKENS } from "../../models";
 import {
   OPEN_ANSWER_SYSTEM,
+  OPEN_ANSWER_CHAT_MAX_CHARS,
   answerOpenQuestion,
   buildOpenAnswerContext,
   type OpenAnswerInput,
@@ -129,6 +130,107 @@ describe("the context: what MatchTime knows", () => {
   });
 });
 
+describe("the context: the chat of the last 7 days (Kemal, 2026-11-10)", () => {
+  // NOW is Tue 1 Sep 2026 19:00 London (BST). A week of lines, one an hour.
+  const HOUR = 60 * 60 * 1000;
+  const week = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      author: i % 3 === 0 ? "MatchTime" : i % 3 === 1 ? "Elvin Aliyev" : "Sait Demir",
+      body: `line ${i}`,
+      at: new Date(NOW.getTime() - (n - i) * HOUR),
+    }));
+
+  it("says the chat covers the last 7 days and shows every line, oldest first, not just the last 8", () => {
+    const { text } = buildOpenAnswerContext(input({ history: week(150) }));
+    expect(text).toMatch(/CHAT OF THE LAST 7 DAYS, oldest first/);
+    for (const i of [0, 1, 75, 149]) expect(text).toContain(`line ${i}\n`);
+    expect(text.indexOf("line 0\n")).toBeLessThan(text.indexOf("line 149\n"));
+  });
+
+  it("counts who said the most in the week's chat, so 'who's been most active?' needs no counting (live check, 2026-11-10: counting 128 lines ran out the token cap)", () => {
+    const { text } = buildOpenAnswerContext(
+      input({
+        history: [
+          ...week(9), // MatchTime 3, Elvin 3, Sait 3
+          { author: "Sait Demir", body: "one more", at: NOW },
+          { author: null, body: "someone unknown", at: NOW },
+          { author: "+44 7700 900123", body: "a phone author", at: NOW },
+        ],
+      }),
+    );
+    expect(text).toContain("MESSAGES PER MEMBER IN THIS CHAT, most first: Sait Demir 4, Elvin Aliyev 3");
+    expect(text).not.toMatch(/MESSAGES PER MEMBER[^\n]*(MatchTime|a member)/);
+  });
+
+  it("no per-member counts for the recent-lines fallback (they are not the week)", () => {
+    expect(buildOpenAnswerContext(input()).text).not.toContain("MESSAGES PER MEMBER");
+  });
+
+  it("gives each line its day and time, London, so 'yesterday' and 'Monday' make sense", () => {
+    const { text } = buildOpenAnswerContext(
+      input({
+        history: [
+          { author: "Ali Kaya", body: "park at the Tesco, free after 7", at: new Date("2026-08-31T08:05:00.000Z") },
+          { author: "MatchTime", body: "Done: Faris out. 13 of 14.", at: new Date("2026-09-01T17:58:00.000Z") },
+        ],
+      }),
+    );
+    expect(text).toContain("[Mon 31 Aug 09:05] Ali Kaya: park at the Tesco, free after 7");
+    expect(text).toContain("[Tue 1 Sep 18:58] MatchTime: Done: Faris out. 13 of 14.");
+  });
+
+  it("keeps a long post's later lines inside its own line", () => {
+    const { text } = buildOpenAnswerContext(
+      input({ history: [{ author: "Elvin Aliyev", body: "Friday list:\n1. Ali\n2. Can", at: new Date("2026-09-01T10:00:00.000Z") }] }),
+    );
+    expect(text).toContain("[Tue 1 Sep 11:00] Elvin Aliyev: Friday list:\n    1. Ali\n    2. Can");
+  });
+
+  it("an input budget: past it, the OLDEST lines go and the newest stay", () => {
+    const long = Array.from({ length: 300 }, (_, i) => ({
+      author: "Sait Demir",
+      body: `${"x".repeat(400)} ${i}`,
+      at: new Date(NOW.getTime() - (300 - i) * 60_000),
+    }));
+    const { text } = buildOpenAnswerContext(input({ history: long }));
+    expect(text).toContain(" 299\n");
+    expect(text).not.toContain(" 0\n");
+    expect(text.length).toBeLessThan(OPEN_ANSWER_CHAT_MAX_CHARS + 6_000);
+  });
+
+  it("a chat with no times (the fallback when the week could not be read) is called the recent chat, not the week", () => {
+    const { text } = buildOpenAnswerContext(input());
+    expect(text).toMatch(/RECENT CHAT \(the last few messages only\), oldest first/);
+    expect(text).not.toMatch(/LAST 7 DAYS/);
+  });
+
+  it("scrubs phone numbers from a week of lines too", () => {
+    const { text } = buildOpenAnswerContext(
+      input({
+        history: [...week(60), { author: "+44 7700 900123", body: "text me on 07700 900456", at: new Date(NOW.getTime() - 60_000) }],
+      }),
+    );
+    expect(text).not.toMatch(/7700\s?900/);
+    expect(text).toContain("a member: text me on [number hidden]");
+  });
+
+  it("organisers announce the list: the players' group is told the chat does not make the squad MatchTime's to name", () => {
+    const base = input({
+      audience: "players",
+      history: [{ author: "Elvin Aliyev", body: "Friday: Kemal, Sait, Idris. Bench: Erdal", at: new Date("2026-08-31T20:00:00.000Z") }],
+    });
+    const state = { ...base.state, features: { ...base.state.features, listAnnouncer: "organisers" as const } };
+    const { text } = buildOpenAnswerContext({ ...base, state });
+    // As #589 did: the chat itself is shown as the group saw it...
+    expect(text).toContain("Elvin Aliyev: Friday: Kemal, Sait, Idris. Bench: Erdal");
+    // ...and the squad line says the rule covers what the chat shows too.
+    expect(text).toMatch(
+      /SQUAD: 3 of 14\. The organisers post the list, so no squad or bench names are given here, and MatchTime names nobody in the squad or on the bench, even when the chat shows the list\./,
+    );
+    expect(text).not.toMatch(/1\. Kemal Ediz/);
+  });
+});
+
 describe("the context: what MatchTime never tells it (privacy)", () => {
   it("never holds a phone number: not an author's, not one written in the chat", () => {
     const { text } = buildOpenAnswerContext(
@@ -203,6 +305,10 @@ describe("the context: what MatchTime never tells it (privacy)", () => {
 });
 
 describe("the prompt", () => {
+  it("tells the model the chat covers the last 7 days, with each line's day and time", () => {
+    expect(OPEN_ANSWER_SYSTEM).toMatch(/the group's chat of the last 7 days, oldest first, each line with its day and time/);
+  });
+
   it("is one plain task with the rules defined once, no dashes and no 'waiting list'", () => {
     expect(OPEN_ANSWER_SYSTEM).not.toMatch(/[–—]/);
     expect(OPEN_ANSWER_SYSTEM).not.toMatch(/waiting list/i);

@@ -51,6 +51,7 @@ import { balanceTeams, type BalancingStrategy } from "./team-balancer";
 import type { PlayerWithRating } from "@/types";
 import { formatLondon } from "./london-time";
 import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
+import { loadWeekChat, WEEK_CHAT_MS } from "./week-chat";
 import { formNotesWin, type StoredFormNote } from "./form-note-rules";
 import { withOrgAiBudget } from "./ai-budget";
 import { computeClubRating } from "./player-rating";
@@ -284,40 +285,22 @@ async function runRatingAdjuster(args: {
    *  the adjuster is not asked about them, and their audit rows say so. */
   notes: StoredFormNote[];
 }) {
-  const cutoff = new Date(args.matchDate.getTime() - 7 * 24 * 60 * 60 * 1000);
-  // The NEWEST 300 of the week, then oldest first for the prompt (Kemal,
-  // 2026-10-20). Ascending with `take` kept the week's first 300 and, in a
-  // busy group, dropped the match-day lines that matter (an injury that
-  // morning). `adjustRatings` keeps the newest too (`slice(-300)`).
-  const recent = (
-    await db.analyzedMessage.findMany({
-      where: {
-        orgId: args.orgId,
-        createdAt: { gte: cutoff },
-        body: { not: null },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 300,
-      select: { authorUserId: true, body: true, createdAt: true },
-    })
-  ).reverse();
-
-  const userIds = recent
-    .map((r) => r.authorUserId)
-    .filter((id): id is string => !!id);
-  const userNames = new Map<string, string>();
-  if (userIds.length > 0) {
-    const users = await db.user.findMany({
-      where: { id: { in: [...new Set(userIds)] } },
-      select: { id: true, name: true },
-    });
-    for (const u of users) userNames.set(u.id, u.name ?? "Unknown");
-  }
-
+  // The players' group's members over the week before kickoff: the NEWEST
+  // 300, oldest first (Kemal, 2026-10-20). Ascending with `take` kept the
+  // week's first 300 and, in a busy group, dropped the match-day lines
+  // that matter (an injury that morning). The one week-of-chat loader
+  // (`week-chat.ts`), shared with the open answer; members only here, so
+  // the adjuster reads the lines it always read (blank ones aside).
+  const recent = await loadWeekChat({
+    orgId: args.orgId,
+    channel: "group",
+    since: new Date(args.matchDate.getTime() - WEEK_CHAT_MS),
+    includeMatchTime: false,
+  });
   const messages: AdjusterMessage[] = recent.map((r) => ({
-    authorName: r.authorUserId ? userNames.get(r.authorUserId) ?? null : null,
-    body: r.body ?? "",
-    timestamp: r.createdAt,
+    authorName: r.user ? (r.user.name ?? "Unknown") : null,
+    body: r.body,
+    timestamp: r.at,
   }));
 
   const noted = new Set(args.notes.map((n) => n.userId));
