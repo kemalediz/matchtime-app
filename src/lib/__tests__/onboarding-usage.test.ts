@@ -121,8 +121,8 @@ describe("buildHowToUseMe — feature awareness", () => {
 describe("buildHelpReply in Turkish lists the Turkish topic words", () => {
   it("bare help names each topic by the word a player types, off ones too (2026-11-10)", () => {
     const r = buildHelpReply(null, { ...ALL_ON, paymentTracking: false }, "tr");
-    expect(r).toContain("@Match Time yardım ödeme");
-    expect(r).toMatch(/Konular: kadro, .*takımlar.*ödeme/);
+    expect(r).toContain("@Match Time yardım takımlar");
+    expect(r).toMatch(/^✅ \*kadro\*: [\s\S]*^🟥🟦 \*takımlar\*: [\s\S]*^💷 \*ödeme\*: /m);
     expect(r).not.toMatch(/[—–]/);
   });
   it("a topic that is off explains itself in Turkish", () => {
@@ -244,11 +244,13 @@ describe("buildHelpReply — a topic that is ON, by audience", () => {
     const r = buildHelpReply("payments", FEES_ON, "en", { audience: "admin", links: { topic: LINK } });
     expect(r).toContain(`✅ It's on for your club. To switch it off or change how it works:\n${LINK}`);
   });
-  it("bare help, admin DM: the menu plus the settings link", () => {
+  it("bare help, admin DM: the menu plus the settings topic, no link (2026-11-10)", () => {
     const r = buildHelpReply(null, ALL_ON, "en", { audience: "admin", links: { settings: LINK } });
     const menu = buildHelpReply(null, ALL_ON).split("\n");
-    expect(r.split("\n").filter((l) => menu.includes(l))).toEqual(menu);
-    expect(r).toContain(LINK);
+    // The organiser's lines, without "(off here)", are the player's, plus settings.
+    expect(r.split("\n").map((l) => l.replace(/ \(off here\)$/, "")).filter((l) => menu.includes(l))).toEqual(menu);
+    expect(r).toContain(`⚙️ *settings*: club settings and the settings page`);
+    expect(r).not.toContain(LINK);
   });
   it("bare help, player DM: identical to the group's", () => {
     expect(buildHelpReply(null, ALL_ON, "en", { audience: "player", links: { topic: LINK } })).toBe(buildHelpReply(null, ALL_ON));
@@ -256,25 +258,25 @@ describe("buildHelpReply — a topic that is ON, by audience", () => {
 });
 
 describe("buildHelpReply — bare help (topic null)", () => {
-  // The short menu (2026-11-10, Kemal: "why this long menu"): the
-  // how-to block's other lines are said by their topics (help-short-menus.test.ts).
-  it("the short menu: how to say In or Out, how to tag, every topic word", () => {
+  // The topic list (2026-11-10, Kemal: "only one liner explanation for
+  // each"): every other line is said by its topic (help-short-menus.test.ts).
+  it("the topic list: every topic word, one line each", () => {
     const feats = { ...ALL_ON, paymentTracking: false };
     const r = buildHelpReply(null, feats);
     expect(r).toMatch(/MatchTime help/);
-    expect(r).toContain("✅ Say *In* or *Out* in the group for the next game");
-    expect(r).toMatch(/Topics: .*ratings/);
-    // Payments are off: a word in the list, never the organiser's pointer in the players' group.
-    expect(r).toMatch(/Topics: .*payments/);
-    expect(r).not.toContain("💡");
-    expect(buildHelpReply(null, feats, "en", { audience: "admin" })).toMatch(/💡 \*Not on here yet\*: [^\n]*match fees/);
+    expect(r).toContain("✅ *availability*: saying in, out or maybe");
+    expect(r).toContain("📈 *ratings*: rating each other after a game");
+    // Payments are off: a topic like any other, never marked for the players' group.
+    expect(r).toContain("💷 *payments*: paying the match fee\n");
+    expect(buildHelpReply(null, feats, "en", { audience: "admin" })).toContain("💷 *payments*: paying the match fee (off here)");
     expect(r).not.toContain(buildHowToUseMe({ ...feats, feesNudge: false }));
   });
 
-  it("with payments ON the payments topic IS listed and nothing is named as off", () => {
+  it("with payments ON the payments topic IS listed, not marked off", () => {
     const r = buildHelpReply(null, FEES_ON, "en", { audience: "admin" });
-    expect(r).toMatch(/Topics: .*payments/);
-    expect(r).not.toContain("match fees");
+    expect(r).toContain("💷 *payments*: paying the match fee\n");
+    // Only the partner clubs (none here) are off.
+    expect(r.split("\n").filter((l) => l.endsWith("(off here)"))).toEqual([`🤝 *partners*: playing with partner clubs (off here)`]);
   });
 });
 
@@ -330,15 +332,15 @@ describe("help schedule (2026-09-30)", () => {
 
   it("bare help lists the schedule topic, whatever is switched on", () => {
     const NONE = { attendance: false, teamBalancing: false, momVoting: false, playerRating: false, statsQa: false, reminders: false, bench: false, paymentTracking: false };
-    expect(buildHelpReply(null, NONE)).toMatch(/Topics: .*schedule/);
-    expect(buildHelpReply(null, NONE, "tr")).toMatch(/Konular: .*program/);
+    expect(buildHelpReply(null, NONE)).toContain("📅 *schedule*: when and where you play");
+    expect(buildHelpReply(null, NONE, "tr")).toContain("📅 *program*: ne zaman ve nerede oynadığınız");
   });
 
-  it("helpPagesNeeded: schedule needs its four pages, a topic its own card, bare help the settings page", () => {
+  it("helpPagesNeeded: schedule needs its four pages, a topic its own card, bare help none (the topic list has no link)", () => {
     expect(helpPagesNeeded("schedule", "admin").sort()).toEqual(["activities", "blockBookings", "bulk", "matches"]);
     expect(helpPagesNeeded("payments", "admin")).toEqual(["topic"]);
     expect(helpPagesNeeded("pool", "admin")).toEqual(["topic"]);
-    expect(helpPagesNeeded(null, "admin")).toEqual(["settings"]);
+    expect(helpPagesNeeded(null, "admin")).toEqual([]);
     expect(helpPagesNeeded("schedule", "player")).toEqual([]);
   });
 });

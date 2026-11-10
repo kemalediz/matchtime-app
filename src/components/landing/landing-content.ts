@@ -602,8 +602,8 @@ const ADMIN_GROUP: Spotlight = {
     caption: "In the admin group",
     lines: [
       { from: "player", text: "@Match Time what can you do?" },
-      // strings.en.ts hq_help_menu, first lines (the short menu, 2026-11-10).
-      { from: "bot", text: "🛠️ MatchTime in your admin group. Tag me (type *@*, pick *Match Time*), then ask in your own words." },
+      // strings.en.ts hq_help_menu, first lines (the topic list, 2026-11-10).
+      { from: "bot", text: "🛠️ MatchTime in your admin group. Tag me in every message here: type *@* and pick *Match Time*." },
       { from: "player", text: "@Match Time cancel Friday" },
       // strings.en.ts hq_match_cancelled.
       { from: "bot", text: "Done: Friday 7-a-side, Fri 23 Oct at 20:00 is cancelled. I've told the players' group." },
@@ -1257,7 +1257,7 @@ export const HERO_DECK = {
           { from: "self", text: "@Match Time what can you do?", time: "10:01" },
           {
             from: "bot",
-            text: "*MatchTime in your admin group*\nTag me (type *@*, pick *Match Time*), then ask in your own words.",
+            text: "*MatchTime in your admin group*\nTag me in every message here: type *@* and pick *Match Time*.",
             time: "10:01",
           },
           { from: "self", text: "@Match Time cancel Friday", time: "10:03" },

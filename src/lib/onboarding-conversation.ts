@@ -220,9 +220,6 @@ export interface HelpContext {
   links?: Partial<Record<HelpAdminPage, string>>;
   /** "help badges <name>": the badge the question named (its label). */
   badgeQuery?: string;
-  /** The club has an admin group linked (`Organisation.adminGroupId`), so
-   *  an organiser's DM can point at the "help" there. */
-  adminGroupLinked?: boolean;
   /** Answered by DM: "help teams" is typed without the tag. */
   dm?: boolean;
   /** Answered in the club's admin group (admin-group-help.ts), where some
@@ -235,8 +232,9 @@ export interface HelpContext {
 export function helpPagesNeeded(topic: HelpTopic | null, audience: HelpAudience): HelpAdminPage[] {
   if (audience === "player" || topic === "badges") return [];
   if (topic === "schedule") return ["activities", "blockBookings", "bulk", "matches"];
-  if (audience === "group" && topic === null) return [];
-  return topic === null ? ["settings"] : ["topic"];
+  // The bare menu is the topic list alone (2026-11-10): no link to mint.
+  if (topic === null) return [];
+  return ["topic"];
 }
 
 function helpLink(ctx: HelpContext, page: HelpAdminPage, topic: HelpTopic | null): string {
@@ -291,17 +289,6 @@ export function helpTopicsAskable(features: HelpFeatures): HelpTopic[] {
   return HELP_TOPIC_ORDER.filter((tp) => topicIsOn(tp, features) || switchableOff(tp, features));
 }
 
-/** The menu line naming what is not switched on here, worded as available;
- *  "" when everything is on. */
-export function helpNotOnLine(features: HelpFeatures, lang: Lang | string, dm = false): string {
-  const s = t(lang);
-  const off = helpTopicsOff(features);
-  if (off.length === 0) return "";
-  // Payments first as the example when it is off: it is what clubs ask for.
-  const example = off.includes("payments") ? "payments" : off[0];
-  return s.help_not_on({ labels: off.map((tp) => s.onbHelpTopicLabel({ topic: tp })), word: s.onbHelpTopicWord({ topic: example }), dm });
-}
-
 /**
  * The help reply, in every group and by DM. ONE builder, so no two places
  * can disagree (2026-09-30). Every topic answers three things in a few
@@ -309,13 +296,13 @@ export function helpNotOnLine(features: HelpFeatures, lang: Lang | string, dm = 
  * on for this club now, and (for an organiser) how to switch it, with a
  * link straight to its card on the settings page (help-links.ts).
  *
- *   - topic === null (bare help): the short menu (2026-11-10, Kemal: "why
- *     this long menu"): how to say In or Out, how to tag, the profile page,
- *     then one line teaching "help <topic>" with every topic word this club
- *     can ask about, off ones too. An organiser also gets the features not
- *     switched on yet, worded as available (`helpNotOnLine`), and a link
- *     to the settings page. The rest of the old how-to block is said by
- *     its topic (availability, friend, mom, ratings, reminders, payments).
+ *   - topic === null (bare help): the topics, one line each (2026-11-10,
+ *     Kemal: "display what help menu items are there with only one liner
+ *     explanation for each"), under how to drill down ("help <topic>"),
+ *     then "anything else". Every topic this club can ask about, off ones
+ *     too. An organiser also gets the settings topic and "(off here)" on
+ *     each topic not switched on. Everything else the old menus said is
+ *     said by its topic.
  *   - a flag topic ON: its explainer and "it's on"; an organiser gets where
  *     to switch it off.
  *   - a flag topic OFF: that it is off, how it works, how to switch it on,
@@ -328,9 +315,8 @@ export function helpNotOnLine(features: HelpFeatures, lang: Lang | string, dm = 
  * post, a team sheet or team building in the players' group. "help teams"
  * says the organisers share them, whatever the team flag; availability and
  * reminders say where the list goes; the schedule's format switch says its
- * line-up goes to them; an organiser's DM points at the "help" in their
- * admin group. `features.organiserPicks` replaces the bench nudge in "help
- * availability".
+ * line-up goes to them. `features.organiserPicks` replaces the bench nudge
+ * in "help availability".
  */
 export function buildHelpReply(
   topic: HelpTopic | null,
@@ -431,30 +417,14 @@ export function buildHelpReply(
     return `${s.onbHelpOffLead()}\n\n${body}\n\n${switchOn}`;
   }
 
-  // Bare help: the short menu.
-  const asks: Array<"squad" | "teams" | "stats"> = [];
-  if (features.attendance && !organisers) asks.push("squad");
-  if (features.teamBalancing && !organisers) asks.push("teams");
-  if (features.statsQa) asks.push("stats");
-  const menu = s.onbHelpMenu({
-    attendance: features.attendance,
-    organisers,
-    asks,
-    profileUrl: appUrl("/profile"),
-    playerRating: features.playerRating,
-    momVoting: features.momVoting,
-    ...(ctx.dm ? { dm: true } : {}),
-  });
-  // An organiser also hears what is switched off, worded as available;
-  // each explains how to switch it on when asked about (2026-10-28). A
-  // player is not nagged with it (FNF, 2026-10-15): the topic list below
-  // still names them.
-  const offLine = admin ? helpNotOnLine(features, lang, ctx.dm === true) : "";
-  const hqPointer = admin && organisers && ctx.adminGroupLinked === true ? s.onbHelpAdminOrganisers : "";
-  const settingsLine = admin ? s.onbHelpAdminPage({ url: helpLink(ctx, "settings", null), signedIn: !!ctx.links?.settings }) : "";
-  const words = helpTopicsAskable(features).map((tp) => s.onbHelpTopicWord({ topic: tp }));
-  // The example is payments, not teams: in the players' group the router
-  // reads "help teams" as a request for the teams (live probe, 2026-11-10).
-  const more = s.help_more({ words, example: s.onbHelpTopicWord({ topic: "payments" }), ...(ctx.dm ? { dm: true } : {}) });
-  return [menu, offLine, hqPointer, settingsLine, more].filter(Boolean).join("\n");
+  // Bare help: the topics, one line each (Kemal, 2026-11-10: "only one
+  // liner explanation for each"). Every topic this club can ask about, off
+  // ones too: each says how it works and how to switch it on when asked.
+  // An organiser also gets the settings topic, and sees which are off here
+  // ("(off here)"); a player is not nagged with that (FNF, 2026-10-15).
+  const off = new Set(admin ? helpTopicsOff(features) : []);
+  const topics = helpTopicsAskable(features)
+    .filter((tp) => tp !== "settings" || admin)
+    .map((tp) => (off.has(tp) ? { topic: tp, off: true } : { topic: tp }));
+  return s.onbHelpMenu({ topics, ...(features.monthly ? { monthly: true } : {}), ...(ctx.dm ? { dm: true } : {}) });
 }

@@ -127,9 +127,10 @@ describe("a swap with the bench (2026-11-10, PR #581)", () => {
       expect(out).not.toMatch(/[—–]/);
       expect(out).not.toMatch(/waiting list|bekleme listesi/i);
     }
-    expect(buildHqHelp({ lang: "en", ...ALL })).toContain(`"swap Tom for Ben"`);
+    // The menu names the topic; the swap itself is one "help squad" away.
+    expect(buildHqHelp({ lang: "en", ...ALL })).toContain(`📋 *squad*: who's in, out or on the bench`);
     expect(topics({ lang: "en", squad: false, graphics: true, picks: false, paid: true })).not.toContain("swap Tom for Ben");
-    expect(buildHqHelp({ lang: "en", squad: false, graphics: true, picks: false, paid: true })).not.toContain("swap Tom for Ben");
+    expect(buildHqHelp({ lang: "en", squad: false, graphics: true, picks: false, paid: true })).not.toContain("*squad*");
   });
 });
 
@@ -180,8 +181,8 @@ describe("HQ needs the real tag (Kemal, 2026-10-31, #482)", () => {
       const trTopics = topics({ lang: "tr", ...ALL, squad, free: true, pool: true });
       for (const out of [en, enTopics]) expect(out).not.toMatch(/no need to tag|reply YES to my message/i);
       for (const out of [tr, trTopics]) expect(out).not.toMatch(/etiketlemenize gerek yok|EVET diye cevap/i);
-      expect(en).toContain("Tag me (type *@*, pick *Match Time*)");
-      expect(tr).toContain("Beni etiketleyin (*@* yazıp *Match Time*'ı seçin)");
+      expect(en.split("\n")[1]).toBe("Tag me in every message here: type *@* and pick *Match Time*.");
+      expect(tr.split("\n")[1]).toBe("Burada her mesajda beni etiketleyin: *@* yazıp *Match Time*'ı seçin.");
       expect(enTopics).toContain("tag me in every message here (type *@*, pick *Match Time*)");
       expect(trTopics).toContain("burada her mesajda beni etiketleyin (*@* yazıp *Match Time*'ı seçin)");
       for (const out of [en, tr, enTopics, trTopics]) {
@@ -189,11 +190,6 @@ describe("HQ needs the real tag (Kemal, 2026-10-31, #482)", () => {
         expect(out).not.toMatch(/\w\/\w/);
       }
     }
-  });
-
-  it("the DM help that points an organiser to HQ shows the tagged ask, EN and TR", () => {
-    expect(t("en").onbHelpAdminOrganisers).toContain("*@Match Time what can you do?*");
-    expect(t("tr").onbHelpAdminOrganisers).toContain("*@Match Time neler yapabilirsin?*");
   });
 });
 

@@ -26,7 +26,6 @@ export async function clubHelpReply(args: {
   poolEnv: () => Promise<Record<string, string | undefined>>;
   /** Signed-in links, an organiser's own DM only. */
   links?: Partial<Record<HelpAdminPage, string>>;
-  adminGroupLinked?: boolean;
   /** Answered by DM: "help teams" without the tag. */
   dm?: boolean;
   /** Answered in the admin group (admin-group-help.ts). */
@@ -51,7 +50,6 @@ export async function clubHelpReply(args: {
     audience: args.audience,
     ...(args.links ? { links: args.links } : {}),
     ...(badge ? { badgeQuery: badge } : {}),
-    ...(args.adminGroupLinked ? { adminGroupLinked: true } : {}),
     ...(args.dm ? { dm: true } : {}),
     ...(args.adminGroup ? { adminGroup: true } : {}),
   });

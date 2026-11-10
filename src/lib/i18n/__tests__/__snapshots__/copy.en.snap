@@ -1915,19 +1915,35 @@ Type *"@Match Time help"* any time to see this again.
 
 ### R143 buildHelpReply / bare, everything on
 ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 Tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.
+Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee
+🤝 *partners*: playing with partner clubs
+📅 *schedule*: when and where you play
+❓ Anything else: just tag me and ask
 
 ### R143 buildHelpReply / bare, attendance only
 ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 Tag me (type *@*, pick *Match Time*) and ask in your own words: who's in or anything else. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games: https://matchtime.ai/profile
-ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.
+Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee
+🤝 *partners*: playing with partner clubs
+📅 *schedule*: when and where you play
+❓ Anything else: just tag me and ask
 
 ### R142 buildHelpReply / availability
 ⚽ *Squad & availability: how it works*
@@ -2154,14 +2170,20 @@ https://mt.example/r/topic
 
 ### R148 buildHelpReply / bare / admin
 ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 Tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: match fees, partner clubs. Ask *@Match Time help payments* to see how they work and how to switch them on.
-⚙️ Your club's settings, signed in:
-https://mt.example/r/settings
-ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.
+Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee (off here)
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just tag me and ask
 
 ### R149 requestNotHandledAdminReply
 I can't change that by message, but you can do it on your club's settings page in a few taps: https://matchtime.ai/admin/settings
@@ -2433,22 +2455,38 @@ The club's settings are changed by its organisers. Ask them if you'd like someth
 
 ### R153 buildHelpReply / bare, pool and partners on / group
 ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 Tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, pool, schedule, settings.
+Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee
+🤝 *partners*: playing with partner clubs
+🌍 *pool*: the player pool
+📅 *schedule*: when and where you play
+❓ Anything else: just tag me and ask
 
 ### R153 buildHelpReply / bare, pool open, partners off / admin
 ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 Tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: match fees, partner clubs, the player pool. Ask *@Match Time help payments* to see how they work and how to switch them on.
-⚙️ Your club's settings, signed in:
-https://mt.example/r/settings
-ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, pool, schedule, settings.
+Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee (off here)
+🤝 *partners*: playing with partner clubs (off here)
+🌍 *pool*: the player pool (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just tag me and ask
 
 ### R153f buildHelpReply / friend / group
 👥 *Bringing a friend: how it works*

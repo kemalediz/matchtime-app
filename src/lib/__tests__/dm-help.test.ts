@@ -258,16 +258,19 @@ describe("handleDmHelp", () => {
     const FNF = { ...FEATS_PAY_OFF, listAnnouncer: "organisers", benchPickMode: "organiser" };
     const POINTER = "In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).";
 
-    it("an organiser's bare help points at the admin group's commands, and keeps the settings link", async () => {
+    it("an organiser's bare help is the topic list alone (2026-11-10): the settings topic and what is off here, no pointer and no link", async () => {
       getOrgFeatures.mockResolvedValue(FNF);
       membershipFindMany.mockResolvedValue([{ ...mem("org-fnf", "OWNER", "FNF"), org: { id: "org-fnf", name: "FNF", language: "en", adminGroupId: "hq@g.us" } }]);
       await handleDmHelp(args("help"));
       const text = botJobCreate.mock.calls[0][0].data.text as string;
-      expect(text).toContain(POINTER);
-      expect(text).toContain("⚙️ Your club's settings, signed in:\nhttps://mt.example/r/-admin-settings\n");
-      // The short menu ends by teaching "help <topic>", typed without the tag in a DM.
-      expect(text.split("\n").at(-1)).toMatch(/^ℹ️ To learn more about anything, message me \*help\* and the topic, for example \*help payments\*\. Topics: /);
-      expect(membershipFindMany.mock.calls[0][0].select.org.select).toMatchObject({ adminGroupId: true });
+      expect(text).not.toContain(POINTER);
+      expect(text).not.toContain("https://");
+      expect(buildAdminLink).not.toHaveBeenCalled();
+      // How to drill down, typed without the tag in a DM.
+      expect(text.split("\n")[1]).toBe("Message me *help* and a topic to learn more, e.g. *help payments*");
+      expect(text).toContain("\n💷 *payments*: paying the match fee (off here)\n");
+      expect(text).toContain("\n⚙️ *settings*: club settings and the settings page\n");
+      expect(text.split("\n").at(-1)).toBe("❓ Anything else: just ask");
     });
 
     it("no admin group linked: no pointer to one", async () => {
@@ -293,8 +296,10 @@ describe("handleDmHelp", () => {
     const dm = botJobCreate.mock.calls[0][0].data.text as string;
     expect(dm).toBe(buildHelpReply(null, FEATS_PAY_OFF, "en", { audience: "player", dm: true }));
     const group = buildHelpReply(null, FEATS_PAY_OFF, "en");
-    const same = (l: string) => !l.startsWith("💬") && !l.startsWith("ℹ️ To learn more");
-    expect(dm.split("\n").filter(same)).toEqual(group.split("\n").filter(same));
+    // Only how to drill down (line 2) and "anything else" (the last) differ.
+    const same = (s: string) => s.split("\n").slice(2, -1);
+    expect(same(dm)).toEqual(same(group));
+    expect(dm.split("\n")[1]).not.toBe(group.split("\n")[1]);
   });
 
   it("'help badges Mr Reliable' (an admin too): that badge's rules, plain drill-down, no link minted", async () => {

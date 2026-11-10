@@ -272,29 +272,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-06T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LWtlbWFsIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9hZG1pbi9zZXR0aW5ncyIsIm9yZ0lkIjoib3JnLXN1dHRvbiIsImlhdCI6MTc5Mzc5MzYwMCwiZXhwIjoxNzkzOTY2NDAwfQ.PT63HkDmoupi4hq4LClt0eHvTl-97uyhEf9Zxw759pQ",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
             "text": "ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: partner clubs. Ask *help partners* to see how it works and how to switch it on.
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>
-ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
+Message me *help* and a topic to learn more, e.g. *help payments*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just ask",
           },
         },
         "call": "botJob.create",
@@ -2931,31 +2927,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-06T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LWZuZi1vcmciLCJwdXJwb3NlIjoic2lnbi1pbiIsIm5leHRQYXRoIjoiL2FkbWluL3NldHRpbmdzIiwib3JnSWQiOiJvcmctZm5mIiwiaWF0IjoxNzkzNzkzNjAwLCJleHAiOjE3OTM5NjY0MDB9.brlJaf9UMAQr1fd9vsYMuk0W8JPxs1kKVhlNr8XcqXU",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-fnf",
             "phone": "447700900312",
             "priority": 1,
             "text": "ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.
-💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: the stats or anything else. Replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
-📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>
-ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
+Message me *help* and a topic to learn more, e.g. *help payments*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee (off here)
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just ask",
           },
         },
         "call": "botJob.create",
@@ -4658,31 +4648,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-09T10:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LWZuZi1vcmciLCJwdXJwb3NlIjoic2lnbi1pbiIsIm5leHRQYXRoIjoiL2FkbWluL3NldHRpbmdzIiwib3JnSWQiOiJvcmctZm5mIiwiaWF0IjoxNzk0MDQ1NjAwLCJleHAiOjE3OTQyMTg0MDB9.pYsobtn3nzTKZGmiZpWrR-ASzfbVyXiGr8DsvwsJ50k",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-fnf",
             "phone": "447700900312",
             "priority": 1,
             "text": "ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.
-💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: the stats or anything else. Replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
-📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>
-ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
+Message me *help* and a topic to learn more, e.g. *help payments*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee (off here)
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just ask",
           },
         },
         "call": "botJob.create",
@@ -5775,29 +5759,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-06T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW11LW8iLCJwdXJwb3NlIjoic2lnbi1pbiIsIm5leHRQYXRoIjoiL2FkbWluL3NldHRpbmdzIiwib3JnSWQiOiJvcmctbXV0ZWQiLCJpYXQiOjE3OTM3OTM2MDAsImV4cCI6MTc5Mzk2NjQwMH0.hreUAZ3MNoIgV6MTYSA8qToHHEKKvsfTpzuvrCUsd0U",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-muted",
             "phone": "447700900310",
             "priority": 1,
             "text": "ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>
-ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
+Message me *help* and a topic to learn more, e.g. *help payments*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee (off here)
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just ask",
           },
         },
         "call": "botJob.create",
@@ -6411,29 +6391,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-06T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LXJ0LW8iLCJwdXJwb3NlIjoic2lnbi1pbiIsIm5leHRQYXRoIjoiL2FkbWluL3NldHRpbmdzIiwib3JnSWQiOiJvcmctcmF0aW5ncyIsImlhdCI6MTc5Mzc5MzYwMCwiZXhwIjoxNzkzOTY2NDAwfQ.5-n_RJPa98ZMIJf_6R_7w9kYYzJ6pgTFr3whELboJZw",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-ratings",
             "phone": "447700900310",
             "priority": 1,
             "text": "ℹ️ *MatchTime help*
-📋 Paste your squad list and I'll read who's playing, no need to tag me.
-💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: the teams, the stats or anything else. Replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: squad & availability, bringing a friend, match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>
-ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
+Message me *help* and a topic to learn more, e.g. *help payments*
+
+✅ *availability*: saying in, out or maybe (off here)
+👫 *friend*: bringing a friend to play (off here)
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee (off here)
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just ask",
           },
         },
         "call": "botJob.create",
@@ -7669,29 +7645,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-06T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LWtlbWFsIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9hZG1pbi9zZXR0aW5ncyIsIm9yZ0lkIjoib3JnLXN1dHRvbiIsImlhdCI6MTc5Mzc5MzYwMCwiZXhwIjoxNzkzOTY2NDAwfQ.PT63HkDmoupi4hq4LClt0eHvTl-97uyhEf9Zxw759pQ",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
             "text": "ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: partner clubs. Ask *help partners* to see how it works and how to switch it on.
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>
-ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
+Message me *help* and a topic to learn more, e.g. *help payments*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just ask",
           },
         },
         "call": "botJob.create",
@@ -10273,29 +10245,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-12T18:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LWtlbWFsIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9hZG1pbi9zZXR0aW5ncyIsIm9yZ0lkIjoib3JnLXN1dHRvbiIsImlhdCI6MTc5NDMzMzYwMCwiZXhwIjoxNzk0NTA2NDAwfQ.2Au2PGAUotGA_G9NwOE4-cpRmwwhquHydG7kxFnTSCY",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
             "text": "ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: partner clubs. Ask *help partners* to see how it works and how to switch it on.
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>
-ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
+Message me *help* and a topic to learn more, e.g. *help payments*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just ask",
           },
         },
         "call": "botJob.create",
@@ -12882,29 +12850,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-06T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LWtlbWFsIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9hZG1pbi9zZXR0aW5ncyIsIm9yZ0lkIjoib3JnLXN1dHRvbiIsImlhdCI6MTc5Mzc5MzYwMCwiZXhwIjoxNzkzOTY2NDAwfQ.PT63HkDmoupi4hq4LClt0eHvTl-97uyhEf9Zxw759pQ",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
             "text": "ℹ️ *MatchTime yardım*
-✅ Sıradaki maç için grupta *varım* ya da *yokum* yazın, beni etiketlemenize gerek yok. Emin değil misiniz? *belki* yazın.
-💬 Grupta beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ve kendi cümlelerinizle sorun: kim var, takımlar, istatistikler ya da başka bir şey. Mesajıma yanıt vermek yetmez.
-🤐 Sohbete ve şakalara yanıt vermem, rahat olun.
-📊 Kendi profil sayfanız maçlarınızı, puanlarınızı ve maçın oyuncusu ödüllerinizi gösterir: https://matchtime.ai/profile
-💡 *Burada henüz açık değil*: partner kulüpler. Nasıl çalıştığını ve nasıl açıldığını görmek için *yardım partner* yazın.
-⚙️ Kulübünün ayarları, giriş yapmış olarak:
-https://matchtime.ai/r/<code>
-ℹ️ Herhangi bir konuda daha fazlası için bana *yardım* ve konuyu yazın, örneğin *yardım ödeme*. Konular: kadro, arkadaş, takımlar, maçın adamı, puanlama, rozetler, hatırlatma, ödeme, partner, program, ayarlar.",
+Daha fazlası için bana *yardım* ve bir konu yazın, örneğin *yardım ödeme*
+
+✅ *kadro*: varım, yokum ya da belki demek
+👫 *arkadaş*: oynamaya arkadaş getirmek
+🟥🟦 *takımlar*: takımlar nasıl kuruluyor
+⭐ *maçın adamı*: maçın adamı oylaması
+📈 *puanlama*: maçtan sonra birbirinizi puanlamak
+🏅 *rozetler*: rozetleriniz ne anlama geliyor
+⏰ *hatırlatma*: size neleri hatırlattığım
+💷 *ödeme*: maç ücretini ödemek
+🤝 *partner*: partner kulüplerle oynamak (burada kapalı)
+📅 *program*: ne zaman ve nerede oynadığınız
+⚙️ *ayarlar*: kulüp ayarları ve ayarlar sayfası
+❓ Başka bir şey: sormanız yeter",
           },
         },
         "call": "botJob.create",
@@ -15586,29 +15550,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-06T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LWRhdmlkZSIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvYWRtaW4vc2V0dGluZ3MiLCJvcmdJZCI6Im9yZy12ZXRzIiwiaWF0IjoxNzkzNzkzNjAwLCJleHAiOjE3OTM5NjY0MDB9.2WuDWuSsaCr9wSc9v5_1VxE2S31ce2Nf2mRbor603TU",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "447700900310",
             "priority": 1,
             "text": "ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>
-ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
+Message me *help* and a topic to learn more, e.g. *help payments*
+
+✅ *availability*: who's on this month's list
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee (off here)
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just ask",
           },
         },
         "call": "botJob.create",
@@ -17943,29 +17903,25 @@ how does the bench work?",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LWRhdmlkZSIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvYWRtaW4vc2V0dGluZ3MiLCJvcmdJZCI6Im9yZy12ZXRzIiwiaWF0IjoxNzk0NTcxMjAwLCJleHAiOjE3OTQ3NDQwMDB9.YN49c4pVkB3IAgROv6BN268OCpogkJI-EFO_2Js7PCY",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "447700900310",
             "priority": 1,
             "text": "ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>
-ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
+Message me *help* and a topic to learn more, e.g. *help payments*
+
+✅ *availability*: who's on this month's list
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee (off here)
+🤝 *partners*: playing with partner clubs (off here)
+📅 *schedule*: when and where you play
+⚙️ *settings*: club settings and the settings page
+❓ Anything else: just ask",
           },
         },
         "call": "botJob.create",
