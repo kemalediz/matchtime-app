@@ -891,6 +891,7 @@ const SAMPLES: SampleArgs = {
   tp_final_reply_posted: null,
   tp_no_teams: null,
   tp_no_match: null,
+  tp_played_game: { kickoff: "20:15" },
   tp_name_unknown: { name: "Zeynep" },
   tp_name_unknown_squad: { name: "Zeynep" },
   tp_restored_earlier: { day: "Sal 27 Eki", time: "18:09" },

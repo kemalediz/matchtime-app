@@ -45,7 +45,13 @@ vi.mock("@/lib/ai-budget", () => ({
 }));
 const squad = vi.hoisted(() => ({ handleAdminSquadChange: vi.fn(), nameMentions: vi.fn(async (_o: string, text: string) => text) }));
 vi.mock("@/lib/admin-group-squad-change", () => squad);
-const teams = vi.hoisted(() => ({ answerTeamsYes: vi.fn(), handleTeamCommand: vi.fn(), setAsideTeamProposal: vi.fn(), compareQuotedSheet: vi.fn() }));
+const teams = vi.hoisted(() => ({
+  answerTeamsYes: vi.fn(),
+  handleTeamCommand: vi.fn(),
+  setAsideTeamProposal: vi.fn(),
+  compareQuotedSheet: vi.fn(),
+  replaceOnPlayedGame: vi.fn(),
+}));
 vi.mock("@/lib/team-proposal", () => teams);
 // The team sheets MatchTime posted (2026-10-30): none quoted by default.
 const sheetHistory = vi.hoisted(() => ({ quotedTeamSheet: vi.fn() }));
@@ -190,6 +196,8 @@ beforeEach(() => {
   teams.answerTeamsYes.mockResolvedValue({ outcome: "teams-final", replyText: "Teams are final." });
   teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-swapped", replyText: "📝 *Proposed teams* ..." });
   teams.compareQuotedSheet.mockResolvedValue("elsewhere");
+  // No game just played by default: a squad change goes to the next game.
+  teams.replaceOnPlayedGame.mockResolvedValue(null);
   sheetHistory.quotedTeamSheet.mockResolvedValue(null);
   paste.answerSquadPasteYes.mockResolvedValue({ outcome: "paste-applied", replyText: "Done." });
   paste.readHqSquad.mockResolvedValue(read(CHANGE));
@@ -619,6 +627,49 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(r?.outcome).toBe("squad-changed");
     expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "other_att", text: "Tom is out tonight", namedBody: "Tom is out tonight" }));
     expect(requests).toHaveLength(1);
+  });
+
+  // Mon 9 Nov 2026, kickoff 20:15: Luca played for CJ on Bibs (Kemal,
+  // 2026-11-10). The reader's change goes first to the played game's
+  // line-up fix (`replaceOnPlayedGame`, which decides from the reading and
+  // the game's facts); only when it is not one does the engine run on the
+  // next game.
+  describe("a replacement after kickoff fixes the game just played", () => {
+    const LUCA_FOR_CJ = {
+      kind: "change",
+      changes: [
+        { name: "Luca", userId: "u-luca", to: "in", replaces: "CJ", replacesUserId: "u-cj" },
+        { name: "CJ", userId: "u-cj", to: "out", replaces: "" },
+      ],
+      alsoAsks: false,
+    };
+
+    it("a fix: the HQ reply, and the engine never runs on the next game", async () => {
+      paste.readHqSquad.mockResolvedValue(read(LUCA_FOR_CJ));
+      teams.replaceOnPlayedGame.mockResolvedValue({ outcome: "teams-replaced", replyText: "This is today's game at 20:15, already played." });
+      const r = await ask("put Luca in for CJ on bibs", "other_att");
+      expect(r).toEqual({ route: "other_att", outcome: "teams-replaced", replyText: "This is today's game at 20:15, already played." });
+      expect(teams.replaceOnPlayedGame).toHaveBeenCalledWith(
+        expect.objectContaining({ orgId: "org-fnf", senderUserId: "u-admin", messageId: "wa-9", now: NOW, changes: LUCA_FOR_CJ.changes, organiser: true }),
+      );
+      expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    });
+
+    it("not a fix (null): the squad change goes to the engine, as before", async () => {
+      const r = await ask("Tom is out tonight", "other_att");
+      expect(r?.outcome).toBe("squad-changed");
+      expect(teams.replaceOnPlayedGame).toHaveBeenCalledWith(expect.objectContaining({ changes: CHANGE.changes }));
+      expect(squad.handleAdminSquadChange).toHaveBeenCalled();
+    });
+
+    it("a member who is not an organiser: the line naming who can change the teams, nothing else", async () => {
+      paste.readHqSquad.mockResolvedValue(read(LUCA_FOR_CJ));
+      teams.replaceOnPlayedGame.mockResolvedValue("organisers-only");
+      const r = await ask("put Luca in for CJ on bibs", "other_att", { organiser: false, member: true, senderUserId: "u-pat", senderName: "Pat" });
+      expect(r).toEqual({ route: "other_att", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can make the teams." });
+      expect(teams.replaceOnPlayedGame).toHaveBeenCalledWith(expect.objectContaining({ organiser: false }));
+      expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    });
   });
 
   // FNF HQ 2026-10-17 09:01: "Imti\nRafi\nAH\n\nIn". Since 2026-10-30 no

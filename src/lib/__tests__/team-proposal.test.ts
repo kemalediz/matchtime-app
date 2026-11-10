@@ -127,13 +127,18 @@ const announcer = vi.hoisted(() => ({ loadOrganisersAnnounce: vi.fn() }));
 vi.mock("@/lib/list-announcer-store", () => announcer);
 const hqLog = vi.hoisted(() => ({ recordMatchTimeQuestion: vi.fn(), teamsAskRef: (id: string) => `teams:${id}` }));
 vi.mock("@/lib/admin-group-log", () => hqLog);
+// A new person put in on a played game is added as an organiser's add is.
+const provision = vi.hoisted(() => ({ provisionNewPerson: vi.fn() }));
+vi.mock("@/lib/resolve-or-provision-name", () => provision);
 
 import {
   answerTeamsYes,
   handleTeamCommand,
+  replaceOnPlayedGame,
   setAsideTeamProposal,
   teamProposalJobs,
   type TeamProposalDeps,
+  type TeamReply,
 } from "../team-proposal";
 import type { TeamCommand } from "../team-proposal-rules";
 
@@ -169,6 +174,7 @@ function seed() {
     "sentNotification",
     "sport",
     "adminTeamSheet",
+    "attendanceEvent",
   ]) {
     dbMock[k] = table(k);
   }
@@ -1015,5 +1021,172 @@ describe("restore and set: the teams of an earlier sheet, or of a pasted one, as
     seedSheet();
     const r = await handleTeamCommand({ addressed: true, orgId: ORG, lang: "tr", command: { kind: "set", red: ["Ali", "Tom"], yellow: ["Bilal", "Shehryar"] }, senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
     expect(r.replyText?.startsWith("Gönderdiğiniz takımlar bunlar. *@Match Time EVET* yazmanız gerekiyor.")).toBe(true);
+  });
+});
+
+// Mon 9 Nov 2026, Vets, kickoff 20:15: Luca played for CJ on Bibs, and once
+// the game was over every WhatsApp team path picked only a game not yet
+// played. Kemal, 2026-11-10: on the day of a game, once it has kicked off,
+// a tagged team change in HQ fixes the game just played, silently in the
+// players' group (`played-game-rules.ts`).
+describe("a team change after kickoff fixes the game just played", () => {
+  const NEXT = "m-next";
+  // 22:30 London on the day (BST, so 21:30 UTC); the game is over.
+  const LATE = new Date("2026-10-16T21:30:00.000Z");
+  const TOMORROW = new Date("2026-10-17T09:00:00.000Z");
+
+  function seedPlayed(status = "COMPLETED") {
+    seedSheet("TEAMS_PUBLISHED");
+    (store.tables.match[0] as Row).status = status;
+    store.tables.match.push({ id: NEXT, activityId: "act", date: new Date("2026-10-23T19:00:00.000Z"), status: "UPCOMING", teamLabels: [], maxPlayers: 4 });
+    store.tables.adminTeamProposal = [{ id: "atp-1", orgId: ORG, matchId: MATCH, state: "approved", askedAt: NOON, approvedAt: NOON, toldSheet: [], remindedAt: null, updatedAt: NOON }];
+  }
+  const run = (command: TeamCommand, now = LATE) =>
+    handleTeamCommand({ addressed: true, orgId: ORG, lang: "en", command, senderUserId: "u-admin", messageId: "wa-late", now, deps: quiet });
+  const noPosts = () => expect(store.tables.botJob ?? []).toEqual([]);
+
+  it("a swap: made on the game just played, said as its final teams, nothing posted anywhere", async () => {
+    seedPlayed();
+    const r = await run(change({ moves: ["Bilal", "Tom"] }));
+    expect(r.outcome).toBe("teams-swapped");
+    expect([teamOf("u-bilal"), teamOf("u-tom")]).toEqual(["YELLOW", "RED"]);
+    expect(r.replyText).toMatch(/^This is today's game at 20:00, already played\. Nothing is posted in the players' group\.\n\n✅ \*Final teams\*: 20:00 at Goals Sutton/);
+    // Not a proposal: no YES asked, and the approved row stays approved.
+    expect(r.replyText).not.toContain("YES");
+    expect(proposal()).toMatchObject({ state: "approved" });
+    expect((store.tables.match[0] as Row).status).toBe("COMPLETED");
+    noPosts();
+    // Next week's game is untouched.
+    expect(store.tables.teamAssignment.every((x) => x.matchId === MATCH)).toBe(true);
+  });
+
+  it("show: the played game's teams, with the same line", async () => {
+    seedPlayed();
+    const r = await run({ kind: "show" });
+    expect(r.outcome).toBe("teams-shown");
+    expect(r.replyText).toContain("This is today's game at 20:00, already played.");
+    expect(r.replyText).toContain("*Red*:\n1. Ali Khan\n2. Bilal Ahmed");
+    noPosts();
+  });
+
+  it("in Turkish", async () => {
+    seedPlayed();
+    const r = await handleTeamCommand({ addressed: true, orgId: ORG, lang: "tr", command: change({ moves: ["Bilal", "Tom"] }), senderUserId: "u-admin", messageId: "wa-tr", now: LATE, deps: quiet });
+    expect(r.replyText?.startsWith("Bu, bugünkü 20:00 maçı, oynandı. Oyuncu grubuna bir şey göndermiyorum.")).toBe(true);
+  });
+
+  it("new teams after kickoff are for the next game, as before", async () => {
+    seedPlayed();
+    await run({ kind: "reshuffle", sides: [], together: [] });
+    expect(generate).toHaveBeenCalledWith(NEXT, {});
+  });
+
+  it("the next day: the next game, as before (no teams there yet)", async () => {
+    seedPlayed();
+    const before = store.tables.teamAssignment.map((x) => ({ ...x }));
+    expect(await run(change({ moves: ["Bilal", "Tom"] }), TOMORROW)).toEqual({ outcome: "teams-no-teams", replyText: expect.any(String) });
+    expect(store.tables.teamAssignment).toEqual(before);
+  });
+
+  it("a cancelled game is never changed", async () => {
+    seedPlayed("CANCELLED");
+    const before = store.tables.teamAssignment.map((x) => ({ ...x }));
+    expect((await run(change({ moves: ["Bilal", "Tom"] }))).outcome).toBe("teams-no-teams");
+    expect(store.tables.teamAssignment).toEqual(before);
+  });
+
+  it("before kickoff: the game to come, as before (proposed teams ask for YES)", async () => {
+    seedSheet();
+    const r = await run(change({ moves: ["Bilal", "Tom"] }), NOON);
+    expect(r.outcome).toBe("teams-swapped");
+    expect(r.replyText).not.toContain("already played");
+    expect(r.replyText).toContain("YES");
+  });
+
+  describe("a replacement read in HQ ('Zara in for Shehryar')", () => {
+    const zaraForSheh = [
+      { name: "Zara Zest", written: "Zara", userId: "u-zara" as string | null, to: "in" as const, replaces: "Shehryar Malik", replacesUserId: "u-sheh" },
+      { name: "Shehryar Malik", written: "Shehryar", userId: "u-sheh" as string | null, to: "out" as const, replaces: "" },
+    ];
+    const replace = (changes: Parameters<typeof replaceOnPlayedGame>[0]["changes"] = zaraForSheh, now = LATE) =>
+      replaceOnPlayedGame({ orgId: ORG, lang: "en", messageId: "wa-rep", senderUserId: "u-admin", now, changes, organiser: true, deps: quiet });
+    const statusOf = (userId: string) => store.tables.attendance.find((a) => a.matchId === MATCH && a.userId === userId)?.status;
+
+    it("takes the slot, is confirmed for the game (ratings and Man of the Match), the replaced player is out; nothing posted", async () => {
+      seedPlayed();
+      const r = (await replace()) as TeamReply;
+      expect(r.outcome).toBe("teams-replaced");
+      expect(r.replyText).toMatch(/^This is today's game at 20:00, already played\. Nothing is posted in the players' group\.\n\nZara Zest replaces Shehryar Malik on Yellow\n\n✅ \*Final teams\*/);
+      expect(store.tables.teamAssignment.find((x) => x.id === "ta-4")?.userId).toBe("u-zara");
+      expect(statusOf("u-zara")).toBe("CONFIRMED");
+      expect(statusOf("u-sheh")).toBe("DROPPED");
+      expect(store.tables.attendanceEvent.map((e) => [e.userId, e.fromStatus, e.toStatus, e.cause, e.sourceRef])).toEqual([
+        ["u-zara", null, "CONFIRMED", "admin-squad-edit", "admin-group:wa-rep"],
+        ["u-sheh", "CONFIRMED", "DROPPED", "admin-squad-edit", "admin-group:wa-rep"],
+      ]);
+      expect((store.tables.match[0] as Row).status).toBe("COMPLETED");
+      noPosts();
+      // No payment field is written.
+      for (const a of store.tables.attendance) expect(Object.keys(a).filter((k) => /pa(id|y)/i.test(k))).toEqual([]);
+    });
+
+    it("a replaced player already out stays out", async () => {
+      seedPlayed();
+      (store.tables.attendance.find((a) => a.userId === "u-sheh") as Row).status = "DROPPED";
+      await replace();
+      expect(statusOf("u-sheh")).toBe("DROPPED");
+      expect(store.tables.attendanceEvent.map((e) => e.userId)).toEqual(["u-zara"]);
+    });
+
+    it("somebody nobody in the club is: added, then put in", async () => {
+      seedPlayed();
+      provision.provisionNewPerson.mockImplementation(async (_org: string, name: string) => {
+        store.tables.user.push({ id: "u-luca", name });
+        return { userId: "u-luca", name };
+      });
+      const r = (await replace([{ ...zaraForSheh[0], name: "Luca", written: "Luca", userId: null }, zaraForSheh[1]])) as TeamReply;
+      expect(provision.provisionNewPerson).toHaveBeenCalledWith(ORG, "Luca", { adminConfirmed: true });
+      expect(r.replyText).toContain("Luca replaces Shehryar Malik on Yellow");
+      expect(statusOf("u-luca")).toBe("CONFIRMED");
+    });
+
+    it("the arrival is already on the teams: one line, nothing written", async () => {
+      seedPlayed();
+      const r = await replace([{ ...zaraForSheh[0], name: "Ali Khan", written: "Ali", userId: "u-ali" }]);
+      expect(r).toEqual({ outcome: "teams-already-there", replyText: "Ali Khan is already on Red." });
+      expect(store.tables.attendanceEvent ?? []).toEqual([]);
+    });
+
+    it("an arrival who-is-who could not place: asked, nothing written", async () => {
+      seedPlayed();
+      const r = await replace([{ ...zaraForSheh[0], unclear: true as const }]);
+      expect(r).toEqual({ outcome: "teams-name-unclear", replyText: "I couldn't work out who Zara is. Please use their full name." });
+      expect(store.tables.teamAssignment.find((x) => x.id === "ta-4")?.userId).toBe("u-sheh");
+    });
+
+    it("asked by somebody who is not an organiser: organisers only, nothing written", async () => {
+      seedPlayed();
+      const r = await replaceOnPlayedGame({ orgId: ORG, lang: "en", messageId: "wa-rep", senderUserId: "u-tom", now: LATE, changes: zaraForSheh, organiser: false, deps: quiet });
+      expect(r).toBe("organisers-only");
+      expect(store.tables.teamAssignment.find((x) => x.id === "ta-4")?.userId).toBe("u-sheh");
+      expect(store.tables.attendanceEvent ?? []).toEqual([]);
+    });
+
+    it("not a line-up fix (a plain 'Shehryar out'): null, the squad change goes on to the next game", async () => {
+      seedPlayed();
+      expect(await replace([zaraForSheh[1]])).toBeNull();
+    });
+
+    it("before kickoff, the next day, or a cancelled game: null, as before", async () => {
+      seedSheet();
+      expect(await replace(zaraForSheh, NOON)).toBeNull();
+      seed();
+      seedPlayed();
+      expect(await replace(zaraForSheh, TOMORROW)).toBeNull();
+      seed();
+      seedPlayed("CANCELLED");
+      expect(await replace()).toBeNull();
+      expect(store.tables.attendanceEvent ?? []).toEqual([]);
+    });
   });
 });
