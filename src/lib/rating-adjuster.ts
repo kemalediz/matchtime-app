@@ -39,6 +39,7 @@
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
 import { formatLondon } from "./london-time";
 import { stripLongDashes } from "./house-style";
+import { FORM_SIZES, MAX_DELTA } from "./form-scale";
 
 /**
  * THE SHIPPED MODEL: Haiku 5.5, adaptive thinking at medium (2026-10-20).
@@ -49,8 +50,9 @@ import { stripLongDashes } from "./house-style";
  * about a sixteenth of the live cost per call.
  */
 export const RATING_ADJUSTER_CALL: ModelCall = HAIKU_CALL;
-/** The most the adjuster moves a rating for one match, either way. */
-export const MAX_DELTA = 1;
+/** The most the adjuster moves a rating for one match, either way:
+ *  `form-scale.ts`, the one scale a form note uses too. */
+export { MAX_DELTA };
 const MIN_CONFIDENCE = 0.3;
 const HISTORY_DAYS = 7;
 const MAX_HISTORY_MESSAGES = 300;
@@ -73,9 +75,7 @@ Return "adjustments": one entry for each player the chat gives you a reason abou
 - confidence: from 0 to 1, how sure you are the chat means this for this match. If it is under 0.3, leave the player out instead.
 
 What counts and what it is worth, read against the match's day and time:
-- Tired, hungover or a bit rusty for the match: about -0.5.
-- Ill or injured for the match, or back after weeks without playing: about -1.
-- A standout run just before this match (goals, Man of the Match, team-mates saying they were the best player): +0.5, or +1 if it was clearly exceptional.
+${FORM_SIZES}
 - Not a reason: a problem they later say has cleared up; an opinion about who is better in general (the ratings already hold that); banter and idioms; someone else's illness; being a late addition, a replacement or a backup; offering to sit out; asking for a replacement or being unsure whether they can come (that is attendance, not form); and simply saying they are in.
 - "Tonight" or "tomorrow" in a message means the day it was written, which is not always the match day.
 - The chat may be in English or Turkish. Never give a reason the chat does not.

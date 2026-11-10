@@ -340,6 +340,55 @@ describe("parseFacts (other routes)", () => {
     expect(p).toMatch(/"make the teams and put me and David on the same team" -> generate, pairings/);
   });
 
+  // ── 2026-11-10: a form note carries who and how much ─────────────────
+
+  it("teams carries FORM for the form action only: who, the amount, why; a bad entry is dropped, never guessed", () => {
+    const raw = JSON.stringify({
+      action: "form",
+      includeRefs: [],
+      teamNames: [],
+      swaps: [],
+      moves: [],
+      pairings: [],
+      swapSides: false,
+      toMatchTime: true,
+      form: [
+        { personRef: "me", delta: -0.5, reason: "tired" },
+        { personRef: " Tom ", delta: -1, reason: "bad knee" },
+        { personRef: "", delta: -1, reason: "nobody" },
+        { personRef: "Ali", delta: "a lot", reason: "?" },
+      ],
+    });
+    expect(parseFacts("teams", raw, "wa-1").facts).toMatchObject({
+      kind: "teams",
+      action: "form",
+      form: [
+        { personRef: "me", delta: -0.5, reason: "tired" },
+        { personRef: "Tom", delta: -1, reason: "bad knee" },
+      ],
+    });
+    // Any other action: no form entries, whatever the model sent.
+    const gen = parseFacts("teams", JSON.stringify({ action: "generate", form: [{ personRef: "me", delta: -1, reason: "x" }] }), "wa-1");
+    expect(gen.facts).toMatchObject({ action: "generate", form: [] });
+    // An older stub with no form at all.
+    expect(parseFacts("teams", '{"action":"form"}', "wa-1").facts).toMatchObject({ action: "form", form: [] });
+    const schema = factsSchemaFor("balancer") as { required: string[]; properties: Record<string, { items?: { required?: string[] } }> };
+    expect(schema.required).toContain("form");
+    expect(schema.properties.form.items!.required).toEqual(["personRef", "delta", "reason"]);
+  });
+
+  it("the teams prompt defines form once and reads its sizes from the one scale the adjuster uses", async () => {
+    const p = EXTRACTOR_PROMPTS.teams;
+    const { FORM_SIZES } = await import("../../form-scale");
+    const { RATING_ADJUSTER_SYSTEM } = await import("../../rating-adjuster");
+    expect(p.split("\nform\n").length).toBe(2);
+    expect(p).toContain(FORM_SIZES);
+    expect(RATING_ADJUSTER_SYSTEM).toContain(FORM_SIZES);
+    // An amendment and a cancel, EN and TR side by side.
+    expect(p).toMatch(/"make it -1", replying to MatchTime's[^\n]*\/ "-1 yap"[^\n]*-> form, form \[\{"personRef":"Kemal","delta":-1,"reason":""\}\]/);
+    expect(p).toMatch(/"cancel my adjustment" \/ "puan ayarımı iptal et" -> form, form \[\{"personRef":"me","delta":0,"reason":""\}\]/);
+  });
+
   // ── §10 step 8's additions to the teams extractor ───────────────────
 
   it("teams carries a PAIRING as a group of names, with no colour in it", () => {

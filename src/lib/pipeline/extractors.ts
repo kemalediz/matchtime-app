@@ -37,6 +37,7 @@ import {
 } from "./llm";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
+import { FORM_SIZES } from "../form-scale";
 import { HELP_BADGES, HELP_FEATURES } from "./types";
 import type {
   PersonKind,
@@ -192,6 +193,15 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * the chat when the teams are made), the opening line naming it, and one
  * example group, EN and TR side by side. 6,473 to 7,313 characters. Old and
  * new: MDs/prompt-form-note-2026-11-10.md.
+ *
+ * Later the same day (Kemal: say the amount so it can be changed): `form`
+ * carries who and how much. The action's definition names a change or a
+ * cancel of the amount MatchTime stated; one new field, `form` (personRef,
+ * delta, reason), defined once beside the others, its sizes read from the
+ * one scale the rating adjuster uses (`form-scale.ts` FORM_SIZES, so the
+ * two prompts cannot drift); the example group rewritten with the amounts,
+ * an amendment and a cancel, EN and TR side by side. 7,313 to 9,394
+ * characters. Old and new: MDs/prompt-form-note-amount-2026-11-10.md.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -567,7 +577,7 @@ action, exactly one:
   "suggest" asks you to recommend changes that make the teams fairer.
   "rename" keep the same two line-ups and change only their NAMES. Swapping the two teams' colours is not a rename: it is "swap" with swapSides.
   "clear" remove the line-ups altogether, so that there are no teams until they are made again ("clear the teams", "delete them").
-  "form" tells MatchTime how a player, the sender or another, will play in this match, so the teams are made with it in mind: tired, ill, injured, hungover, rusty or in top form, or asks MatchTime to rate them, or their strength, down or up for this match. Nothing is changed now: MatchTime reads it from the chat when it makes the teams. Every other field stays empty. A message that also asks for new teams is "generate".
+  "form" tells MatchTime how a player, the sender or another, will play in this match, so the teams are made with it in mind: tired, ill, injured, hungover, rusty or in top form, or asks MatchTime to rate them, or their strength, down or up for this match. It is also a change to the amount MatchTime said it will use for a player, or a cancel of it ("make it -1", "just -0.25 for me", "cancel my adjustment"), answering MatchTime's post that stated it. The teams are not changed now. Only form is filled; every other field stays empty. A message that also asks for new teams is "generate".
 includeRefs
   people the message says must play.
 teamNames
@@ -582,6 +592,13 @@ swapSides
   true when the two whole teams swap over, so that every player changes team: the teams trade places, or trade colours while each line-up stays together ("swap the colours"). moves is then empty. False otherwise.
 sides
   for "set" only: the players of the first team written, as red, and of the second, as yellow, each name as written, without numbers, headings, team names or notes such as "out, place open". Both empty for every other action.
+form
+  for "form" only, one entry for each player the message is about; empty for every other action.
+  personRef: the player as the message writes them. A change or a cancel that names nobody is about the player named in the MatchTime post it answers.
+  delta: what to add to that player's rating for this match only, from -1 to 1. An amount the message states is that amount ("make it -1", "-0.25", "half a point down" is -0.5), and a cancel ("cancel my adjustment", "no adjustment", "leave my rating") is 0. Otherwise size it from what the message says:
+${FORM_SIZES}
+- Asked to rate them down or up with no reason and no amount: -0.5 or +0.5.
+  reason: two to four words on why, in the message's language ("tired", "bad knee", "yorgun"); empty when the message gives none, as a change of amount usually does.
 toMatchTime
   true when THE MESSAGE asks MatchTime to do this: a request or an instruction about the teams, tagged or not ("swap Rafi and Yorel", "Ali and Habib on one team", "use these"). False when people are only talking about the teams among themselves: an opinion, a question to each other, a description of how the teams look ("Ali and Habib are always on one team", "are we going with these?").
 
@@ -617,10 +634,13 @@ No teams at all:
   "clear the teams" / "takımları sil" -> clear
 Fairer teams:
   "recommend swaps" / "any swaps to even it up?" / "takımları dengelemek için ne önerirsin?" -> suggest
-How a player will play in this match:
-  "reduce my strength for this match as I am quite tired" / "bu maç için gücümü düşür, çok yorgunum" -> form
-  "Tom hurt his knee last night, bear it in mind for the teams" / "Ali'nin dizi sakat, takımları kurarken dikkate al" -> form
-  "I'm flying today, rate me up" / "bugün formdayım, puanımı yükselt" -> form
+How a player will play in this match, and the amount MatchTime uses:
+  "reduce my strength for this match as I am quite tired" / "bu maç için gücümü düşür, çok yorgunum" -> form, form [{"personRef":"me","delta":-0.5,"reason":"tired"}] / [{"personRef":"me","delta":-0.5,"reason":"yorgun"}]
+  "Tom hurt his knee last night, bear it in mind for the teams" / "Ali'nin dizi sakat, takımları kurarken dikkate al" -> form, form [{"personRef":"Tom","delta":-1,"reason":"hurt knee"}] / [{"personRef":"Ali","delta":-1,"reason":"dizi sakat"}]
+  "I'm flying today, rate me up" / "bugün formdayım, puanımı yükselt" -> form, form [{"personRef":"me","delta":0.5,"reason":"in form"}] / [{"personRef":"me","delta":0.5,"reason":"formda"}]
+  "make it -1", replying to MatchTime's "Noted: -0.5 for Kemal (tired) in Tuesday's game" / "-1 yap", replying to "Not aldım: Salı maçında Kemal için -0,5 (yorgun)" -> form, form [{"personRef":"Kemal","delta":-1,"reason":""}]
+  "just -0.25 for me" / "benim için sadece -0,25 olsun" -> form, form [{"personRef":"me","delta":-0.25,"reason":""}]
+  "cancel my adjustment" / "puan ayarımı iptal et" -> form, form [{"personRef":"me","delta":0,"reason":""}]
 Talk among people, not asked of MatchTime:
   "Ali and Habib are always on the same team lol" / "Ali ile Habib hep aynı takımda" -> swap, pairings [["Ali","Habib"]], toMatchTime false
   "are we going with these teams?" / "bu takımlarla mı gidiyoruz?" -> show, toMatchTime false`,
@@ -994,8 +1014,23 @@ const TEAMS_SCHEMA = {
     // 2026-10-30: asked of MatchTime, or people talking among themselves.
     // Read by HQ for an untagged change only; never enough for a build.
     toMatchTime: { type: "boolean" },
+    // 2026-11-10: for "form", each player the note is about and the amount
+    // (`form-scale.ts`). Code clamps it and decides who may set it.
+    form: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          personRef: { type: "string" },
+          delta: { type: "number" },
+          reason: { type: "string" },
+        },
+        required: ["personRef", "delta", "reason"],
+        additionalProperties: false,
+      },
+    },
   },
-  required: ["action", "includeRefs", "teamNames", "swaps", "moves", "pairings", "swapSides", "sides", "toMatchTime"],
+  required: ["action", "includeRefs", "teamNames", "swaps", "moves", "pairings", "swapSides", "sides", "toMatchTime", "form"],
   additionalProperties: false,
 } as const;
 
@@ -1378,6 +1413,19 @@ export function parseFacts(
           .filter((g) => g.length >= 2),
         sides: { red: sideOf(raw.sides, "red"), yellow: sideOf(raw.sides, "yellow") },
         toMatchTime: raw.toMatchTime === true,
+        // For "form" only. An entry with no player or no numeric amount is
+        // dropped: it is acknowledged like talk about somebody else, never
+        // stored as a guess (the clamp is `form-note-rules.ts`).
+        form:
+          action !== "form"
+            ? []
+            : (Array.isArray(raw.form) ? (raw.form as Array<Record<string, unknown>>) : [])
+                .map((f) => ({
+                  personRef: str(f?.personRef).trim(),
+                  delta: typeof f?.delta === "number" && Number.isFinite(f.delta) ? f.delta : Number.NaN,
+                  reason: str(f?.reason).trim().slice(0, 200),
+                }))
+                .filter((f) => f.personRef && Number.isFinite(f.delta)),
       };
       return { facts, degradations };
     }

@@ -251,13 +251,13 @@ import {
   TEAM_OPS_APPLY_DEGRADED_PREFIX,
   TEAM_OPS_HANDLED_BY,
   applyGenerateTeams,
-  formNoteReply,
   requestNotHandledReply,
   teamOpsNotMatchDayReply,
   type EngineGenerateTeamsWrite,
   type TeamOpsApplyDeps,
 } from "./team-ops-engine";
 import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
+import { pickedUserId, prismaFormNoteStore, recordFormNote, type FormNoteStore } from "./form-note";
 
 export { TEAM_OPS_APPLY_DEGRADED_PREFIX, TEAM_OPS_HANDLED_BY };
 
@@ -273,8 +273,8 @@ export const TEAM_OPS_ACTIONS = TEAM_OPS_TEAM_ACTIONS;
  * PURE. What this path does with the teams extractor's facts: build
  * ("generate"), change the teams as they stand ("swap", the two supported
  * shapes), clear them ("clear", the extractor's action once it has one),
- * say a form note is noted ("form": how a player will play in this match,
- * which the rating adjuster reads from the chat when the teams are made),
+ * note a player's form for the next match ("form": the amount stored for
+ * the players the sender may set it for, and said: `form-note.ts`),
  * leave it to answer-batch ("show"), or one line ("unsupported").
  */
 export function teamActionOf(
@@ -382,6 +382,9 @@ export interface TeamOpsBatchDeps extends TeamOpsApplyDeps {
    *  in tests only; the real one is `applyClearTeams` (`team-clear.ts`,
    *  admins only). */
   clearTeams?: (senderUserId: string | null) => Promise<{ kind: string; reply: string | null; logReason: string }>;
+  /** Where a form note's amount is kept (`form-note.ts`). Injected in
+   *  tests only; the real one is `prismaFormNoteStore`. */
+  formNotes?: FormNoteStore;
 }
 
 /**
@@ -597,8 +600,9 @@ export async function runTeamOpsBatch(args: {
   const declined = new Map<string, "unsupported">();
   const swapFacts = new Map<string, Extract<Facts, { kind: "teams" }>>();
   const clearIds = new Set<string>();
-  // Form notes (2026-11-10): owned and answered in one line, nothing written.
-  const formIds = new Set<string>();
+  // Form notes (2026-11-10): owned and answered in one line; the amount is
+  // stored for each player the sender may set it for (`form-note.ts`).
+  const formFacts = new Map<string, Extract<Facts, { kind: "teams" }>>();
   for (const m of candidates) {
     const facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
@@ -641,7 +645,7 @@ export async function runTeamOpsBatch(args: {
     }
     if (kind === "swap") swapFacts.set(m.waMessageId, facts);
     else if (kind === "clear") clearIds.add(m.waMessageId);
-    else if (kind === "form") formIds.add(m.waMessageId);
+    else if (kind === "form") formFacts.set(m.waMessageId, facts);
     else if (kind !== "generate") declined.set(m.waMessageId, "unsupported");
     ownedIds.add(m.waMessageId);
   }
@@ -662,7 +666,7 @@ export async function runTeamOpsBatch(args: {
       !declined.has(m.waMessageId) &&
       !swapFacts.has(m.waMessageId) &&
       !clearIds.has(m.waMessageId) &&
-      !formIds.has(m.waMessageId),
+      !formFacts.has(m.waMessageId),
   );
   const firingId = orderedOwned[orderedOwned.length - 1]?.waMessageId ?? null;
   const supersededIds = new Set(
@@ -702,7 +706,7 @@ export async function runTeamOpsBatch(args: {
   const firing = engineMessages.find((m) => m.id === firingId && m.facts.kind !== "none");
   const whoItems = [
     ...(firing ? [{ id: firing.id, body: firing.body, author: firing.senderName ?? null, senderUserId: firing.senderUserId, facts: firing.facts }] : []),
-    ...[...swapFacts].map(([id, facts]) => {
+    ...[...swapFacts, ...formFacts].map(([id, facts]) => {
       const m = messages.find((x) => x.waMessageId === id)!;
       return { id, body: m.body, author: m.senderName ?? m.authorName, senderUserId: m.senderUserId, facts: facts as Facts };
     }),
@@ -991,21 +995,36 @@ export async function runTeamOpsBatch(args: {
     const superseded = supersededIds.has(m.waMessageId);
     const failed = failedIds.has(m.waMessageId);
 
-    if (formIds.has(m.waMessageId)) {
-      // A form note: nothing to write. The rating adjuster reads this
-      // message from the chat when the teams are made; the line says only
-      // that (and this path runs only for a club whose teams MatchTime
-      // makes: the `teamBalancing` gate above is silent otherwise).
+    if (formFacts.has(m.waMessageId)) {
+      // A form note (2026-11-10): the amount the extractor read is stored
+      // for each player the sender may set it for (a player for themselves,
+      // an organiser for anyone: `form-note-rules.ts`) and said; the rest
+      // the rating adjuster reads from the chat when the teams are made.
+      // This path runs only for a club whose teams MatchTime makes: the
+      // `teamBalancing` gate above is silent otherwise.
+      const sender = m.senderUserId ? state.roster.find((x) => x.userId === m.senderUserId) : undefined;
+      const noted = await recordFormNote({
+        orgId,
+        lang: state.features.language,
+        facts: formFacts.get(m.waMessageId)!,
+        sender: { userId: m.senderUserId, isOrganiser: sender?.isAdmin === true },
+        state,
+        userIdOf: pickedUserId(who?.people.get(m.waMessageId)),
+        nameOf: (id) => {
+          const p = state.roster.find((x) => x.userId === id);
+          return p?.displayName || p?.name || state.rowNames?.[id] || "?";
+        },
+        sourceMessageId: m.waMessageId,
+        store: deps.formNotes ?? prismaFormNoteStore,
+      });
       outcomes.set(m.waMessageId, {
         waMessageId: m.waMessageId,
         route: m.route as Route,
-        reply: formNoteReply({ lang: state.features.language, matchId: state.matchId, teamsMade: state.teams.length > 0 }),
+        reply: noted.reply,
         react: null,
         intent: "form_note",
-        action: "reply",
-        reasoning:
-          `${TEAM_OPS_HANDLED_BY} (${m.route}): a form note read by the teams extractor; ` +
-          `nothing written, the rating adjuster reads it from the chat when the teams are made`,
+        action: noted.stored.length > 0 ? "form-note-stored" : "reply",
+        reasoning: `${TEAM_OPS_HANDLED_BY} (${m.route}): a form note read by the teams extractor; ${noted.logReason}`,
         matchId: null,
         teamsGenerated: false,
         writeFailed: false,

@@ -800,11 +800,20 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         return null;
       }
       const command = teamCommandFromFacts(extracted.facts);
-      // A form note (2026-11-10): how a player will play in this match.
-      // Nothing changes; the rating adjuster reads it from the chat when the
-      // teams are made, and the line says so only when MatchTime makes them.
+      // A form note (2026-11-10): how a player will play in the next match,
+      // or a change to the amount MatchTime said. The sender is an organiser
+      // (HQ's teams need one), so the amount is stored for whoever it names
+      // and said (`form-note.ts`); said only when MatchTime makes the teams.
       if (command.kind === "form") {
-        const line = await formNoteReplyFor({ orgId: org.id, now, lang });
+        const line = await formNoteReplyFor({
+          orgId: org.id,
+          now,
+          lang,
+          facts: extracted.facts,
+          sender: { userId: actor, name: input.senderName ?? null, isOrganiser: true },
+          body,
+          messageId,
+        });
         return line === null ? null : said("form-noted", line);
       }
       if (command.kind === "unclear") {

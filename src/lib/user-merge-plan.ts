@@ -186,6 +186,8 @@ export interface MergeSnapshot extends PoolMergeRows {
   momVotes: Array<{ id: string; matchId: string; voterId: string; playerId: string }>;
   activityPositions: Array<U & { activityId: string }>;
   ratingAdjustments: Array<U & { matchId: string }>;
+  /** A player's form note per match (2026-11-10, `form-note-rules.ts`). */
+  formNotes: Array<U & { matchId: string }>;
   rosterSurveyDMs: Array<U & { surveyId: string }>;
   rosterSurveyResponses: Array<
     U & { surveyId: string; response: string; rawReply: string; classifiedAt: Date; adminOverride: boolean }
@@ -242,6 +244,7 @@ export function emptyMergeSnapshot(
     momVotes: [],
     activityPositions: [],
     ratingAdjustments: [],
+    formNotes: [],
     rosterSurveyDMs: [],
     rosterSurveyResponses: [],
     tentatives: [],
@@ -313,6 +316,8 @@ export const USER_REF_COLUMNS: RefColumn[] = [
   // Who sent a message that tagged people (2026-11-09, "DM these people"):
   // moves to the merged user, so "From <name>'s message" names the survivor.
   ...sc("MessageMentions", "senderUserId"),
+  // Who set a form note last (2026-11-10): the player or an organiser.
+  ...sc("FormNote", "setByUserId"),
   ...sc("UserAlias", "userId"),
   ...js("GroupPostState", "heldAdd"),
   ...sc("SquadMonth", "startedByUserId"),
@@ -339,6 +344,7 @@ export const SPECIAL_COLUMNS: string[] = [
   "MoMVote.playerId",
   "PlayerActivityPosition.userId",
   "RatingAdjustment.userId",
+  "FormNote.userId",
   "RosterSurveyDM.userId",
   "RosterSurveyResponse.userId",
   "TentativeAvailability.userId",
@@ -765,6 +771,7 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
   });
   rekey("playerActivityPosition", snap.activityPositions, ["userId"], (r) => `${r.activityId}:${r.userId}`, { rule: keepTarget });
   rekey("ratingAdjustment", snap.ratingAdjustments, ["userId"], (r) => `${r.matchId}:${r.userId}`, { rule: keepTarget });
+  rekey("formNote", snap.formNotes, ["userId"], (r) => `${r.matchId}:${r.userId}`, { rule: keepTarget });
   rekey("rosterSurveyDM", snap.rosterSurveyDMs, ["userId"], (r) => `${r.surveyId}:${r.userId}`, { rule: keepTarget });
   rekey("tentativeAvailability", snap.tentatives, ["userId"], (r) => `${r.matchId}:${r.userId}`, { rule: keepTarget });
   rekey("pendingBenchConfirmation", snap.pendingBench, ["userId"], (r) => `${r.matchId}:${r.userId}`, { rule: keepTarget });

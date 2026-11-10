@@ -14,7 +14,7 @@
 import { db } from "../db";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { withAliases } from "../member-aliases";
-import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "../i18n/dates";
+import { dayCommaTimeLabel, dayLabel, kickoffLabel, weekdayLabel } from "../i18n/dates";
 import { cancelledMatchToMention } from "../cancelled-match-notice";
 import { t } from "../i18n/t";
 import type { Lang } from "../i18n/lang";
@@ -323,6 +323,7 @@ export async function loadSquadState(
     maxPlayers: match?.maxPlayers ?? 0,
     kickoffLabel: match ? kickoffLabel(lang, match.date) : t(lang).no_match_label,
     matchLabel: match ? dayCommaTimeLabel(lang, match.date) : null,
+    matchDayName: match ? weekdayLabel(lang, match.date) : null,
     cancelledMatch: cancelled ? { id: cancelled.id, dayLabel: dayLabel(lang, cancelled.date) } : null,
     venue: match?.activity.venue ?? "",
     rows,

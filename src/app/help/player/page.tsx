@@ -194,8 +194,12 @@ export default function PlayerGuidePage() {
       <p>
         Tired, ill, injured or on fire? Tell MatchTime, for example{" "}
         <code>@Match Time I&apos;m tired, go easy on my rating for this match</code>
-        . It takes that into account when the teams are made, for that match
-        only, and you can say the same about a teammate&apos;s injury.
+        . It tells you the adjustment it will make when the teams are made, for
+        that match only (for example -0.5), never your rating. Want a different
+        amount? Say <code>@Match Time make it -1</code>, or{" "}
+        <code>@Match Time cancel my adjustment</code>. You can say the same
+        about a teammate&apos;s injury, and an organiser can set the adjustment
+        for anyone.
       </p>
 
       {/* ───────────────────────────────────────────────── */}

@@ -601,9 +601,11 @@ export interface TeamFacts {
    *  "show the teams again" once destroyed an admin's manual swap.
    *  clear (2026-10-30) = remove the line-ups (`team-clear.ts` applies
    *  it); it replaced the analyze route's word test. form (2026-11-10) =
-   *  how a player will play in this match (tired, injured, in form):
-   *  nothing is written, the rating adjuster reads the chat when the
-   *  teams are made, and MatchTime says it is noted. */
+   *  how a player will play in this match (tired, injured, in form), or a
+   *  change to the amount MatchTime said it will use: the amount is
+   *  stored for the player when the sender may set it
+   *  (`form-note-rules.ts`), and the rating adjuster reads the rest from
+   *  the chat when the teams are made. */
   action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear" | "restore" | "set" | "form";
   includeRefs: string[];
   teamNames: [string, string] | null;
@@ -653,6 +655,16 @@ export interface TeamFacts {
    * change only; a build always needs the tag or a reply to MatchTime.
    */
   toMatchTime?: boolean;
+  /**
+   * For "form" only (2026-11-10, Kemal: say the amount so it can be
+   * changed): each player the note is about, as the message writes them
+   * ("me" for the sender), the amount for this match on the one scale
+   * (`form-scale.ts`; an amount the message states, 0 for a cancel), and a
+   * few words on why ("" when none, as a change of amount usually has).
+   * Code clamps the amount and decides who may set it
+   * (`form-note-rules.ts`). Optional for older stubs; the parser sets it.
+   */
+  form?: Array<{ personRef: string; delta: number; reason: string }>;
 }
 
 /**
@@ -1016,6 +1028,10 @@ export interface SquadState {
    *  was read as that night's). Absent or null: no match, or an older
    *  fixture; the post then reads as it always has. */
   matchLabel?: string | null;
+  /** The active match's weekday in full, "Tuesday" / "Salı"
+   *  (`weekdayLabel`), for "-0.5 for Kemal in Tuesday's game" (form notes,
+   *  2026-11-10). Absent or null: no match, or an older fixture. */
+  matchDayName?: string | null;
   /** This week's match, CANCELLED, when the squad being shown is the next
    *  one (`cancelled-match-notice.ts` has the window). The squad post
    *  leads with it. `dayLabel` is "Fri 23 Oct" / "23 Ekim Cuma". Absent

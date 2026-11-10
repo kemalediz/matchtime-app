@@ -197,6 +197,7 @@ export async function loadMergeSnapshot(tx: Tx, S: string, T: string): Promise<M
 
   snap.activityPositions = (await pair(tx, "playerActivityPosition", S, T, "activityId", {})) as MergeSnapshot["activityPositions"];
   snap.ratingAdjustments = (await pair(tx, "ratingAdjustment", S, T, "matchId", {})) as MergeSnapshot["ratingAdjustments"];
+  snap.formNotes = (await pair(tx, "formNote", S, T, "matchId", {})) as MergeSnapshot["formNotes"];
   snap.rosterSurveyDMs = (await pair(tx, "rosterSurveyDM", S, T, "surveyId", {})) as MergeSnapshot["rosterSurveyDMs"];
   snap.rosterSurveyResponses = (await pair(tx, "rosterSurveyResponse", S, T, "surveyId", {
     response: true,

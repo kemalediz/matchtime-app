@@ -216,6 +216,21 @@ describe("which names the facts quote (structured fields only)", () => {
     expect(personRefsIn(admin, (r) => r === "me")).toEqual(["Amir", "Adam"]);
     expect(personRefsIn({ kind: "question", topic: "person_status", personRef: "Zair", statedCount: null } as Facts)).toEqual(["Zair"]);
   });
+  it("a form note's players (2026-11-10), the sender passed over", () => {
+    const form = {
+      kind: "teams",
+      action: "form",
+      includeRefs: [],
+      teamNames: null,
+      swaps: [],
+      pairings: [],
+      form: [
+        { personRef: "me", delta: -0.5, reason: "tired" },
+        { personRef: "Tom", delta: -1, reason: "bad knee" },
+      ],
+    } as unknown as TeamFacts;
+    expect(personRefsIn(form, (r) => r === "me")).toEqual(["Tom"]);
+  });
 });
 
 describe("a batch's who-is-who step", () => {

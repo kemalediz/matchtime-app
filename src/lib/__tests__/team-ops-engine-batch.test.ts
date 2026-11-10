@@ -1256,3 +1256,91 @@ describe("a form note: how a player will play in this match", () => {
     expect([...res.outcomes.values()][0].reply).toBeNull();
   });
 });
+
+// ── The amount, said and stored (Kemal, 2026-11-10) ──────────────────
+//
+// "It would be nice if it tells explicitly how much rating adjustment it
+// made (not giving the final rating) so if I don't like it, I can get it
+// amended further." The extractor's `form` carries who and how much; the
+// batch stores what the sender may set (`form-note-rules.ts`) and says it.
+
+describe("a form note's amount, stored and said", () => {
+  const TIRED = "@Match Time reduce my strength for this match as I am quite tired.";
+  const TOM_KNEE = "@Match Time Elvin has a bad knee, go easy on him";
+  const MAKE_IT = "@Match Time make it -1";
+  const tuesday = (over: WorldOpts = {}): SquadState => ({ ...squadWorld(over), matchDayName: "Tuesday" });
+  function memory() {
+    const rows = new Map<string, { delta: number; reason: string; setByUserId: string | null; sourceMessageId: string | null }>();
+    const store = {
+      async save(n: { matchId: string; userId: string; delta: number; reason: string; setByUserId: string | null; sourceMessageId: string | null }) {
+        const key = `${n.matchId}:${n.userId}`;
+        const before = rows.get(key);
+        const reason = n.reason || before?.reason || "";
+        rows.set(key, { delta: n.delta, reason, setByUserId: n.setByUserId, sourceMessageId: n.sourceMessageId });
+        return { existed: !!before, reason };
+      },
+    };
+    return { rows, store };
+  }
+  const elvinPicker: PersonPicker = async (req) => ({
+    picks: new Map(req.messages.map((m) => [m.id, new Map(m.refs.map((r) => [r, { kind: "member", userId: "u-elvin" } as PersonPick]))])),
+    usage: null,
+    degradations: [],
+  });
+
+  it("a player about themselves: the amount stored for the next match and said, no rating", async () => {
+    const { model } = stubModel({ [TIRED]: teamsFacts({ action: "form", toMatchTime: true, form: [{ personRef: "me", delta: -0.5, reason: "tired" }] }) });
+    const m = memory();
+    const r = recorder(model, tuesday(), { formNotes: m.store });
+    const res = await run({ messages: [msg({ body: TIRED, senderUserId: "u-sait", senderName: fullName("sait") })], deps: r.deps });
+    const o = [...res.outcomes.values()][0];
+    expect(o).toMatchObject({ intent: "form_note", action: "form-note-stored" });
+    expect(o.reply).toBe("Noted: -0.5 for Sait Demir (tired) in Tuesday's game. Want a different amount? Tag me, e.g. make it -1.");
+    expect(m.rows.get("match-1:u-sait")).toEqual({ delta: -0.5, reason: "tired", setByUserId: "u-sait", sourceMessageId: `wa-${TIRED.slice(0, 14)}` });
+    expect(r.generated).toEqual([]);
+  });
+
+  it("amended in a reply: 'make it -1' changes the stored amount", async () => {
+    const { model } = stubModel({ [MAKE_IT]: teamsFacts({ action: "form", toMatchTime: true, form: [{ personRef: "me", delta: -1, reason: "" }] }) });
+    const m = memory();
+    m.rows.set("match-1:u-sait", { delta: -0.5, reason: "tired", setByUserId: "u-sait", sourceMessageId: "wa-x" });
+    const r = recorder(model, tuesday(), { formNotes: m.store });
+    const res = await run({ messages: [msg({ body: MAKE_IT, senderUserId: "u-sait", senderName: fullName("sait"), repliesToMatchTime: true })], deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toBe("Changed: -1 for Sait Demir (tired) in Tuesday's game.");
+    expect(m.rows.get("match-1:u-sait")!.delta).toBe(-1);
+  });
+
+  it("an organiser about another player: stored for that player, named by who-is-who", async () => {
+    const { model } = stubModel({ [TOM_KNEE]: teamsFacts({ action: "form", toMatchTime: true, form: [{ personRef: "Elvin", delta: -1, reason: "bad knee" }] }) });
+    const m = memory();
+    const r = recorder(model, tuesday(), { formNotes: m.store, identify: elvinPicker });
+    // Kemal is an organiser in the fixture world.
+    const res = await run({ messages: [msg({ body: TOM_KNEE })], deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toBe(
+      "Noted: -1 for Elvin Aliyev (bad knee) in Tuesday's game. Want a different amount? Tag me, e.g. make it -0.5.",
+    );
+    expect(m.rows.get("match-1:u-elvin")).toMatchObject({ delta: -1, setByUserId: "u-kemal" });
+  });
+
+  it("a player about another player: acknowledged, nothing stored (the adjuster reads it from the chat)", async () => {
+    const { model } = stubModel({ [TOM_KNEE]: teamsFacts({ action: "form", toMatchTime: true, form: [{ personRef: "Elvin", delta: -1, reason: "bad knee" }] }) });
+    const m = memory();
+    const r = recorder(model, tuesday(), { formNotes: m.store, identify: elvinPicker });
+    const res = await run({ messages: [msg({ body: TOM_KNEE, senderUserId: "u-sait", senderName: fullName("sait") })], deps: r.deps });
+    expect([...res.outcomes.values()][0]).toMatchObject({
+      action: "reply",
+      reply: "Noted: I'll take it into account when the teams are made, for this match only.",
+    });
+    expect(m.rows.size).toBe(0);
+  });
+
+  it("teams already made, in Turkish: the amount, and that it counts if they are made again", async () => {
+    const { model } = stubModel({ [TIRED]: teamsFacts({ action: "form", toMatchTime: true, form: [{ personRef: "me", delta: -0.5, reason: "yorgun" }] }) });
+    const m = memory();
+    const r = recorder(model, { ...tuesday({ teams: { kemal: "RED", elvin: "YELLOW" }, features: { language: "tr" } }), matchDayName: "Salı" }, { formNotes: m.store });
+    const res = await run({ messages: [msg({ body: TIRED, senderUserId: "u-sait", senderName: fullName("sait") })], deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toBe(
+      'Not aldım: Salı maçında Sait Demir için -0,5 (yorgun). Takımlar zaten kuruldu; yeniden kurulursa geçerli olur. Farklı bir miktar mı istersiniz? Beni etiketleyip yazın, örneğin "-1 yap".',
+    );
+  });
+});
