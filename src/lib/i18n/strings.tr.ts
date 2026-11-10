@@ -1310,7 +1310,7 @@ export const tr: Strings = {
     ];
     if (p.squad) {
       lines.push(`📋 *Beni etiketleyip kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *@Match Time EVET* yazarsanız uygularım.`);
-      lines.push(`✏️ *"@Match Time Bilal'i ekle"*, *"@Match Time Sam gelemiyor"*, *"@Match Time Tom yedek"*: kadroda değişiklik.`);
+      lines.push(`✏️ *"@Match Time Bilal'i ekle"*, *"@Match Time Sam gelemiyor"*, *"@Match Time Tom yedek"*, *"@Match Time Tom yedeğe, Ben kadroya"*: kadroda değişiklik.`);
       lines.push(`🟥🟦 *"@Match Time takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`);
       lines.push(`↩️ Önceki takım listelerimden birine *"@Match Time bunları kullan"* diye yanıt verin ya da beni etiketleyip iki takımı yapıştırın: o takımları *@Match Time EVET* yazmanız için geri getiririm.`);
       lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik. Maç günü başlama saatinden sonra bunlar ve *"@Match Time Sam yerine Ben'i koy"* oynanan maçı düzeltir; oyuncu grubuna bir şey gönderilmez.`);

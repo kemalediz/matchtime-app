@@ -768,6 +768,11 @@ export default async function AdminGuidePage() {
         Open the match. You can add a player, take someone out, or move
         someone up from the bench.
       </p>
+      <p>
+        Or tag MatchTime in your admin group: <code>@Match Time swap Tom for
+        Ben</code> brings Ben up from the bench and puts Tom on it. If you say
+        Tom can&apos;t play, he is taken out instead.
+      </p>
 
       <h3>A message wasn&apos;t understood</h3>
       <p>

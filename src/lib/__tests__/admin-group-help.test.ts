@@ -24,7 +24,7 @@ describe("buildHqHelp, English", () => {
         `Tag me in every message here: type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough. Then ask in your own words, for example:`,
         ``,
         `📋 *Tag me and paste the whole squad list*: I show you what would change, and *@Match Time YES* within 30 minutes applies it.`,
-        `✏️ *"@Match Time put Bilal in"*, *"@Match Time Sam can't make it"*, *"@Match Time Tom to the bench"*: changes to the squad.`,
+        `✏️ *"@Match Time put Bilal in"*, *"@Match Time Sam can't make it"*, *"@Match Time Tom to the bench"*, *"@Match Time swap Tom for Ben"*: changes to the squad (a swap brings Ben up from the bench and puts Tom on it).`,
         `🟥🟦 *"@Match Time show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`,
         `↩️ Reply to one of my earlier team sheets with *"@Match Time use these"*, or tag me and paste the two teams: I bring those teams back for your *@Match Time YES*.`,
         `🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams. On match day after kickoff, these and *"@Match Time put Ben in for Sam"* fix the game just played, and nothing is posted in the players' group.`,
@@ -68,7 +68,7 @@ describe("buildHqHelp, Turkish", () => {
         `Burada her mesajda beni etiketleyin: *@* yazıp listeden *Match Time*'ı seçin. Adımı yazmak ya da mesajıma yanıt vermek yetmez. Sonra kendi cümlelerinizle sorun, örneğin:`,
         ``,
         `📋 *Beni etiketleyip kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *@Match Time EVET* yazarsanız uygularım.`,
-        `✏️ *"@Match Time Bilal'i ekle"*, *"@Match Time Sam gelemiyor"*, *"@Match Time Tom yedek"*: kadroda değişiklik.`,
+        `✏️ *"@Match Time Bilal'i ekle"*, *"@Match Time Sam gelemiyor"*, *"@Match Time Tom yedek"*, *"@Match Time Tom yedeğe, Ben kadroya"*: kadroda değişiklik.`,
         `🟥🟦 *"@Match Time takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`,
         `↩️ Önceki takım listelerimden birine *"@Match Time bunları kullan"* diye yanıt verin ya da beni etiketleyip iki takımı yapıştırın: o takımları *@Match Time EVET* yazmanız için geri getiririm.`,
         `🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik. Maç günü başlama saatinden sonra bunlar ve *"@Match Time Sam yerine Ben'i koy"* oynanan maçı düzeltir; oyuncu grubuna bir şey gönderilmez.`,
@@ -88,6 +88,20 @@ describe("buildHqHelp, Turkish", () => {
         `Bunu tekrar görmek için burada istediğiniz zaman *@Match Time neler yapabilirsin?* diye sorun.`,
       ].join("\n"),
     );
+  });
+});
+
+describe("a swap with the bench (2026-11-10, PR #581)", () => {
+  it("the squad line shows the swap, EN and TR; only for a weekly squad; no dash, no waiting list", () => {
+    const en = buildHqHelp({ lang: "en", squad: true, graphics: true, picks: false, paid: false });
+    expect(en).toContain(`*"@Match Time swap Tom for Ben"*: changes to the squad (a swap brings Ben up from the bench and puts Tom on it).`);
+    const tr = buildHqHelp({ lang: "tr", squad: true, graphics: true, picks: false, paid: false });
+    expect(tr).toContain(`*"@Match Time Tom yedeğe, Ben kadroya"*: kadroda değişiklik.`);
+    for (const out of [en, tr]) {
+      expect(out).not.toMatch(/[—–]/);
+      expect(out).not.toMatch(/waiting list|bekleme listesi/i);
+    }
+    expect(buildHqHelp({ lang: "en", squad: false, graphics: true, picks: false, paid: true })).not.toContain("swap Tom for Ben");
   });
 });
 
