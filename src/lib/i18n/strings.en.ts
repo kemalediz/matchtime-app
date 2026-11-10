@@ -1211,6 +1211,9 @@ export const en = {
       lines.push(`💬 Tag *@Match Time* when you want me to do or tell you something:`);
       for (const c of caps) lines.push(`   • ${c}`);
     }
+    // The open answer (2026-11-10, pipeline/open-answer.ts): a tagged
+    // question that fits nothing above is still answered from the context.
+    lines.push(`❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.`);
     // A real tag only (#482, #487, 2026-10-31): interaction-contract.ts
     // `piMentionsBot`.
     lines.push(`👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.`);
@@ -1613,6 +1616,8 @@ export const en = {
     lines.push(`🔁 *"@Match Time make it 8 a side"*, *"@Match Time 6 a side on Monday"*: one game a different size, inside those numbers. Going up, the bench moves in; going down, the last to join go to the bench. Each is told by DM, and I post the new list.`);
     lines.push(`🕗 *"@Match Time move Monday's game to 20:15"*, *"@Match Time from now on we kick off at 20:15"*: one game to another time or day of its week, or your weekly game from now on, with its games still to be played. Quietly: I don't post it in the players' group.`);
     lines.push(``, `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`);
+    // The open answer (2026-11-10, pipeline/open-answer.ts).
+    lines.push(`❓ Anything else: ask in your own words. I answer from what I know (the squad, the bench, the stats and this chat), or say if I don't know, and I change nothing.`);
     lines.push(`Ask *@Match Time what can you do?* here any time to see this again.`);
     return lines.join("\n");
   },

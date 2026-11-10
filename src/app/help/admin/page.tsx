@@ -798,6 +798,18 @@ export default async function AdminGuidePage() {
         rest of the chat is left alone.
       </p>
 
+      <h3>What if I ask MatchTime something it has no set answer for?</h3>
+      <p>
+        Tag it and ask in your own words, in either group, for example{" "}
+        <code>@Match Time who are the regulars based on what you know?</code>.
+        It answers from what it knows about your club: the next match, the
+        squad and the bench, your settings, the stats and the recent chat. A
+        suggestion is given as a suggestion, and it says plainly when it
+        doesn&apos;t know (the weather, for one). Asking never changes the
+        squad, the teams, a setting or a payment. In the players&apos; group it
+        never names the squad when your organisers post the list.
+      </p>
+
       {picturesOn && (
         <>
           <h3>Does MatchTime read pictures?</h3>

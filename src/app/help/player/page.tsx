@@ -172,6 +172,13 @@ export default function PlayerGuidePage() {
         <code>@Match Time my stats</code> and your own stats page link comes
         to you by DM.
       </p>
+      <p>
+        Anything else? Tag it and ask in your own words, for example{" "}
+        <code>@Match Time what did Sam say about parking?</code>. MatchTime
+        answers from what it knows about your club (the next match, the
+        squad and the bench, the stats and the recent chat), or tells you
+        plainly when it doesn&apos;t know. Asking never changes anything.
+      </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="teams">6. Teams</h2>

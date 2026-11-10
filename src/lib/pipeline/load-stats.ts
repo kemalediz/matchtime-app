@@ -85,6 +85,7 @@ export async function loadStatsTables(orgId: string): Promise<StatsTables> {
     ratings: rankedRows(ratings),
     appearances: record.appearances,
     recordsStart: record.recordsStart,
+    completedMatches: record.completedMatches,
     mom: (history?.momLeaderboard ?? []).map((r) => ({ userId: r.userId, name: r.name, wins: r.value })),
     elo: (history?.eloTop ?? []).map((r) => ({
       userId: r.userId,

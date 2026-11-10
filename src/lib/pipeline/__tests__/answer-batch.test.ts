@@ -108,6 +108,8 @@ function deps(
     loadFeatures: async () => ({ ...FEATURES_ON, ...features }),
     loadPayments,
     loadRatingProgress,
+    // An open question (topic `other`, 2026-11-10) reads the club's setup.
+    loadClub: async () => ({ collectorName: null, feePerPlayer: null, feeSplitTotal: false, teamsReady: "off" }),
     // Every stats question reads the club's tables since 2026-09-23 (the
     // appearances answer moved onto them). A small, fixed record.
     loadStats: async () => ({
@@ -359,7 +361,13 @@ describe("shapes that stay with the analyzer", () => {
 describe("a shape the composer cannot answer well is answered by nobody", () => {
   it.each([
     ["other", { topic: "other", personRef: "", statedCount: -1 }],
-  ])("question topic %s", async (_topic, facts) => {
+  ])("question topic %s, when the open answer is not usable", async (_topic, facts) => {
+    // SINCE 2026-11-10 `other` is answered by the grounded open answer
+    // (`open-answer.ts`, `answer-batch-open.test.ts`). This stub returns the
+    // extractor's facts to the open-answer call too, which carry no
+    // `answer`: the answer is refused, composes nothing, and the message is
+    // disowned, so it is still answered by nobody here (today's line).
+    //
     // This describe block was titled "…goes to the analyzer" and
     // asserted /analyzer/i, which was true until §10 step 8 deleted
     // `analyzeBatch` and the 19,850-token `SYSTEM_PROMPT`. `other` is
@@ -376,7 +384,8 @@ describe("a shape the composer cannot answer well is answered by nobody", () => 
     const res = await run({ messages: [msg({ body, route: "question" })], model });
     expect([...res.ownedIds]).toEqual([]);
     expect(res.outcomes.size).toBe(0);
-    expect(res.degradations.join(" ")).toMatch(/nobody answers this message/i);
+    expect(res.degradations.join(" ")).toMatch(/open answer not used/i);
+    expect(res.degradations.join(" ")).toMatch(/disowned so it reaches the operator note/i);
     expect(res.degradations.join(" ")).not.toMatch(/analyzer/i);
   });
 

@@ -1026,6 +1026,7 @@ export const tr: Strings = {
       lines.push(`💬 Bir şey yapmamı veya söylememi istediğinizde *@Match Time* etiketleyin:`);
       for (const c of caps) lines.push(`   • ${c}`);
     }
+    lines.push(`❓ Başka bir şey mi soracaksınız? Beni etiketleyip kendi cümlelerinizle sorun: kulüp hakkında bildiklerimden yanıtlarım, bilmiyorsam söylerim.`);
     lines.push(`👉 Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin. Adımı yazmak ya da mesajıma yanıt vermek yetmez.`);
     lines.push(`🤐 Sohbete ve şakalara yanıt vermem, rahat olun, araya girmem.`);
     if (f.momVoting) lines.push(`🏆 Her maçtan sonra *maçın adamını* gruba duyururum.`);
@@ -1329,6 +1330,7 @@ export const tr: Strings = {
     lines.push(`🔁 *"@Match Time 8'e 8 yapalım"*, *"@Match Time pazartesi 6'ya 6 oynayalım"*: bu sayılar içinde tek bir maçın formatı. Büyürken yedekler kadroya girer, küçülürken en son katılanlar yedeğe geçer. Herkese mesajla haber verir, yeni listeyi atarım.`);
     lines.push(`🕗 *"@Match Time pazartesi maçını 20:15'e al"*, *"@Match Time artık 20:15'te başlıyoruz"*: tek bir maçın saati ya da haftası içindeki günü, ya da bundan sonra haftalık maçınız, oynanmamış maçlarıyla birlikte. Sessizce: oyuncu grubuna yazmam.`);
     lines.push(``, `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *@Match Time partner kulüpler nasıl çalışır?* ya da *@Match Time ayarlar nerede?*`);
+    lines.push(`❓ Başka bir şey: kendi cümlelerinizle sorun. Bildiklerimden (kadro, yedekler, istatistikler ve bu sohbet) yanıtlarım, bilmiyorsam söylerim, hiçbir şeyi değiştirmem.`);
     lines.push(`Bunu tekrar görmek için burada istediğiniz zaman *@Match Time neler yapabilirsin?* diye sorun.`);
     return lines.join("\n");
   },

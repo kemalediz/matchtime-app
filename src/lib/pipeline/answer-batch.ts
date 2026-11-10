@@ -172,7 +172,7 @@ import type { SilenceFacts } from "../tagged-silence";
 import type { QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
-import { ORGANISERS_SPACE_INTENT } from "../group-copy";
+import { OPEN_ANSWER_INTENT, ORGANISERS_SPACE_INTENT } from "../group-copy";
 import { decide as decideDefault } from "./engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
@@ -192,6 +192,7 @@ import { planResultsQuestion, resultsKey } from "./results-answer";
 import { TABLES_CUT_BY_PERIOD, planStatsQuestion, type StatsPlan } from "./stats-answer";
 import { cutsTheRecord, periodKey, periodSince } from "./stats-period";
 import { answerGenericStats } from "./stats-generic";
+import { answerOpenQuestion } from "./open-answer";
 import {
   ANSWER_ENGINE_ROUTES,
   ANSWER_TEAM_ACTIONS,
@@ -361,16 +362,17 @@ export const ANSWER_ROUTES = ANSWER_ENGINE_ROUTES;
  * answer and which SHOULD hand back. See §14.3 and `identity.ts`.
  *
  * ─────────────────────────────────────────────────────────────────────
- * WHY `other` IS STILL ABSENT
+ * `other` JOINED ON 2026-11-10: THE OPEN ANSWER
  * ─────────────────────────────────────────────────────────────────────
  * A topic the extractor could not place is exactly the case §14.3 calls
- * "the least designed part of this document". A silent shrug is the
- * failure this design exists to remove — and the honest correction is
- * that `other` PRODUCES one. It used to end "so it goes back to the
- * prompt that can still try"; §10 step 8 deleted that prompt, so `other`
- * is silence plus an operator note. The note is the thin difference
- * between this and the shrug §14.3 objects to: a human is told, once an
- * hour, that a question went unanswered and what it said.
+ * "the least designed part of this document", and until today it was
+ * owned by nobody: the not-understood line in the players' group, HQ's
+ * one line. Kemal: "a category where nothing fits in, but still MatchTime
+ * uses the LLM to understand the question based on the messages that have
+ * been going on in the group, and try to answer that message within the
+ * context." It is answered by ONE grounded model call from the club's
+ * context (`open-answer.ts`, stage 2g below). A failed or refused answer
+ * composes nothing and is disowned, so the asker keeps today's line.
  */
 export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = [
   "count",
@@ -404,6 +406,9 @@ export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = [
   // setup, in both groups, from the roster and one targeted read
   // (`loadClub`).
   "club",
+  // 2026-11-10 (Kemal): anything else, answered by the grounded open
+  // answer (`open-answer.ts`). See the note above.
+  "other",
 ];
 
 /**
@@ -1307,7 +1312,11 @@ export async function runAnswerBatch(args: {
       // A carve-out above fired: nothing but the stats link is owned.
       // No `hand()`, so the degradations are the ones the early return
       // that stood there produced.
-      if (squadBlock !== null) continue;
+      //
+      // Except an open question (2026-11-10): it is not only about the
+      // upcoming squad, so it is answered with the squad left out of its
+      // context (`squadKnown` below), never from a squad nobody vouched for.
+      if (squadBlock !== null && facts.topic !== "other") continue;
       // ── THE MIXED-BATCH HAND-BACK, AND ITS ONE CARVE-OUT ──────────
       //
       // SINCE 2026-11-03 the carve-out below covers every topic but
@@ -1648,9 +1657,10 @@ export async function runAnswerBatch(args: {
   // The fifth targeted read, the same shape and the same fail-open as the
   // four above: a throw leaves `state.club` unloaded, the composer says
   // nothing, and the silent-id check disowns the message with a receipt.
+  // An open question is told the club's setup too (stage 2g).
   const wantsClub = [...ownedIds].some((id) => {
     const f = factsById.get(id);
-    return f?.kind === "question" && f.topic === "club";
+    return f?.kind === "question" && (f.topic === "club" || f.topic === "other");
   });
   if (wantsClub) {
     try {
@@ -1669,6 +1679,69 @@ export async function runAnswerBatch(args: {
       console.error("[answer-engine] club load failed:", err);
       degradations.push(detail);
     }
+  }
+
+  // ── Stage 2g: THE OPEN ANSWER, and only when asked (2026-11-10) ───
+  //
+  // A tagged question whose topic is `other`: ONE grounded model call per
+  // message (`open-answer.ts`), from the state above (the club's setup
+  // read in 2f), the stats tables (read here when stats Q&A is on and no
+  // stats question already read them) and the recent chat. Fails soft: a
+  // stats read that throws leaves the stats out of the context; a call
+  // that fails or a reply that is refused composes nothing, and the
+  // silent-id check below disowns the message, which keeps today's line.
+  const openIds = [...ownedIds].filter((id) => {
+    const f = factsById.get(id);
+    return f?.kind === "question" && f.topic === "other";
+  });
+  if (openIds.length > 0) {
+    let stats: StatsSnapshot | null = state.stats ?? null;
+    if (!stats && state.features.statsQa) {
+      try {
+        const load =
+          deps.loadStats ??
+          (async (o: string) => {
+            const mod = await import("./load-stats");
+            return mod.loadStatsTables(o);
+          });
+        stats = { ...(await load(orgId)), chemistry: {}, generic: {}, periods: {} };
+      } catch (err) {
+        console.error("[answer-engine] open-answer stats load failed:", err);
+        degradations.push(
+          `${ANSWER_DEGRADED_PREFIX} the stats read for the open answer failed (${
+            err instanceof Error ? err.message : String(err)
+          }); answered without the stats`,
+        );
+      }
+    }
+    const byId = new Map(messages.map((m) => [m.waMessageId, m]));
+    const openAnswers: NonNullable<SquadState["openAnswers"]> = {};
+    for (const id of openIds) {
+      const m = byId.get(id);
+      const g = await answerOpenQuestion({
+        model,
+        state,
+        stats,
+        audience: organisers ? "organisers" : "players",
+        squadKnown: squadBlock === null,
+        history,
+        lastBotPost,
+        reply: m?.reply ?? null,
+        now,
+        question: m?.body ?? "",
+        askerName: m?.senderName ?? m?.authorName ?? null,
+      });
+      openAnswers[id] = g.result;
+      if (g.called) cost = { usd: cost.usd + g.costUsd, calls: cost.calls + 1, ms: Math.max(cost.ms, g.ms) };
+      // Ids and counts only (Kemal's logging rule): never the words.
+      console.log(
+        `[answer-engine] ${id}: open answer ${"text" in g.result ? "answered" : "rejected"}, $${g.costUsd.toFixed(5)}, ${g.ms} ms`,
+      );
+      if ("rejected" in g.result) {
+        degradations.push(`${ANSWER_DEGRADED_PREFIX} ${id}: open answer not used (${g.result.rejected}); today's line instead`);
+      }
+    }
+    state = { ...state, openAnswers };
   }
 
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
@@ -1926,6 +1999,7 @@ export async function runAnswerBatch(args: {
     if (asked) return STATS_CLARIFICATION_INTENT;
     if (clarificationFor.has(id)) return STATS_CLARIFIED_INTENT;
     const f = factsById.get(id);
+    if (f?.kind === "question" && f.topic === "other") return OPEN_ANSWER_INTENT;
     if (f?.kind !== "question" || f.topic !== "stats") return "question";
     const plan = statsPlans.get(id);
     return plan?.kind === "generic" ? "stats_generic" : "stats_table";
