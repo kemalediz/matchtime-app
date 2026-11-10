@@ -94,3 +94,67 @@ describe("the generic stats request", () => {
     expect(ctx.text).toContain("1. Ali Kaya: 8.2 from 11 rated matches (up 2 places in the table since the last match)");
   });
 });
+
+/**
+ * THE LAST MAN OF THE MATCH (2026-11-10). "@Match Time who was the last
+ * MoM and for which game it was? How many votes did he get out of how many
+ * votes?" is a question about ONE match. The generic answer, and the open
+ * answer that shares this context, must hold that match's facts, and a name
+ * from its vote count must pass the grounding check.
+ */
+describe("the last Man of the Match in the generic context", () => {
+  const LAST = {
+    last: {
+      date: new Date("2026-10-20T19:30:00Z"),
+      teamLabels: ["Red", "Yellow"] as [string, string],
+      score: { red: 7, yellow: 9 },
+      winners: [
+        { userId: "u-habib", name: "Habib", votes: 2 },
+        { userId: "u-mojib", name: "Mojib", votes: 2 },
+      ],
+      tally: [
+        { userId: "u-habib", name: "Habib", votes: 2 },
+        { userId: "u-mojib", name: "Mojib", votes: 2 },
+        { userId: "u-sait", name: "Sait", votes: 1 },
+      ],
+      totalVotes: 5,
+      pickedByOrganisers: false,
+    },
+    openVoteDate: null,
+  };
+  const roster: Member[] = [
+    ...ROSTER,
+    { userId: "u-habib", name: "Habib", isAdmin: false, hasPhone: true },
+    { userId: "u-mojib", name: "Mojib", isAdmin: false, hasPhone: true },
+    { userId: "u-sait", name: "Sait", isAdmin: false, hasPhone: true },
+  ];
+
+  it("is printed after the tables, with the match, the shared winners and the votes", () => {
+    const snapshot = { ...SNAP, lastMom: LAST } as StatsSnapshot;
+    const ctx = buildGenericStatsContext({ snapshot, lang: "en", personUserId: null, self: false, roster });
+    expect(ctx.text).toContain("LAST MAN OF THE MATCH");
+    expect(ctx.text).toContain("Red 7, Yellow 9 (Yellow won)");
+    expect(ctx.text).toContain("shared between Habib and Mojib, with 2 votes each of the 5 votes cast");
+    expect(ctx.grounding.names).toEqual(expect.arrayContaining(["Habib", "Mojib", "Sait"]));
+  });
+
+  it("an answer naming the winners and the votes passes the grounding check", async () => {
+    const snapshot = { ...SNAP, lastMom: LAST } as StatsSnapshot;
+    const { model } = stub("The last Man of the Match was shared by Habib and Mojib, 2 of 5 votes each, on Tue 20 Oct (Yellow won 9 to 7).");
+    const res = await answerGenericStats({
+      model,
+      snapshot,
+      lang: "en",
+      question: "who was the last MoM?",
+      personUserId: null,
+      self: false,
+      roster,
+    });
+    expect("text" in res.result).toBe(true);
+  });
+
+  it("a snapshot with no last Man of the Match facts reads exactly as before", () => {
+    const ctx = buildGenericStatsContext({ snapshot: SNAP, lang: "en", personUserId: null, self: false, roster: ROSTER });
+    expect(ctx.text).not.toContain("LAST MAN OF THE MATCH");
+  });
+});

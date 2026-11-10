@@ -110,7 +110,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -253,7 +253,7 @@ how does the bench work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -354,7 +354,7 @@ how do I pay?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -448,7 +448,7 @@ how do ratings work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1517,7 +1517,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1666,7 +1666,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1795,7 +1795,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1866,7 +1866,7 @@ THE DM:
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -1998,7 +1998,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2138,7 +2138,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -2488,7 +2488,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2577,7 +2577,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2666,7 +2666,7 @@ stop sending me rating messages",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2765,7 +2765,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -2908,7 +2908,7 @@ how does the bench work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -3008,7 +3008,7 @@ how do I pay?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3103,7 +3103,7 @@ how do ratings work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3393,7 +3393,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3540,7 +3540,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3668,7 +3668,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3739,7 +3739,7 @@ THE DM:
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -3820,7 +3820,7 @@ how many have rated so far?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -3890,7 +3890,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4009,7 +4009,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -4267,7 +4267,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4355,7 +4355,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4443,7 +4443,7 @@ stop sending me rating messages",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4512,7 +4512,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4629,7 +4629,7 @@ how does the bench work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -4704,7 +4704,7 @@ how do I pay?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4774,7 +4774,7 @@ how do ratings work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4842,7 +4842,7 @@ IN",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4887,7 +4887,7 @@ invite players for the next game",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -4942,7 +4942,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4987,7 +4987,7 @@ can't make it this week, sorry",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5032,7 +5032,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5135,7 +5135,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5180,7 +5180,7 @@ THE DM:
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -5235,7 +5235,7 @@ how many have rated so far?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -5280,7 +5280,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5373,7 +5373,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -5467,7 +5467,7 @@ yes",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5512,7 +5512,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5575,7 +5575,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5638,7 +5638,7 @@ stop sending me rating messages",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5688,7 +5688,7 @@ exports[`the DMs, per club shape (must not change in C3) > POST /api/whatsapp/dm
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5719,7 +5719,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -5740,7 +5740,7 @@ GO",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -5791,7 +5791,7 @@ Message me *help* and a topic to learn more, e.g. *help payments*
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5837,7 +5837,7 @@ Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the 
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5881,7 +5881,7 @@ You'll get the link the morning after the game. Ask me for yours any time, in yo
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5902,7 +5902,7 @@ IN",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -5933,7 +5933,7 @@ invite players for the next game",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5954,7 +5954,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5975,7 +5975,7 @@ can't make it this week, sorry",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5996,7 +5996,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6017,7 +6017,7 @@ ask our partner clubs for a player",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6038,7 +6038,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6069,7 +6069,7 @@ THE MESSAGE (from Owen, who tagged the bot):
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6090,7 +6090,7 @@ how many have rated so far?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6111,7 +6111,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6132,7 +6132,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6153,7 +6153,7 @@ yes",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6174,7 +6174,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6195,7 +6195,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6255,7 +6255,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6372,7 +6372,7 @@ how does the bench work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6447,7 +6447,7 @@ how do I pay?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6517,7 +6517,7 @@ how do ratings work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6585,7 +6585,7 @@ IN",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6689,7 +6689,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6734,7 +6734,7 @@ can't make it this week, sorry",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6779,7 +6779,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6882,7 +6882,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6927,7 +6927,7 @@ THE DM:
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6982,7 +6982,7 @@ how many have rated so far?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -7027,7 +7027,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7119,7 +7119,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -7212,7 +7212,7 @@ yes",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7257,7 +7257,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7320,7 +7320,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7383,7 +7383,7 @@ stop sending me rating messages",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7483,7 +7483,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -7626,7 +7626,7 @@ how does the bench work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -7727,7 +7727,7 @@ how do I pay?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -7821,7 +7821,7 @@ how do ratings work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -8890,7 +8890,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9039,7 +9039,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9168,7 +9168,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9239,7 +9239,7 @@ THE DM:
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -9371,7 +9371,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9511,7 +9511,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -9810,7 +9810,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9899,7 +9899,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9988,7 +9988,7 @@ stop sending me rating messages",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10083,7 +10083,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10226,7 +10226,7 @@ how does the bench work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -10327,7 +10327,7 @@ how do I pay?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10421,7 +10421,7 @@ how do ratings work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11490,7 +11490,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11639,7 +11639,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11768,7 +11768,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11839,7 +11839,7 @@ THE DM:
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -11971,7 +11971,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12111,7 +12111,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -12410,7 +12410,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12499,7 +12499,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12588,7 +12588,7 @@ stop sending me rating messages",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12688,7 +12688,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12831,7 +12831,7 @@ how does the bench work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -12932,7 +12932,7 @@ how do I pay?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -13026,7 +13026,7 @@ how do ratings work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14095,7 +14095,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14244,7 +14244,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14373,7 +14373,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14444,7 +14444,7 @@ THE DM:
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -14576,7 +14576,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14731,7 +14731,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -15045,7 +15045,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -15134,7 +15134,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -15223,7 +15223,7 @@ stop sending me rating messages",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -15323,7 +15323,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -15531,7 +15531,7 @@ how does the bench work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -15632,7 +15632,7 @@ how do I pay?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -15728,7 +15728,7 @@ how do ratings work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16220,7 +16220,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16369,7 +16369,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16563,7 +16563,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16699,7 +16699,7 @@ THE DM:
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -16896,7 +16896,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17097,7 +17097,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -17455,7 +17455,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17544,7 +17544,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17633,7 +17633,7 @@ stop sending me rating messages",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17702,7 +17702,7 @@ cheers mate",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17884,7 +17884,7 @@ how does the bench work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -17959,7 +17959,7 @@ how do I pay?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -18029,7 +18029,7 @@ how do ratings work?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -18097,7 +18097,7 @@ IN",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19022,7 +19022,7 @@ might be late, probably in",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19067,7 +19067,7 @@ can't make it this week, sorry",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19112,7 +19112,7 @@ paid",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19280,7 +19280,7 @@ I'll give you cash on the night",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19390,7 +19390,7 @@ THE MESSAGE (from Davide, who tagged the bot):
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -19561,7 +19561,7 @@ what time is kick off?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19736,7 +19736,7 @@ how many have we got?",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -19847,7 +19847,7 @@ yes",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19892,7 +19892,7 @@ you can message me again",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19955,7 +19955,7 @@ stop messaging me",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -20018,7 +20018,7 @@ stop sending me rating messages",
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
         "schema": "5794eae9d2842843",
-        "system": "6bcf8312ff259efb",
+        "system": "b68ee67e5531a000",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):

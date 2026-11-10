@@ -33,6 +33,7 @@ import { HAIKU_SHORT_ANSWER_MAX_TOKENS } from "../models";
 import { ELO_TOP_MIN_MATCHES_SHOWN, GROUP_LIST_CAP, GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./stats-answer";
 import { groundingCheck, type GroundingContext } from "./stats-grounding";
 import { MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES } from "../mr-reliable";
+import { lastMomContextLines } from "./last-mom";
 import type { Lang } from "../i18n/lang";
 import { monthYearLabel } from "../i18n/dates";
 import { stripLongDashes } from "../house-style";
@@ -132,6 +133,10 @@ export function buildGenericStatsContext(args: {
     L.push("", `MR RELIABLE BADGE HOLDERS (average ${d(MR_RELIABLE_MIN_AVG)}+, little variation, ${MR_RELIABLE_MIN_GAMES}+ rated matches; most consistent first):`);
     s.mrReliable.slice(0, GROUP_LIST_CAP).forEach((r, i) => L.push(`${i + 1}. ${r.name}: ${d(r.avg)} average from ${r.games} rated matches`));
   }
+  // ONE match's Man of the Match (2026-11-10, `last-mom.ts`): the tables
+  // above rank players across matches and cannot say who won the last vote.
+  const lastMom = lastMomContextLines(s.lastMom);
+  if (lastMom.length) L.push("", ...lastMom);
 
   if (args.personUserId) {
     const member = args.roster.find((m) => m.userId === args.personUserId);
@@ -171,6 +176,7 @@ export function buildGenericStatsContext(args: {
     ...s.elo.map((r) => r.name),
     ...s.mrReliable.map((r) => r.name),
     ...(s.teamOfSeason?.slots.map((x) => x.name) ?? []),
+    ...(s.lastMom?.last?.tally.map((x) => x.name) ?? []),
   ]) {
     if (text.includes(extra) && !names.includes(extra)) names.push(extra);
   }

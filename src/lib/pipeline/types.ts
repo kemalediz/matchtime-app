@@ -26,6 +26,7 @@
 // `SquadState.payments` and `payment-answer.ts`'s header.
 import type { QuotedRef } from "../quoted-message";
 import type { PaymentSnapshot } from "./payment-answer";
+import type { LastMomFacts } from "./last-mom";
 import type { PersonPick } from "./who-is-who";
 // Same rule, same reason: `rating-progress-answer.ts` is the Prisma-free
 // half of `rating-progress.ts`, split out on 2026-09-11 so the composer
@@ -1445,6 +1446,10 @@ export interface StatsSnapshot {
    *  (2026-11-10), so the open answer can say when the data is thin.
    *  Optional so fixtures that predate it keep their shape. */
   completedMatches?: number;
+  /** The last decided Man of the Match, for ONE match: the match, the
+   *  winner or the shared winners, the votes (`last-mom.ts`, 2026-11-10).
+   *  Optional so fixtures that predate it keep their shape. */
+  lastMom?: LastMomFacts | null;
   /** The cut tables, for the periods this batch's questions asked
    *  about, by `periodKey`. Filled by `answer-batch.ts`. */
   periods: Record<string, StatsPeriodTables>;
