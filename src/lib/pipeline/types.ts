@@ -473,8 +473,27 @@ export const HELP_FEATURES = [
   "partners",
   "pool",
   "settings",
+  // The admin group's short menu (2026-11-10, Kemal): "help players"
+  // (finding players for open places) and "help graphics" (the poster
+  // and the team sheet). Answered with the admin group's own lines there
+  // (admin-group-help.ts `hqHelpTopicReply`); elsewhere each reads as the
+  // nearest players' topic (`playersHelpTopic`).
+  "find_players",
+  "graphics",
 ] as const;
 export type HelpFeature = (typeof HELP_FEATURES)[number];
+
+/** The help topics the players' group and DMs explain: every feature but
+ *  the admin group's own two. */
+export type PlayersHelpTopic = Exclude<HelpFeature, "find_players" | "graphics">;
+
+/** A feature as the players' group and DMs answer it: finding players is
+ *  the squad's topic (the bench, a place opening), graphics the teams'. */
+export function playersHelpTopic(f: HelpFeature): PlayersHelpTopic {
+  if (f === "find_players") return "availability";
+  if (f === "graphics") return "teams";
+  return f;
+}
 
 /** The badges a `how_it_works` question about badges can name, as their
  *  keys (`BadgeKey`, badge-rules.ts; a test pins the two lists equal). */

@@ -48,7 +48,8 @@ scenarios("help about the player pool, asked in any words", () => {
     const ex = await fnf.post("owner", ask, { tag: true, headers: OPEN });
 
     pool.expectSent(ex.sent, [{ to: "fnf.group", channel: "group", text: /It's off for your club/ }]);
-    expect(ex.sent[0].text).toMatch(/turn on \*Player pool\* here:\nhttps?:\/\/\S+\/admin\/settings#player-pool$/);
+    // Every topic ends with the way back to the menu (2026-11-10).
+    expect(ex.sent[0].text).toMatch(/turn on \*Player pool\* here:\nhttps?:\/\/\S+\/admin\/settings#player-pool\n\n↩️ \*@Match Time help\* for the menu\.$/);
     expect(ex.sent[0].text).not.toContain("/r/");
     clearPipelineStubs();
   });
@@ -64,12 +65,12 @@ scenarios("help about the player pool, asked in any words", () => {
     expect(ex.json).toMatchObject({ handled: true, outcome: "hq-help" });
     pool.expectSent(ex.sent, [{ to: "fnf.hq", channel: "hq", text: /It's on for your club/ }]);
     expect(ex.sent[0].text).toContain("*@Match Time ask the player pool for 2 players*");
-    expect(ex.sent[0].text).toMatch(/\/admin\/settings#player-pool$/);
+    expect(ex.sent[0].text).toMatch(/\/admin\/settings#player-pool\n\n↩️ \*@Match Time help\* for the menu\.$/);
 
     const m = await fnf.hq.say("owner", menu, { tagged: true, poolOpen: true });
     expect(m.json).toMatchObject({ handled: true, outcome: "hq-help" });
     expect(m.sent[0].text).toContain("*MatchTime in your admin group*");
-    expect(m.sent[0].text).toContain(`🌍 *"@Match Time ask the player pool for 2 players"*`);
+    expect(m.sent[0].text).toContain(`📣 *Finding players*: "ask the group", "ask the player pool for 2", "DM them"`);
 
     // The platform switch off: no pool line in the menu.
     const off = await fnf.hq.say("owner", menu, { tagged: true, poolOpen: false });

@@ -1172,8 +1172,8 @@ describe("questions in HQ: the shared question answering, with the organisers' c
         now: NOW,
       }),
     );
-    // The help menu is what a how-it-works question is answered with in HQ.
-    expect(hqQuestion.answerHqQuestion.mock.calls[0][0].hqHelp).toContain("*MatchTime in your admin group*");
+    // The HQ menu and topics are built from the club's gates (admin-group-help.ts).
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0].gates).toMatchObject({ graphics: true });
   });
 
   it("routed question: the same path", async () => {

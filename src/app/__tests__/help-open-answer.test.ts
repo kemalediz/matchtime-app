@@ -42,8 +42,9 @@ describe("@Match Time help", () => {
   });
   it("the admin group's menu says it too, EN and TR", () => {
     const p = { squad: true, graphics: false, picks: false, paid: false };
-    expect(buildHqHelp({ ...p, lang: "en" })).toMatch(/❓ Anything else: ask in your own words\..*I change nothing\./);
-    expect(buildHqHelp({ ...p, lang: "tr" })).toMatch(/❓ Başka bir şey: kendi cümlelerinizle sorun\..*hiçbir şeyi değiştirmem\./);
+    // The short menu (2026-11-10, Kemal's approved wording).
+    expect(buildHqHelp({ ...p, lang: "en" })).toContain("❓ *Anything else*: just ask, I answer from what I know");
+    expect(buildHqHelp({ ...p, lang: "tr" })).toContain("❓ *Başka bir şey*: sormanız yeter, bildiklerimden yanıtlarım");
   });
 });
 

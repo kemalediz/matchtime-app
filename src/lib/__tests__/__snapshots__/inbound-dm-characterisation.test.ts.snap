@@ -109,8 +109,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -252,8 +252,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -286,40 +286,15 @@ how does the bench work?",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help availability*: squad & availability
-   • *@Match Time help friend*: bringing a friend
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help payments*: match fees
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
-✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • see who's in / how many we've got
-   • make / show the teams
-   • who won last week? / past stats
-❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
+            "text": "ℹ️ *MatchTime help*
+✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
+💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
+🤐 I don't reply to banter and jokes, so they're safe.
 📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💷 After each game I'll DM you a link to pay your match fee.
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: partner clubs. Ask me about one and I'll show you how to switch it on.
-
+💡 *Not on here yet*: partner clubs. Ask *help partners* to see how it works and how to switch it on.
 ⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
           },
         },
         "call": "botJob.create",
@@ -382,8 +357,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -411,7 +386,9 @@ After each game I ask the money collector for the fee per player, then DM everyo
 Anyone who hasn't paid, and hasn't chosen to pay the money collector directly, gets the link again each day, for up to 6 days after the match.
 To see the latest, ask me in your own words (for example *@Match Time who still owes?*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -474,8 +451,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -503,7 +480,9 @@ After each match I DM every player who turned out a private link. You rate the o
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
 You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -1541,8 +1520,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1690,8 +1669,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1819,8 +1798,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1890,8 +1869,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -2022,8 +2001,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2162,8 +2141,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -2512,8 +2491,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2601,8 +2580,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2690,8 +2669,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2789,8 +2768,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -2932,8 +2911,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -2966,40 +2945,17 @@ how does the bench work?",
             "orgId": "org-fnf",
             "phone": "447700900312",
             "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help availability*: squad & availability
-   • *@Match Time help friend*: bringing a friend
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
-✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.
+            "text": "ℹ️ *MatchTime help*
+✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
 📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • who won last week? / past stats
-❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
+💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: the stats or anything else. Replying to my message is not enough.
+🤐 I don't reply to banter and jokes, so they're safe.
 📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💷 Want to collect match fees? Ask me: *@Match Time help payments*
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: match fees, partner clubs. Ask me about one and I'll show you how to switch it on.
-
+💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
 📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).
-
 ⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
           },
         },
         "call": "botJob.create",
@@ -3061,8 +3017,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3092,7 +3048,9 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.",
+🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -3154,8 +3112,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3183,7 +3141,9 @@ After each match I DM every player who turned out a private link. You rate the o
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
 You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -3442,8 +3402,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3589,8 +3549,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3717,8 +3677,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3788,8 +3748,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -3869,8 +3829,8 @@ how many have rated so far?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -3939,8 +3899,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4058,8 +4018,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -4316,8 +4276,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4404,8 +4364,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4492,8 +4452,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4561,8 +4521,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4678,8 +4638,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -4712,40 +4672,17 @@ how does the bench work?",
             "orgId": "org-fnf",
             "phone": "447700900312",
             "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help availability*: squad & availability
-   • *@Match Time help friend*: bringing a friend
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
-✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.
+            "text": "ℹ️ *MatchTime help*
+✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
 📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • who won last week? / past stats
-❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
+💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: the stats or anything else. Replying to my message is not enough.
+🤐 I don't reply to banter and jokes, so they're safe.
 📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💷 Want to collect match fees? Ask me: *@Match Time help payments*
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: match fees, partner clubs. Ask me about one and I'll show you how to switch it on.
-
+💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
 📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).
-
 ⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
           },
         },
         "call": "botJob.create",
@@ -4782,8 +4719,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4813,7 +4750,9 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.",
+🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -4850,8 +4789,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4879,7 +4818,9 @@ After each match I DM every player who turned out a private link. You rate the o
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
 You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -4916,8 +4857,8 @@ IN",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4961,8 +4902,8 @@ invite players for the next game",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -5016,8 +4957,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5061,8 +5002,8 @@ can't make it this week, sorry",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5106,8 +5047,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5209,8 +5150,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5254,8 +5195,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -5309,8 +5250,8 @@ how many have rated so far?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -5354,8 +5295,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5447,8 +5388,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -5541,8 +5482,8 @@ yes",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5586,8 +5527,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5649,8 +5590,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5712,8 +5653,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5762,8 +5703,8 @@ exports[`the DMs, per club shape (must not change in C3) > POST /api/whatsapp/dm
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5793,8 +5734,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -5814,8 +5755,8 @@ GO",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -5848,39 +5789,15 @@ how does the bench work?",
             "orgId": "org-muted",
             "phone": "447700900310",
             "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help availability*: squad & availability
-   • *@Match Time help friend*: bringing a friend
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
-✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • see who's in / how many we've got
-   • make / show the teams
-   • who won last week? / past stats
-❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
+            "text": "ℹ️ *MatchTime help*
+✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
+💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
+🤐 I don't reply to banter and jokes, so they're safe.
 📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💳 I keep track of who's *paid*.
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: match fees, partner clubs. Ask me about one and I'll show you how to switch it on.
-
+💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
 ⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
           },
         },
         "call": "botJob.create",
@@ -5893,8 +5810,8 @@ https://matchtime.ai/r/<code>",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5924,7 +5841,9 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.",
+🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -5937,8 +5856,8 @@ Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the 
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5966,7 +5885,9 @@ After each match I DM every player who turned out a private link. You rate the o
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
 You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -5979,8 +5900,8 @@ You'll get the link the morning after the game. Ask me for yours any time, in yo
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6000,8 +5921,8 @@ IN",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6031,8 +5952,8 @@ invite players for the next game",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6052,8 +5973,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6073,8 +5994,8 @@ can't make it this week, sorry",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6094,8 +6015,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6115,8 +6036,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6136,8 +6057,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6167,8 +6088,8 @@ THE MESSAGE (from Owen, who tagged the bot):
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6188,8 +6109,8 @@ how many have rated so far?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6209,8 +6130,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6230,8 +6151,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6251,8 +6172,8 @@ yes",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6272,8 +6193,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6293,8 +6214,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6353,8 +6274,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6470,8 +6391,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6504,34 +6425,15 @@ how does the bench work?",
             "orgId": "org-ratings",
             "phone": "447700900310",
             "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
+            "text": "ℹ️ *MatchTime help*
 📋 Paste your squad list and I'll read who's playing, no need to tag me.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • make / show the teams
-   • who won last week? / past stats
-❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
+💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: the teams, the stats or anything else. Replying to my message is not enough.
+🤐 I don't reply to banter and jokes, so they're safe.
 📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💷 Want to collect match fees? Ask me: *@Match Time help payments*
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: squad & availability, bringing a friend, match fees, partner clubs. Ask me about one and I'll show you how to switch it on.
-
+💡 *Not on here yet*: squad & availability, bringing a friend, match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
 ⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
           },
         },
         "call": "botJob.create",
@@ -6568,8 +6470,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6599,7 +6501,9 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.",
+🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -6636,8 +6540,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6665,7 +6569,9 @@ After each match I DM every player who turned out a private link. You rate the o
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
 You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -6702,8 +6608,8 @@ IN",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6806,8 +6712,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6851,8 +6757,8 @@ can't make it this week, sorry",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6896,8 +6802,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6999,8 +6905,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7044,8 +6950,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -7099,8 +7005,8 @@ how many have rated so far?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -7144,8 +7050,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7236,8 +7142,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -7329,8 +7235,8 @@ yes",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7374,8 +7280,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7437,8 +7343,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7500,8 +7406,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7600,8 +7506,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -7743,8 +7649,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -7777,40 +7683,15 @@ how does the bench work?",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help availability*: squad & availability
-   • *@Match Time help friend*: bringing a friend
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help payments*: match fees
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
-✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • see who's in / how many we've got
-   • make / show the teams
-   • who won last week? / past stats
-❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
+            "text": "ℹ️ *MatchTime help*
+✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
+💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
+🤐 I don't reply to banter and jokes, so they're safe.
 📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💷 After each game I'll DM you a link to pay your match fee.
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: partner clubs. Ask me about one and I'll show you how to switch it on.
-
+💡 *Not on here yet*: partner clubs. Ask *help partners* to see how it works and how to switch it on.
 ⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
           },
         },
         "call": "botJob.create",
@@ -7873,8 +7754,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -7902,7 +7783,9 @@ After each game I ask the money collector for the fee per player, then DM everyo
 Anyone who hasn't paid, and hasn't chosen to pay the money collector directly, gets the link again each day, for up to 6 days after the match.
 To see the latest, ask me in your own words (for example *@Match Time who still owes?*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -7965,8 +7848,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -7994,7 +7877,9 @@ After each match I DM every player who turned out a private link. You rate the o
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
 You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -9032,8 +8917,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9181,8 +9066,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9310,8 +9195,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9381,8 +9266,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -9513,8 +9398,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9653,8 +9538,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -9952,8 +9837,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10041,8 +9926,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10130,8 +10015,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10225,8 +10110,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10368,8 +10253,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -10402,40 +10287,15 @@ how does the bench work?",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help availability*: squad & availability
-   • *@Match Time help friend*: bringing a friend
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help payments*: match fees
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
-✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • see who's in / how many we've got
-   • make / show the teams
-   • who won last week? / past stats
-❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
+            "text": "ℹ️ *MatchTime help*
+✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
+💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
+🤐 I don't reply to banter and jokes, so they're safe.
 📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💷 After each game I'll DM you a link to pay your match fee.
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: partner clubs. Ask me about one and I'll show you how to switch it on.
-
+💡 *Not on here yet*: partner clubs. Ask *help partners* to see how it works and how to switch it on.
 ⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
           },
         },
         "call": "botJob.create",
@@ -10498,8 +10358,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10527,7 +10387,9 @@ After each game I ask the money collector for the fee per player, then DM everyo
 Anyone who hasn't paid, and hasn't chosen to pay the money collector directly, gets the link again each day, for up to 6 days after the match.
 To see the latest, ask me in your own words (for example *@Match Time who still owes?*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -10590,8 +10452,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10619,7 +10481,9 @@ After each match I DM every player who turned out a private link. You rate the o
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
 You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -11657,8 +11521,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11806,8 +11670,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11935,8 +11799,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12006,8 +11870,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -12138,8 +12002,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12278,8 +12142,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -12577,8 +12441,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12666,8 +12530,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12755,8 +12619,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12855,8 +12719,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12998,8 +12862,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -13032,40 +12896,15 @@ how does the bench work?",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
-            "text": "ℹ️ *MatchTime yardım*, açıklayabileceklerim şunlar. Beni şunlardan biriyle etiketleyin:
-   • *@Match Time yardım kadro*, kadro ve katılım
-   • *@Match Time yardım arkadaş*, arkadaş getirmek
-   • *@Match Time yardım takımlar*, dengeli takımlar
-   • *@Match Time yardım maçın adamı*, maçın adamı
-   • *@Match Time yardım puanlama*, oyuncu puanları
-   • *@Match Time yardım rozetler*, rozetler ve nasıl kazanılır
-   • *@Match Time yardım hatırlatma*, hatırlatmalar
-   • *@Match Time yardım ödeme*, maç ücretleri
-   • *@Match Time yardım program*, program ve rezervasyonlar
-   • *@Match Time yardım ayarlar*, ayarların yeri
-
-✅ Kendi durumunuz için *"varım"* veya *"yokum"* yazın, bir takım arkadaşınız gelemiyorsa onu da yazın (örneğin *Sami gelemiyor*), beni etiketlemenize gerek yok.
-🤔 Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce size özelden sorarım.
-👥 Arkadaşınızı mı getiriyorsunuz? Söylemeniz yeter (örneğin *arkadaşım Ali de geliyor*), ona göndermeniz için size özelden bir bağlantı yollarım.
-💬 Bir şey yapmamı veya söylememi istediğinizde *@Match Time* etiketleyin:
-   • kim var / kaç kişiyiz
-   • takımları kur / takımları göster
-   • geçen hafta kim kazandı? / eski istatistikler
-❓ Başka bir şey mi soracaksınız? Beni etiketleyip kendi cümlelerinizle sorun: kulüp hakkında bildiklerimden yanıtlarım, bilmiyorsam söylerim.
-👉 Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin. Adımı yazmak ya da mesajıma yanıt vermek yetmez.
-🤐 Sohbete ve şakalara yanıt vermem, rahat olun, araya girmem.
-🏆 Her maçtan sonra *maçın adamını* gruba duyururum.
-⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.
+            "text": "ℹ️ *MatchTime yardım*
+✅ Sıradaki maç için grupta *varım* ya da *yokum* yazın, beni etiketlemenize gerek yok. Emin değil misiniz? *belki* yazın.
+💬 Grupta beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ve kendi cümlelerinizle sorun: kim var, takımlar, istatistikler ya da başka bir şey. Mesajıma yanıt vermek yetmez.
+🤐 Sohbete ve şakalara yanıt vermem, rahat olun.
 📊 Kendi profil sayfanız maçlarınızı, puanlarınızı ve maçın oyuncusu ödüllerinizi gösterir: https://matchtime.ai/profile
-⏰ Hatırlatma mı lazım? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.
-💷 Her maçtan sonra size özelden maç ücreti için bir ödeme bağlantısı gönderirim.
-
-Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
-
-🔧 Kulübünde kapalı olanlar: partner kulüpler. Birini sor, nasıl açılacağını göstereyim.
-
+💡 *Burada henüz açık değil*: partner kulüpler. Nasıl çalıştığını ve nasıl açıldığını görmek için *yardım partner* yazın.
 ⚙️ Kulübünün ayarları, giriş yapmış olarak:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ Herhangi bir konuda daha fazlası için bana *yardım* ve konuyu yazın, örneğin *yardım ödeme*. Konular: kadro, arkadaş, takımlar, maçın adamı, puanlama, rozetler, hatırlatma, ödeme, partner, program, ayarlar.",
           },
         },
         "call": "botJob.create",
@@ -13128,8 +12967,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -13157,7 +12996,9 @@ Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra 
 Henüz ödemeyenlere, parayı toplayan kişiye doğrudan ödemeyi seçmedilerse, bağlantıyı maçtan sonra 6 güne kadar her gün yeniden gönderirim.
 Son durumu istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time kim ödemedi?*).
 
-✅ Bu kulüpte açık.",
+✅ Bu kulüpte açık.
+
+↩️ Menü için *yardım* yazın.",
           },
         },
         "call": "botJob.create",
@@ -13220,8 +13061,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -13249,7 +13090,9 @@ Her maçtan sonra oynayan herkese özelden bir bağlantı gönderirim. Diğer oy
 Herkesin puanlarını birleştirip bu kulüpteki her oyuncu için maçtan maça güncellenen bir form puanı çıkarırım, *dengeli takımları* bununla kurarım. Puanlar kulübün içinde kalır: başka bir grupta da oynuyorsanız oradaki puanlar buradaki puanınızı değiştirmez. Taşınan tek şey başlangıç noktanız: katıldığınızda diğer gruplarınızdaki ortalamanız buradaki başlangıcınız olur, sonrasında bu kulübün kendi puanları devreye girer. Ne kadar çok kişi puan verirse takımlar o kadar adil olur.
 Bağlantı maçın ertesi günü gelir. Puanlarınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).
 
-✅ Bu kulüpte açık.",
+✅ Bu kulüpte açık.
+
+↩️ Menü için *yardım* yazın.",
           },
         },
         "call": "botJob.create",
@@ -14287,8 +14130,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14436,8 +14279,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14565,8 +14408,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14636,8 +14479,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -14768,8 +14611,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14923,8 +14766,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -15237,8 +15080,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -15326,8 +15169,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -15415,8 +15258,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -15515,8 +15358,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -15723,8 +15566,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -15757,39 +15600,15 @@ how does the bench work?",
             "orgId": "org-vets",
             "phone": "447700900310",
             "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help availability*: squad & availability
-   • *@Match Time help friend*: bringing a friend
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
-✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • see who's in / how many we've got
-   • make / show the teams
-   • who won last week? / past stats
-❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
+            "text": "ℹ️ *MatchTime help*
+✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
+💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
+🤐 I don't reply to banter and jokes, so they're safe.
 📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💷 Want to collect match fees? Ask me: *@Match Time help payments*
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: match fees, partner clubs. Ask me about one and I'll show you how to switch it on.
-
+💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
 ⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
           },
         },
         "call": "botJob.create",
@@ -15852,8 +15671,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -15883,7 +15702,9 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.",
+🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -15946,8 +15767,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -15975,7 +15796,9 @@ After each match I DM every player who turned out a private link. You rate the o
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
 You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -16436,8 +16259,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16585,8 +16408,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16779,8 +16602,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16915,8 +16738,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -17112,8 +16935,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17313,8 +17136,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -17671,8 +17494,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17760,8 +17583,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17849,8 +17672,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17918,8 +17741,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -18100,8 +17923,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -18134,39 +17957,15 @@ how does the bench work?",
             "orgId": "org-vets",
             "phone": "447700900310",
             "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help availability*: squad & availability
-   • *@Match Time help friend*: bringing a friend
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
-✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • see who's in / how many we've got
-   • make / show the teams
-   • who won last week? / past stats
-❓ Anything else? Tag me and ask in your own words: I'll answer from what I know about the club, or tell you if I don't know.
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
+            "text": "ℹ️ *MatchTime help*
+✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
+💬 In the group, tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Replying to my message is not enough.
+🤐 I don't reply to banter and jokes, so they're safe.
 📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💷 Want to collect match fees? Ask me: *@Match Time help payments*
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: match fees, partner clubs. Ask me about one and I'll show you how to switch it on.
-
+💡 *Not on here yet*: match fees, partner clubs. Ask *help payments* to see how they work and how to switch them on.
 ⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
+https://matchtime.ai/r/<code>
+ℹ️ To learn more about anything, message me *help* and the topic, for example *help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.",
           },
         },
         "call": "botJob.create",
@@ -18203,8 +18002,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -18234,7 +18033,9 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.",
+🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -18271,8 +18072,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -18300,7 +18101,9 @@ After each match I DM every player who turned out a private link. You rate the o
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
 You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
-✅ It's on for this club.",
+✅ It's on for this club.
+
+↩️ *help* for the menu.",
           },
         },
         "call": "botJob.create",
@@ -18337,8 +18140,8 @@ IN",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19262,8 +19065,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19307,8 +19110,8 @@ can't make it this week, sorry",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19352,8 +19155,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19520,8 +19323,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19630,8 +19433,8 @@ THE MESSAGE (from Davide, who tagged the bot):
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -19801,8 +19604,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19976,8 +19779,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -20087,8 +19890,8 @@ yes",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -20132,8 +19935,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -20195,8 +19998,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -20258,8 +20061,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
+        "schema": "5794eae9d2842843",
+        "system": "6bcf8312ff259efb",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):

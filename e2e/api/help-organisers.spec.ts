@@ -97,6 +97,7 @@ test("players' group: bare help offers neither the squad nor the teams, and says
   expect(reply).toContain("📣 The organisers share the squad list and the teams.");
   expect(reply).not.toContain("make / show the teams");
   expect(reply).not.toContain("see who's in / how many we've got");
+  expect(reply).not.toContain("who's in, the teams");
   expect(reply).not.toMatch(/[—–]/);
 });
 
@@ -134,7 +135,7 @@ test("an organiser's DM bare help points at 'help' in the admin group, and keeps
     [ADMIN],
   );
   expect(dm?.text).toContain("In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).");
-  expect(dm?.text).toMatch(/Your club's settings, signed in:\nhttps?:\/\/\S+\/r\/\S+$/);
+  expect(dm?.text).toMatch(/Your club's settings, signed in:\nhttps?:\/\/\S+\/r\/\S+\nℹ️ To learn more about anything, message me \*help\*/);
 });
 
 test("HQ: an admin asking what MatchTime can do gets the list, and never reaches the squad path", async ({ request, db }) => {
@@ -147,12 +148,14 @@ test("HQ: an admin asking what MatchTime can do gets the list, and never reaches
   const before = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AnalyzedMessage"`);
   const out = await hq(request, "@Match Time what can you do here?");
   expect(out).toMatchObject({ handled: true, outcome: "hq-help" });
+  // The short menu (2026-11-10); each topic's full lines are one "help <topic>" away.
   expect(out.replyText).toContain("🛠️ *MatchTime in your admin group*");
-  expect(out.replyText).toContain("*Tag me and paste the whole squad list*");
-  expect(out.replyText).toContain("shuffle them again");
-  expect(out.replyText).toContain("send the poster");
-  expect(out.replyText).toContain("pick who plays");
+  expect(out.replyText).toContain(`📋 *Squad*: "put Bilal in", "Tom to the bench", "swap Tom for Ben", or paste the list`);
+  expect(out.replyText).toContain(`🟥🟦 *Teams*: "make the teams", "swap Sam and Alex", then *YES* to confirm`);
+  expect(out.replyText).toContain(`🖼️ *Graphics*: "send the poster"`);
+  expect(out.replyText).toContain("Topics: squad, teams, players, game, settings, graphics");
   expect(out.replyText).not.toContain("PAID ALL");
+  expect(out.replyText.split("\n").length).toBeLessThanOrEqual(12);
   expect(await statusOf(db, U.third)).toBe("CONFIRMED");
   expect((await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AnalyzedMessage"`))?.n).toBe(before?.n);
 });
@@ -176,7 +179,6 @@ test("HQ: a non-admin's help is ignored as before, with no reply", async ({ requ
 test("back on the defaults, the group's bare help still offers the squad and the teams", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET "listAnnouncer" = 'matchtime', "benchPickMode" = 'first-come' WHERE id = $1`, [ORG_ID]);
   const reply = await groupHelp(request, "@Match Time help");
-  expect(reply).toContain("make / show the teams");
-  expect(reply).toContain("see who's in / how many we've got");
+  expect(reply).toContain("and ask in your own words: who's in, the teams, the stats or anything else");
   expect(reply).not.toContain("📣");
 });

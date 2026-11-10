@@ -13,9 +13,10 @@
  * (`AnswerAudience`): the club's setup (admins, money collector, fee,
  * teams time) is answered here, and the squad and bench are shown even
  * when the organisers announce the list to the players. A how-it-works
- * question about MatchTime as a whole gets the HQ menu, which is what
- * MatchTime does in this group; one about a part gets that part's help,
- * worded for the organisers (2026-10-28).
+ * question about MatchTime as a whole gets the short HQ menu, which is what
+ * MatchTime does in this group; one about a part gets that part's HQ lines
+ * and its help, worded for the organisers (2026-10-28; 2026-11-10,
+ * admin-group-help.ts `hqHelpTopicReply`).
  *
  * Returns null when the shared code answers nothing (a topic it does not
  * answer, a failed call, the asker's own stats link, which is a DM): the
@@ -25,6 +26,8 @@ import type { QuotedGroupMessage } from "./reply-context";
 import { runAnswerBatch, type AnswerBatchDeps } from "./pipeline/answer-batch";
 import { enabledStepSevenRoutes } from "./pipeline/route-flags";
 import type { SquadState } from "./pipeline/types";
+import { hqHelpMenu, hqHelpTopicReply, type HqHelpGates } from "./admin-group-help";
+import type { HelpClubFacts } from "./help-club-facts";
 
 export interface HqQuestionInput {
   orgId: string;
@@ -46,14 +49,17 @@ export interface HqQuestionInput {
   /** The message the question is a WhatsApp reply to (slice S4), whoever
    *  wrote it, as `admin-group-understand.ts` resolved it. */
   reply?: QuotedGroupMessage | null;
-  /** The HQ menu, the answer to "what can you do?" here. A question about
-   *  one part ("how do I turn on the pool?") gets that part's help for the
-   *  organisers instead (2026-10-28). */
-  hqHelp: string;
+  /** Which HQ commands the club gets (`hqHelpGates`): the short HQ menu,
+   *  the answer to "what can you do?" here, and each topic's lines on
+   *  "help <topic>" (2026-11-10). A question about one part ("how do I turn
+   *  on the pool?") gets that part's help for the organisers (2026-10-28). */
+  gates: HqHelpGates;
   /** The pool switch as the request read it, for the pool's help. */
   poolEnv?: Record<string, string | undefined>;
   deps?: Pick<AnswerBatchDeps, "model" | "loadFeatures" | "loadClub" | "loadStats"> & {
     loadState?: (orgId: string, now: Date) => Promise<SquadState>;
+    /** The club's pool and partner clubs, for the help (tests). */
+    loadClubFacts?: () => Promise<HelpClubFacts>;
   };
 }
 
@@ -103,9 +109,10 @@ export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcom
       // The menu for MatchTime as a whole; one part's help, for the
       // organisers, with public links (a group), for a part.
       helpReply: async (req, features) => {
-        if (req.topic === null) return input.hqHelp;
-        const { clubHelpReply } = await import("./help-answer");
-        return clubHelpReply({ orgId, req, features, audience: "admin", poolEnv: async () => input.poolEnv ?? {} });
+        const club = deps.loadClubFacts ? await deps.loadClubFacts() : undefined;
+        const common = { orgId, lang: input.lang, gates: input.gates, features, ...(input.poolEnv ? { poolEnv: input.poolEnv } : {}), ...(club ? { club } : {}) };
+        if (req.topic === null) return hqHelpMenu(common);
+        return hqHelpTopicReply({ ...common, req: { ...req, topic: req.topic } });
       },
     },
   });

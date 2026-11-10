@@ -42,12 +42,13 @@ function ask(topic: string, over: { lastBotPost?: string | null; calls?: ModelRe
     now: NOW,
     history: [],
     lastBotPost: over.lastBotPost ?? null,
-    hqHelp: "*MatchTime in your admin group*",
+    gates: { squad: true, graphics: true, picks: false, paid: false, free: false, pool: false },
     deps: {
       model: extractor(topic, over.calls),
       loadState: async () => organisersAnnounce,
       loadFeatures: async () => FEATURES,
       loadClub: async () => ({ collectorName: "Elvin Aliyev", feePerPlayer: 5, feeSplitTotal: false, teamsReady: "10:00" }),
+      loadClubFacts: async () => ({ pool: { open: false, platformOpen: false, clubFlag: false }, partners: { active: 0 } }),
     },
   });
 }
@@ -71,7 +72,9 @@ describe("answerHqQuestion", () => {
   });
 
   it("what can you do: the HQ menu", async () => {
-    expect(await ask("how_it_works")).toEqual({ outcome: "hq-help", replyText: "*MatchTime in your admin group*" });
+    const r = await ask("how_it_works");
+    expect(r?.outcome).toBe("hq-help");
+    expect(r?.replyText.startsWith("🛠️ *MatchTime in your admin group*")).toBe(true);
   });
 
   it("a topic nothing answers: null, for the caller's one line", async () => {

@@ -10,7 +10,7 @@
 import { appUrl } from "./app-url";
 import { t } from "./i18n/t";
 import { buildBadgeHelp } from "./badge-help";
-import type { HelpFeature } from "./pipeline/types";
+import type { PlayersHelpTopic } from "./pipeline/types";
 import type { HelpClubFacts } from "./help-club-facts";
 import { SETTINGS_PATH, helpTopicSettingsPath } from "./help-links";
 import { settingInfo, type SettingInfoKey } from "./settings-info";
@@ -71,9 +71,10 @@ export function buildHowToUseMe(
 // keyword for a pattern to find, and people never type the phrase you
 // expect (Kemal's rule, 2026-10-16).
 
-/** A help topic the bot can explain. The same list the question extractor
- *  names (`HELP_FEATURES`). */
-export type HelpTopic = HelpFeature;
+/** A help topic the bot can explain: the list the question extractor
+ *  names (`HELP_FEATURES`), but the admin group's own two, which the
+ *  callers map first (`playersHelpTopic`, admin-group-help.ts). */
+export type HelpTopic = PlayersHelpTopic;
 
 /** The org-feature flag each flag-gated topic is behind. */
 const HELP_TOPIC_FEATURE = {
@@ -222,6 +223,11 @@ export interface HelpContext {
   /** The club has an admin group linked (`Organisation.adminGroupId`), so
    *  an organiser's DM can point at the "help" there. */
   adminGroupLinked?: boolean;
+  /** Answered by DM: "help teams" is typed without the tag. */
+  dm?: boolean;
+  /** Answered in the club's admin group (admin-group-help.ts), where some
+   *  things are done by message that the players' copy says are not. */
+  adminGroup?: boolean;
 }
 
 /** The admin pages a given answer links to, so a DM caller mints only the
@@ -272,6 +278,30 @@ function switchableOff(topic: HelpTopic, features: HelpFeatures): boolean {
   return true;
 }
 
+/** The topics switched off for this club that an organiser can switch on
+ *  now, in menu order (2026-11-10, Kemal: "why it never mentions not used
+ *  features such as payments"). */
+export function helpTopicsOff(features: HelpFeatures): HelpTopic[] {
+  return HELP_TOPIC_ORDER.filter((tp) => switchableOff(tp, features));
+}
+
+/** Every topic this club can ask about: on, or off and switchable on. A
+ *  pool the platform has closed is neither. */
+export function helpTopicsAskable(features: HelpFeatures): HelpTopic[] {
+  return HELP_TOPIC_ORDER.filter((tp) => topicIsOn(tp, features) || switchableOff(tp, features));
+}
+
+/** The menu line naming what is not switched on here, worded as available;
+ *  "" when everything is on. */
+export function helpNotOnLine(features: HelpFeatures, lang: Lang | string, dm = false): string {
+  const s = t(lang);
+  const off = helpTopicsOff(features);
+  if (off.length === 0) return "";
+  // Payments first as the example when it is off: it is what clubs ask for.
+  const example = off.includes("payments") ? "payments" : off[0];
+  return s.help_not_on({ labels: off.map((tp) => s.onbHelpTopicLabel({ topic: tp })), word: s.onbHelpTopicWord({ topic: example }), dm });
+}
+
 /**
  * The help reply, in every group and by DM. ONE builder, so no two places
  * can disagree (2026-09-30). Every topic answers three things in a few
@@ -279,10 +309,13 @@ function switchableOff(topic: HelpTopic, features: HelpFeatures): boolean {
  * on for this club now, and (for an organiser) how to switch it, with a
  * link straight to its card on the settings page (help-links.ts).
  *
- *   - topic === null (bare help): the topics that apply to this club, then
- *     the feature-aware buildHowToUseMe block. An organiser also gets the
- *     topics that are switched off (each explains how to switch it on) and
- *     a link to the settings page.
+ *   - topic === null (bare help): the short menu (2026-11-10, Kemal: "why
+ *     this long menu"): how to say In or Out, how to tag, the profile page,
+ *     then one line teaching "help <topic>" with every topic word this club
+ *     can ask about, off ones too. An organiser also gets the features not
+ *     switched on yet, worded as available (`helpNotOnLine`), and a link
+ *     to the settings page. The rest of the old how-to block is said by
+ *     its topic (availability, friend, mom, ratings, reminders, payments).
  *   - a flag topic ON: its explainer and "it's on"; an organiser gets where
  *     to switch it off.
  *   - a flag topic OFF: that it is off, how it works, how to switch it on,
@@ -322,6 +355,7 @@ export function buildHelpReply(
       bulk: helpLink(ctx, "bulk", topic),
       matches: helpLink(ctx, "matches", topic),
       ...(organisers ? { organisers: true } : {}),
+      ...(ctx.adminGroup ? { adminGroup: true } : {}),
     });
   }
   if (topic === "settings") return s.onbHelpSettings({ audience: ctx.audience, url: topicUrl });
@@ -397,21 +431,30 @@ export function buildHelpReply(
     return `${s.onbHelpOffLead()}\n\n${body}\n\n${switchOn}`;
   }
 
-  // Bare help: the topics that apply here, then the how-to block.
-  const enabled = HELP_TOPIC_ORDER.filter((tp) => topicIsOn(tp, features));
-  const topicLines = enabled.map((tp) =>
-    s.onbHelpTopicLine({ word: s.onbHelpTopicWord({ topic: tp }), label: s.onbHelpTopicLabel({ topic: tp }) }),
-  );
-  const head = s.onbHelpHead();
-  const list = topicLines.length > 0 ? `\n${topicLines.join("\n")}` : "";
-  // An organiser also hears what is switched off, each of which explains
-  // how to switch it on when asked about (2026-10-28).
-  const off = HELP_TOPIC_ORDER.filter((tp) => switchableOff(tp, features)).map((tp) => s.onbHelpTopicLabel({ topic: tp }));
-  const offLine = off.length > 0 ? adminTail(s.onbHelpOffTopics({ labels: off })) : "";
-  const hqPointer = organisers && ctx.adminGroupLinked === true ? adminTail(s.onbHelpAdminOrganisers) : "";
-  // The "Want to collect match fees?" pointer is for an organiser; in the
-  // players' group every player saw it (FNF, 2026-10-15), so only an
-  // organiser keeps it (a player's DM stays identical to the group's).
-  const howTo = buildHowToUseMe(admin ? features : { ...features, feesNudge: false }, lang);
-  return `${head}${list}\n\n${howTo}` + offLine + hqPointer + adminTail(s.onbHelpAdminPage({ url: helpLink(ctx, "settings", null), signedIn: !!ctx.links?.settings }));
+  // Bare help: the short menu.
+  const asks: Array<"squad" | "teams" | "stats"> = [];
+  if (features.attendance && !organisers) asks.push("squad");
+  if (features.teamBalancing && !organisers) asks.push("teams");
+  if (features.statsQa) asks.push("stats");
+  const menu = s.onbHelpMenu({
+    attendance: features.attendance,
+    organisers,
+    asks,
+    profileUrl: appUrl("/profile"),
+    playerRating: features.playerRating,
+    momVoting: features.momVoting,
+    ...(ctx.dm ? { dm: true } : {}),
+  });
+  // An organiser also hears what is switched off, worded as available;
+  // each explains how to switch it on when asked about (2026-10-28). A
+  // player is not nagged with it (FNF, 2026-10-15): the topic list below
+  // still names them.
+  const offLine = admin ? helpNotOnLine(features, lang, ctx.dm === true) : "";
+  const hqPointer = admin && organisers && ctx.adminGroupLinked === true ? s.onbHelpAdminOrganisers : "";
+  const settingsLine = admin ? s.onbHelpAdminPage({ url: helpLink(ctx, "settings", null), signedIn: !!ctx.links?.settings }) : "";
+  const words = helpTopicsAskable(features).map((tp) => s.onbHelpTopicWord({ topic: tp }));
+  // The example is payments, not teams: in the players' group the router
+  // reads "help teams" as a request for the teams (live probe, 2026-11-10).
+  const more = s.help_more({ words, example: s.onbHelpTopicWord({ topic: "payments" }), ...(ctx.dm ? { dm: true } : {}) });
+  return [menu, offLine, hqPointer, settingsLine, more].filter(Boolean).join("\n");
 }

@@ -525,7 +525,7 @@ const ADMIN_GROUP: Spotlight = {
   // owners and admins there").
   lead: "Link your organisers' own WhatsApp group and MatchTime works there too. Admins tag MatchTime and ask in their own words, and the messages only organisers should see arrive there instead of the players' chat. In that group MatchTime only acts on messages that tag it, from your club's owners and admins.",
   points: [
-    // strings.en.ts hq_help: "Paste the whole squad list"; admin-group-paste.ts.
+    // strings.en.ts hq_help_topic: "paste the whole squad list"; admin-group-paste.ts.
     {
       key: "paste",
       icon: "clipboard",
@@ -602,8 +602,8 @@ const ADMIN_GROUP: Spotlight = {
     caption: "In the admin group",
     lines: [
       { from: "player", text: "@Match Time what can you do?" },
-      // strings.en.ts hq_help, first lines.
-      { from: "bot", text: "🛠️ MatchTime in your admin group. Tag me in every message here: type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough." },
+      // strings.en.ts hq_help_menu, first lines (the short menu, 2026-11-10).
+      { from: "bot", text: "🛠️ MatchTime in your admin group. Tag me (type *@*, pick *Match Time*), then ask in your own words." },
       { from: "player", text: "@Match Time cancel Friday" },
       // strings.en.ts hq_match_cancelled.
       { from: "bot", text: "Done: Friday 7-a-side, Fri 23 Oct at 20:00 is cancelled. I've told the players' group." },
@@ -1257,7 +1257,7 @@ export const HERO_DECK = {
           { from: "self", text: "@Match Time what can you do?", time: "10:01" },
           {
             from: "bot",
-            text: "*MatchTime in your admin group*\nTag me in every message here: type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.",
+            text: "*MatchTime in your admin group*\nTag me (type *@*, pick *Match Time*), then ask in your own words.",
             time: "10:01",
           },
           { from: "self", text: "@Match Time cancel Friday", time: "10:03" },

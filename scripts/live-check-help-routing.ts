@@ -10,7 +10,7 @@
  * message with the shipped extractor (the DM path is the extractor alone,
  * covered by `live-check-question-extractor.ts`).
  *
- * Spends ANTHROPIC_API_KEY_DEV only. Stops at $1. Prints calls and cost.
+ * Spends ANTHROPIC_API_KEY_DEV only. Stops at $1 (MAX_USD env lowers it). Prints calls and cost.
  *
  *   node --env-file=.env ./node_modules/.bin/tsx scripts/live-check-help-routing.ts
  */
@@ -24,7 +24,7 @@ import type { HelpFeature, Route } from "../src/lib/pipeline/types.ts";
 
 spendDevApiKeyOrExit("the help routing live check");
 
-const MAX_USD = 1;
+const MAX_USD = Number(process.env.MAX_USD ?? 1);
 let calls = 0;
 let usd = 0;
 const inner = anthropicModel();
@@ -70,6 +70,26 @@ const CASES: Case[] = [
   { text: "how do we get players from partner clubs?", hq: true, feature: "partners" },
   { text: "where do I change the reminders?", hq: true, feature: "reminders" },
   { text: "ayarlar nerede?", hq: true, feature: "settings" },
+  // The short menus' topic words (2026-11-10): "help <topic>", tagged, as
+  // the closing line of each menu teaches. HQ in English and Turkish.
+  { text: "@Match Time help squad", hq: true, feature: "availability" },
+  { text: "@Match Time yardım kadro", hq: true, feature: "availability" },
+  { text: "@Match Time help teams", hq: true, feature: "teams" },
+  { text: "@Match Time yardım takımlar", hq: true, feature: "teams" },
+  { text: "@Match Time help players", hq: true, feature: "find_players" },
+  { text: "@Match Time yardım oyuncu bulma", hq: true, feature: "find_players" },
+  { text: "@Match Time help game", hq: true, feature: "schedule" },
+  { text: "@Match Time yardım maç", hq: true, feature: "schedule" },
+  { text: "@Match Time help settings", hq: true, feature: "settings" },
+  { text: "@Match Time yardım ayarlar", hq: true, feature: "settings" },
+  { text: "@Match Time help graphics", hq: true, feature: "graphics" },
+  { text: "@Match Time yardım görseller", hq: true, feature: "graphics" },
+  { text: "@Match Time help payments", hq: true, feature: "payments" },
+  { text: "@Match Time help mom", hq: true, feature: "mom" },
+  // The players' group's closing line's example, EN and TR, and its squad word.
+  { text: "@Match Time help payments", feature: "payments" },
+  { text: "@Match Time yardım ödeme", feature: "payments" },
+  { text: "@Match Time help squad", feature: "availability" },
 ];
 
 async function main() {

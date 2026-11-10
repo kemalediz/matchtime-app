@@ -10,7 +10,7 @@
  * never disagree about what HQ takes.
  */
 import { describe, expect, it } from "vitest";
-import { buildAdminGroupIntro, buildHqHelp, hqHelpGates, type AdminGroupIntroClub } from "@/lib/admin-group-help";
+import { buildAdminGroupIntro, buildHqHelp, buildHqTopicLines, hqHelpGates, HQ_HELP_TOPICS, type AdminGroupIntroClub } from "@/lib/admin-group-help";
 
 /** FNF as configured on 2026-10-15: organisers announce, organisers pick,
  *  weekly (rolling squad on), teams-ready time not set, live, Fridays. */
@@ -210,7 +210,8 @@ describe("the intro and the help read the same gates", () => {
     ]) {
       const gates = hqHelpGates(club);
       const intro = buildAdminGroupIntro(club);
-      const help = buildHqHelp({ lang: "en", ...gates });
+      // The short menu and every topic's lines, as "help <topic>" shows them.
+      const help = [buildHqHelp({ lang: "en", ...gates }), ...HQ_HELP_TOPICS.map((tp) => buildHqTopicLines(tp, { lang: "en", ...gates }))].join("\n");
       expect(intro.includes("I ask here who plays")).toBe(help.includes("pick who plays"));
       expect(intro.includes("*@Match Time PAID ALL*")).toBe(help.includes("*@Match Time PAID ALL*"));
       expect(intro.includes("poster")).toBe(help.includes("poster"));

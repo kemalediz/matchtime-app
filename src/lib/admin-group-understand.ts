@@ -132,7 +132,7 @@ import { teamCommandFromFacts } from "./team-proposal-rules";
 import { formNoteReplyFor } from "./form-note";
 import { answerSquadPasteYes, proposeSquadPaste, readHqSquad, type HqSquadRead } from "./admin-group-paste";
 import { answerGraphicRequest } from "./admin-group-graphics";
-import { buildHqHelp, hqHelpGates } from "./admin-group-help";
+import { hqHelpGates, hqHelpMenu } from "./admin-group-help";
 import { NOT_HERE_ID_PREFIX, hqLogSince, listAskRef, recordMatchTimeLine, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { hqCancelOrRestore } from "./match-cancel";
 import { WHICH_ASK_REF, decideApproval, lateQuestionRef, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
@@ -678,7 +678,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     };
     // The players' group's own question answering, for the organisers
     // (`admin-group-question.ts`). Null when it answers nothing.
-    const hqHelp = buildHqHelp({ lang, ...hqHelpGates(org, input.poolEnv) });
+    const hqGates = hqHelpGates(org, input.poolEnv);
     const answerQuestion = () =>
       answerHqQuestion({
         orgId: org.id,
@@ -693,7 +693,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         weekChat: async () => (await import("./week-chat")).hqWeekChat({ orgId: org.id, now, messageId }),
         lastBotPost: lastHqPost,
         reply: replyShown,
-        hqHelp,
+        gates: hqGates,
         ...(input.poolEnv ? { poolEnv: input.poolEnv } : {}),
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
@@ -1148,7 +1148,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // got motm", FNF HQ 2026-10-30 23:31 UTC) it never reaches here.
         const r = await answerQuestion();
         if (r) return said(r.outcome, r.replyText);
-        if (route === "help") return said("hq-help", hqHelp);
+        if (route === "help") return said("hq-help", await hqHelpMenu({ orgId: org.id, lang, gates: hqGates, ...(input.poolEnv ? { poolEnv: input.poolEnv } : {}) }));
         // Nothing answered it: the one line.
         return notHere();
       }
