@@ -689,6 +689,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         senderName: input.senderName,
         now,
         history,
+        // An open question reads HQ's own week of chat (Kemal, 2026-11-10).
+        weekChat: async () => (await import("./week-chat")).hqWeekChat({ orgId: org.id, now, messageId }),
         lastBotPost: lastHqPost,
         reply: replyShown,
         hqHelp,

@@ -116,6 +116,7 @@ async function ask(
     messages?: AnswerBatchMessage[];
     loadStats?: () => Promise<typeof TABLES>;
     expectedMatchId?: string | null;
+    weekChat?: () => Promise<Array<{ author: string | null; body: string; at: Date | null }>>;
   } = {},
 ) {
   const state = opts.state ?? world({ confirmed: ["kemal", "sait", "idris"], bench: ["erdal", "zair"] });
@@ -129,6 +130,7 @@ async function ask(
     expectedMatchId: opts.expectedMatchId === undefined ? state.matchId : opts.expectedMatchId,
     enabled: new Set<Route>(["question", "self_att", "admin_ops"]),
     ...(opts.audience ? { audience: opts.audience } : {}),
+    ...(opts.weekChat ? { weekChat: opts.weekChat } : {}),
     deps: {
       model,
       loadState: async () => state,
@@ -256,6 +258,59 @@ describe("a tagged question that fits no set answer", () => {
   });
 });
 
+describe("the open answer reads the group's week of chat (Kemal, 2026-11-10)", () => {
+  const WEEK = [
+    { author: "Ali Kaya", body: "park at the Tesco on Great Eastern St, free after 7", at: new Date("2026-08-31T08:05:00.000Z") },
+    { author: "MatchTime", body: "Done: Faris out. 13 of 14.", at: new Date("2026-09-01T09:00:00.000Z") },
+    { author: fullName("kemal"), body: BODY, at: NOW },
+  ];
+
+  it("is handed the week, with each line's day and time, and loads it once", async () => {
+    let loads = 0;
+    const { reqs, outcome } = await ask({
+      weekChat: async () => {
+        loads++;
+        return WEEK;
+      },
+    });
+    expect(outcome?.reply).toBe(ANSWER);
+    expect(loads).toBe(1);
+    const user = reqs.find((r) => r.label === "open-answer")!.user;
+    expect(user).toContain("CHAT OF THE LAST 7 DAYS, oldest first");
+    expect(user).toContain("[Mon 31 Aug 09:05] Ali Kaya: park at the Tesco");
+    expect(user).toContain("[Tue 1 Sep 10:00] MatchTime: Done: Faris out.");
+    // The extractors' few lines are not what the open answer reads now.
+    expect(user).not.toContain("we should bring the regulars up from the bench");
+    // The message itself once, last.
+    expect(user.split(BODY).length - 1).toBe(1);
+  });
+
+  it("never reads the week when no open question is owned", async () => {
+    let loads = 0;
+    await ask({
+      messages: [message("lol who even are the regulars", { tagged: false, addressed: false })],
+      weekChat: async () => {
+        loads++;
+        return WEEK;
+      },
+    });
+    expect(loads).toBe(0);
+  });
+
+  it("a week that cannot be read falls back to the recent lines, said so, and still answers", async () => {
+    const { reqs, outcome, res } = await ask({
+      weekChat: async () => {
+        throw new Error("db down");
+      },
+    });
+    expect(outcome?.reply).toBe(ANSWER);
+    const user = reqs.find((r) => r.label === "open-answer")!.user;
+    expect(user).toContain("RECENT CHAT (the last few messages only)");
+    expect(user).toContain("we should bring the regulars up from the bench");
+    expect(res.degradations.join(" ")).toMatch(/week of chat.*db down/);
+  });
+});
+
 describe("in HQ (answerHqQuestion), the same path", () => {
   it("answers an open question for the organisers", async () => {
     const state = world({ confirmed: ["kemal", "sait"], bench: ["erdal", "zair"] });
@@ -275,6 +330,29 @@ describe("in HQ (answerHqQuestion), the same path", () => {
     });
     expect(out).toEqual({ outcome: "hq-answered", replyText: ANSWER });
     expect(reqs.filter((r) => r.label === "open-answer")).toHaveLength(1);
+  });
+
+  it("reads HQ's own week, never the players' group's", async () => {
+    const state = world({ confirmed: ["kemal"] });
+    const { model, reqs } = stubModel({ answer: "Elvin Aliyev asked about the pitch on Monday." });
+    const out = await answerHqQuestion({
+      orgId: "org-1",
+      lang: "en",
+      messageId: "hq-1",
+      body: "@Match Time what did Elvin ask about on Monday?",
+      senderUserId: "u-kemal",
+      senderName: fullName("kemal"),
+      now: NOW,
+      history: [{ author: fullName("elvin"), body: "recent HQ line" }],
+      weekChat: async () => [{ author: fullName("elvin"), body: "can we get the bigger pitch?", at: new Date("2026-08-31T18:00:00.000Z") }],
+      lastBotPost: null,
+      hqHelp: "menu",
+      deps: { model, loadState: async () => state, loadFeatures: async () => FEATURES, loadClub: async () => CLUB, loadStats: async () => TABLES },
+    });
+    expect(out?.outcome).toBe("hq-answered");
+    const user = reqs.find((r) => r.label === "open-answer")!.user;
+    expect(user).toContain("[Mon 31 Aug 19:00] Elvin Aliyev: can we get the bigger pitch?");
+    expect(user).not.toContain("recent HQ line");
   });
 
   it("a failed open answer returns null, so HQ says its one line", async () => {

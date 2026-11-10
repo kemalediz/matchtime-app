@@ -2444,6 +2444,22 @@ async function handleAnalyzeRequest(request: Request) {
           now,
           messages: ownerBase,
           history: ownerHistory,
+          // The open answer reads THIS group's week of chat, MatchTime's
+          // lines included; read only when an open question is owned
+          // (Kemal, 2026-11-10, `lib/week-chat.ts`).
+          weekChat: async () =>
+            (await import("@/lib/week-chat")).playersWeekChat({
+              orgId: org.id,
+              groupId: body.groupId,
+              now,
+              batch: all.map((m) => ({
+                waMessageId: m.waMessageId,
+                author: senderLabel(m.waMessageId),
+                body: m.body,
+                timestamp: m.timestamp,
+                stored: seenMap.has(m.waMessageId),
+              })),
+            }),
           // Same contract as step 6: if the route's registration match
           // and the owner's state load ever disagree, the owner takes
           // nothing rather than answer about a different match.
