@@ -1954,7 +1954,7 @@ export const tr: Strings = {
     "takım arkadaşları birbirine 1 ile 10 arası puan verir. Takımları kurarken MatchTime başlangıç puanınızı bu kulübün oyuncuya verdiği son 60 puanla birleştirir; başlangıç puanınız 3 puan yerine sayılır. Yani ilk puan oyuncuyu yolun dörtte biri kadar oynatır, 3 puandan sonra ikisi yarı yarıyadır, çok maçtan sonra da neredeyse sadece takım arkadaşlarının puanları belirler.",
   ratings_info_match_day_head: "Maç günü:",
   ratings_info_match_day_body:
-    "takımlar kurulurken MatchTime grubun bir önceki haftaki sohbetini okur ve bir oyuncunun puanını sadece o maç için en fazla 2 artırıp azaltabilir: sakat ya da hastaysa düşürür, çok iyi bir maçın ardından yükseltir. Puan her zaman 1 ile 10 arasında kalır.",
+    "takımlar kurulurken MatchTime grubun bir önceki haftaki sohbetini okur ve bir oyuncunun puanını sadece o maç için en fazla 1 artırıp azaltabilir: sakat ya da hastaysa düşürür, çok iyi bir maçın ardından yükseltir. Puan her zaman 1 ile 10 arasında kalır.",
   ratings_info_shown_head: "Oyuncuların gördüğü:",
   ratings_info_shown_body:
     "sadece bu kulüpteki takım arkadaşlarının verdiği puanların ortalaması (son 60 puan), ilk puan gelene kadar da hiçbir şey. Başlangıç puanınızı ya da maç günü değişikliğini asla görmezler.",

@@ -13,11 +13,22 @@
  * Turkish, one says nothing at all, and one is a Saturday-morning match
  * where "tonight" in the chat is the night before.
  *
- *   ARM=sonnet|haiku TAG=new OUT=/path/result.json \
+ * 2026-11-10 (Kemal: the cap is 1 either way, not 2): where the prompt's
+ * size guidance is unambiguous a player also has the sizes allowed
+ * (injured or ill about 1, tired or hungover about 0.5, back after weeks
+ * out 0.5 or 1, a hat-trick 0.5 or 1), and a sixth week holds the
+ * attendance talk that used to be read as form before the 2026-10-20
+ * rewrite (a late addition, a backup, a replacement, offering to sit out,
+ * asking for a replacement), all expected to be zero, beside "quite
+ * tired" expected at about -0.5. Any raw model delta past 1, before the
+ * clamp, is counted as overCap.
+ *
+ *   ARM=haiku|sonnet (default haiku, the shipped model) TAG=new OUT=/path/result.json \
  *     DATABASE_URL=postgresql://none@127.0.0.1:1/none \
  *     node --env-file=.env ./node_modules/.bin/tsx scripts/live-check-rating-adjuster.ts
  *
- * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). Each week once.
+ * Spends ANTHROPIC_API_KEY_DEV only (refuses without it), and stops at
+ * $0.50. Each week once.
  */
 import fs from "node:fs";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
@@ -25,11 +36,11 @@ import { ARMS, armModel, latency } from "../e2e/helpers/arm-model.ts";
 import { adjustRatings, type AdjusterInput } from "../src/lib/rating-adjuster.ts";
 
 spendDevApiKeyOrExit("the rating adjuster live check");
-const ARM = process.env.ARM ?? "sonnet";
+const ARM = process.env.ARM ?? "haiku";
 const TAG = process.env.TAG ?? "new";
 const arm = ARMS[ARM];
 if (!arm) throw new Error(`ARM must be one of ${Object.keys(ARMS).join(", ")}`);
-const { model, calls, usd } = armModel(arm, 1);
+const { model, calls, usd } = armModel(arm, 0.5);
 
 type Sign = "-" | "0" | "+";
 interface Week {
@@ -37,6 +48,8 @@ interface Week {
   input: AdjusterInput;
   /** Allowed signs per player name. */
   want: Record<string, Sign[]>;
+  /** Allowed deltas, where the size guidance is unambiguous. */
+  sizes: Record<string, number[] | undefined>;
 }
 
 const H = 60 * 60 * 1000;
@@ -44,7 +57,7 @@ function week(args: {
   name: string;
   sport?: string;
   kickoff: string;
-  players: Array<[string, number, Sign[]]>;
+  players: Array<[string, number, Sign[], number[]?]>;
   /** [hours before kickoff, author, text] */
   chat: Array<[number, string, string]>;
 }): Week {
@@ -58,6 +71,7 @@ function week(args: {
       messages: args.chat.map(([h, authorName, body]) => ({ authorName, body, timestamp: new Date(kickoff.getTime() - h * H) })),
     },
     want: Object.fromEntries(args.players.map(([name, , signs]) => [name, signs])),
+    sizes: Object.fromEntries(args.players.map(([name, , , sizes]) => [name, sizes])),
   };
 }
 
@@ -70,14 +84,14 @@ const WEEKS: Week[] = [
     name: "EN Tuesday evening",
     kickoff: "2026-10-13T20:00:00.000Z", // Tue 21:00 London
     players: [
-      ["Ali Kaya", 7.2, DOWN],
+      ["Ali Kaya", 7.2, DOWN, [-0.5, -1]],
       ["Dan Moore", 6.8, Z],
-      ["Sam Price", 6.5, DOWN],
+      ["Sam Price", 6.5, DOWN, [-0.5, -1]],
       ["Joe Hart", 7.0, ["0", "+"]],
       ["Tom Reed", 5.9, Z],
       ["Ben Cole", 6.1, Z],
-      ["Luke Shaw", 6.6, DOWN],
-      ["Matt Fox", 7.4, UP],
+      ["Luke Shaw", 6.6, DOWN, [-1]],
+      ["Matt Fox", 7.4, UP, [0.5, 1]],
       ["Ryan Gray", 6.0, Z],
       ["Nick Webb", 6.3, Z],
     ],
@@ -104,11 +118,11 @@ const WEEKS: Week[] = [
       ["Mehmet Yılmaz", 6.6, Z],
       ["Ali Çelik", 6.2, Z],
       ["Can Şahin", 6.9, Z],
-      ["Emre Doğan", 7.1, DOWN],
-      ["Burak Aydın", 7.3, UP],
-      ["Oğuz Kaya", 6.4, DOWN],
+      ["Emre Doğan", 7.1, DOWN, [-1]],
+      ["Burak Aydın", 7.3, UP, [0.5, 1]],
+      ["Oğuz Kaya", 6.4, DOWN, [-0.5, -1]],
       ["İlker Demir", 6.8, Z],
-      ["Serkan Arslan", 6.5, DOWN],
+      ["Serkan Arslan", 6.5, DOWN, [-1]],
       ["Hakan Koç", 6.0, Z],
     ],
     chat: [
@@ -151,8 +165,8 @@ const WEEKS: Week[] = [
     name: "EN Saturday morning, 'tonight' is the night before",
     kickoff: "2026-10-17T09:00:00.000Z", // Sat 10:00 London
     players: [
-      ["Pete Hall", 6.9, DOWN],
-      ["Mark Long", 6.4, DOWN],
+      ["Pete Hall", 6.9, DOWN, [-0.5]],
+      ["Mark Long", 6.4, DOWN, [-0.5, -1]],
       ["Kev Bright", 6.7, ["0", "+"]],
       ["Rob Lane", 6.2, Z],
       ["Gary Wood", 7.1, ["0", "+"]],
@@ -201,6 +215,30 @@ const WEEKS: Week[] = [
       [6, "Owen Fry", "long shift today, might be a bit tired but I'm in"],
     ],
   }),
+  week({
+    name: "EN attendance is not form (the weak reasons seen before 2026-10-20)",
+    kickoff: "2026-10-20T19:00:00.000Z", // Tue 20:00 London
+    players: [
+      ["Raj Patel", 6.5, Z],
+      ["Omar Khan", 6.2, Z],
+      ["Dev Shah", 6.0, Z],
+      ["Sami Ali", 6.8, Z],
+      ["Will Hart", 6.6, DOWN, [-0.5]],
+      ["Raihan Uddin", 6.4, Z],
+      ["Zak Moss", 7.0, Z],
+      ["Imran Butt", 6.1, Z],
+    ],
+    chat: [
+      [100, "Zak Moss", "in"],
+      [90, "Imran Butt", "in"],
+      [30, "Omar Khan", "If none shows up, count me in"],
+      [14, "Raj Patel", "can anyone take my place tonight? not sure I can make it"],
+      [10, "Sami Ali", "happy to sit out tonight so the others get a game"],
+      [8, "Will Hart", "quite tired today, long week, but I'll be there"],
+      [5, "Raihan Uddin", "we're one short so I've brought my mate Dev in last minute, he'll play tonight"],
+      [4, "Dev Shah", "thanks for having me, see you at 8"],
+    ],
+  }),
 ];
 
 const sign =(d: number): Sign => (d > 0 ? "+" : d < 0 ? "-" : "0");
@@ -213,6 +251,7 @@ async function main() {
   let signalsFound = 0;
   let signals = 0;
   let falsePositives = 0;
+  let overCap = 0;
   for (const w of WEEKS) {
     const before = calls.length;
     const out = await adjustRatings(w.input, { model });
@@ -221,7 +260,8 @@ async function main() {
       const a = out.get(p.id);
       const delta = a?.delta ?? 0;
       const allowed = w.want[p.name];
-      const ok = allowed.includes(sign(delta)) && !(a && DASH.test(a.reason));
+      const sizes = w.sizes[p.name];
+      const ok = allowed.includes(sign(delta)) && (!sizes || sizes.includes(delta)) && !(a && DASH.test(a.reason));
       total++;
       if (ok) correct++;
       if (!allowed.includes("0")) {
@@ -229,12 +269,18 @@ async function main() {
         if (ok) signalsFound++;
       }
       if (allowed.length === 1 && allowed[0] === "0" && delta !== 0) falsePositives++;
-      return { name: p.name, delta, want: allowed.join("|"), ok, reason: a?.reason ?? null, confidence: a?.confidence ?? null };
+      return { name: p.name, delta, want: allowed.join("|") + (sizes ? ` ${sizes.join("|")}` : ""), ok, reason: a?.reason ?? null, confidence: a?.confidence ?? null };
     });
+    try {
+      const raw = JSON.parse(call?.raw ?? "{}") as { adjustments?: Array<{ delta?: number }> };
+      overCap += (raw.adjustments ?? []).filter((x) => typeof x.delta === "number" && Math.abs(x.delta) > 1).length;
+    } catch {
+      /* the raw text is reported below either way */
+    }
     const extraIds = [...out.keys()].filter((id) => !w.input.players.some((p) => p.id === id));
     weeks.push({ week: w.name, ms: call?.ms, out: call?.outputTokens, in: call?.inputTokens, usd: call?.usd, empty: call?.empty, error: call?.error, extraIds, rows, raw: call?.raw });
     console.log(`\n== ${w.name}  ${call?.ms}ms in=${call?.inputTokens} out=${call?.outputTokens}${call?.empty ? `  EMPTY (${call.stopReason ?? call.error})` : ""}`);
-    for (const r of rows) console.log(`  ${r.ok ? "PASS" : "FAIL"} ${r.name.padEnd(14)} ${String(r.delta).padStart(4)} want ${r.want.padEnd(4)} ${r.reason ?? ""}`);
+    for (const r of rows) console.log(`  ${r.ok ? "PASS" : "FAIL"} ${r.name.padEnd(14)} ${String(r.delta).padStart(4)} want ${r.want.padEnd(12)} ${r.reason ?? ""}`);
   }
   const lat = latency(calls);
   const summary = {
@@ -245,6 +291,7 @@ async function main() {
     result: `${correct}/${total} players`,
     signals: `${signalsFound}/${signals}`,
     falsePositives,
+    overCap,
     calls: calls.length,
     cost: Number(usd().toFixed(6)),
     costPerCall: Number((usd() / Math.max(1, calls.length)).toFixed(6)),
@@ -254,7 +301,7 @@ async function main() {
     weeks,
   };
   console.log(
-    `\n${summary.result}, signals ${summary.signals}, false positives ${falsePositives}, on ${arm.model} (${TAG} prompt), ` +
+    `\n${summary.result}, signals ${summary.signals}, false positives ${falsePositives}, over the cap before clamping ${overCap}, on ${arm.model} (${TAG} prompt), ` +
       `${calls.length} calls, $${summary.cost}, p50 ${lat.p50}ms p90 ${lat.p90}ms, empty ${summary.empty}`,
   );
   if (process.env.OUT) fs.writeFileSync(process.env.OUT, JSON.stringify(summary, null, 2));

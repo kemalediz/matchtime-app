@@ -15,6 +15,7 @@ import { HAIKU_CALL } from "../pipeline/llm";
 import { HAIKU_SHORT_ANSWER_MAX_TOKENS } from "../models";
 import {
   adjustRatings,
+  MAX_DELTA,
   NO_SIGNAL_REASON,
   RATING_ADJUSTER_CALL,
   RATING_ADJUSTER_SYSTEM,
@@ -97,6 +98,20 @@ describe("the request", () => {
     expect(RATING_ADJUSTER_SYSTEM).not.toMatch(/EVERY player/i);
     expect(RATING_ADJUSTER_SYSTEM).not.toMatch(/[\u2013\u2014]/);
   });
+
+  it("the prompt asks for a delta from -1 to 1, defined once, and never mentions 2 or 1.5", () => {
+    expect(RATING_ADJUSTER_SYSTEM).toMatch(/from -1 to 1\b/);
+    expect(RATING_ADJUSTER_SYSTEM.match(/- delta:/g)).toHaveLength(1);
+    expect(RATING_ADJUSTER_SYSTEM).not.toMatch(/-2\b|\b1\.5\b|\bdelta [+-]?2\b/);
+  });
+
+  it("the prompt says being a late addition, a replacement, offering to sit out or asking for a replacement is not a reason", () => {
+    const notAReason = RATING_ADJUSTER_SYSTEM.split("\n").find((l) => l.startsWith("- Not a reason")) ?? "";
+    expect(notAReason).toMatch(/late addition/);
+    expect(notAReason).toMatch(/replacement/);
+    expect(notAReason).toMatch(/sit out/);
+    expect(notAReason).toMatch(/attendance/);
+  });
 });
 
 describe("the answer", () => {
@@ -108,7 +123,8 @@ describe("the answer", () => {
     expect(out.size).toBe(3);
   });
 
-  it("clamps to plus or minus 2, zeroes a guess, drops an id it was not given, and strips dashes", async () => {
+  it("clamps to plus or minus 1 (Kemal, 2026-11-10), zeroes a guess, drops an id it was not given, and strips dashes", async () => {
+    expect(MAX_DELTA).toBe(1);
     const { model } = stub(
       answer([
         { playerId: "p-pete", delta: -5, reason: "ill \u2014 still coming", confidence: 0.9 },
@@ -117,10 +133,24 @@ describe("the answer", () => {
       ]),
     );
     const out = await adjustRatings(INPUT, { model });
-    expect(out.get("p-pete")?.delta).toBe(-2);
+    expect(out.get("p-pete")?.delta).toBe(-1);
     expect(out.get("p-pete")?.reason).not.toMatch(/[\u2013\u2014]/);
     expect(out.get("p-mark")?.delta).toBe(0);
     expect(out.has("p-zack")).toBe(false);
+  });
+
+  it("a 2 is stored as 1 and a -1.7 as -1; a 0.5 inside the cap is kept", async () => {
+    const { model } = stub(
+      answer([
+        { playerId: "p-pete", delta: 2, reason: "four goals last week", confidence: 0.9 },
+        { playerId: "p-mark", delta: -1.7, reason: "playing with a fever", confidence: 0.9 },
+        { playerId: "p-rob", delta: -0.5, reason: "a bit tired", confidence: 0.7 },
+      ]),
+    );
+    const out = await adjustRatings(INPUT, { model });
+    expect(out.get("p-pete")?.delta).toBe(1);
+    expect(out.get("p-mark")?.delta).toBe(-1);
+    expect(out.get("p-rob")?.delta).toBe(-0.5);
   });
 
   it("fails open: a thrown call or an unreadable body changes nobody", async () => {

@@ -9,7 +9,9 @@
  * player, and team selection itself stays deterministic.
  *
  * Design principles (agreed with Kemal 2026-04-21):
- *   - Delta is clamped to [-2, +2] here, whatever the model says.
+ *   - Delta is clamped to [-1, +1] here (MAX_DELTA), whatever the model
+ *     says. It was [-2, +2] until 2026-11-10, when Kemal found 2 harsh
+ *     on a 1 to 10 scale.
  *   - The model never picks teams. It only suggests rating tweaks.
  *   - Every decision is persisted to RatingAdjustment with its reason,
  *     so an admin can see why a player's rating moved for a match.
@@ -24,6 +26,14 @@
  * own day and time, and each chat line's, instead of assuming "tonight",
  * and states the rating scale. The paid check is
  * `scripts/live-check-rating-adjuster.ts`.
+ *
+ * 2026-11-10 rewrite of the size guidance (Kemal): the cap is 1 either
+ * way, with the sizes stated once (tired or rusty about 0.5; ill, injured
+ * or back after weeks out about 1; a standout run +0.5, exceptional +1),
+ * and "Not a reason" now names the attendance talk that was being read as
+ * form before the 2026-10-20 rewrite: a late addition, a replacement or a
+ * backup, offering to sit out, asking for a replacement. Old and new text:
+ * `MDs/prompt-change-rating-adjuster-cap-1-2026-11-10.md`.
  */
 
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
@@ -39,7 +49,8 @@ import { stripLongDashes } from "./house-style";
  * about a sixteenth of the live cost per call.
  */
 export const RATING_ADJUSTER_CALL: ModelCall = HAIKU_CALL;
-const MAX_DELTA = 2;
+/** The most the adjuster moves a rating for one match, either way. */
+export const MAX_DELTA = 1;
 const MIN_CONFIDENCE = 0.3;
 const HISTORY_DAYS = 7;
 const MAX_HISTORY_MESSAGES = 300;
@@ -58,22 +69,27 @@ You are given the match's day and time, the confirmed players with their ratings
 Return "adjustments": one entry for each player the chat gives you a reason about, and nobody else. Players you leave out keep their rating.
 - playerId: the player's id, exactly as listed.
 - reason: one short line on why, quoting the chat where you can. Under 120 characters, no dashes.
-- delta: what to add to their rating for this match only, from -2 to 2: negative if they will probably play worse than usual, positive if better. Most reasons are worth 0.5 or 1 either way; keep 1.5 and 2 for something that clearly changes how they will play, such as playing with a fever or an injury.
+- delta: what to add to their rating for this match only, from -1 to 1: negative if they will probably play worse than usual, positive if better, sized as below.
 - confidence: from 0 to 1, how sure you are the chat means this for this match. If it is under 0.3, leave the player out instead.
 
-What counts, read against the match's day and time:
-- Worse (negative delta): ill, injured, exhausted or hungover for the match, or back after weeks without playing.
-- Better (positive delta): standout games just before this one (goals, Man of the Match, team-mates saying they were the best player).
-- Not a reason: a problem they later say has cleared up, an opinion about who is better in general (the ratings already hold that), banter, idioms, someone else's illness, and simply saying they are in.
+What counts and what it is worth, read against the match's day and time:
+- Tired, hungover or a bit rusty for the match: about -0.5.
+- Ill or injured for the match, or back after weeks without playing: about -1.
+- A standout run just before this match (goals, Man of the Match, team-mates saying they were the best player): +0.5, or +1 if it was clearly exceptional.
+- Not a reason: a problem they later say has cleared up; an opinion about who is better in general (the ratings already hold that); banter and idioms; someone else's illness; being a late addition, a replacement or a backup; offering to sit out; asking for a replacement or being unsure whether they can come (that is attendance, not form); and simply saying they are in.
 - "Tonight" or "tomorrow" in a message means the day it was written, which is not always the match day.
 - The chat may be in English or Turkish. Never give a reason the chat does not.
 
 Examples:
+- "bit tired after a long shift but I'm in" / "işten yorgun çıktım ama varım": delta -0.5
 - "my back's killing me but I'll play" / "belim tutuldu ama gelirim": delta -1
-- "haven't kicked a ball since the summer" / "yazdan beri top oynamadım": delta -0.5
+- "haven't kicked a ball since the summer" / "yazdan beri top oynamadım": delta -1
+- "Jack scored twice last week" / "Kerem geçen hafta 2 gol attı": Jack / Kerem delta +0.5
 - "Jack got four last week, unstoppable" / "Kerem geçen hafta 4 attı, durdurulamazdı": Jack / Kerem delta +1
 - "knee's fine now" after a knee injury / "dizim düzeldi": not a reason
 - "Jack is the best player here" / "buradaki en iyi oyuncu Kerem": not a reason
+- "can anyone take my place tonight?" / "yerime gelebilecek var mı?": not a reason
+- "if nobody shows I'll step in" / "kimse gelmezse ben gelirim": not a reason
 - "in" / "varım": not a reason`;
 
 const SCHEMA = {

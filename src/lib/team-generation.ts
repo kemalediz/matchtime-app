@@ -160,10 +160,10 @@ export async function generateTeamsForMatch(
   });
 
   // Phase 4 — hybrid LLM rating adjuster. LLM reads the last week of
-  // group chat and proposes per-player deltas for tonight (sick,
-  // tentative, hot streak, rusty). Deltas clamped to [-2, +2] in the
-  // adjuster itself. Falls through silently to base ratings on any
-  // failure — team generation never blocks on the LLM.
+  // group chat and proposes per-player deltas for this match (ill,
+  // injured, hot streak, rusty). Deltas clamped to [-1, +1]
+  // (MAX_DELTA, since 2026-11-10) in the adjuster itself. Falls through
+  // silently to base ratings on any failure — team generation never blocks on the LLM.
   //
   // THE CATCH IS NOT BELT AND BRACES. `adjustRatings` swallows its own
   // model errors, but `runRatingAdjuster` is more than that call: it
