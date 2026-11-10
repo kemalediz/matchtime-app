@@ -13,7 +13,7 @@
  *   - `carriedSeed` (carried-seed.ts): a joiner's empty seed is the
  *     games-weighted average of his shown ratings at other clubs, exact
  *   - `generateTeamsForMatch` / `matchRatingsFor` (team-generation.ts):
- *     the adjuster's per-match change, at most 2 either way
+ *     the adjuster's per-match change, at most 1 either way
  *     (rating-adjuster.ts MAX_DELTA), the result kept within 1 to 10
  *   - `clubDisplayRating` (player-rating.ts): players see the raw mean of
  *     their newest 60 club ratings, nothing before the first, never the seed
@@ -26,6 +26,7 @@ import { en } from "../strings.en";
 import { tr } from "../strings.tr";
 import { DEFAULT_SEED_RATING } from "../../default-seed";
 import { CLUB_RATING_WINDOW, computeClubRating } from "../../player-rating";
+import { MAX_DELTA } from "../../rating-adjuster";
 
 const KEYS = [
   "ratings_info_title",
@@ -78,11 +79,14 @@ describe("the How ratings work popup copy", () => {
     expect(tr.ratings_info_shown_body).toMatch(/\b60\b/);
   });
 
-  it("says the match-day change is at most 2, for that match only, and stays within 1 to 10", () => {
-    expect(en.ratings_info_match_day_body).toMatch(/up to 2/);
+  it("says the match-day change is at most 1 (MAX_DELTA), for that match only, and stays within 1 to 10", () => {
+    expect(MAX_DELTA).toBe(1);
+    expect(en.ratings_info_match_day_body).toMatch(/up to 1 for that match only/);
+    expect(en.ratings_info_match_day_body).not.toMatch(/\b2\b/);
+    expect(tr.ratings_info_match_day_body).not.toMatch(/\b2\b/);
     expect(en.ratings_info_match_day_body).toMatch(/that match only/);
     expect(en.ratings_info_match_day_body).toMatch(/between 1 and 10/);
-    expect(tr.ratings_info_match_day_body).toMatch(/en fazla 2/);
+    expect(tr.ratings_info_match_day_body).toMatch(/en fazla 1/);
     expect(tr.ratings_info_match_day_body).toMatch(/1 ile 10 arasında/);
   });
 

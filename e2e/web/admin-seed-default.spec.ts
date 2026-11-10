@@ -96,7 +96,7 @@ test("the Starting ratings page explains ratings as the code computes them, with
   await expect(info).toContainText("How ratings work");
   await expect(info).toContainText("A player you have not rated is a 6, a medium player.");
   await expect(info).toContainText("your seed counting as 3 ratings");
-  await expect(info).toContainText("up to 2 for that match only");
+  await expect(info).toContainText("up to 1 for that match only");
   await expect(info).toContainText("It is not used to make the teams.");
   await expect(info).not.toContainText("match_rating");
   await expect(info).not.toContainText("÷");

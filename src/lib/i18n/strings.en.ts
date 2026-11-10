@@ -2538,8 +2538,8 @@ export const en = {
    *  joiner: `carriedSeed` (carried-seed.ts), games-weighted, exact;
    *  peers: `computeClubRating` (player-rating.ts), the seed counted as
    *  PRIOR_WEIGHT = 3 ratings beside this club's newest 60;
-   *  match day: the adjuster's per-match delta, MAX_DELTA 2
-   *  (rating-adjuster.ts), clamped 1 to 10 (team-generation.ts);
+   *  match day: the adjuster's per-match delta, MAX_DELTA 1, 2 until
+   *  2026-11-10 (rating-adjuster.ts), clamped 1 to 10 (team-generation.ts);
    *  shown: `clubDisplayRating`, the raw mean, nothing before the first;
    *  Elo: never read by the balancer. Pinned by
    *  `__tests__/ratings-info-copy.test.ts`. */
@@ -2555,7 +2555,7 @@ export const en = {
     "team-mates rate each other from 1 to 10. To make the teams, MatchTime mixes your seed with this club's 60 most recent ratings of the player, your seed counting as 3 ratings. So the first rating moves him a quarter of the way, after 3 it is half and half, and after many games team-mates' ratings decide almost on their own.",
   ratings_info_match_day_head: "On match day:",
   ratings_info_match_day_body:
-    "when the teams are made, MatchTime reads the group's chat from the week before and can move a player up or down by up to 2 for that match only: down if he is injured or ill, up after a standout game. The number always stays between 1 and 10.",
+    "when the teams are made, MatchTime reads the group's chat from the week before and can move a player up or down by up to 1 for that match only: down if he is injured or ill, up after a standout game. The number always stays between 1 and 10.",
   ratings_info_shown_head: "What players see:",
   ratings_info_shown_body:
     "only the average of the ratings team-mates at this club gave them (the 60 most recent), and nothing until the first one arrives. Never your seed or the match-day change.",
