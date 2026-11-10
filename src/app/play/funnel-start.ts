@@ -62,6 +62,25 @@ export function funnelControlValue(target: unknown): string | null {
   return readControl(target)?.value ?? null;
 }
 
+/** Why an event counts started or not; "counts" when it does. */
+export type PersonEntryVerdict = "counts" | "not-input-or-change" | "untrusted" | "not-a-control" | "tick-without-trusted-click" | "value-unchanged";
+
+/**
+ * The rule below with its reason (2026-11-10, for the TEMPORARY /play debug
+ * diagnostic in `funnel-debug.ts`): `isPersonEntry` is exactly `=== "counts"`.
+ */
+export function personEntryVerdict(
+  e: { type: string; isTrusted: boolean; target: unknown },
+  seen: { before?: string; clickTrusted?: boolean },
+): PersonEntryVerdict {
+  if (e.type !== "input" && e.type !== "change") return "not-input-or-change";
+  if (!e.isTrusted) return "untrusted";
+  const now = readControl(e.target);
+  if (!now) return "not-a-control";
+  if (now.checkable && seen.clickTrusted !== true) return "tick-without-trusted-click";
+  return seen.before === undefined || now.value !== seen.before ? "counts" : "value-unchanged";
+}
+
 /**
  * Is this the event that counts started? What the beacon saw of the control
  * before it: `before`, what it held on its first focus (undefined if never
@@ -72,10 +91,5 @@ export function isPersonEntry(
   e: { type: string; isTrusted: boolean; target: unknown },
   seen: { before?: string; clickTrusted?: boolean },
 ): boolean {
-  if (e.type !== "input" && e.type !== "change") return false;
-  if (!e.isTrusted) return false;
-  const now = readControl(e.target);
-  if (!now) return false;
-  if (now.checkable && seen.clickTrusted !== true) return false;
-  return seen.before === undefined || now.value !== seen.before;
+  return personEntryVerdict(e, seen) === "counts";
 }
