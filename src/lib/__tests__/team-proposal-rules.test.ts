@@ -475,6 +475,9 @@ describe("teamCommandFromFacts: restore and set (2026-10-30, FNF HQ)", () => {
     expect(teamCommandFromFacts({ ...base, action: "set", sides: { red: ["Ali"], yellow: [] } })).toEqual({ kind: "unclear" });
     expect(teamCommandFromFacts({ ...base, action: "set" })).toEqual({ kind: "unclear" });
   });
+  it("a form note (2026-11-10) is its own kind: never a change, never 'which players?'", () => {
+    expect(teamCommandFromFacts({ ...base, action: "form" })).toEqual({ kind: "form" });
+  });
 });
 
 describe("checkSheetFacts: a sheet is used only when every fact holds", () => {

@@ -1183,3 +1183,76 @@ describe("who-is-who in a team batch", () => {
     expect(people.get("Gus")).toEqual({ kind: "member", userId: "u-gus" });
   });
 });
+
+// ── A form note (Sutton FC, 2026-11-10) ─────────────────────────────────
+//
+// "@Match Time reduce my strength for this match as I am quite tired." was
+// read as a settings change and answered with the settings page. The rating
+// adjuster already reads the week's chat when the teams are made, so the
+// message itself does what was asked; MatchTime only says it is noted, and
+// says the teams will weigh it only when MatchTime makes them.
+
+describe("a form note: how a player will play in this match", () => {
+  const TIRED = "@Match Time reduce my strength for this match as I am quite tired.";
+
+  it("teamActionOf reads `form` as its own action, never a build", () => {
+    const base = { kind: "teams" as const, includeRefs: [], teamNames: null, swaps: [], moves: [], pairings: [], swapSides: false };
+    expect(teamActionOf({ ...base, action: "form" })).toBe("form");
+  });
+
+  it("addressed, teams not made yet: noted for when the teams are made; nothing built", async () => {
+    const { model } = stubModel({ [TIRED]: teamsFacts({ action: "form", toMatchTime: true }) });
+    const r = recorder(model, squadWorld());
+    const res = await run({ messages: [msg({ body: TIRED })], deps: r.deps });
+    expect(r.generated).toEqual([]);
+    expect(r.confirmed).toEqual([]);
+    expect(res.ownedIds.has(`wa-${TIRED.slice(0, 14)}`)).toBe(true);
+    expect([...res.outcomes.values()][0]).toMatchObject({
+      intent: "form_note",
+      action: "reply",
+      reply: "Noted: I'll take it into account when the teams are made, for this match only.",
+      teamsGenerated: false,
+    });
+    expect([...res.outcomes.values()][0].reply).not.toMatch(/settings/);
+  });
+
+  it("the teams are already made: says it counts if they are made again", async () => {
+    const { model } = stubModel({ [TIRED]: teamsFacts({ action: "form", toMatchTime: true }) });
+    const r = recorder(model, squadWorld({ teams: { kemal: "RED", elvin: "YELLOW" } }));
+    const res = await run({ messages: [msg({ body: TIRED })], deps: r.deps });
+    expect(r.generated).toEqual([]);
+    expect([...res.outcomes.values()][0].reply).toBe(
+      "Noted. The teams for this match are already made, so I'll take it into account if they are made again.",
+    );
+  });
+
+  it("no match to make teams for: a plain acknowledgement, nothing about the teams", async () => {
+    const { model } = stubModel({ [TIRED]: teamsFacts({ action: "form", toMatchTime: true }) });
+    const r = recorder(model, squadWorld({ noMatch: true }));
+    const res = await run({ messages: [msg({ body: TIRED })], deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toBe("Noted.");
+  });
+
+  it("in Turkish", async () => {
+    const TR = "@Match Time bugün çok yorgunum, bu maç için gücümü düşür";
+    const { model } = stubModel({ [TR]: teamsFacts({ action: "form", toMatchTime: true }) });
+    const r = recorder(model, squadWorld({ features: { language: "tr" } }));
+    const res = await run({ messages: [msg({ body: TR })], deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toBe("Not aldım: takımlar kurulurken bunu dikkate alacağım, sadece bu maç için.");
+  });
+
+  it("not addressed to MatchTime: owned by nobody here, nothing said", async () => {
+    const { model } = stubModel({ [TIRED]: teamsFacts({ action: "form", toMatchTime: true }) });
+    const r = recorder(model, squadWorld());
+    const res = await run({ messages: [msg({ body: TIRED, taggedExplicitly: false })], deps: r.deps });
+    expect(res.ownedIds.size).toBe(0);
+  });
+
+  it("a club whose teams MatchTime does not make hears nothing about the teams", async () => {
+    const { model, calls } = stubModel({ [TIRED]: teamsFacts({ action: "form", toMatchTime: true }) });
+    const r = recorder(model, squadWorld(), { loadFeatures: async () => ({ ...FEATURES_ON, teamBalancing: false }) });
+    const res = await run({ messages: [msg({ body: TIRED })], deps: r.deps });
+    expect(calls).toEqual([]);
+    expect([...res.outcomes.values()][0].reply).toBeNull();
+  });
+});

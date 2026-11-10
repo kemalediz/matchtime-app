@@ -129,6 +129,7 @@ import { answerTeamsYes, compareQuotedSheet, handleTeamCommand, replaceOnPlayedG
 import { quotedTeamSheet } from "./team-sheet-history";
 import { membersNamedIn } from "./pipeline/identity";
 import { teamCommandFromFacts } from "./team-proposal-rules";
+import { formNoteReplyFor } from "./form-note";
 import { answerSquadPasteYes, proposeSquadPaste, readHqSquad, type HqSquadRead } from "./admin-group-paste";
 import { answerGraphicRequest } from "./admin-group-graphics";
 import { buildHqHelp, hqHelpGates } from "./admin-group-help";
@@ -799,6 +800,13 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         return null;
       }
       const command = teamCommandFromFacts(extracted.facts);
+      // A form note (2026-11-10): how a player will play in this match.
+      // Nothing changes; the rating adjuster reads it from the chat when the
+      // teams are made, and the line says so only when MatchTime makes them.
+      if (command.kind === "form") {
+        const line = await formNoteReplyFor({ orgId: org.id, now, lang });
+        return line === null ? null : said("form-noted", line);
+      }
       if (command.kind === "unclear") {
         return extracted.facts.action === "rename" || extracted.facts.action === "clear"
           ? notHere()

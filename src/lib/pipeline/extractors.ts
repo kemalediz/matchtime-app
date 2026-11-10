@@ -184,6 +184,14 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * by side, with a question and talk about a time as "other". 18,839 to
  * 21,516 characters. Old and new: MDs/prompt-move-game-old.md and
  * MDs/prompt-move-game-new.md; the paid check: scripts/live-check-move-game.ts.
+ *
+ * The TEAMS extractor, 2026-11-10 (Sutton FC, "@Match Time reduce my
+ * strength for this match as I am quite tired." went to the settings
+ * page): one action, `form`, defined once beside the others (how a player
+ * will play in this match; nothing changes now, the rating adjuster reads
+ * the chat when the teams are made), the opening line naming it, and one
+ * example group, EN and TR side by side. 6,473 to 7,313 characters. Old and
+ * new: MDs/prompt-form-note-2026-11-10.md.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -545,7 +553,7 @@ Periods:
   "@Match Time who played most this month" | "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month
   "@Match Time all-time most MoMs" | "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time`,
 
-  teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds, changes, brings back and clears the line-ups, and checks every name.
+  teams: `You read ONE message about the club's two team line-ups, or about how a player will play in the match they are made for, and report what it asks for. You never pick the players: code builds, changes, brings back and clears the line-ups, and checks every name.
 
 THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST (often the two teams as they stand), NOW (the time at the club), CLUB MEMBERS NAMED (words in the message that are people in the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line, often one of MatchTime's earlier team sheets). They tell you who "him", "them", "these" or "the teams" are and which team a player is on now; every field comes from THE MESSAGE.
 
@@ -559,6 +567,7 @@ action, exactly one:
   "suggest" asks you to recommend changes that make the teams fairer.
   "rename" keep the same two line-ups and change only their NAMES. Swapping the two teams' colours is not a rename: it is "swap" with swapSides.
   "clear" remove the line-ups altogether, so that there are no teams until they are made again ("clear the teams", "delete them").
+  "form" tells MatchTime how a player, the sender or another, will play in this match, so the teams are made with it in mind: tired, ill, injured, hungover, rusty or in top form, or asks MatchTime to rate them, or their strength, down or up for this match. Nothing is changed now: MatchTime reads it from the chat when it makes the teams. Every other field stays empty. A message that also asks for new teams is "generate".
 includeRefs
   people the message says must play.
 teamNames
@@ -608,6 +617,10 @@ No teams at all:
   "clear the teams" / "takımları sil" -> clear
 Fairer teams:
   "recommend swaps" / "any swaps to even it up?" / "takımları dengelemek için ne önerirsin?" -> suggest
+How a player will play in this match:
+  "reduce my strength for this match as I am quite tired" / "bu maç için gücümü düşür, çok yorgunum" -> form
+  "Tom hurt his knee last night, bear it in mind for the teams" / "Ali'nin dizi sakat, takımları kurarken dikkate al" -> form
+  "I'm flying today, rate me up" / "bugün formdayım, puanımı yükselt" -> form
 Talk among people, not asked of MatchTime:
   "Ali and Habib are always on the same team lol" / "Ali ile Habib hep aynı takımda" -> swap, pairings [["Ali","Habib"]], toMatchTime false
   "are we going with these teams?" / "bu takımlarla mı gidiyoruz?" -> show, toMatchTime false`,
@@ -941,7 +954,7 @@ const QUESTION_SCHEMA = {
 const TEAMS_SCHEMA = {
   type: "object",
   properties: {
-    action: { type: "string", enum: ["show", "generate", "rename", "swap", "suggest", "clear", "restore", "set"] },
+    action: { type: "string", enum: ["show", "generate", "rename", "swap", "suggest", "clear", "restore", "set", "form"] },
     includeRefs: { type: "array", items: { type: "string" } },
     teamNames: { type: "array", items: { type: "string" } },
     swaps: {
@@ -1339,7 +1352,7 @@ export function parseFacts(
 
     case "teams": {
       const action = str(raw.action).toLowerCase();
-      if (!["show", "generate", "rename", "swap", "suggest", "clear", "restore", "set"].includes(action)) {
+      if (!["show", "generate", "rename", "swap", "suggest", "clear", "restore", "set", "form"].includes(action)) {
         bad(`unknown team action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }

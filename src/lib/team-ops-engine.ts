@@ -131,6 +131,23 @@ export function requestNotHandledAdminReply(lang?: Lang | string | null): string
   return t(lang).request_not_handled_admin({ url: appUrl("/admin/settings") });
 }
 
+/**
+ * PURE. The answer to a form note, the teams extractor's `form` (Sutton FC,
+ * 2026-11-10): "@Match Time reduce my strength for this match as I am quite
+ * tired" was sent to the settings page. Nothing is written for it: the
+ * rating adjuster (`rating-adjuster.ts`, run by `generateTeamsForMatch`)
+ * reads the week's chat, this message included, when the teams are made.
+ * So the line only says what will really happen. The caller says it only
+ * for a club whose teams MatchTime makes (`teamBalancing`); with no match
+ * it says nothing about the teams, and with the teams already made it says
+ * the note counts only if they are made again. No number is promised.
+ */
+export function formNoteReply(args: { lang?: Lang | string | null; matchId: string | null; teamsMade: boolean }): string {
+  const s = t(args.lang);
+  if (!args.matchId) return s.form_noted_no_match;
+  return args.teamsMade ? s.form_noted_teams_made : s.form_noted;
+}
+
 /** `route.ts:3690`. The balancer declined — not enough confirmed
  *  players, or the match is completed or cancelled. */
 export function composeBalancerRefusal(reason: string, lang?: Lang | string | null): string {

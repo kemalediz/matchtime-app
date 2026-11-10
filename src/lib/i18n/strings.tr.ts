@@ -763,6 +763,9 @@ export const tr: Strings = {
   teams_cleared: "Takımlar silindi. Maç günü istenince yenilerini kurarım.",
   teams_clear_nothing: "Silinecek takım yok.",
   teams_clear_admin_only: "Takımları sadece bir admin silebilir.",
+  form_noted: "Not aldım: takımlar kurulurken bunu dikkate alacağım, sadece bu maç için.",
+  form_noted_teams_made: "Not aldım. Bu maçın takımları zaten kuruldu; takımlar yeniden kurulursa bunu dikkate alacağım.",
+  form_noted_no_match: "Not aldım.",
   request_not_handled: "Kusura bakmayın, bunu henüz yapamıyorum.",
   request_not_handled_admin: (p: { url: string }): string =>
     `Bunu mesajla değiştiremiyorum, ama kulübünüzün ayarlar sayfasından birkaç dokunuşla yapabilirsiniz: ${p.url}\n` +
@@ -1226,6 +1229,7 @@ export const tr: Strings = {
         `🟥🟦 *Dengeli takımlar nasıl çalışır*\n` +
         `Maç günü gruptaki herkes beni etiketleyip takımları isteyebilir (örneğin *@Match Time takımları kur*), ben de form puanlarına göre herkesi iki dengeli takıma bölerim.\n` +
         `Kadroları doğrudan gruba yazarım. Bir eşleşmeyi beğenmediniz mi? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın (örn. _"@Match Time Ali ile Can'ı değiştir"_). Takımları yeniden göstermemi (örn. *"@Match Time takımları göster"*) ya da takımlar aynı kalıp renkleri değiştirmemi (örn. *@Match Time renkleri değiştir*) istediğiniz zaman isteyebilirsiniz.\n` +
+        `Yorgun, hasta, sakat ya da formda mısınız? Beni etiketleyip söyleyin (örn. _"@Match Time yorgunum, bu maç için puanımı düşür"_), takımları kurarken sadece o maç için dikkate alırım.\n` +
         `İki tam takıma bir kişi mi eksik? Kulüp oynadığı en az kişi sayısını ayarladıysa takımları o sayıdan itibaren kurarım, örneğin 7'ye karşı 6, bir kişi eksik takıma daha güçlü oyuncular düşecek şekilde dengelerim.\n` +
         `Hazır olunca beni etiketleyip istemeniz yeter.`,
       mom:

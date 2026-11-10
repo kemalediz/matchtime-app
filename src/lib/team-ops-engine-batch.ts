@@ -251,6 +251,7 @@ import {
   TEAM_OPS_APPLY_DEGRADED_PREFIX,
   TEAM_OPS_HANDLED_BY,
   applyGenerateTeams,
+  formNoteReply,
   requestNotHandledReply,
   teamOpsNotMatchDayReply,
   type EngineGenerateTeamsWrite,
@@ -272,12 +273,17 @@ export const TEAM_OPS_ACTIONS = TEAM_OPS_TEAM_ACTIONS;
  * PURE. What this path does with the teams extractor's facts: build
  * ("generate"), change the teams as they stand ("swap", the two supported
  * shapes), clear them ("clear", the extractor's action once it has one),
+ * say a form note is noted ("form": how a player will play in this match,
+ * which the rating adjuster reads from the chat when the teams are made),
  * leave it to answer-batch ("show"), or one line ("unsupported").
  */
-export function teamActionOf(facts: Extract<Facts, { kind: "teams" }>): "generate" | "swap" | "clear" | "show" | "unsupported" {
+export function teamActionOf(
+  facts: Extract<Facts, { kind: "teams" }>,
+): "generate" | "swap" | "clear" | "form" | "show" | "unsupported" {
   const action = facts.action;
   if (action === "show") return "show";
   if (action === "clear") return "clear";
+  if (action === "form") return "form";
   if (action === "swap") return playersSwapShape(facts).kind === "unsupported" ? "unsupported" : "swap";
   if (TEAM_OPS_ACTIONS.includes(facts.action)) return "generate";
   return "unsupported";
@@ -591,6 +597,8 @@ export async function runTeamOpsBatch(args: {
   const declined = new Map<string, "unsupported">();
   const swapFacts = new Map<string, Extract<Facts, { kind: "teams" }>>();
   const clearIds = new Set<string>();
+  // Form notes (2026-11-10): owned and answered in one line, nothing written.
+  const formIds = new Set<string>();
   for (const m of candidates) {
     const facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
@@ -623,7 +631,8 @@ export async function runTeamOpsBatch(args: {
     const kind = teamActionOf(facts);
     if (isAlso(m)) {
       // The team half of an engine-owned message: a swap or a clear, done
-      // and added to the engine's one reply; anything else is left alone.
+      // and added to the engine's one reply; anything else (a form note
+      // included: the chat already carries it) is left alone.
       if (kind === "swap") swapFacts.set(m.waMessageId, facts);
       else if (kind === "clear") clearIds.add(m.waMessageId);
       else continue;
@@ -632,6 +641,7 @@ export async function runTeamOpsBatch(args: {
     }
     if (kind === "swap") swapFacts.set(m.waMessageId, facts);
     else if (kind === "clear") clearIds.add(m.waMessageId);
+    else if (kind === "form") formIds.add(m.waMessageId);
     else if (kind !== "generate") declined.set(m.waMessageId, "unsupported");
     ownedIds.add(m.waMessageId);
   }
@@ -647,7 +657,12 @@ export async function runTeamOpsBatch(args: {
   // line apart, with two different line-ups, is the worst possible
   // answer to "generate the teams" asked twice.
   const orderedOwned = messages.filter(
-    (m) => ownedIds.has(m.waMessageId) && !declined.has(m.waMessageId) && !swapFacts.has(m.waMessageId) && !clearIds.has(m.waMessageId),
+    (m) =>
+      ownedIds.has(m.waMessageId) &&
+      !declined.has(m.waMessageId) &&
+      !swapFacts.has(m.waMessageId) &&
+      !clearIds.has(m.waMessageId) &&
+      !formIds.has(m.waMessageId),
   );
   const firingId = orderedOwned[orderedOwned.length - 1]?.waMessageId ?? null;
   const supersededIds = new Set(
@@ -975,6 +990,28 @@ export async function runTeamOpsBatch(args: {
     const machineReasons = (engineOutcome?.reasons ?? []).join("; ");
     const superseded = supersededIds.has(m.waMessageId);
     const failed = failedIds.has(m.waMessageId);
+
+    if (formIds.has(m.waMessageId)) {
+      // A form note: nothing to write. The rating adjuster reads this
+      // message from the chat when the teams are made; the line says only
+      // that (and this path runs only for a club whose teams MatchTime
+      // makes: the `teamBalancing` gate above is silent otherwise).
+      outcomes.set(m.waMessageId, {
+        waMessageId: m.waMessageId,
+        route: m.route as Route,
+        reply: formNoteReply({ lang: state.features.language, matchId: state.matchId, teamsMade: state.teams.length > 0 }),
+        react: null,
+        intent: "form_note",
+        action: "reply",
+        reasoning:
+          `${TEAM_OPS_HANDLED_BY} (${m.route}): a form note read by the teams extractor; ` +
+          `nothing written, the rating adjuster reads it from the chat when the teams are made`,
+        matchId: null,
+        teamsGenerated: false,
+        writeFailed: false,
+      });
+      continue;
+    }
 
     if (declined.has(m.waMessageId)) {
       outcomes.set(m.waMessageId, {

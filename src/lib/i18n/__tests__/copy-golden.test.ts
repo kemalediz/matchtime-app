@@ -503,6 +503,7 @@ import { composePaymentAck, composeReminderDm, type PaymentApplyResult } from ".
 import {
   composeBalancerRefusal,
   composeGenerateTeamsReply,
+  formNoteReply,
   requestNotHandledAdminReply,
   requestNotHandledReply,
   teamOpsNoMatchReply,
@@ -1360,6 +1361,10 @@ function cases(lang: Lang): Case[] {
   add("R170 teams_cleared", ratings.teams_cleared);
   add("R170 teams_clear_nothing", ratings.teams_clear_nothing);
   add("R170 teams_clear_admin_only", ratings.teams_clear_admin_only);
+  // NEW copy, a deliberate addition (2026-11-10, Sutton FC): a form note.
+  add("form note / teams not made", formNoteReply({ lang, matchId: "m1", teamsMade: false }));
+  add("form note / teams made", formNoteReply({ lang, matchId: "m1", teamsMade: true }));
+  add("form note / no match", formNoteReply({ lang, matchId: null, teamsMade: false }));
 
   // ── self-join slice 4: the organiser web (2026-09-29) ──
   const sj = ratings;
