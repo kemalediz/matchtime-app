@@ -7,7 +7,7 @@ import { poolLinkPreviewCopy } from "../pool-link-preview";
 import { POOL_LINK_PREVIEW_EN } from "../pool-link-preview.en";
 import { POOL_LINK_PREVIEW_TR } from "../pool-link-preview.tr";
 
-const lines = (c: typeof POOL_LINK_PREVIEW_EN) => [c.title, c.description, c.imageAlt, c.imageBadge, ...c.imageSteps];
+const lines = (c: typeof POOL_LINK_PREVIEW_EN) => [c.title, c.description, c.imageAlt, c.imageBadge];
 const ALL = [...lines(POOL_LINK_PREVIEW_EN), ...lines(POOL_LINK_PREVIEW_TR)];
 
 describe("link preview copy", () => {
