@@ -172,10 +172,11 @@ scenario.describe("the Vets sandbox", () => {
     const help = await say(pool, v, "shane", "@Match Time help", { tag: true });
     expect(help.intent).toBe("help");
     expect(help.reply).toMatch(/MatchTime help/);
-    expect(help.reply).toMatch(/help ratings/);
-    expect(help.reply).toMatch(/help friend/);
-    // Payments are off at this club: no payments topic in the menu.
-    expect(help.reply).not.toMatch(/• \*@Match Time help payments\*/);
+    // The topic list (2026-11-10): one line per topic, off ones too, and
+    // never "(off here)" for a player.
+    expect(help.reply).toMatch(/^📈 \*ratings\*: /m);
+    expect(help.reply).toMatch(/^👫 \*friend\*: /m);
+    expect(help.reply).not.toContain("(off here)");
   });
 
   // ── C ──────────────────────────────────────────────────────────────

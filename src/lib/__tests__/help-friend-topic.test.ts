@@ -10,7 +10,7 @@
  * switch it on, like every flag topic. No database, no model.
  */
 import { describe, expect, it } from "vitest";
-import { buildHelpReply, helpPagesNeeded, type HelpFeatures } from "@/lib/onboarding-conversation";
+import { buildHelpReply, buildHowToUseMe, helpPagesNeeded, type HelpFeatures } from "@/lib/onboarding-conversation";
 import { helpTopicSettingsPath } from "@/lib/help-links";
 import { HELP_FEATURES } from "@/lib/pipeline/types";
 import { t } from "@/lib/i18n/t";
@@ -116,17 +116,17 @@ describe("help friend, attendance off", () => {
 });
 
 describe("the bare help menu lists the friend topic", () => {
-  // The short menu (2026-11-10): one closing line names every topic word.
+  // The topic-list menu (2026-11-10): one line per topic.
   it("English and Turkish, by its word in the topic list, while attendance is on", () => {
-    expect(buildHelpReply(null, BASE, "en")).toMatch(/Topics: availability, friend, teams/);
-    expect(buildHelpReply(null, BASE, "tr")).toMatch(/Konular: kadro, arkadaş, takımlar/);
+    expect(buildHelpReply(null, BASE, "en")).toContain(`\n👫 *friend*: bringing a friend to play\n`);
+    expect(buildHelpReply(null, BASE, "tr")).toContain(`\n👫 *arkadaş*: oynamaya arkadaş getirmek\n`);
   });
 
   it("right after squad and availability", () => {
-    const menu = buildHelpReply(null, BASE, "en");
-    const topics = menu.slice(menu.indexOf("Topics: "));
-    expect(topics.indexOf("availability")).toBeLessThan(topics.indexOf("friend"));
-    expect(topics.indexOf("friend")).toBeLessThan(topics.indexOf("teams"));
+    const lines = buildHelpReply(null, BASE, "en").split("\n");
+    const at = (w: string) => lines.findIndex((l) => l.includes(`*${w}*:`));
+    expect(at("friend")).toBe(at("availability") + 1);
+    expect(at("teams")).toBe(at("friend") + 1);
   });
 
   it("not while attendance is off; an organiser hears it is off", () => {
@@ -152,22 +152,22 @@ describe("house rules", () => {
 });
 
 /**
- * THE PROFILE PAGE IN THE BARE HELP (2026-11-02). Every member has one
- * (/profile), so the how-to block links it, naming only what the club
- * rates, in both languages.
+ * THE PROFILE PAGE IN THE HOW-TO BLOCK (2026-11-02). Every member has one
+ * (/profile), so the how-to block (the setup post) links it, naming only
+ * what the club rates, in both languages. The bare help menu is the topic
+ * list alone since 2026-11-10 (Kemal), so it no longer carries the link.
  */
-describe("bare help: the player's own profile page", () => {
+describe("the how-to block: the player's own profile page", () => {
   const url = "https://matchtime.ai/profile";
   it("en: linked, with games, ratings and Man of the Match awards when both are on", () => {
-    const out = buildHelpReply(null, { ...BASE, momVoting: true, playerRating: true }, "en", { audience: "group" });
+    const out = buildHowToUseMe({ ...BASE, momVoting: true, playerRating: true }, "en");
     expect(out).toContain(`📊 Your own profile page shows your games, ratings and Man of the Match awards: ${url}`);
   });
   it("en: a club that rates nothing hears only games", () => {
-    const out = buildHelpReply(null, { ...BASE, momVoting: false, playerRating: false }, "en", { audience: "player" });
+    const out = buildHowToUseMe({ ...BASE, momVoting: false, playerRating: false }, "en");
     expect(out).toContain(`📊 Your own profile page shows your games: ${url}`);
   });
-  it("tr: the same line in Turkish, with attendance off too", () => {
-    const out = buildHelpReply(null, { ...BASE, attendance: false, momVoting: true, playerRating: false }, "tr", { audience: "group" });
-    expect(out).toContain(`📊 Kendi profil sayfanız maçlarınızı ve maçın oyuncusu ödüllerinizi gösterir: ${url}`);
+  it("the bare help menu is the topics alone", () => {
+    expect(buildHelpReply(null, { ...BASE, momVoting: true, playerRating: true }, "en", { audience: "group" })).not.toContain(url);
   });
 });

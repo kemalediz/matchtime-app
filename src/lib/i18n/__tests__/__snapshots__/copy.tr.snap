@@ -1916,19 +1916,35 @@ Type *"@Match Time help"* any time to see this again.
 
 ### R143 buildHelpReply / bare, everything on
 ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 Tag me (type *@*, pick *Match Time*) and ask in your own words: who's in, the teams, the stats or anything else. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.
+Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee
+🤝 *partners*: playing with partner clubs
+📅 *schedule*: when and where you play
+❓ Anything else: just tag me and ask
 
 ### R143 buildHelpReply / bare, attendance only
 ℹ️ *MatchTime help*
-✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.
-💬 Tag me (type *@*, pick *Match Time*) and ask in your own words: who's in or anything else. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe.
-📊 Your own profile page shows your games: https://matchtime.ai/profile
-ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.
+Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
+
+✅ *availability*: saying in, out or maybe
+👫 *friend*: bringing a friend to play
+🟥🟦 *teams*: how the teams are made
+⭐ *mom*: Man of the Match
+📈 *ratings*: rating each other after a game
+🏅 *badges*: what your badges mean
+⏰ *reminders*: what I remind you about
+💷 *payments*: paying the match fee
+🤝 *partners*: playing with partner clubs
+📅 *schedule*: when and where you play
+❓ Anything else: just tag me and ask
 
 ### R142 buildHelpReply / availability
 ⚽ *Squad & availability: how it works*
@@ -2155,14 +2171,20 @@ https://mt.example/r/topic
 
 ### R148 buildHelpReply / bare / admin
 ℹ️ *MatchTime yardım*
-✅ Sıradaki maç için grupta *varım* ya da *yokum* yazın, beni etiketlemenize gerek yok. Emin değil misiniz? *belki* yazın.
-💬 Beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ve kendi cümlelerinizle sorun: kim var, takımlar, istatistikler ya da başka bir şey. Adımı yazmak ya da mesajıma yanıt vermek yetmez.
-🤐 Sohbete ve şakalara yanıt vermem, rahat olun.
-📊 Kendi profil sayfanız maçlarınızı, puanlarınızı ve maçın oyuncusu ödüllerinizi gösterir: https://matchtime.ai/profile
-💡 *Burada henüz açık değil*: maç ücretleri, partner kulüpler. Nasıl çalıştıklarını ve nasıl açıldıklarını görmek için *@Match Time yardım ödeme* yazın.
-⚙️ Kulübünün ayarları, giriş yapmış olarak:
-https://mt.example/r/settings
-ℹ️ Herhangi bir konuda daha fazlası için beni *yardım* ve konuyla etiketleyin, örneğin *@Match Time yardım ödeme*. Konular: kadro, arkadaş, takımlar, maçın adamı, puanlama, rozetler, hatırlatma, ödeme, partner, program, ayarlar.
+Daha fazlası için beni *yardım* ve bir konuyla etiketleyin, örneğin *@Match Time yardım takımlar*
+
+✅ *kadro*: varım, yokum ya da belki demek
+👫 *arkadaş*: oynamaya arkadaş getirmek
+🟥🟦 *takımlar*: takımlar nasıl kuruluyor
+⭐ *maçın adamı*: maçın adamı oylaması
+📈 *puanlama*: maçtan sonra birbirinizi puanlamak
+🏅 *rozetler*: rozetleriniz ne anlama geliyor
+⏰ *hatırlatma*: size neleri hatırlattığım
+💷 *ödeme*: maç ücretini ödemek (burada kapalı)
+🤝 *partner*: partner kulüplerle oynamak (burada kapalı)
+📅 *program*: ne zaman ve nerede oynadığınız
+⚙️ *ayarlar*: kulüp ayarları ve ayarlar sayfası
+❓ Başka bir şey: beni etiketleyip sormanız yeter
 
 ### R149 requestNotHandledAdminReply
 Bunu mesajla değiştiremiyorum, ama kulübünüzün ayarlar sayfasından birkaç dokunuşla yapabilirsiniz: https://matchtime.ai/admin/settings
@@ -2434,22 +2456,38 @@ Kulübün ayarlarını organizatörler değiştirir. Bir şeyin değişmesini is
 
 ### R153 buildHelpReply / bare, pool and partners on / group
 ℹ️ *MatchTime yardım*
-✅ Sıradaki maç için grupta *varım* ya da *yokum* yazın, beni etiketlemenize gerek yok. Emin değil misiniz? *belki* yazın.
-💬 Beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ve kendi cümlelerinizle sorun: kim var, takımlar, istatistikler ya da başka bir şey. Adımı yazmak ya da mesajıma yanıt vermek yetmez.
-🤐 Sohbete ve şakalara yanıt vermem, rahat olun.
-📊 Kendi profil sayfanız maçlarınızı, puanlarınızı ve maçın oyuncusu ödüllerinizi gösterir: https://matchtime.ai/profile
-ℹ️ Herhangi bir konuda daha fazlası için beni *yardım* ve konuyla etiketleyin, örneğin *@Match Time yardım ödeme*. Konular: kadro, arkadaş, takımlar, maçın adamı, puanlama, rozetler, hatırlatma, ödeme, partner, havuz, program, ayarlar.
+Daha fazlası için beni *yardım* ve bir konuyla etiketleyin, örneğin *@Match Time yardım takımlar*
+
+✅ *kadro*: varım, yokum ya da belki demek
+👫 *arkadaş*: oynamaya arkadaş getirmek
+🟥🟦 *takımlar*: takımlar nasıl kuruluyor
+⭐ *maçın adamı*: maçın adamı oylaması
+📈 *puanlama*: maçtan sonra birbirinizi puanlamak
+🏅 *rozetler*: rozetleriniz ne anlama geliyor
+⏰ *hatırlatma*: size neleri hatırlattığım
+💷 *ödeme*: maç ücretini ödemek
+🤝 *partner*: partner kulüplerle oynamak
+🌍 *havuz*: oyuncu havuzu
+📅 *program*: ne zaman ve nerede oynadığınız
+❓ Başka bir şey: beni etiketleyip sormanız yeter
 
 ### R153 buildHelpReply / bare, pool open, partners off / admin
 ℹ️ *MatchTime yardım*
-✅ Sıradaki maç için grupta *varım* ya da *yokum* yazın, beni etiketlemenize gerek yok. Emin değil misiniz? *belki* yazın.
-💬 Beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ve kendi cümlelerinizle sorun: kim var, takımlar, istatistikler ya da başka bir şey. Adımı yazmak ya da mesajıma yanıt vermek yetmez.
-🤐 Sohbete ve şakalara yanıt vermem, rahat olun.
-📊 Kendi profil sayfanız maçlarınızı, puanlarınızı ve maçın oyuncusu ödüllerinizi gösterir: https://matchtime.ai/profile
-💡 *Burada henüz açık değil*: maç ücretleri, partner kulüpler, oyuncu havuzu. Nasıl çalıştıklarını ve nasıl açıldıklarını görmek için *@Match Time yardım ödeme* yazın.
-⚙️ Kulübünün ayarları, giriş yapmış olarak:
-https://mt.example/r/settings
-ℹ️ Herhangi bir konuda daha fazlası için beni *yardım* ve konuyla etiketleyin, örneğin *@Match Time yardım ödeme*. Konular: kadro, arkadaş, takımlar, maçın adamı, puanlama, rozetler, hatırlatma, ödeme, partner, havuz, program, ayarlar.
+Daha fazlası için beni *yardım* ve bir konuyla etiketleyin, örneğin *@Match Time yardım takımlar*
+
+✅ *kadro*: varım, yokum ya da belki demek
+👫 *arkadaş*: oynamaya arkadaş getirmek
+🟥🟦 *takımlar*: takımlar nasıl kuruluyor
+⭐ *maçın adamı*: maçın adamı oylaması
+📈 *puanlama*: maçtan sonra birbirinizi puanlamak
+🏅 *rozetler*: rozetleriniz ne anlama geliyor
+⏰ *hatırlatma*: size neleri hatırlattığım
+💷 *ödeme*: maç ücretini ödemek (burada kapalı)
+🤝 *partner*: partner kulüplerle oynamak (burada kapalı)
+🌍 *havuz*: oyuncu havuzu (burada kapalı)
+📅 *program*: ne zaman ve nerede oynadığınız
+⚙️ *ayarlar*: kulüp ayarları ve ayarlar sayfası
+❓ Başka bir şey: beni etiketleyip sormanız yeter
 
 ### R153f buildHelpReply / friend / group
 👥 *Arkadaş getirmek nasıl çalışır*

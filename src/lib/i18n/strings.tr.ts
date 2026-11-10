@@ -78,6 +78,7 @@ import { firstMonthsFree } from "./free-period";
 import { totalOnTenPounds } from "../payments";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey } from "../badge-rules";
+import { HELP_MENU_ICON, HQ_MENU_ICON, type HelpMenuTopic, type HqMenuTopic } from "./help-menu-topics";
 
 const UNIT_TR = { day: "gün", week: "hafta", month: "ay", year: "yıl" } as const;
 
@@ -173,6 +174,37 @@ function recruitInviteHeadTr(p: {
 
 /** Gerçek etiketin nasıl yapıldığı (#482, #487, 2026-10-31); HQ
  *  bildirimlerinin bittiği tek cümle. */
+/** The words typed after "yardım" for each menu's topics (the words #591
+ *  and #592 verified live). */
+const HELP_WORD_TR: Record<HelpMenuTopic, string> = {
+  availability: "kadro",
+  friend: "arkadaş",
+  teams: "takımlar",
+  mom: "maçın adamı",
+  ratings: "puanlama",
+  badges: "rozetler",
+  reminders: "hatırlatma",
+  payments: "ödeme",
+  partners: "partner",
+  pool: "havuz",
+  schedule: "program",
+  settings: "ayarlar",
+};
+const HQ_WORD_TR: Record<HqMenuTopic, string> = {
+  squad: "kadro",
+  teams: "takımlar",
+  players: "oyuncu bulma",
+  game: "maç",
+  settings: "ayarlar",
+  graphics: "görseller",
+  payments: "ödeme",
+  partners: "partner",
+  pool: "havuz",
+  mom: "maçın adamı",
+  ratings: "puanlama",
+  reminders: "hatırlatma",
+};
+
 const tr_tagHow = "Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin.";
 
 export const tr: Strings = {
@@ -1044,75 +1076,38 @@ export const tr: Strings = {
     return lines.join("\n");
   },
 
+  // Yalnızca konular, her biri tek satır (Kemal, 2026-11-10); kalın yazılan
+  // kelime konunun kelimesi (`onbHelpTopicWord`).
   onbHelpMenu: (p) => {
-    const lines = [`ℹ️ *MatchTime yardım*`];
-    lines.push(
-      p.attendance
-        ? `✅ Sıradaki maç için grupta *varım* ya da *yokum* yazın, beni etiketlemenize gerek yok. Emin değil misiniz? *belki* yazın.`
-        : `📋 Kadro listesini yapıştırın, kimin oynadığını okurum, beni etiketlemenize gerek yok.`,
-    );
-    if (p.organisers) {
-      lines.push(
-        p.attendance
-          ? `📣 Kadro listesini ve takımları organizatörler paylaşır. Kimin var kimin yok olduğunu onlar için ben takip ederim.`
-          : `📣 Kadro listesini ve takımları organizatörler paylaşır.`,
-      );
-    }
-    const asks = p.asks.map((a) => ({ squad: "kim var", teams: "takımlar", stats: "istatistikler" })[a]);
-    const what = asks.length > 0 ? `ve kendi cümlelerinizle sorun: ${asks.join(", ")} ya da başka bir şey` : `ve kendi cümlelerinizle ne isterseniz sorun`;
-    lines.push(
+    const one: Record<HelpMenuTopic, string> = {
+      availability: p.monthly ? "bu ayın listesinde kimler var" : "varım, yokum ya da belki demek",
+      friend: "oynamaya arkadaş getirmek",
+      teams: "takımlar nasıl kuruluyor",
+      mom: "maçın adamı oylaması",
+      ratings: "maçtan sonra birbirinizi puanlamak",
+      badges: "rozetleriniz ne anlama geliyor",
+      reminders: "size neleri hatırlattığım",
+      payments: "maç ücretini ödemek",
+      partners: "partner kulüplerle oynamak",
+      pool: "oyuncu havuzu",
+      schedule: "ne zaman ve nerede oynadığınız",
+      settings: "kulüp ayarları ve ayarlar sayfası",
+    };
+    return [
+      `ℹ️ *MatchTime yardım*`,
       p.dm
-        ? `💬 Grupta beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ${what}. Mesajıma yanıt vermek yetmez.`
-        : `💬 Beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ${what}. Adımı yazmak ya da mesajıma yanıt vermek yetmez.`,
-    );
-    lines.push(`🤐 Sohbete ve şakalara yanıt vermem, rahat olun.`);
-    const parts = ["maçlarınızı", ...(p.playerRating ? ["puanlarınızı"] : []), ...(p.momVoting ? ["maçın oyuncusu ödüllerinizi"] : [])];
-    const shows = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} ve ${parts[parts.length - 1]}` : parts[0];
-    lines.push(`📊 Kendi profil sayfanız ${shows} gösterir: ${p.profileUrl}`);
-    return lines.join("\n");
+        ? `Daha fazlası için bana *yardım* ve bir konu yazın, örneğin *yardım ödeme*`
+        : `Daha fazlası için beni *yardım* ve bir konuyla etiketleyin, örneğin *@Match Time yardım takımlar*`,
+      ``,
+      ...p.topics.map(({ topic, off }) => `${HELP_MENU_ICON[topic]} *${HELP_WORD_TR[topic]}*: ${one[topic]}${off ? " (burada kapalı)" : ""}`),
+      p.dm ? `❓ Başka bir şey: sormanız yeter` : `❓ Başka bir şey: beni etiketleyip sormanız yeter`,
+    ].join("\n");
   },
-
-  help_not_on: (p) =>
-    `💡 *Burada henüz açık değil*: ${p.labels.join(", ")}. ${p.labels.length > 1 ? "Nasıl çalıştıklarını ve nasıl açıldıklarını" : "Nasıl çalıştığını ve nasıl açıldığını"} görmek için *${p.dm ? "" : "@Match Time "}yardım ${p.word}* yazın.`,
-
-  help_more: (p) =>
-    p.dm
-      ? `ℹ️ Herhangi bir konuda daha fazlası için bana *yardım* ve konuyu yazın, örneğin *yardım ${p.example}*. Konular: ${p.words.join(", ")}.`
-      : `ℹ️ Herhangi bir konuda daha fazlası için beni *yardım* ve konuyla etiketleyin, örneğin *@Match Time yardım ${p.example}*. Konular: ${p.words.join(", ")}.`,
 
   help_back: (p) => (p.dm ? `↩️ Menü için *yardım* yazın.` : `↩️ Menü için *@Match Time yardım* yazın.`),
 
   onbHelpTopicWord: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
-    ({
-      availability: "kadro",
-      friend: "arkadaş",
-      teams: "takımlar",
-      mom: "maçın adamı",
-      ratings: "puanlama",
-      reminders: "hatırlatma",
-      payments: "ödeme",
-      schedule: "program",
-      badges: "rozetler",
-      partners: "partner",
-      pool: "havuz",
-      settings: "ayarlar",
-    })[p.topic],
-
-  onbHelpTopicLabel: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
-    ({
-      availability: "kadro ve katılım",
-      friend: "arkadaş getirmek",
-      teams: "dengeli takımlar",
-      mom: "maçın adamı",
-      ratings: "oyuncu puanları",
-      reminders: "hatırlatmalar",
-      payments: "maç ücretleri",
-      schedule: "program ve rezervasyonlar",
-      badges: "rozetler ve nasıl kazanılır",
-      partners: "partner kulüpler",
-      pool: "oyuncu havuzu",
-      settings: "ayarların yeri",
-    })[p.topic],
+    HELP_WORD_TR[p.topic],
 
   onbHelpNotOn: (): string =>
     `Bu özellik bu grupta açık değil. Açık olanları görmek için *@Match Time yardım* yazın.`,
@@ -1246,9 +1241,6 @@ export const tr: Strings = {
 
   onbHelpAdminSettings: (p: { url: string }): string => `⚙️ Ayarları yönetici sayfanda:\n${p.url}`,
 
-  onbHelpAdminPage: (p) =>
-    p.signedIn === false ? `⚙️ Kulübünün ayarları:\n${p.url}` : `⚙️ Kulübünün ayarları, giriş yapmış olarak:\n${p.url}`,
-
   onbHelpForClub: (p: { club: string }): string => `🏟️ *${p.club}* için:`,
 
   onbHelpExplainer: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
@@ -1330,29 +1322,33 @@ export const tr: Strings = {
     `📋 *Aylık kadro:* ayın listesini her zamanki gibi grupta paylaş, okuduğumu sana DM ile gönderirim. Listede tanımadığım bir isim varsa, adını bilmediğim üyeleri telefonlarıyla gösteririm; kim kimdir kendi sözlerinle söyle (örneğin _"Craig 3 numara"_) ya da aylar sayfasında seç. Evet yazınca ay başlar.\n\n` +
     `*Ay ortasında düzenli oyuncu eklemek:* listeyi yeni isimle yeniden paylaş ya da beni etiketle (örneğin _"@Match Time Tom'u Kasım listesine ekle, ödedi"_). Kalan maçlar için aya ve bir sonraki maçın kadrosuna girer. İsmi tanımıyorsam, hangisi olduğunu söylemen için adını bilmediğim üyeleri sana DM ile gönderirim.`,
 
-  onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda beni etiketleyip orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *@Match Time neler yapabilirsin?*).`,
-
   // Yönetici grubunda her şey kendi cümlelerinizle sorulur (paylaşılan
-  // yönlendiricinin `help` rotası). Kısa menü (Kemal, 2026-11-10); her
-  // konunun tam satırları `hq_help_topic`.
+  // yönlendiricinin `help` rotası). Yalnızca konular, her biri tek satır
+  // (Kemal, 2026-11-10); her konunun tam satırları `hq_help_topic`.
   hq_help_menu: (p) => {
-    const lines = [`🛠️ *Yönetici grubunda MatchTime*`, `Beni etiketleyin (*@* yazıp *Match Time*'ı seçin), sonra kendi cümlelerinizle sorun:`, ``];
-    if (p.squad) {
-      lines.push(`📋 *Kadro*: "Bilal'i ekle", "Tom yedeğe", "Tom yedeğe, Ben kadroya" ya da listeyi yapıştırın`);
-      lines.push(`🟥🟦 *Takımlar*: "takımları kur", "Sam ile Alex'i değiştir", sonra onay için *EVET*`);
-      lines.push(`📣 *Oyuncu bulmak*: "gruba sor", ${p.pool ? `"havuzdan 2 oyuncu iste", ` : ""}"onlara özelden yaz"`);
-    }
-    lines.push(`🗓️ *Maç*: ${p.squad ? `"cuma maçını iptal et", ` : ""}"8'e 8 yapalım", "pazartesi maçını 20:15'e al"`);
-    lines.push(`⚙️ *Ayarlar*: "sessiz saatler 23:00 ile 09:00 arası", "12 ile 16 kişi arası oynuyoruz"`);
-    if (p.graphics) lines.push(`🖼️ *Görseller*: "posteri gönder"`);
-    lines.push(`❓ *Başka bir şey*: sormanız yeter, bildiklerimden yanıtlarım`);
-    if (p.notOn) lines.push(p.notOn);
-    lines.push(p.more);
-    return lines.join("\n");
+    const one: Record<HqMenuTopic, string> = {
+      squad: "kim var, kim yok, kim yedekte",
+      teams: "takımları kurmak ve değiştirmek",
+      players: "eksik kaldığınızda oyuncu bulmak",
+      game: p.squad ? "bir maçı iptal etmek, formatını ya da saatini değiştirmek" : "bir maçın formatını ya da saatini değiştirmek",
+      settings: "sessiz saatler, oyuncu sayıları ve ayarlar sayfası",
+      graphics: "poster ve takım listesi görseli",
+      payments: "maç ücretleri ve kimin ödediği",
+      partners: "partner kulüplerden oyuncular",
+      pool: "MatchTime oyuncu havuzu",
+      mom: "maçın adamı oylaması",
+      ratings: "her maçtan sonra oyuncu puanları",
+      reminders: "oyunculara neleri hatırlattığım",
+    };
+    return [
+      `🛠️ *Yönetici grubunda MatchTime*`,
+      `Burada her mesajda beni etiketleyin: *@* yazıp *Match Time*'ı seçin.`,
+      `Daha fazlası için beni *yardım* ve bir konuyla etiketleyin, örneğin *@Match Time yardım ${HQ_WORD_TR[p.squad ? "teams" : "game"]}*`,
+      ``,
+      ...p.topics.map(({ topic, off }) => `${HQ_MENU_ICON[topic]} *${HQ_WORD_TR[topic]}*: ${one[topic]}${off ? " (burada kapalı)" : ""}`),
+      `❓ Başka bir şey: beni etiketleyip sormanız yeter`,
+    ].join("\n");
   },
-
-  hq_help_word: (p) =>
-    ({ squad: "kadro", teams: "takımlar", players: "oyuncu bulma", game: "maç", settings: "ayarlar", graphics: "görseller", payments: "ödeme" })[p.topic],
 
   hq_help_topic: (p) => {
     const lines: string[] = [];

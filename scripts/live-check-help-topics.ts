@@ -73,7 +73,7 @@ const PLAYERS_WORDS: Array<[string, string, HelpFeature]> = [
   ["settings", "ayarlar", "settings"],
 ];
 
-/** The HQ menu's words (`hq_help_word`, then `onbHelpTopicWord` for the rest). */
+/** The HQ menu's words (`hq_help_menu`). */
 const HQ_WORDS: Array<[string, string, HelpFeature]> = [
   ["squad", "kadro", "availability"],
   ["teams", "takımlar", "teams"],

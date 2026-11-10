@@ -7,12 +7,14 @@
  * yapabiliyorsun?"). The shared router reads it as its `help` route
  * (`admin-group-understand.ts`) and this module writes the answer.
  *
- * SHORT MENU, FULL TOPICS (2026-11-10, Kemal: "why this long menu when we
- * say @mt help"). The answer is a menu of at most 12 lines
- * (`buildHqHelp`): one line per topic, what is not switched on yet, and
- * how to ask about one topic. "@Match Time help <topic>" (squad, teams,
- * players, game, settings, graphics, payments; the question extractor's
- * `feature`, never a word list) gives that topic's full lines
+ * A LIST OF TOPICS, FULL TOPICS ONE STEP AWAY (2026-11-10, Kemal: "why
+ * this long menu when we say @mt help", then "only one liner explanation
+ * for each and if they wanna learn more they would just drill down further
+ * by saying @Match Time help xxx"). The answer (`buildHqHelp`) is how to
+ * tag, how to drill down, the club's topics one line each (those switched
+ * off here say so), and "anything else". "@Match Time help <topic>"
+ * (squad, teams, players, game, settings, graphics, payments; the question
+ * extractor's `feature`, never a word list) gives that topic's full lines
  * (`buildHqTopicLines`), then how that part works for the organisers
  * (`hqHelpTopicReply`). Every line of the old long menu is in exactly one
  * topic (help-short-menus.test.ts).
@@ -67,7 +69,7 @@ import { t } from "./i18n/t";
 import { poolOffersOpenForClub } from "./pool/flags";
 import { organisersAnnounce } from "./list-announcer";
 import { effectiveTeamsReadyTime } from "./team-proposal-rules";
-import { helpFeaturesFrom, helpNotOnLine, helpTopicsAskable, type HelpFeatures, type HelpTopic } from "./onboarding-conversation";
+import { helpFeaturesFrom, helpTopicsAskable, helpTopicsOff, type HelpFeatures, type HelpTopic } from "./onboarding-conversation";
 import type { HelpFeature, HelpRequest } from "./pipeline/types";
 import type { OrgFeatures } from "./org-features";
 import type { HelpClubFacts } from "./help-club-facts";
@@ -125,9 +127,9 @@ export function hqTopicFor(f: HelpFeature): HqHelpTopic | null {
   return HQ_HELP_TOPICS.find((tp) => HQ_TOPIC_FEATURE[tp] === f) ?? null;
 }
 
-/** The players' topics an admin can also ask about here, in the menu's
- *  closing list after the HQ topics, each when on or switchable on. */
-const HQ_MORE_TOPICS: HelpTopic[] = ["payments", "partners", "pool", "mom", "ratings", "reminders"];
+/** The players' topics an admin can also ask about here, listed after the
+ *  HQ topics, each when on or switchable on. */
+const HQ_MORE_TOPICS = ["payments", "partners", "pool", "mom", "ratings", "reminders"] as const satisfies readonly HelpTopic[];
 
 /** One HQ topic's full lines for this club, under its heading; "" when the
  *  club has nothing in it. */
@@ -136,33 +138,28 @@ export function buildHqTopicLines(topic: HqHelpTopic, p: HqHelpGates & { lang: s
 }
 
 /**
- * The SHORT HQ menu (Kemal, 2026-11-10: "why this long menu when we say
- * @mt help"), in the club's language, at most 12 lines. `features`: the
- * club's help features (`helpFeaturesFrom` with its pool and partner
- * clubs), for the line naming what is not switched on yet and the topics
- * it can ask about. Absent, neither is known: no not-on line, and only the
- * HQ topics and payments are listed.
+ * The HQ menu (Kemal, 2026-11-10: "only one liner explanation for each"),
+ * in the club's language: how to tag, how to drill down, one line per
+ * topic, anything else. The HQ topics the club has something in, then the
+ * players' topics it can ask about here. `features`: the club's help
+ * features (`helpFeaturesFrom` with its pool and partner clubs), for the
+ * topics it can ask about and "(off here)" on those switched off. Absent
+ * (its settings could not be read): the HQ topics and payments, no marker.
  */
 export function buildHqHelp(p: HqHelpGates & { lang: string | null | undefined; features?: HelpFeatures }): string {
-  const s = t(p.lang);
   const hqTopics = HQ_HELP_TOPICS.filter((tp) => tp !== "payments" && buildHqTopicLines(tp, p) !== "");
-  const askable = p.features ? helpTopicsAskable(p.features) : (["payments"] as HelpTopic[]);
+  const askable: readonly HelpTopic[] = p.features ? helpTopicsAskable(p.features) : ["payments"];
+  const off = new Set(p.features ? helpTopicsOff(p.features) : []);
   const more = HQ_MORE_TOPICS.filter((tp) => askable.includes(tp));
-  const words = [...hqTopics.map((tp) => s.hq_help_word({ topic: tp })), ...more.map((tp) => s.onbHelpTopicWord({ topic: tp }))];
-  return s.hq_help_menu({
+  return t(p.lang).hq_help_menu({
     squad: p.squad,
-    graphics: p.graphics,
-    pool: p.pool === true,
-    notOn: p.features ? helpNotOnLine(p.features, p.lang ?? "en") : "",
-    // The example is payments: the router read "yardım takımlar" as a
-    // teams request once in three live runs here (2026-11-10).
-    more: s.help_more({ words, example: s.hq_help_word({ topic: "payments" }) }),
+    topics: [...hqTopics.map((topic) => ({ topic })), ...more.map((topic) => (off.has(topic) ? { topic, off: true } : { topic }))],
   });
 }
 
 /** The HQ menu for a club, read from its settings: its features and its
  *  pool and partner clubs. A failed read leaves out what it could not
- *  know (the not-on line), never the menu. */
+ *  know (the topics beyond the HQ ones, the "(off here)"), never the menu. */
 export async function hqHelpMenu(args: {
   orgId: string;
   lang: string | null | undefined;

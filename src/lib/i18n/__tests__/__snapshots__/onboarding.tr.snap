@@ -55,19 +55,35 @@ Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
 
 ### help / bare, everything on
 ℹ️ *MatchTime yardım*
-✅ Sıradaki maç için grupta *varım* ya da *yokum* yazın, beni etiketlemenize gerek yok. Emin değil misiniz? *belki* yazın.
-💬 Beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ve kendi cümlelerinizle sorun: kim var, takımlar, istatistikler ya da başka bir şey. Adımı yazmak ya da mesajıma yanıt vermek yetmez.
-🤐 Sohbete ve şakalara yanıt vermem, rahat olun.
-📊 Kendi profil sayfanız maçlarınızı, puanlarınızı ve maçın oyuncusu ödüllerinizi gösterir: https://matchtime.ai/profile
-ℹ️ Herhangi bir konuda daha fazlası için beni *yardım* ve konuyla etiketleyin, örneğin *@Match Time yardım ödeme*. Konular: kadro, arkadaş, takımlar, maçın adamı, puanlama, rozetler, hatırlatma, ödeme, partner, program, ayarlar.
+Daha fazlası için beni *yardım* ve bir konuyla etiketleyin, örneğin *@Match Time yardım takımlar*
+
+✅ *kadro*: varım, yokum ya da belki demek
+👫 *arkadaş*: oynamaya arkadaş getirmek
+🟥🟦 *takımlar*: takımlar nasıl kuruluyor
+⭐ *maçın adamı*: maçın adamı oylaması
+📈 *puanlama*: maçtan sonra birbirinizi puanlamak
+🏅 *rozetler*: rozetleriniz ne anlama geliyor
+⏰ *hatırlatma*: size neleri hatırlattığım
+💷 *ödeme*: maç ücretini ödemek
+🤝 *partner*: partner kulüplerle oynamak
+📅 *program*: ne zaman ve nerede oynadığınız
+❓ Başka bir şey: beni etiketleyip sormanız yeter
 
 ### help / bare, attendance only
 ℹ️ *MatchTime yardım*
-✅ Sıradaki maç için grupta *varım* ya da *yokum* yazın, beni etiketlemenize gerek yok. Emin değil misiniz? *belki* yazın.
-💬 Beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ve kendi cümlelerinizle sorun: kim var ya da başka bir şey. Adımı yazmak ya da mesajıma yanıt vermek yetmez.
-🤐 Sohbete ve şakalara yanıt vermem, rahat olun.
-📊 Kendi profil sayfanız maçlarınızı gösterir: https://matchtime.ai/profile
-ℹ️ Herhangi bir konuda daha fazlası için beni *yardım* ve konuyla etiketleyin, örneğin *@Match Time yardım ödeme*. Konular: kadro, arkadaş, takımlar, maçın adamı, puanlama, rozetler, hatırlatma, ödeme, partner, program, ayarlar.
+Daha fazlası için beni *yardım* ve bir konuyla etiketleyin, örneğin *@Match Time yardım takımlar*
+
+✅ *kadro*: varım, yokum ya da belki demek
+👫 *arkadaş*: oynamaya arkadaş getirmek
+🟥🟦 *takımlar*: takımlar nasıl kuruluyor
+⭐ *maçın adamı*: maçın adamı oylaması
+📈 *puanlama*: maçtan sonra birbirinizi puanlamak
+🏅 *rozetler*: rozetleriniz ne anlama geliyor
+⏰ *hatırlatma*: size neleri hatırlattığım
+💷 *ödeme*: maç ücretini ödemek
+🤝 *partner*: partner kulüplerle oynamak
+📅 *program*: ne zaman ve nerede oynadığınız
+❓ Başka bir şey: beni etiketleyip sormanız yeter
 
 ### help / availability
 ⚽ *Kadro ve katılım nasıl çalışır*

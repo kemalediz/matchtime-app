@@ -68,7 +68,7 @@ test('tagged "help payments" (payments OFF) → how fee collection works and how
   expect(r.reply).not.toContain("/r/");
 });
 
-test('tagged bare "help" → the short menu; payments off is a topic word, never the organiser\'s pointer', async ({
+test('tagged bare "help" → the topic list; payments off is a topic like any other, never marked for the players\' group', async ({
   request,
   db,
 }) => {
@@ -76,12 +76,12 @@ test('tagged bare "help" → the short menu; payments off is a topic word, never
   const r = await sim.post("pete", "@Match Time help", { tag: true, ...asHelp() });
   expect(r.intent).toBe("help");
   expect(r.reply).toMatch(/MatchTime help/);
-  // The short menu (2026-11-10): one closing line teaches "help <topic>"
-  // and names every topic, off ones too (Kemal: off features must be
-  // findable); the organiser's not-on line is not for the players' group.
-  expect(r.reply).toMatch(/for example \*@Match Time help payments\*\. Topics: .*ratings/);
-  expect(r.reply).toMatch(/Topics: .*payments/);
-  expect(r.reply).not.toContain("💡");
+  // The topic list (2026-11-10, Kemal): one line per topic, off ones too
+  // (off features must be findable); "(off here)" is for organisers only.
+  expect(r.reply).toContain("e.g. *@Match Time help teams*");
+  expect(r.reply).toContain("\n📈 *ratings*: rating each other after a game\n");
+  expect(r.reply).toContain("\n💷 *payments*: paying the match fee\n");
+  expect(r.reply).not.toContain("(off here)");
 });
 
 // The friend link's own topic (2026-10-31), in the words a player uses.
@@ -99,7 +99,7 @@ test('tagged "how do I bring a friend?" → how the friend link works', async ({
 test('tagged bare "help" lists the friend topic', async ({ request, db }) => {
   const sim = await group(request, db);
   const r = await sim.post("pete", "@Match Time help", { tag: true, ...asHelp() });
-  expect(r.reply).toMatch(/Topics: availability, friend, /);
+  expect(r.reply).toContain("\n✅ *availability*: saying in, out or maybe\n👫 *friend*: bringing a friend to play\n");
 });
 
 test('UNtagged "help" → ignored (no help reply produced)', async ({

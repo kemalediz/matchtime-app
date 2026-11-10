@@ -94,8 +94,6 @@ describe("a club on the defaults: byte for byte what it got before", () => {
               expect(buildHelpReply(tp, feats, lang, ctx), key).toBe(BEFORE[key]);
               n++;
             }
-            // Linking an admin group changes nothing for a club on the defaults.
-            expect(buildHelpReply(tp, f, lang, { ...ctx, adminGroupLinked: true }), key).toBe(BEFORE[key]);
           }
         }
       }
@@ -189,37 +187,42 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
     }
   });
 
-  it("bare help, English (the short menu, 2026-11-10)", () => {
+  // The topic-list menu (2026-11-10, Kemal): the same topics as any club;
+  // "help availability" and "help teams" say the organisers share them.
+  it("bare help, English: the topics, one line each", () => {
     expect(buildHelpReply(null, FNF, "en", { audience: "group" })).toBe(
       [
         `ℹ️ *MatchTime help*`,
-        `✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.`,
-        `📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.`,
-        `💬 Tag me (type *@*, pick *Match Time*) and ask in your own words: the stats or anything else. Typing my name or replying to my message is not enough.`,
-        `🤐 I don't reply to banter and jokes, so they're safe.`,
-        `📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile`,
-        `ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help payments*. Topics: availability, friend, teams, mom, ratings, badges, reminders, payments, partners, schedule, settings.`,
+        `Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*`,
+        ``,
+        `✅ *availability*: saying in, out or maybe`,
+        `👫 *friend*: bringing a friend to play`,
+        `🟥🟦 *teams*: how the teams are made`,
+        `⭐ *mom*: Man of the Match`,
+        `📈 *ratings*: rating each other after a game`,
+        `🏅 *badges*: what your badges mean`,
+        `⏰ *reminders*: what I remind you about`,
+        `💷 *payments*: paying the match fee`,
+        `🤝 *partners*: playing with partner clubs`,
+        `📅 *schedule*: when and where you play`,
+        `❓ Anything else: just tag me and ask`,
       ].join("\n"),
     );
   });
 
   it("bare help, Turkish", () => {
     const tr = buildHelpReply(null, FNF, "tr", { audience: "group" });
-    expect(tr).toContain(`📣 Kadro listesini ve takımları organizatörler paylaşır. Kimin var kimin yok olduğunu onlar için ben takip ederim.`);
-    expect(tr).toContain(`💬 Beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ve kendi cümlelerinizle sorun: istatistikler ya da başka bir şey.`);
-    expect(tr).not.toContain(`kim var`);
+    expect(tr).toContain(`\n✅ *kadro*: varım, yokum ya da belki demek\n👫 *arkadaş*: oynamaya arkadaş getirmek\n`);
+    expect(tr).toContain(`\n🟥🟦 *takımlar*: takımlar nasıl kuruluyor\n`);
   });
 
-  it("with stats off there is nothing to name, and the tag line still says how to ask", () => {
-    const f = { ...FNF, statsQa: false };
-    expect(buildHelpReply(null, f, "en", { audience: "group" })).toContain(`💬 Tag me (type *@*, pick *Match Time*) and ask anything in your own words.`);
-    expect(buildHelpReply(null, f, "tr", { audience: "group" })).toContain(`💬 Beni etiketleyin (*@* yazıp *Match Time*'ı seçin) ve kendi cümlelerinizle ne isterseniz sorun.`);
-  });
-
-  it("with attendance off it does not claim to keep track of who's in", () => {
-    const en = buildHelpReply(null, { ...FNF, attendance: false }, "en", { audience: "group" });
-    expect(en).toContain(`📣 The organisers share the squad list and the teams.\n`);
-    expect(en).not.toContain(`I keep track of who's in and out`);
+  it("nothing in the menu offers a squad post or team building; the topics say who shares them", () => {
+    for (const lang of ["en", "tr"]) {
+      const menu = buildHelpReply(null, FNF, lang, { audience: "group" });
+      expect(menu).not.toContain("📣");
+      expect(menu).not.toMatch(/who's in, the teams|kim var, takımlar/);
+    }
+    expect(buildHelpReply("teams", FNF, "en", { audience: "group" })).toContain("The organisers sort out the teams");
   });
 
   it("help teams: the organisers share them; English and Turkish", () => {
@@ -312,24 +315,19 @@ describe("organiser pick in a club MatchTime still announces for", () => {
   });
 });
 
+// An organiser's bare help in organisers mode (2026-11-10, Kemal: the
+// menu is the topics and nothing else): the topic list, with the settings
+// topic, and no pointer at the admin group or settings link of its own.
 describe("an organiser's DM help in organisers mode", () => {
-  const SECTION_EN = `📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).`;
-  const SECTION_TR = `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda beni etiketleyip orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *@Match Time neler yapabilirsin?*).`;
-
-  it("bare help adds the HQ pointer before the settings link (English)", () => {
-    const out = buildHelpReply(null, FNF, "en", { audience: "admin", links: LINKS, adminGroupLinked: true });
-    expect(out).toContain(`\n${SECTION_EN}\n⚙️ Your club's settings, signed in:\nhttps://x/s\nℹ️ To learn more`);
-  });
-
-  it("and in Turkish", () => {
-    const out = buildHelpReply(null, FNF, "tr", { audience: "admin", links: LINKS, adminGroupLinked: true });
-    expect(out).toContain(`\n${SECTION_TR}\n⚙️ Kulübünün ayarları, giriş yapmış olarak:\nhttps://x/s\nℹ️ Herhangi bir konuda`);
-  });
-
-  it("not without an admin group to type it in, and never for a player or in the group", () => {
-    expect(buildHelpReply(null, FNF, "en", { audience: "admin", links: LINKS })).not.toContain(SECTION_EN);
-    expect(buildHelpReply(null, FNF, "en", { audience: "player", adminGroupLinked: true })).not.toContain(SECTION_EN);
-    expect(buildHelpReply(null, FNF, "en", { audience: "group", adminGroupLinked: true })).not.toContain(SECTION_EN);
+  it("the topic list alone, with the settings topic, EN and TR", () => {
+    const en = buildHelpReply(null, FNF, "en", { audience: "admin", links: LINKS, dm: true });
+    const tr = buildHelpReply(null, FNF, "tr", { audience: "admin", links: LINKS, dm: true });
+    expect(en).toContain(`⚙️ *settings*: club settings and the settings page`);
+    expect(tr).toContain(`⚙️ *ayarlar*: kulüp ayarları ve ayarlar sayfası`);
+    for (const out of [en, tr]) {
+      expect(out).not.toContain("📣");
+      expect(out).not.toContain("https://");
+    }
   });
 });
 
@@ -337,12 +335,12 @@ describe("an organiser's DM help in organisers mode", () => {
 // payments off, with "💷 Want to collect match fees? Ask me: *@Match Time
 // help payments*". That line is for an organiser, yet every player in the
 // main chat saw it. Since 2026-11-10 (Kemal: "why it never mentions not
-// used features such as payments") an organiser's menu names every feature
-// not switched on, worded as available (`helpNotOnLine`); a player is not
-// nagged with it, and finds payments only as a word in the topic list.
+// used features such as payments") an organiser's menu marks every topic
+// not switched on with "(off here)" on its own line; a player is not
+// nagged with it, and finds payments as a topic like any other.
 describe("what is not switched on is for organisers, not the players' group", () => {
-  const NOT_ON_EN = /💡 \*Not on here yet\*: [^\n]*match fees/;
-  const NOT_ON_TR = /💡 \*Burada henüz açık değil\*: [^\n]*maç ücretleri/;
+  const NOT_ON_EN = /^💷 \*payments\*: paying the match fee \(off here\)$/m;
+  const NOT_ON_TR = /^💷 \*ödeme\*: maç ücretini ödemek \(burada kapalı\)$/m;
   const PAY_OFF: HelpFeatures = { ...ALL_ON, paymentTracking: false, paymentCollection: false };
   const FNF_PAY_OFF: HelpFeatures = { ...FNF, paymentTracking: false, paymentCollection: false };
 
@@ -350,12 +348,13 @@ describe("what is not switched on is for organisers, not the players' group", ()
     for (const f of [PAY_OFF, FNF_PAY_OFF, FEATURE_SETS.allOff, FEATURE_SETS.noTeamsNoPay]) {
       const en = buildHelpReply(null, f, "en", { audience: "group" });
       const tr = buildHelpReply(null, f, "tr", { audience: "group" });
-      expect(en).not.toContain("💡");
-      expect(tr).not.toContain("💡");
-      expect(en).not.toContain("💷");
-      expect(tr).not.toContain("💷");
-      expect(en.split("\n").at(-1)).toMatch(/^ℹ️ To learn more about anything, .*Topics: .*payments/);
-      expect(tr.split("\n").at(-1)).toMatch(/^ℹ️ Herhangi bir konuda .*Konular: .*ödeme/);
+      for (const out of [en, tr]) {
+        expect(out).not.toContain("💡");
+        expect(out).not.toMatch(/\((off here|burada kapalı)\)/);
+        expect(out).not.toContain("Want to collect match fees");
+      }
+      expect(en).toContain(`💷 *payments*: paying the match fee\n`);
+      expect(tr).toContain(`💷 *ödeme*: maç ücretini ödemek\n`);
     }
   });
 
@@ -368,15 +367,18 @@ describe("what is not switched on is for organisers, not the players' group", ()
   it("an organiser's menu names them, in English and Turkish", () => {
     expect(buildHelpReply(null, PAY_OFF, "en", { audience: "admin", links: LINKS })).toMatch(NOT_ON_EN);
     expect(buildHelpReply(null, PAY_OFF, "tr", { audience: "admin", links: LINKS })).toMatch(NOT_ON_TR);
-    expect(buildHelpReply(null, FNF_PAY_OFF, "en", { audience: "admin", links: LINKS, adminGroupLinked: true })).toMatch(NOT_ON_EN);
+    expect(buildHelpReply(null, FNF_PAY_OFF, "en", { audience: "admin", links: LINKS })).toMatch(NOT_ON_EN);
   });
 
-  it("group bare help is otherwise the admin's text without the not-on line and the admin tail", () => {
+  it("group bare help is otherwise the admin's text without the markers and the settings topic", () => {
     for (const lang of ["en", "tr"]) {
       const group = buildHelpReply(null, PAY_OFF, lang, { audience: "group" });
       const admin = buildHelpReply(null, PAY_OFF, lang, { audience: "admin", links: LINKS });
-      const adminOnly = (l: string) => l.startsWith("💡") || l.startsWith("⚙️") || l === "https://x/s";
-      expect(admin.split("\n").filter((l) => !adminOnly(l))).toEqual(group.split("\n"));
+      const asPlayer = admin
+        .split("\n")
+        .filter((l) => !l.startsWith("⚙️"))
+        .map((l) => l.replace(/ \((off here|burada kapalı)\)$/, ""));
+      expect(asPlayer).toEqual(group.split("\n"));
     }
   });
 
@@ -390,6 +392,6 @@ describe("what is not switched on is for organisers, not the players' group", ()
     for (const lang of ["en", "tr"]) {
       expect(buildHelpReply(null, ALL_ON, lang, { audience: "group" })).toBe(BEFORE[`allOn|${lang}|group|bare`]);
     }
-    expect(buildHelpReply(null, ALL_ON, "en", { audience: "group" })).toMatch(/Topics: .*payments/);
+    expect(buildHelpReply(null, ALL_ON, "en", { audience: "group" })).toContain(`💷 *payments*: paying the match fee`);
   });
 });

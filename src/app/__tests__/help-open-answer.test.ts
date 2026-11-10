@@ -42,9 +42,9 @@ describe("@Match Time help", () => {
   });
   it("the admin group's menu says it too, EN and TR", () => {
     const p = { squad: true, graphics: false, picks: false, paid: false };
-    // The short menu (2026-11-10, Kemal's approved wording).
-    expect(buildHqHelp({ ...p, lang: "en" })).toContain("❓ *Anything else*: just ask, I answer from what I know");
-    expect(buildHqHelp({ ...p, lang: "tr" })).toContain("❓ *Başka bir şey*: sormanız yeter, bildiklerimden yanıtlarım");
+    // The topic-list menu's last line (2026-11-10, Kemal's approved wording).
+    expect(buildHqHelp({ ...p, lang: "en" }).split("\n").at(-1)).toBe("❓ Anything else: just tag me and ask");
+    expect(buildHqHelp({ ...p, lang: "tr" }).split("\n").at(-1)).toBe("❓ Başka bir şey: beni etiketleyip sormanız yeter");
   });
 });
 

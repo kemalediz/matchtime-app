@@ -108,12 +108,13 @@ test("how many are in: the count", async ({ request }) => {
   expect(out.replyText).toMatch(/4/);
 });
 
-test("what can you do: the short HQ menu (2026-11-10)", async ({ request }) => {
+test("what can you do: the HQ topic list (2026-11-10)", async ({ request }) => {
   const out = await say(request, MENU);
   expect(out).toMatchObject({ handled: true, outcome: "hq-help" });
   expect(out.replyText).toContain("*MatchTime in your admin group*");
-  expect(out.replyText.split("\n").length).toBeLessThanOrEqual(12);
-  expect(out.replyText).toContain("for example *@Match Time help payments*. Topics: squad, teams, players, game, settings, graphics");
+  const words = [...out.replyText.matchAll(/^\S+ \*([^*]+)\*: /gmu)].map((m) => m[1]);
+  expect(words.slice(0, 6)).toEqual(["squad", "teams", "players", "game", "settings", "graphics"]);
+  expect(out.replyText.split("\n").at(-1)).toBe("❓ Anything else: just tag me and ask");
 });
 
 test("how do I bring a friend: the friend help, with the organiser's direct add", async ({ request }) => {

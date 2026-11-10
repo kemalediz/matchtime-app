@@ -190,32 +190,36 @@ describe("every flag topic says whether it is on, and an organiser where to swit
 });
 
 describe("bare help lists what applies to this club", () => {
-  // The short menu (2026-11-10): one closing line names every topic the
-  // club can ask about, on or off (Kemal: off features must be findable).
-  const topicsOf = (r: string) => r.slice(r.indexOf("Topics: "));
+  // The topic-list menu (2026-11-10): one line per topic the club can ask
+  // about, on or off (Kemal: off features must be findable).
+  const wordsOf = (r: string) => [...r.matchAll(/^\S+ \*([^*]+)\*: /gmu)].map((m) => m[1]);
   it("the pool and partner clubs are listed while on or switchable on; a pool the platform has closed is not", () => {
-    const off = topicsOf(buildHelpReply(null, { ...BASE, pool: POOL.off, partners: PARTNERS.none }));
+    const off = wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.off, partners: PARTNERS.none }));
     expect(off).toContain("partners");
     expect(off).toContain("pool");
-    expect(topicsOf(buildHelpReply(null, { ...BASE, pool: POOL.closed, partners: PARTNERS.none }))).not.toContain("pool");
-    const on = topicsOf(buildHelpReply(null, { ...BASE, pool: POOL.on, partners: PARTNERS.one }));
+    expect(wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.closed, partners: PARTNERS.none }))).not.toContain("pool");
+    const on = wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.on, partners: PARTNERS.one }));
     expect(on).toContain("pool");
     expect(on).toContain("partners");
-    expect(on).toContain("settings");
+    // The settings topic is an organiser's.
+    expect(on).not.toContain("settings");
+    expect(wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.on, partners: PARTNERS.one }, "en", { audience: "admin" }))).toContain("settings");
   });
 
-  it("an organiser also hears what is switched off; the pool only when it could be switched on", () => {
+  it("an organiser also sees what is switched off, \"(off here)\"; the pool only when it could be switched on", () => {
     const admin = (pool: (typeof POOL)[keyof typeof POOL]) =>
       buildHelpReply(null, { ...BASE, momVoting: false, pool, partners: PARTNERS.none }, "en", { audience: "admin", links: { settings: SIGNED } });
-    expect(admin(POOL.off)).toContain("💡 *Not on here yet*: Man of the Match, partner clubs, the player pool. Ask *@Match Time help mom* to see how they work and how to switch them on.");
-    expect(admin(POOL.closed)).toContain("💡 *Not on here yet*: Man of the Match, partner clubs. Ask *@Match Time help mom*");
-    expect(buildHelpReply(null, { ...BASE, momVoting: false }, "en", { audience: "group" })).not.toContain("Not on here yet");
+    const marked = (r: string) => r.split("\n").filter((l) => l.endsWith(" (off here)"));
+    expect(marked(admin(POOL.off))).toEqual([`⭐ *mom*: Man of the Match (off here)`, `🤝 *partners*: playing with partner clubs (off here)`, `🌍 *pool*: the player pool (off here)`]);
+    expect(marked(admin(POOL.closed))).toEqual([`⭐ *mom*: Man of the Match (off here)`, `🤝 *partners*: playing with partner clubs (off here)`]);
+    expect(buildHelpReply(null, { ...BASE, momVoting: false }, "en", { audience: "group" })).not.toContain("(off here)");
   });
 
-  it("an organiser in a group gets the public settings address, not 'signed in'", () => {
-    const r = buildHelpReply(null, BASE, "en", { audience: "admin" });
-    expect(r).toContain(`⚙️ Your club's settings:\n${PUBLIC}/admin/settings\n`);
-    expect(buildHelpReply(null, BASE, "en", { audience: "admin", links: { settings: SIGNED } })).toContain(`signed in:\n${SIGNED}`);
+  it("no settings link in the menu: the settings topic has it", () => {
+    for (const ctx of [{ audience: "admin" as const }, { audience: "admin" as const, links: { settings: SIGNED } }]) {
+      expect(buildHelpReply(null, BASE, "en", ctx)).not.toMatch(/https?:\/\//);
+    }
+    expect(buildHelpReply("settings", BASE, "en", { audience: "admin" })).toContain(`${PUBLIC}/admin/settings`);
   });
 });
 

@@ -49,6 +49,7 @@ import { firstMonthsFree } from "./free-period";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey, BadgeNumbers } from "../badge-rules";
 import type { OrganisersOnlyKind } from "../organisers-only-kind";
+import { HELP_MENU_ICON, HQ_MENU_ICON, type HelpMenuTopic, type HqMenuTopic, type MenuTopic } from "./help-menu-topics";
 
 /** The tables whose answer says it cannot be cut to a period. */
 type UncutTable = "elo" | "team_of_season" | "mr_reliable" | "chemistry" | "generic";
@@ -1245,59 +1246,39 @@ export const en = {
     return lines.join("\n");
   },
 
-  /** Bare "@Match Time help" in the players' group and by DM: the short
-   *  menu (Kemal, 2026-11-10: "why this long menu"). The rest is one topic
-   *  away (`help_more`); each line here is what the how-to block says,
-   *  shortened. `asks`: what a tag can ask, as the how-to block gates it. */
-  onbHelpMenu: (p: {
-    attendance: boolean;
-    organisers: boolean;
-    asks: Array<"squad" | "teams" | "stats">;
-    /** The member's own profile page, and what it shows. */
-    profileUrl: string;
-    playerRating: boolean;
-    momVoting: boolean;
-    dm?: boolean;
-  }): string => {
-    const lines = [`ℹ️ *MatchTime help*`];
-    lines.push(
-      p.attendance
-        ? `✅ Say *In* or *Out* in the group for the next game, no need to tag me. Not sure? Say *maybe*.`
-        : `📋 Paste your squad list and I'll read who's playing, no need to tag me.`,
-    );
-    if (p.organisers) {
-      lines.push(
-        p.attendance
-          ? `📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.`
-          : `📣 The organisers share the squad list and the teams.`,
-      );
-    }
-    const asks = p.asks.map((a) => ({ squad: "who's in", teams: "the teams", stats: "the stats" })[a]);
-    const what = asks.length > 0 ? `and ask in your own words: ${asks.join(", ")} or anything else` : `and ask anything in your own words`;
-    lines.push(
+  /** Bare "@Match Time help" in the players' group and by DM (Kemal,
+   *  2026-11-10: "display what help menu items are there with only one
+   *  liner explanation for each and if they wanna learn more they would
+   *  just drill down further by saying @Match Time help xxx"): a heading,
+   *  how to drill down, the topics one line each, anything else. Nothing
+   *  else: the rest is one topic away. The word in bold is the topic word
+   *  (`onbHelpTopicWord`). `off`: switched off here, an organiser's menu
+   *  only. `monthly`: a monthly squad's list is the month's, not In or Out. */
+  onbHelpMenu: (p: { topics: Array<MenuTopic<HelpMenuTopic>>; monthly?: boolean; dm?: boolean }): string => {
+    const one: Record<HelpMenuTopic, string> = {
+      availability: p.monthly ? "who's on this month's list" : "saying in, out or maybe",
+      friend: "bringing a friend to play",
+      teams: "how the teams are made",
+      mom: "Man of the Match",
+      ratings: "rating each other after a game",
+      badges: "what your badges mean",
+      reminders: "what I remind you about",
+      payments: "paying the match fee",
+      partners: "playing with partner clubs",
+      pool: "the player pool",
+      schedule: "when and where you play",
+      settings: "club settings and the settings page",
+    };
+    return [
+      `ℹ️ *MatchTime help*`,
       p.dm
-        ? `💬 In the group, tag me (type *@*, pick *Match Time*) ${what}. Replying to my message is not enough.`
-        : `💬 Tag me (type *@*, pick *Match Time*) ${what}. Typing my name or replying to my message is not enough.`,
-    );
-    lines.push(`🤐 I don't reply to banter and jokes, so they're safe.`);
-    const parts = ["games", ...(p.playerRating ? ["ratings"] : []), ...(p.momVoting ? ["Man of the Match awards"] : [])];
-    const shows = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
-    lines.push(`📊 Your own profile page shows your ${shows}: ${p.profileUrl}`);
-    return lines.join("\n");
+        ? `Message me *help* and a topic to learn more, e.g. *help payments*`
+        : `Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*`,
+      ``,
+      ...p.topics.map(({ topic, off }) => `${HELP_MENU_ICON[topic]} *${topic}*: ${one[topic]}${off ? " (off here)" : ""}`),
+      p.dm ? `❓ Anything else: just ask` : `❓ Anything else: just tag me and ask`,
+    ].join("\n");
   },
-
-  /** The features switched off for this club (2026-11-10, Kemal: "why it
-   *  never mentions not used features such as payments"), worded as
-   *  available. `word` is the first one's help word, the example. */
-  help_not_on: (p: { labels: string[]; word: string; dm?: boolean }): string =>
-    `💡 *Not on here yet*: ${p.labels.join(", ")}. Ask *${p.dm ? "" : "@Match Time "}help ${p.word}* to see how ${p.labels.length > 1 ? "they work and how to switch them" : "it works and how to switch it"} on.`,
-
-  /** The menu's closing line: how to ask about one topic, with a real
-   *  example, and every topic word this club can ask about, on or off. */
-  help_more: (p: { words: string[]; example: string; dm?: boolean }): string =>
-    p.dm
-      ? `ℹ️ To learn more about anything, message me *help* and the topic, for example *help ${p.example}*. Topics: ${p.words.join(", ")}.`
-      : `ℹ️ To learn more about anything, tag me with *help* and the topic, for example *@Match Time help ${p.example}*. Topics: ${p.words.join(", ")}.`,
 
   /** The last line of every topic's answer: the way back to the menu. */
   help_back: (p: { dm?: boolean }): string => (p.dm ? `↩️ *help* for the menu.` : `↩️ *@Match Time help* for the menu.`),
@@ -1305,23 +1286,6 @@ export const en = {
   /** The word a player types after "help" for each topic, in this language. */
   onbHelpTopicWord: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
     p.topic,
-
-  /** Human label for each topic, used in the bare-help topic menu. */
-  onbHelpTopicLabel: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
-    ({
-      schedule: "schedule & bookings",
-      badges: "badges and how to earn them",
-      availability: "squad & availability",
-      friend: "bringing a friend",
-      teams: "fair teams",
-      mom: "Man of the Match",
-      ratings: "player ratings",
-      reminders: "reminders",
-      payments: "match fees",
-      partners: "partner clubs",
-      pool: "the player pool",
-      settings: "where your settings are",
-    })[p.topic],
 
   /** "help <topic>" for a topic whose feature is off. Unused since
    *  2026-09-30 (an off topic now explains itself, see onbHelpOffLead);
@@ -1494,11 +1458,6 @@ export const en = {
   /** An admin's DM help: where a topic's settings live (topic ON). */
   onbHelpAdminSettings: (p: { url: string }): string => `⚙️ Its settings are on your admin page:\n${p.url}`,
 
-  /** An organiser's bare help: its closing link. `signedIn`: his own DM's
-   *  sign-in link; in a group it is the public address (2026-10-28). */
-  onbHelpAdminPage: (p: { url: string; signedIn?: boolean }): string =>
-    p.signedIn === false ? `⚙️ Your club's settings:\n${p.url}` : `⚙️ Your club's settings, signed in:\n${p.url}`,
-
   /** DM help for somebody in more than one club: which club it answers for. */
   onbHelpForClub: (p: { club: string }): string => `🏟️ For *${p.club}*:`,
 
@@ -1628,35 +1587,37 @@ export const en = {
     `📋 *Monthly squad:* post the month's list in the group as you always do and I'll DM you what I read. If a name on it matches nobody I know, I show you the members I have no name for, by phone, and you tell me who is who in your own words (for example _"Craig is 3"_) or pick them on the months page. Reply yes and the month starts.\n\n` +
     `*Adding a regular mid-month:* post the list again with the new name on it, or tag me (for example _"@Match Time add Tom to the November list, he's paid"_). He goes on the month for the games left and on the next game's squad. If I don't know the name, I DM you the members I have no name for so you can tell me which one he is.`,
 
-  /** An organiser's DM bare help, organisers mode with an admin group
-   *  linked: where the HQ commands are. */
-  onbHelpAdminOrganisers: `📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).`,
-
   /** "help" in a club's admin group (admin-group-help.ts), asked in any
-   *  words (the shared router's `help` route): the SHORT menu (Kemal,
-   *  2026-11-10: "why this long menu when we say @mt help"). One line per
-   *  topic, shown when the club has something in that topic; the full
-   *  lines are `hq_help_topic`. The not-on line (`help_not_on`) and the
-   *  closing line (`help_more`) are passed in, already worded. `squad`: a
-   *  live weekly club. `graphics`: a live club. `pool`: the pool is open. */
-  hq_help_menu: (p: { squad: boolean; graphics: boolean; pool?: boolean; notOn: string; more: string }): string => {
-    const lines = [`🛠️ *MatchTime in your admin group*`, `Tag me (type *@*, pick *Match Time*), then ask in your own words:`, ``];
-    if (p.squad) {
-      lines.push(`📋 *Squad*: "put Bilal in", "Tom to the bench", "swap Tom for Ben", or paste the list`);
-      lines.push(`🟥🟦 *Teams*: "make the teams", "swap Sam and Alex", then *YES* to confirm`);
-      lines.push(`📣 *Finding players*: "ask the group", ${p.pool ? `"ask the player pool for 2", ` : ""}"DM them"`);
-    }
-    lines.push(`🗓️ *The game*: ${p.squad ? `"cancel Friday", ` : ""}"make it 8 a side", "move Monday's game to 20:15"`);
-    lines.push(`⚙️ *Settings*: "quiet hours 23:00 to 09:00", "we play with 12 to 16"`);
-    if (p.graphics) lines.push(`🖼️ *Graphics*: "send the poster"`);
-    lines.push(`❓ *Anything else*: just ask, I answer from what I know`);
-    if (p.notOn) lines.push(p.notOn);
-    lines.push(p.more);
-    return lines.join("\n");
+   *  words (the shared router's `help` route): the topics, one line each
+   *  (Kemal, 2026-11-10: "only one liner explanation for each"), under how
+   *  to tag and how to drill down. Each topic's full lines are
+   *  `hq_help_topic`. `topics`: the club's, in menu order, `off` when
+   *  switched off here. `squad`: a live weekly club (cancelling a game is
+   *  weekly only, and the example is a topic the menu lists). */
+  hq_help_menu: (p: { topics: Array<MenuTopic<HqMenuTopic>>; squad: boolean }): string => {
+    const one: Record<HqMenuTopic, string> = {
+      squad: "who's in, out or on the bench",
+      teams: "making and changing the teams",
+      players: "finding players when you're short",
+      game: p.squad ? "cancel, resize or move a game" : "resize or move a game",
+      settings: "quiet hours, player numbers and the settings page",
+      graphics: "the poster and the team sheet",
+      payments: "match fees and who's paid",
+      partners: "players from partner clubs",
+      pool: "the MatchTime player pool",
+      mom: "Man of the Match",
+      ratings: "player ratings after each game",
+      reminders: "what I remind players about",
+    };
+    return [
+      `🛠️ *MatchTime in your admin group*`,
+      `Tag me in every message here: type *@* and pick *Match Time*.`,
+      `Tag me with *help* and a topic to learn more, e.g. *@Match Time help ${p.squad ? "teams" : "game"}*`,
+      ``,
+      ...p.topics.map(({ topic, off }) => `${HQ_MENU_ICON[topic]} *${topic}*: ${one[topic]}${off ? " (off here)" : ""}`),
+      `❓ Anything else: just tag me and ask`,
+    ].join("\n");
   },
-
-  /** The word typed after "help" for each admin group topic. */
-  hq_help_word: (p: { topic: "squad" | "teams" | "players" | "game" | "settings" | "graphics" | "payments" }): string => p.topic,
 
   /** "@Match Time help <topic>" in the admin group: that topic's full
    *  lines, each one the long menu had, under the topic's heading. Empty
