@@ -231,3 +231,24 @@ describe("findStatedReplacement: the sender may be the one leaving", () => {
     ).toBeNull();
   });
 });
+
+describe("findStatedReplacement: the one replaced may go to the bench (FNF HQ, 2026-11-10)", () => {
+  // "Swap Yaseen for Wasim", Wasim on the bench: Wasim takes Yaseen's place
+  // and Yaseen goes to the bench. Still two claims with a direction; the
+  // leaving half is a bench claim instead of an OUT.
+  it("pairs Mojib in with Najib to the bench", () => {
+    const r = find(incidentClaims({ out: { polarity: "bench" } }));
+    expect(r).not.toBeNull();
+    expect(r!.incoming).toEqual(ROSTER.mojib);
+    expect(r!.outgoing).toEqual(ROSTER.najib);
+    expect(r!.outClaim.polarity).toBe("bench");
+  });
+
+  it("still never pairs on `replaces` alone", () => {
+    expect(find([claim({ personRef: "Mojib", polarity: "in", replaces: "Najib" })])).toBeNull();
+  });
+
+  it("an IN about the one replaced is no departure", () => {
+    expect(find(incidentClaims({ out: { polarity: "in" } }))).toBeNull();
+  });
+});

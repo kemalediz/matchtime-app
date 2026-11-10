@@ -161,13 +161,18 @@ export function findStatedReplacement(
   if (!outgoing) return null;
   if (outgoing.userId === incoming.userId) return null;
 
-  // 3. THE DEPARTURE, as its own claim. The pairing NEVER drops anybody
+  // 3. THE DEPARTURE, as its own claim. The pairing NEVER moves anybody
   //    on the strength of `replaces` alone: there has to be an `out`
-  //    claim about that same person, and it has to be one the engine
-  //    would have acted on. Without this the new field would be a second
-  //    way to remove a player, which is the failure it exists to prevent.
+  //    claim about that same person, or a `bench` claim (FNF HQ,
+  //    2026-11-10: "swap Yaseen for Wasim", Wasim off the bench and
+  //    Yaseen onto it), and it has to be one the engine would have acted
+  //    on. Without this the new field would be a second way to remove a
+  //    player, which is the failure it exists to prevent.
   const departures = claims.filter(
-    (c) => c !== inClaim && c.polarity === "out" && targetOf(c)?.userId === outgoing.userId,
+    (c) =>
+      c !== inClaim &&
+      (c.polarity === "out" || c.polarity === "bench") &&
+      targetOf(c)?.userId === outgoing.userId,
   );
   if (departures.length !== 1) return null;
   const outClaim = departures[0];

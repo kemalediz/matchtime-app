@@ -44,6 +44,17 @@ describe("the prompt", () => {
     expect(HQ_SQUAD_READER_SCHEMA.properties.kind.enum).toEqual(["squad", "change", "teams", "other"]);
   });
 
+  it("a replacement is two changes, and where the replaced player goes is said once (FNF HQ, 2026-11-10)", () => {
+    // "Wasim instead of Yaseen" came back as Wasim in alone: nothing about
+    // Yaseen, so the engine (which never moves anybody on `replaces`
+    // alone) left the squad as it was.
+    expect(HQ_SQUAD_READER_SYSTEM).toContain("is two changes: the player coming in");
+    expect(HQ_SQUAD_READER_SYSTEM.match(/Where the replaced player goes/g)).toHaveLength(1);
+    expect(HQ_SQUAD_READER_SYSTEM).toContain(`"bench" when the one coming in is on the bench`);
+    // A swap with a player not playing is who plays, not the teams.
+    expect(HQ_SQUAD_READER_SYSTEM).toContain("A swap between a player who is playing and one who is not");
+  });
+
   it("the user turn says whether the message is said to MatchTime (a fact from code)", () => {
     expect(buildHqSquadReaderUserTurn(input("Tom out", { addressed: true }), ctx)).toContain("SAID TO MATCHTIME: yes");
     expect(buildHqSquadReaderUserTurn(input("Tom out"), ctx)).toContain("SAID TO MATCHTIME: not tagged");
