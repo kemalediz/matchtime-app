@@ -81,6 +81,13 @@
  * YES posts the final teams in the players' group, once. Nothing here ever
  * posts in the players' group on its own initiative.
  *
+ * THE GAME JUST PLAYED (Kemal, 2026-11-10). On match day after kickoff,
+ * once the game is completed, showing or changing the teams, and a
+ * replacement read in HQ ("put Luca in for CJ", `replaceOnPlayedGame`),
+ * are for that game (`played-game-rules.ts`): its teams are final, no YES
+ * is asked, and nothing is posted in the players' group. New teams are
+ * for the next game, as before.
+ *
  * NO AUTHORISATION LIVES HERE. `admin-group.ts` proves the sender is an
  * owner or admin of the club first; the scheduler acts for the club.
  * Logs carry ids and counts only.
@@ -128,6 +135,11 @@ import { loadClubWhoRoster } from "./club-who-roster";
 import { recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { DEFAULT_SEED_RATING } from "./default-seed";
 import { perTeamFor, playerRange, teamsNeeded } from "./flex-format-rules";
+import { justPlayedMatch, playedGameReplacements, teamCommandFixesPlayedGame } from "./played-game-rules";
+import type { HqSquadChange } from "./hq-squad-reader-prompt";
+import { recordAttendanceEvent, type AttendanceEventSink, type AttendanceStatusLike } from "./attendance-events";
+import { adminGroupSourceRef } from "./admin-added";
+import { provisionNewPerson } from "./resolve-or-provision-name";
 
 export interface TeamProposalDeps {
   /** The shared generator. Injected in tests only. */
@@ -151,6 +163,7 @@ export type TeamReplyOutcome =
   | "teams-no-teams"
   | "teams-swapped"
   | "teams-moved"
+  | "teams-replaced"
   | "teams-name-unclear"
   | "teams-same-team"
   | "teams-already-there"
@@ -203,9 +216,51 @@ async function activeMatches(orgId: string): Promise<MatchRow[]> {
   })) as unknown as MatchRow[];
 }
 
-/** The match the admin group's commands are about: the club's registration match. */
-async function commandMatch(orgId: string, now: Date): Promise<MatchRow | null> {
+/**
+ * The match the admin group's commands are about: the club's registration
+ * match, except that a change to the teams on match day after kickoff is
+ * for the game just played (`played-game-rules.ts`, Kemal 2026-11-10).
+ */
+async function commandMatch(orgId: string, now: Date, command?: TeamCommand): Promise<MatchRow | null> {
+  if (command && teamCommandFixesPlayedGame(command)) {
+    const played = await playedGame(orgId, now);
+    if (played) return played;
+  }
   return selectRegistrationMatch(await activeMatches(orgId), now) ?? null;
+}
+
+/** How far either side of `now` the games of the London day are read. */
+const PLAYED_WINDOW_MS = 36 * 60 * 60 * 1000;
+
+/** The club's game just played today, if a team change is for it
+ *  (`justPlayedMatch`); null otherwise. */
+async function playedGame(orgId: string, now: Date): Promise<MatchRow | null> {
+  const activities = await db.activity.findMany({ where: { orgId }, select: { id: true } });
+  if (activities.length === 0) return null;
+  const rows = (await db.match.findMany({
+    where: {
+      activityId: { in: activities.map((a) => a.id) },
+      date: { gte: new Date(now.getTime() - PLAYED_WINDOW_MS), lte: new Date(now.getTime() + PLAYED_WINDOW_MS) },
+    },
+    orderBy: { date: "asc" },
+  })) as unknown as MatchRow[];
+  const completed = rows.filter((m) => m.status === "COMPLETED").map((m) => m.id);
+  const withTeams = new Set(
+    completed.length
+      ? (await db.teamAssignment.findMany({ where: { matchId: { in: completed } }, select: { matchId: true } })).map((x) => x.matchId)
+      : [],
+  );
+  return justPlayedMatch(rows.map((m) => ({ ...m, hasTeams: withTeams.has(m.id) })), now);
+}
+
+/** The game was played (completed): a change fixes it, nothing is posted
+ *  in the players' group and nothing asks for YES. */
+const isPlayed = (match: MatchRow) => match.status === "COMPLETED";
+
+/** On a played game, the reply says which game it is, and that the
+ *  players' group hears nothing. Any other game: the text as it is. */
+function playedLead(sheet: Sheet, lang: string | null | undefined, text: string): string {
+  return isPlayed(sheet.match) ? `${t(lang).tp_played_game({ kickoff: sheet.kickoff })}\n\n${text}` : text;
 }
 
 interface Sheet {
@@ -495,7 +550,7 @@ export async function handleTeamCommand(args: {
   const s = t(lang);
   const announce = await announces(deps, orgId);
 
-  const match = await commandMatch(orgId, now);
+  const match = await commandMatch(orgId, now, command);
   if (!match) return { outcome: "teams-no-match", replyText: s.tp_no_match };
 
   const build = async (pins: Record<string, SheetTeam> = {}): Promise<TeamReply> => {
@@ -543,7 +598,7 @@ export async function handleTeamCommand(args: {
     roster: club,
     where: "HQ, the club organisers' admin group, about the teams",
   });
-  const final = match.status === "TEAMS_PUBLISHED";
+  const final = match.status === "TEAMS_PUBLISHED" || isPlayed(match);
   const label = (team: SheetTeam) => (team === "RED" ? sheet.labels[0] : sheet.labels[1]);
   const nameOf = (id: string) => sheet.nameOf.get(id) ?? "?";
   const unclear = (problems: Array<{ raw: string; res: NameResolution }>): TeamReply => ({
@@ -563,7 +618,7 @@ export async function handleTeamCommand(args: {
 
   if (command.kind === "show") {
     if (sheet.slots.length === 0) return build();
-    if (final) return { outcome: "teams-shown", replyText: await finalText(sheet, lang, now, announce) };
+    if (final) return { outcome: "teams-shown", replyText: playedLead(sheet, lang, await finalText(sheet, lang, now, announce)) };
     return { outcome: "teams-shown", replyText: await propose(sheet, lang, now, announce) };
   }
 
@@ -669,13 +724,128 @@ export async function handleTeamCommand(args: {
   const withLead = (text: string) => (lead ? `${lead}\n\n${text}` : text);
   if (final) {
     // Final teams stay final; the admin group has now seen this sheet.
+    // A played game's too: it is never told again (`teamProposalJobs`
+    // reads only a game still to kick off).
     const row = (await db.adminTeamProposal.findUnique({ where: { matchId: match.id } })) as ProposalRow | null;
     if (row?.state === "approved") {
       await db.adminTeamProposal.update({ where: { id: row.id }, data: { toldSheet: after.slots as unknown as object } });
     }
-    return { outcome, replyText: withLead(await finalText(after, lang, now, announce)) };
+    return { outcome, replyText: playedLead(after, lang, withLead(await finalText(after, lang, now, announce))) };
   }
   return { outcome, replyText: withLead(await propose(after, lang, now, announce)) };
+}
+
+/** The attendance writes a line-up fix makes, as one change of the row. */
+type Status = NonNullable<AttendanceStatusLike>;
+type FixTx = AttendanceEventSink & {
+  attendance: {
+    findFirst: (a: { where: { matchId: string; userId: string } }) => Promise<{ id: string; status: Status; position: number } | null>;
+    update: (a: { where: { id: string }; data: { status: Status } }) => Promise<{ status: Status; position: number }>;
+    create: (a: { data: { matchId: string; userId: string; status: Status } }) => Promise<{ status: Status; position: number }>;
+  };
+  teamAssignment: {
+    findFirst: (a: { where: { matchId: string; userId: string } }) => Promise<{ id: string } | null>;
+    update: (a: { where: { id: string }; data: { userId: string } }) => Promise<unknown>;
+  };
+};
+
+/**
+ * A REPLACEMENT ON THE GAME JUST PLAYED (Kemal, 2026-11-10: "put Luca in for
+ * CJ on bibs" after the game). The HQ squad reader read the message as a
+ * change; when every arrival in it takes the place of a player on the
+ * teams of the game just played (`justPlayedMatch`, `playedGameReplacements`),
+ * this fixes that game's line-up and returns the HQ reply. Null when it is
+ * not such a fix: the squad change goes on to the next game, as before.
+ *
+ * It writes what the match page's own "bring up and put on a team" writes
+ * (`src/app/actions/teams.ts` promoteFromBench): the arrival CONFIRMED, so
+ * the ratings and Man of the Match count him, and the slot handed over in
+ * place (the replacement stands where the replaced player stood). The
+ * replaced player, if still CONFIRMED, is DROPPED: he did not play. Each
+ * attendance change is logged as an admin's squad edit from the admin
+ * group. No other flow runs (no bench offer, no squad or team post in the
+ * players' group, no late-drop notice), and no payment field is written.
+ */
+export async function replaceOnPlayedGame(args: {
+  orgId: string;
+  lang: string | null | undefined;
+  messageId: string;
+  senderUserId: string;
+  now: Date;
+  /** The HQ squad reader's change, its names placed by who-is-who. */
+  changes: readonly HqSquadChange[];
+  /** The sender is an owner or admin. Changing the teams is theirs; anybody
+   *  else asking for a fix gets "organisers-only" and nothing is written. */
+  organiser: boolean;
+  deps?: Pick<TeamProposalDeps, "announce">;
+}): Promise<TeamReply | "organisers-only" | null> {
+  const { orgId, lang, now } = args;
+  const s = t(lang);
+  const match = await playedGame(orgId, now);
+  if (!match) return null;
+  const sheet = await loadSheet(match, lang);
+  const read = playedGameReplacements(args.changes, new Set(sheet.slots.map((x) => x.userId)));
+  if (read.kind === "none") return null;
+  if (!args.organiser) return "organisers-only";
+  if (read.kind === "unclear") {
+    return { outcome: "teams-name-unclear", replyText: buildNameProblems(lang, read.names.map((raw) => ({ raw, res: { kind: "unsure" as const } }))) };
+  }
+  const label = (team: SheetTeam) => (team === "RED" ? sheet.labels[0] : sheet.labels[1]);
+  /** An arrival already on the teams: one line, nothing written. */
+  const alreadyOn = (userId: string, name: string): TeamReply | null => {
+    const on = sheet.slots.find((x) => x.userId === userId);
+    return on ? { outcome: "teams-already-there", replyText: s.tp_already_on({ name: sheet.nameOf.get(userId) ?? name, team: label(on.team) }) } : null;
+  };
+  // Every known arrival is checked before anybody new is added.
+  for (const f of read.fixes) {
+    const on = f.inUserId ? alreadyOn(f.inUserId, f.inName) : null;
+    if (on) return on;
+  }
+  // Somebody nobody in the club is: added as an organiser's add in HQ is.
+  const fixes: Array<{ inUserId: string; outUserId: string }> = [];
+  for (const f of read.fixes) {
+    const inUserId = f.inUserId ?? (await provisionNewPerson(orgId, f.inName, { adminConfirmed: true }))?.userId ?? null;
+    if (!inUserId) return { outcome: "teams-name-unclear", replyText: buildNameProblems(lang, [{ raw: f.inName, res: { kind: "unsure" } }]) };
+    const on = alreadyOn(inUserId, f.inName);
+    if (on) return on;
+    fixes.push({ inUserId, outUserId: f.outUserId });
+  }
+
+  const event = { cause: "admin-squad-edit" as const, actorKind: "admin" as const, actorUserId: args.senderUserId, sourceRef: adminGroupSourceRef(args.messageId) };
+  const setStatus = async (tx: FixTx, userId: string, to: "CONFIRMED" | "DROPPED") => {
+    const prior = await tx.attendance.findFirst({ where: { matchId: match.id, userId } });
+    if (prior?.status === to || (to === "DROPPED" && prior?.status !== "CONFIRMED")) return;
+    const row = prior
+      ? await tx.attendance.update({ where: { id: prior.id }, data: { status: to } })
+      : await tx.attendance.create({ data: { matchId: match.id, userId, status: to } });
+    await recordAttendanceEvent(
+      tx,
+      { matchId: match.id, userId, orgId, fromStatus: prior?.status ?? null, toStatus: row.status, fromPosition: prior?.position ?? null, toPosition: row.position ?? null },
+      { ...event, note: to === "CONFIRMED" ? "put in on the game just played, from the admin group" : "replaced on the game just played, from the admin group" },
+    );
+  };
+  // Under the per-match slot lock, as every other seat change.
+  const done: typeof fixes = [];
+  await db.$transaction(async (raw) => {
+    const tx = raw as unknown as FixTx & SlotFillTx;
+    await lockTeamSlots(tx, match.id);
+    for (const f of fixes) {
+      const slot = await tx.teamAssignment.findFirst({ where: { matchId: match.id, userId: f.outUserId } });
+      if (!slot) continue;
+      await setStatus(tx, f.inUserId, "CONFIRMED");
+      await setStatus(tx, f.outUserId, "DROPPED");
+      await tx.teamAssignment.update({ where: { id: slot.id }, data: { userId: f.inUserId } });
+      done.push(f);
+    }
+  });
+
+  const after = await loadSheet(match, lang, done.map((f) => f.outUserId));
+  const teamOf = (userId: string) => after.slots.find((x) => x.userId === userId)?.team ?? "RED";
+  const lines = done.map((f) => s.tp_change_replaced({ to: after.nameOf.get(f.inUserId) ?? "?", from: after.nameOf.get(f.outUserId) ?? "?", team: label(teamOf(f.inUserId)) }));
+  console.log(`[team-proposal] ${args.messageId}: ${done.length} replacement(s) on played match ${match.id}`);
+  if (done.length === 0) return { outcome: "teams-unchanged", replyText: s.tp_nothing_to_change };
+  const announce = await announces(args.deps, orgId);
+  return { outcome: "teams-replaced", replyText: playedLead(after, lang, `${lines.join("\n")}\n\n${await finalText(after, lang, now, announce)}`) };
 }
 
 /**

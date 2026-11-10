@@ -41,7 +41,8 @@ vi.mock("@/lib/ai-budget", () => ({
 }));
 const squad = vi.hoisted(() => ({ handleAdminSquadChange: vi.fn(), nameMentions: vi.fn(async (_o: string, text: string) => text) }));
 vi.mock("@/lib/admin-group-squad-change", () => squad);
-const teams = vi.hoisted(() => ({ answerTeamsYes: vi.fn(), handleTeamCommand: vi.fn() }));
+// No game just played: a squad change goes to the next game (2026-11-10).
+const teams = vi.hoisted(() => ({ answerTeamsYes: vi.fn(), handleTeamCommand: vi.fn(), replaceOnPlayedGame: vi.fn(async () => null) }));
 vi.mock("@/lib/team-proposal", () => teams);
 // The HQ squad reader (2026-10-30): a change, Tom out.
 const paste = vi.hoisted(() => ({
