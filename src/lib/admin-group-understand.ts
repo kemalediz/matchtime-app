@@ -125,7 +125,7 @@ import type { AdminFacts, Route } from "./pipeline/types";
 import { dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { handleAdminSquadChange, nameMentions, type AdminSquadChangeResult } from "./admin-group-squad-change";
-import { answerTeamsYes, compareQuotedSheet, handleTeamCommand, setAsideTeamProposal } from "./team-proposal";
+import { answerTeamsYes, compareQuotedSheet, handleTeamCommand, replaceOnPlayedGame, setAsideTeamProposal } from "./team-proposal";
 import { quotedTeamSheet } from "./team-sheet-history";
 import { membersNamedIn } from "./pipeline/identity";
 import { teamCommandFromFacts } from "./team-proposal-rules";
@@ -745,6 +745,13 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         console.log(`[admin-group] ${messageId}: ${route} read as other (${r.why}): nothing to change`);
         return null;
       }
+      // A replacement for a player on the teams of the game just played (on
+      // its day, after kickoff) fixes that game's line-up, an organiser's
+      // change to the teams; any other change is the next game's, as before
+      // (`played-game-rules.ts`, Kemal 2026-11-10).
+      const fixed = await replaceOnPlayedGame({ ...base(actorId), changes: r.changes, organiser: !!actor });
+      if (fixed === "organisers-only") return onlyOrganisers("teams");
+      if (fixed) return said(fixed.outcome, fixed.replyText);
       const change = await handleAdminSquadChange({
         ...base(actorId),
         text: input.text,

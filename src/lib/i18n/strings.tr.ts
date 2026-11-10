@@ -1309,7 +1309,7 @@ export const tr: Strings = {
       lines.push(`✏️ *"@Match Time Bilal'i ekle"*, *"@Match Time Sam gelemiyor"*, *"@Match Time Tom yedek"*: kadroda değişiklik.`);
       lines.push(`🟥🟦 *"@Match Time takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`);
       lines.push(`↩️ Önceki takım listelerimden birine *"@Match Time bunları kullan"* diye yanıt verin ya da beni etiketleyip iki takımı yapıştırın: o takımları *@Match Time EVET* yazmanız için geri getiririm.`);
-      lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik.`);
+      lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik. Maç günü başlama saatinden sonra bunlar ve *"@Match Time Sam yerine Ben'i koy"* oynanan maçı düzeltir; oyuncu grubuna bir şey gönderilmez.`);
       lines.push(`✅ *@Match Time EVET*: önerilen takımları kesinleştiririm.`);
       lines.push(`📣 *"@Match Time gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`);
       lines.push(`📨 Kişileri etiketleyen bir mesaja *"@Match Time onlara özelden yaz"* diye yanıt verin ya da *"@Match Time yukarıdakilere özelden yaz"* deyin: her birine sıradaki maçın davetini özelden gönderirim. Yalnızca tanıdığım numaralara, bir seferde en fazla 10 kişiye.`);
@@ -2538,6 +2538,7 @@ export const tr: Strings = {
   tp_final_reply_posted: "Takımlar kesinleşti. Oyuncu grubuna gönderdim.",
   tp_no_teams: "Henüz takım yok. Beni etiketleyip isteyin (örneğin *@Match Time takımları kur*), kurayım.",
   tp_no_match: "Takım kurulacak yaklaşan bir maç yok.",
+  tp_played_game: (p) => `Bu, bugünkü ${p.kickoff} maçı, oynandı. Oyuncu grubuna bir şey göndermiyorum.`,
   tp_name_unknown: (p) => `${p.name} takımlarda yok.`,
   tp_name_unknown_squad: (p) => `${p.name} kadroda yok.`,
   tp_restored_earlier: (p) => `Bunlar önceki takımlar, ${p.day} ${p.time}. Yeniden *@Match Time EVET* yazmanız gerekiyor.`,

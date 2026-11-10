@@ -665,6 +665,13 @@ export default async function AdminGuidePage() {
         Joe&quot;) goes straight into the same team, so you don&apos;t have to
         redo them.
       </p>
+      <p>
+        On match day after kickoff, a team change you tag MatchTime with in
+        your admin group (a swap, a move, or{" "}
+        <code>@Match Time put Ben in for Sam</code>) fixes the game just
+        played, so ratings and Man of the Match count the right players.
+        Nothing is posted in the players&apos; group.
+      </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="scores-ratings">7. Scores, ratings and Man of the Match</h2>

@@ -1585,7 +1585,7 @@ export const en = {
       lines.push(`✏️ *"@Match Time put Bilal in"*, *"@Match Time Sam can't make it"*, *"@Match Time Tom to the bench"*: changes to the squad.`);
       lines.push(`🟥🟦 *"@Match Time show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`);
       lines.push(`↩️ Reply to one of my earlier team sheets with *"@Match Time use these"*, or tag me and paste the two teams: I bring those teams back for your *@Match Time YES*.`);
-      lines.push(`🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams.`);
+      lines.push(`🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams. On match day after kickoff, these and *"@Match Time put Ben in for Sam"* fix the game just played, and nothing is posted in the players' group.`);
       lines.push(`✅ *@Match Time YES*: make the proposed teams final.`);
       lines.push(`📣 *"@Match Time ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
       lines.push(`📨 Reply to a message that tags people with *"@Match Time DM them"*, or say *"@Match Time DM the people above"*: I DM each of them the invite for the next game. Only numbers I already know, up to 10 at a time.`);
@@ -3508,6 +3508,9 @@ export const en = {
   tp_final_reply_posted: "Teams are final. I've posted them in the players' group.",
   tp_no_teams: "There are no teams yet. Tag me and ask for them (for example *@Match Time make the teams*) and I'll build them.",
   tp_no_match: "There's no upcoming game to build teams for.",
+  /** Above a team change made on match day after kickoff: it fixes the
+   *  game just played (played-game-rules.ts, 2026-11-10). */
+  tp_played_game: (p: { kickoff: string }): string => `This is today's game at ${p.kickoff}, already played. Nothing is posted in the players' group.`,
   tp_name_unknown: (p: { name: string }): string => `I can't find ${p.name} in the teams.`,
   /** A pasted sheet names someone who is not in the squad (2026-10-30). */
   tp_name_unknown_squad: (p: { name: string }): string => `I can't find ${p.name} in the squad.`,
