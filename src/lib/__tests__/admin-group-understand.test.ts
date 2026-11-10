@@ -120,6 +120,10 @@ const hqPool = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/pool-ask-words", () => hqPool);
 
+// A form note (2026-11-10): the line for a club whose teams MatchTime makes.
+const formNote = vi.hoisted(() => ({ formNoteReplyFor: vi.fn() }));
+vi.mock("@/lib/form-note", () => formNote);
+
 // Cancelling a match, or putting it back on, from HQ (2026-10-22).
 const matchCancel = vi.hoisted(() => ({ hqCancelOrRestore: vi.fn() }));
 vi.mock("@/lib/match-cancel", () => matchCancel);
@@ -630,6 +634,31 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
     const r = await ask("swap them", "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({}) } });
     expect(r).toEqual({ route: "balancer", outcome: "teams-which-players", replyText: "Which players? For example: swap Sam and Alex, or move Sam to the other team." });
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+  });
+
+  it("balancer read as a form note (2026-11-10): noted in one line, no team command, no 'which players?'", async () => {
+    paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
+    formNote.formNoteReplyFor.mockResolvedValue("Noted: I'll take it into account when the teams are made, for this match only.");
+    const r = await ask("@Match Time lower my strength for this match, I'm tired", "balancer", {
+      deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "form" }) },
+    });
+    expect(r).toEqual({
+      route: "balancer",
+      outcome: "form-noted",
+      replyText: "Noted: I'll take it into account when the teams are made, for this match only.",
+    });
+    expect(formNote.formNoteReplyFor).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", lang: "en", now: NOW }));
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+  });
+
+  it("a form note in a club whose teams MatchTime does not make: nothing said", async () => {
+    paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
+    formNote.formNoteReplyFor.mockResolvedValue(null);
+    const r = await ask("@Match Time Tom's knee is bad, bear it in mind", "balancer", {
+      deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "form" }) },
+    });
+    expect(r).toBeNull();
     expect(teams.handleTeamCommand).not.toHaveBeenCalled();
   });
 

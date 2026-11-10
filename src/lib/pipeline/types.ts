@@ -600,8 +600,11 @@ export interface TeamFacts {
   /** show = re-post what exists. generate = run the balancer. §3.2 S19:
    *  "show the teams again" once destroyed an admin's manual swap.
    *  clear (2026-10-30) = remove the line-ups (`team-clear.ts` applies
-   *  it); it replaced the analyze route's word test. */
-  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear" | "restore" | "set";
+   *  it); it replaced the analyze route's word test. form (2026-11-10) =
+   *  how a player will play in this match (tired, injured, in form):
+   *  nothing is written, the rating adjuster reads the chat when the
+   *  teams are made, and MatchTime says it is noted. */
+  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear" | "restore" | "set" | "form";
   includeRefs: string[];
   teamNames: [string, string] | null;
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;

@@ -905,6 +905,15 @@ export const en = {
   teams_cleared: "Teams cleared. I'll build new ones on match day when asked.",
   teams_clear_nothing: "There are no teams to clear.",
   teams_clear_admin_only: "Only an admin can clear the teams.",
+  /** A player tells MatchTime how they (or a team-mate) will play in this
+   *  match: tired, injured, in form (2026-11-10, Sutton FC). Nothing is
+   *  written: the rating adjuster reads the week's chat when the teams are
+   *  made (rating-adjuster.ts). Said only when MatchTime makes this club's
+   *  teams; with the teams already made, it counts only if they are made
+   *  again; with no match, nothing is said about the teams. */
+  form_noted: "Noted: I'll take it into account when the teams are made, for this match only.",
+  form_noted_teams_made: "Noted. The teams for this match are already made, so I'll take it into account if they are made again.",
+  form_noted_no_match: "Noted.",
   request_not_handled: "Sorry, I can't do that one yet.",
   /** The same, for an ADMIN (2026-09-30; 2026-10-28): any admin request
    *  MatchTime cannot do by message points at the club's settings page and
@@ -1462,6 +1471,7 @@ export const en = {
         `🟥🟦 *Fair teams: how it works*\n` +
         `On match day, anyone in the group can tag me and ask for the teams (for example *@Match Time generate the teams*) and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
         `I post the line-ups straight into the chat. Not happy with a pairing? Tag me and say what to change, in your own words (e.g. _"@Match Time swap Sam and Alex"_), or ask me to show the teams again any time.\n` +
+        `Tired, ill, injured or flying? Tag me and say so (e.g. _"@Match Time I'm tired, go easy on my rating for this match"_) and I'll take it into account when the teams are made, for that match only.\n` +
         `One short of two full sides? If the club has set the fewest it plays with, I make the teams from that number up, for example 7 against 6, balanced so the side a player down gets the stronger players.\n` +
         `Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.`,
       mom:

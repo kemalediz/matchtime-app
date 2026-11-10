@@ -191,6 +191,12 @@ export default function PlayerGuidePage() {
         players, and <code>@Match Time swap the colours</code> swaps the
         bibs. The organiser can also edit the teams from the dashboard.
       </p>
+      <p>
+        Tired, ill, injured or on fire? Tell MatchTime, for example{" "}
+        <code>@Match Time I&apos;m tired, go easy on my rating for this match</code>
+        . It takes that into account when the teams are made, for that match
+        only, and you can say the same about a teammate&apos;s injury.
+      </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="match-day">7. Before the match</h2>

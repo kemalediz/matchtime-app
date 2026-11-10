@@ -328,9 +328,10 @@ describe("step 7 per-route flags", () => {
     // become nobody's problem AND nobody's decision.
     const owned = [...ANSWER_TEAM_ACTIONS, ...TEAM_OPS_TEAM_ACTIONS];
     const unowned = ALL_TEAM_ACTIONS.filter((a) => !owned.includes(a));
-    expect([...ALL_TEAM_ACTIONS].sort()).toEqual(["clear", "generate", "rename", "restore", "set", "show", "suggest", "swap"]);
+    expect([...ALL_TEAM_ACTIONS].sort()).toEqual(["clear", "form", "generate", "rename", "restore", "set", "show", "suggest", "swap"]);
     // restore and set (2026-10-30) are the organisers' group's alone (`team-proposal.ts`).
-    expect(unowned.sort()).toEqual(["clear", "rename", "restore", "set", "suggest", "swap"]);
+    // form (2026-11-10) is answered in one line where it is read, nothing written.
+    expect(unowned.sort()).toEqual(["clear", "form", "rename", "restore", "set", "suggest", "swap"]);
   });
 
   it("names every team action the facts type does, and no others", () => {
@@ -347,6 +348,7 @@ describe("step 7 per-route flags", () => {
       clear: true,
       restore: true,
       set: true,
+      form: true,
     };
     const fromFlags: Record<TeamAction, true> = fromFacts;
     expect(Object.keys(fromFlags).sort()).toEqual([...ALL_TEAM_ACTIONS].sort());

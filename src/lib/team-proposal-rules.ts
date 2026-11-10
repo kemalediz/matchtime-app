@@ -76,15 +76,19 @@ export type TeamCommand =
  * one line. Any number of names is one change.
  */
 export function teamCommandFromFacts(facts: {
-  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear" | "restore" | "set";
+  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear" | "restore" | "set" | "form";
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
   moves?: string[];
   pairings?: string[][];
   swapSides?: boolean;
   sides?: { red: string[]; yellow: string[] };
-}): TeamCommand | { kind: "unclear" } {
+}): TeamCommand | { kind: "unclear" } | { kind: "form" } {
   const sides: SideRef[] = facts.swaps.map((x) => ({ name: x.personRef.trim(), to: x.team })).filter((x) => x.name);
   const together = (facts.pairings ?? []).map((g) => g.map((n) => n.trim()).filter(Boolean)).filter((g) => g.length >= 2);
+  // A form note (2026-11-10): how a player will play in this match. Not a
+  // team command: nothing changes, the rating adjuster reads it from the
+  // chat when the teams are made (`formNoteReplyFor`, form-note.ts).
+  if (facts.action === "form") return { kind: "form" };
   if (facts.action === "show") return { kind: "show" };
   if (facts.action === "suggest") return { kind: "suggest" };
   if (facts.action === "restore") return { kind: "restore" };

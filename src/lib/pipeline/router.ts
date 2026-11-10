@@ -350,6 +350,20 @@ import { isAiBudgetExceeded, withAttendanceOverflow } from "../ai-budget-context
  * the model's reading of whether a message speaks to MatchTime, which the
  * analyze route now treats as a tag in place of the "match time" text
  * match. Nothing appended at the end; the output contract is where it was.
+ *
+ * ── 2026-11-10: HOW A PLAYER WILL PLAY IS FOR THE BALANCER ────────────
+ *
+ * Sutton FC: "@Match Time reduce my strength for this match as I am quite
+ * tired." routed admin_ops (the stored trace), the admin extractor read it
+ * "other", and the admin fallback sent the settings page. The rating
+ * adjuster already reads the week's chat when the teams are made, so the
+ * message does what was asked. balancer's definition now names telling
+ * MatchTime how a player will play in this match (and says a player's
+ * strength for one match is not a setting), and the teams examples gain
+ * the form notes and a rating question as question, EN and TR side by
+ * side, where the teams are taught. 20,516 to 21,195 characters. Old and
+ * new: MDs/prompt-form-note-2026-11-10.md; the paid check:
+ * scripts/live-check-form-note.ts.
  */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, finding players when the club is short, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
 
@@ -379,7 +393,7 @@ other_att   adds, drops, benches, moves, swaps or replaces SOMEONE ELSE in the s
 offer       a tentative or conditional commitment by anyone ("if you're short", "if my back holds up"), or asking the group for a player when nobody named is leaving.
 unsure      about a place, but you cannot tell who or what it does. A bare "confirmed" or "confirm" is unsure, never none: it may be somebody confirming their place. Never use it for plain banter.
 question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked). Asking how the bench or the list works asks for no place.
-balancer    asks about the TWO team line-ups (red and yellow) themselves: to see them, make them, shuffle or rename them, change them as they stand (swap two players between the teams, move a player to the other team, swap the two teams' colours) or clear them. Swapping between the teams changes nobody's place in the squad, so it is balancer, never attendance, in both groups.
+balancer    the TWO team line-ups (red and yellow): asks to see them, make them, shuffle or rename them, change them as they stand (swap two players between the teams, move a player to the other team, swap the two teams' colours) or clear them; or tells MatchTime how a player will play in this match, so the teams are made with it in mind (tired, ill, injured, hungover, in top form, or "rate me down for this match"). A player's strength for one match is not a setting. Swapping between the teams changes nobody's place in the squad, so it is balancer, never attendance, in both groups.
 score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), answers which team won or who was its Man of the Match while MatchTime is WAITING for that (a team named alone, "Yellow", "sarılar kazandı"; praise alone answers nothing), or says a recorded result is wrong ("you've got it the wrong way round", "no, 5-7 to Red", "yanlış, sarılar kazandı"). A professional scoreline somebody is watching is none.
 admin_ops   tells the bot to do something now: find new players (from the MatchTime player pool, from one partner club or all of them, from several places, or with no place named), credit a payment, set a reminder, send a link, change a setting (any of them, for example the club's pitch, its quiet hours, or the fewest and most players it plays a game with: "we can play with 12", "we play 12 to 16", "back to full teams"), switch one game to a different number a side ("make it 8 aside"), call a match off (one still to come, or one that never took place) or put it back on. A bare yes replying to MatchTime's own offer to switch a game's size is admin_ops, whoever sends it: code checks who may. A reply to that offer that says somebody plays or not ("yes, I'm in") settles a place: attendance, as question 1 says. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
 none        everything else, as in question 3. A member asking another member something that settles nothing is none ("are you injured?", "which two of you can play tomorrow?"); as soon as a message STATES that somebody plays or does not, it is attendance.
@@ -496,7 +510,7 @@ Questions about the squad, the matches and the club:
   "Where is my name?" -> question
   "MatchTime who runs this club?" -> question
 
-The two teams: seeing or making them is balancer, asking when or how they are made is question:
+The two teams: seeing or making them, or how a player will play in them, is balancer; asking when or how they are made, or what a rating is, is question:
   "Teams?" -> balancer
   "@Match Time takımları göster" -> balancer
   "@Match Time regenerate the teams once more" -> balancer
@@ -506,8 +520,14 @@ The two teams: seeing or making them is balancer, asking when or how they are ma
   "@Match Time swap the colours" -> balancer
   "@Match Time clear the teams" -> balancer
   "@Match Time takımları sil" -> balancer
+  "@Match Time reduce my strength for this match as I'm quite tired" -> balancer
+  "@Match Time bugün çok yorgunum, bu maç için gücümü düşür" -> balancer
+  "@Match Time Tom has a bad knee, bear it in mind for the teams" -> balancer
+  "@Match Time Ali'nin dizi sakat, takımları kurarken dikkate al" -> balancer
   "@Match Time what time do the teams come out?" -> question
   "@Match Time takımlar saat kaçta açıklanıyor?" -> question
+  "@Match Time what is Kemal's strength?" -> question
+  "@Match Time Ali'nin puanı kaç?" -> question
 
 Results:
   "5-3 to Yellows" -> score
