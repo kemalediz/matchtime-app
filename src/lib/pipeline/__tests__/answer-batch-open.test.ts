@@ -346,7 +346,7 @@ describe("in HQ (answerHqQuestion), the same path", () => {
       history: [{ author: fullName("elvin"), body: "recent HQ line" }],
       weekChat: async () => [{ author: fullName("elvin"), body: "can we get the bigger pitch?", at: new Date("2026-08-31T18:00:00.000Z") }],
       lastBotPost: null,
-      hqHelp: "menu",
+      gates: { squad: true, graphics: true, picks: false, paid: false, free: false, pool: false },
       deps: { model, loadState: async () => state, loadFeatures: async () => FEATURES, loadClub: async () => CLUB, loadStats: async () => TABLES },
     });
     expect(out?.outcome).toBe("hq-answered");
