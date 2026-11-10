@@ -8,6 +8,9 @@ import { readSignupSource } from "@/lib/pool/profile-fields";
 import { poolPlaySharePath, poolShareMetadata } from "@/lib/pool/share-meta";
 import { PlaySignup } from "./play-signup";
 import { PoolFunnelBeacon } from "./funnel-beacon";
+import { headers } from "next/headers";
+import { funnelDebugInlineScript, funnelDebugOnParams, newFunnelDebugSid } from "./funnel-debug";
+import { FunnelDebugRecorder } from "./funnel-debug-recorder";
 
 /**
  * /play: join the local player pool (slice L2). Public, no session data,
@@ -36,11 +39,25 @@ export async function generateMetadata({ searchParams }: Search): Promise<Metada
 }
 
 export default async function PlayPage({ searchParams }: Search) {
-  const source = readSignupSource(await searchParams);
+  const params = await searchParams;
+  const source = readSignupSource(params);
   const invitedBy = await poolInvitedByName(source.referralCode).catch(() => null);
-  return (
+  const page = (
     <PoolFunnelBeacon src={source.campaignCode} refCode={source.referralCode}>
       <PlaySignup source={source} paused={isPoolSignupPaused()} invitedBy={invitedBy} earlyList={await signupGoesOnEarlyListForPage()} />
     </PoolFunnelBeacon>
+  );
+  // TEMPORARY (2026-11-10): the funnel diagnostic, only with ?mtdebug=1
+  // (`funnel-debug.ts`). Without it the page is exactly as before.
+  if (!funnelDebugOnParams(params)) return page;
+  const sid = newFunnelDebugSid();
+  const userAgent = (await headers()).get("user-agent");
+  console.info(`[pool-funnel-debug] ${JSON.stringify({ render: true, sid, src: source.campaignCode, ua: userAgent?.slice(0, 400) ?? null })}`);
+  return (
+    <>
+      <script dangerouslySetInnerHTML={{ __html: funnelDebugInlineScript(sid) }} />
+      <FunnelDebugRecorder />
+      {page}
+    </>
   );
 }
