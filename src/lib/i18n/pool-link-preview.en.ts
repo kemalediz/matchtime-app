@@ -7,5 +7,4 @@ export const POOL_LINK_PREVIEW_EN: PoolLinkPreviewCopy = {
     "A free list: say your area and the days you can play, get a WhatsApp message when a game near you is a player short, and you choose whether to play.",
   imageAlt: "MatchTime: get offered local football games on WhatsApp. Free to join.",
   imageBadge: "Free to join",
-  imageSteps: ["Say your area and the days you can play", "Get a WhatsApp message when a game near you is a player short", "You choose: play or pass"],
 };

@@ -23,10 +23,8 @@ export interface PoolLinkPreviewCopy {
   /** One plain sentence. */
   description: string;
   imageAlt: string;
-  /** The picture's small badge above the headline. */
+  /** The picture's one short line under the headline, in a green pill. */
   imageBadge: string;
-  /** The picture's three lines under the headline, in order. */
-  imageSteps: readonly [string, string, string];
 }
 
 const BY_LANG: Record<Lang, PoolLinkPreviewCopy> = { en: POOL_LINK_PREVIEW_EN, tr: POOL_LINK_PREVIEW_TR };

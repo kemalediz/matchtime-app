@@ -7,9 +7,4 @@ export const POOL_LINK_PREVIEW_TR: PoolLinkPreviewCopy = {
     "Ücretsiz bir liste: bölgeni ve oynayabileceğin günleri söyle, yakınındaki bir maçta bir oyuncu eksik olduğunda WhatsApp'tan mesaj al, oynayıp oynamayacağına sen karar ver.",
   imageAlt: "MatchTime: yakınındaki futbol maçlarına WhatsApp'tan davet al. Katılmak ücretsiz.",
   imageBadge: "Katılmak ücretsiz",
-  imageSteps: [
-    "Bölgeni ve oynayabileceğin günleri söyle",
-    "Yakınındaki bir maçta bir oyuncu eksik olduğunda WhatsApp'tan mesaj al",
-    "Sen seçersin: oyna ya da geç",
-  ],
 };
