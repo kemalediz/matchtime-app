@@ -1133,8 +1133,23 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // Nothing answered it: the one line.
         return notHere();
       }
-      case "balancer":
+      case "balancer": {
+        // A SWAP WITH THE BENCH IS WHO PLAYS, NOT THE TEAMS (FNF HQ,
+        // 2026-11-10). The router reads the words only: "swap Yaseen and
+        // Wasim" is a team swap to it, and it cannot see that Wasim is on
+        // the bench or that no teams are made yet. The HQ squad reader is
+        // shown the squad and the teams, so it reads the message too; only
+        // a change to who plays is taken from it, and everything else goes
+        // to the teams as before.
+        if (weekly && squadActor) {
+          const read = await readWhoPlays(squadActor);
+          if (read.reading.kind === "change") {
+            const done = await whoPlays(squadActor, read);
+            if (done && done !== "teams") return done;
+          }
+        }
         return teamsHere();
+      }
       case "self_att":
       case "other_att": {
         if (!squadActor) return onlyOrganisers();

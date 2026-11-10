@@ -953,7 +953,11 @@ export function decide(input: EngineInput): EngineResult {
       // first live corpus sweep — "@Izzet is replacing @Elnur" against a
       // 14/14 squad put Izzet on the BENCH (processed first, no room)
       // and then dropped Elnur, leaving 13 confirmed and a bench beside
-      // an empty slot. OUT first, always.
+      // an empty slot. OUT first, always. A move to the BENCH frees a
+      // place just as an OUT does, so it goes first too (FNF HQ,
+      // 2026-11-10: "swap Yaseen for Wasim" on an 18/18 squad applied
+      // Wasim's IN while it was still full, left him on the bench, then
+      // benched Yaseen: 17 playing beside a bench of four).
       //
       // …but ONLY across distinct people. Applied to two claims about the
       // same person it reversed a self-correction: "I'm in tonight.
@@ -968,9 +972,8 @@ export function decide(input: EngineInput): EngineResult {
         const key = c.subject === "sender" ? "@self" : c.personRef.trim().toLowerCase();
         byTarget.set(key, c);
       }
-      const collapsed = [...byTarget.values()].sort(
-        (a, b) => (a.polarity === "out" ? 0 : 1) - (b.polarity === "out" ? 0 : 1),
-      );
+      const freesFirst = (c: Claim) => (c.polarity === "in" ? 1 : 0);
+      const collapsed = [...byTarget.values()].sort((a, b) => freesFirst(a) - freesFirst(b));
 
       // ══════════════════════════════════════════════════════════════
       // DOES THIS MESSAGE STATE A REPLACEMENT? (2026-09-22)

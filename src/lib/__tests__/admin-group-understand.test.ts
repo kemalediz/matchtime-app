@@ -606,6 +606,8 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
   });
 
   it("balancer: the shared teams extractor, then the team change", async () => {
+    // The HQ squad reader reads a balancer message too (2026-11-10): teams here.
+    paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
     const r = await ask("swap Ali and Can", "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ moves: ["Ali", "Can"] }) } });
     expect(r?.outcome).toBe("teams-swapped");
     expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({
@@ -624,6 +626,8 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
   });
 
   it("balancer with no players the extractor could name: says which it needs", async () => {
+    // The HQ squad reader reads a balancer message too (2026-11-10): teams here.
+    paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
     const r = await ask("swap them", "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({}) } });
     expect(r).toEqual({ route: "balancer", outcome: "teams-which-players", replyText: "Which players? For example: swap Sam and Alex, or move Sam to the other team." });
     expect(teams.handleTeamCommand).not.toHaveBeenCalled();
@@ -634,6 +638,56 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(r?.outcome).toBe("squad-changed");
     expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "other_att", text: "Tom is out tonight", namedBody: "Tom is out tonight" }));
     expect(requests).toHaveLength(1);
+  });
+
+  // FNF HQ, 2026-11-10: "@Match Time swap Yaseen and Wasim", Wasim on the
+  // bench and no teams made. The router reads the words only and sends it
+  // to the teams; the HQ squad reader, shown the squad and the teams, reads
+  // a change to who plays, and that is what is done.
+  describe("a swap with the bench the router sent to the teams", () => {
+    const WASIM_FOR_YASEEN = {
+      kind: "change",
+      changes: [
+        { name: "Wasim", userId: "u-wasim", to: "in", replaces: "Yaseen", replacesUserId: "u-yaseen" },
+        { name: "Yaseen", userId: "u-yaseen", to: "bench", replaces: "" },
+      ],
+      alsoAsks: false,
+    };
+    const deps = { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ moves: ["Yaseen", "Wasim"] }) };
+
+    it("the reader reads a change: the squad change, and the teams are not touched", async () => {
+      paste.readHqSquad.mockResolvedValue(read(WASIM_FOR_YASEEN));
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Yaseen on the bench, Wasim in." });
+      const r = await ask("@Match Time swap Yaseen and Wasim", "balancer", { deps });
+      expect(r).toEqual({ route: "balancer", outcome: "squad-changed", replyText: "Done: Yaseen on the bench, Wasim in." });
+      expect(paste.readHqSquad).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-admin", addressed: true }));
+      expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ reading: WASIM_FOR_YASEEN }));
+      expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+      // The router only: the teams extractor is never asked.
+      expect(requests).toHaveLength(1);
+    });
+
+    it("the reader reads the teams: the teams handling, as before", async () => {
+      paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
+      const r = await ask("@Match Time swap Yaseen and Wasim", "balancer", { deps });
+      expect(r?.outcome).toBe("teams-swapped");
+      expect(teams.handleTeamCommand).toHaveBeenCalled();
+      expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    });
+
+    it("the reader reads something else: the teams handling, as before", async () => {
+      paste.readHqSquad.mockResolvedValue(read({ kind: "other", why: "other" }));
+      const r = await ask("@Match Time swap Yaseen and Wasim", "balancer", { deps });
+      expect(r?.outcome).toBe("teams-swapped");
+      expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    });
+
+    it("a change nothing came of: the teams handling, rather than silence", async () => {
+      paste.readHqSquad.mockResolvedValue(read(WASIM_FOR_YASEEN));
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
+      const r = await ask("@Match Time swap Yaseen and Wasim", "balancer", { deps });
+      expect(r?.outcome).toBe("teams-swapped");
+    });
   });
 
   // Mon 9 Nov 2026, kickoff 20:15: Luca played for CJ on Bibs (Kemal,
@@ -1358,6 +1412,8 @@ describe("a member of the club who is not an organiser", () => {
     ["@Match Time ask the group for a player", "ask_group", "Only Hamzah or Raihan can ask for players."],
     ["@Match Time yes", "approve", "Only Hamzah or Raihan can do that."],
   ])("%s (%s): still the organisers', one line naming who can and what", async (text, route, line) => {
+    // A balancer message is read by the HQ squad reader too (2026-11-10): teams here.
+    paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
     const r = await ask(text, route, member());
     expect(r).toEqual({ route, outcome: "hq-only-organisers", replyText: line });
     expect(teams.handleTeamCommand).not.toHaveBeenCalled();
@@ -2403,6 +2459,11 @@ describe("a monthly club's collector answering the paid-claims list, inside the 
 // ── 2026-10-30, Kemal: making or remaking teams needs the tag; the team
 //    sheet only when asked of MatchTime; an earlier set of teams back ─────
 describe("HQ teams by fact (2026-10-30, FNF HQ)", () => {
+  // The HQ squad reader reads a balancer message too (2026-11-10): here it
+  // reads the teams, so the teams handling is what is under test.
+  beforeEach(() => {
+      paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
+  });
   const OLD_SHEET = { id: "sheet-tue", matchId: "m1", slots: [{ userId: "u-ali", team: "RED" }], createdAt: new Date("2026-10-27T17:09:00Z") };
   const TUE_SHEET_POST = { messageId: "3EB0TUE", text: TEAMS_TEXT, fromMatchTime: true };
 

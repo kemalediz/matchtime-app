@@ -142,8 +142,8 @@ Then who sent it (with their ref) and THE MESSAGE. Read it the way a member of t
 
 kind: what THE MESSAGE is.
 - "squad": the whole list of who plays the next game. Usually one name per line, numbered or not, maybe with a bench part. In HQ an organiser sends it so that the squad becomes this list. In the players' group it is usually the list copied with a name added at the end, the sender's own or a friend's, to join.
-- "change", in HQ only: it tells MatchTime to change who plays the next game: named people in, out, or to the bench. An instruction ("put Bilal in", "Tom to the bench", "Ali'yi kadroya ekle") or a plain statement of the squad ("Sam's out this week", "Kai can't make it tonight", "Mehmet bu hafta yok"), including a short list of names with in or out, and the sender about themselves ("I'm out this week", "bu hafta yokum"). In the players' group such a message is "other": MatchTime reads it another way there.
-- "teams": anything about the teams or sides. A copy of a team sheet: two groups of names, often under the side names ("Bibs" and "Non Bibs", "Red" and "Yellow"), the numbering starting again for the second group, or MatchTime's own teams pasted back. A swap or a move between the sides. Names sent while the group is talking about the teams. When the names are the players of THE TEAMS, it is teams, whatever words are around them.
+- "change", in HQ only: it tells MatchTime to change who plays the next game: named people in, out, to the bench, or in another player's place. An instruction ("put Bilal in", "Tom to the bench", "Ali'yi kadroya ekle") or a plain statement of the squad ("Sam's out this week", "Kai can't make it tonight", "Mehmet bu hafta yok"), including a short list of names with in or out, and the sender about themselves ("I'm out this week", "bu hafta yokum"). A swap between a player who is playing and one who is not (on the bench, or not in the squad) changes who plays, so it is a change, worded as a swap or not. In the players' group such a message is "other": MatchTime reads it another way there.
+- "teams": anything about the teams or sides. A copy of a team sheet: two groups of names, often under the side names ("Bibs" and "Non Bibs", "Red" and "Yellow"), the numbering starting again for the second group, or MatchTime's own teams pasted back. A swap or a move between the two sides of THE TEAMS, which changes nobody's place in the squad. Names sent while the group is talking about the teams. When the names are the players of THE TEAMS, it is teams, whatever words are around them.
 - "other": anything else, and every case of doubt. Members talking about players without telling MatchTime to change the squad: a hope, a maybe, a plan or news for another week, reassurance about players already in, news that someone is back or around again, what already happened, what someone else said. Also who has paid, kit, a vote, a question.
 
 FOR A SQUAD LIST (otherwise lines [] and out []):
@@ -155,10 +155,13 @@ FOR A SQUAD LIST (otherwise lines [] and out []):
 - out: the refs of players PLAYING in THE SQUAD whom the list leaves off on purpose, because the list is the whole squad and they are no longer in it. Leave a player out of "out" when the list is not the whole squad, or when you cannot tell. Never a player who is on the list.
 
 FOR A CHANGE (otherwise changes [] and alsoAsks false):
-- changes: each person whose place it changes. For each:
+- changes: each person whose place it changes, once each. For each:
   name, member, person: as for a squad line. The sender's own place is the sender's ref.
-  to: "in" to play, "out" to leave the squad, "bench" for the bench.
-  replaces: the ref of the player this person takes the place of, when the message says so ("Mo instead of Najib"); "" otherwise.
+  to: where the person goes: "in" to play, "out" to leave the squad, "bench" for the bench.
+  replaces: for a player coming in to take a named player's place, that player's ref; "" otherwise.
+- A replacement ("Mo instead of Najib", "Mo for Najib", "swap Najib for Mo") is two changes: the player coming in, to "in" with replaces set, and the player he replaces, with his own change. Where the replaced player goes is read from the message and THE SQUAD:
+  "bench" when the one coming in is on the bench: the two swap places, unless the message says the replaced player cannot play;
+  "out" when the message says the replaced player cannot play or is out, and whenever the one coming in is not on the bench.
 - alsoAsks: true when THE MESSAGE also asks MatchTime for something it holds, such as the list or who is in.
 
 Examples (English | Turkish):
@@ -169,7 +172,10 @@ Squad lists:
 Changes, in HQ:
 - "Tom out" | "Tom bu hafta yok": change, Tom to out.
 - "Imti\\nRafi\\nAH\\n\\nIn", "Yaseen, Mo and Feroz out" | "Ali ve Can var", "Yaseen, Mo ve Feroz yok": change, each name in (or out).
-- "Mo is replacing Najib" | "Najib yerine Mo": change, Mo to in, replaces Najib's ref.
+- "Tom to the bench" | "Tom yedeğe": change, Tom to bench.
+- "Mo is replacing Najib", Mo not on the bench | "Najib yerine Mo": change, Mo to in, replaces Najib's ref; Najib to out.
+- "swap Najib for Bilal", "Bilal instead of Najib" or "swap Najib and Bilal", Bilal on the bench | "Najib yerine Bilal", "Najib yedeğe, Bilal kadroya": change, Bilal to in, replaces Najib's ref; Najib to bench.
+- "Bilal for Najib, Najib can't make it", Bilal on the bench | "Najib gelemiyor, yerine Bilal": change, Bilal to in, replaces Najib's ref; Najib to out.
 - "Glazers is out now. @Match Time what is the list?" | "Glazers çıktı. @Match Time liste ne?": change, Glazers to out, alsoAsks true.
 Other:
 - "Zayn is back as well", "Imti Rafi AH back" while the group talks about next week, "Maybe Shehryar and Hamzah too", "Mojib and Habib are in dw" when both are already playing, "I'm hoping to be back next week" | "Ali belki gelir haftaya", "Mehmet döndü": other.
@@ -178,6 +184,7 @@ Other:
 Teams:
 - "Here's the teams:\\n*Non Bibs*:\\n1. Feroz\\n2. Alamgir ...\\n*Bibs*:\\n1. Yorel\\n2. Maj ..." | "Takımlar:\\n*Kırmızı*:\\n1. Ali ...\\n*Sarı*:\\n1. Can ...": teams.
 - "Swap\\nMo\\nMojib\\n\\nWith\\nHamzah\\nYorel" | "Değiştir\\nMo\\nMojib\\n\\nile\\nHamzah\\nYorel": teams.
+- "swap Mo and Feroz", the two on different sides of THE TEAMS | "Mo ile Feroz'u değiştir": teams.
 
 Output STRICT JSON only, no markdown, no fences.`;
 
