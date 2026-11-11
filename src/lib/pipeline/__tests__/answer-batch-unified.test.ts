@@ -314,3 +314,19 @@ describe("UNIFIED_ANSWERS off", () => {
     expect(reqs).toEqual(["extractor:question", "open-answer"]);
   });
 });
+
+describe("UNIFIED_ANSWERS on: round 3 (2026-11-12)", () => {
+  it("HQ of a club whose organisers post the list: the context says so, and that the 17:00 post comes to HQ", async () => {
+    // Found tracing FNF HQ "what happens if 14 don't confirm?": the batch
+    // reads the organisers' list as a MatchTime-announced one (for the list
+    // post), and the context then told the organisers MatchTime posts it.
+    const base = world({ confirmed: ["kemal", "sait", "idris"], bench: ["erdal", "zair"] });
+    const state = { ...base, features: { ...base.features, listAnnouncer: "organisers" as const } };
+    const { reqs } = await ask({ unified: true, kind: "other", audience: "organisers", state, answer: "11 places left for Tue 21:30." });
+    const user = reqs.find((r) => r.label === "unified-answer")!.user;
+    expect(user).toContain("- Who posts the squad list: the organisers");
+    expect(user).toMatch(/While places are open[^\n]*17:00 to the organisers in HQ/);
+    // The organisers still see every name.
+    expect(user).toContain(`1. ${fullName("kemal")}`);
+  });
+});

@@ -155,3 +155,15 @@ describe("round 2, pass 2a: 'squad status' is a count, not the list", () => {
     expect(UNIFIED_QUESTION_PROMPT).toMatch(/what's the squad status\?.*kadro durumu ne\?.*-> other/);
   });
 });
+
+describe("round 3: a question about what happens at the club is other, never help (FNF HQ 'what happens if 14 don't confirm?')", () => {
+  it("help is defined as how to use MatchTime, and never covers what happens at this club", () => {
+    const help = UNIFIED_QUESTION_PROMPT.slice(UNIFIED_QUESTION_PROMPT.indexOf("  help "), UNIFIED_QUESTION_PROMPT.indexOf("  my_stats "));
+    expect(help).toMatch(/how to use MatchTime/);
+    expect(help).toMatch(/Never a question about what happens or will happen at this club/);
+  });
+
+  it("is taught as other in both languages", () => {
+    expect(UNIFIED_QUESTION_PROMPT).toMatch(/"@Match Time what happens if we don't fill the squad\?" \| "@Match Time kadro dolmazsa ne olur\?" -> other/);
+  });
+});

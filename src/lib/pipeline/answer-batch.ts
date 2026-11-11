@@ -979,6 +979,10 @@ export async function runAnswerBatch(args: {
   // The organisers are who the list is FOR when they announce it: they see
   // it as a club whose list MatchTime announces would. See `AnswerAudience`.
   // Their list also always says who is on the bench (`forOrganisers`).
+  // Who really posts the club's list, kept for the unified answer before
+  // the organisers' view hides it (round 3, 2026-11-12: FNF HQ was told
+  // MatchTime posts the list, and so where the 17:00 post goes, wrongly).
+  const clubListAnnouncer = state.features.listAnnouncer ?? "matchtime";
   if (organisers) state = { ...state, forOrganisers: true, features: { ...state.features, listAnnouncer: "matchtime" } };
 
   let features: OrgFeatures;
@@ -1806,6 +1810,7 @@ export async function runAnswerBatch(args: {
         ratingProgress: organisers || asker?.isAdmin ? u.ratingProgress : null,
         clubFacts: u.clubFacts,
         squadMode: features.squadMode === "monthly" ? "monthly" : "weekly",
+        listAnnouncer: clubListAnnouncer,
         lastMatchRatings: organisers ? u.lastMatchRatings : null,
         ...(own.length ? { own } : {}),
         monthNotStarted: args.monthNotStarted === true,

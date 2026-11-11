@@ -23,18 +23,22 @@
  * accept? mention it again" was read as help and "make the list" as
  * anything else, so `list` is now defined by wanting to SEE the list in any
  * words, and `help` by never being that (MDs/prompt-*-2026-11-11.txt).
+ * Round 3 (2026-11-12): FNF HQ "what happens if 14 don't confirm?" was read
+ * as help (the squad help was posted), because help was "how a part of it
+ * works". Help is now how to USE MatchTime, and what happens at this club
+ * is other, answered from its records (MDs/prompt-question-unified-2026-11-12.txt).
  */
 import { HELP_BADGES, HELP_FEATURES, type HelpBadge, type HelpFeature, type QuestionFacts, type QuestionTopic } from "./types";
 
-export const UNIFIED_QUESTION_PROMPT = `You read ONE message that asks MatchTime something, from a football club's WhatsApp group (the players' group or the organisers' own group), and say which of four kinds of request it is. You never answer it: MatchTime answers everything that is not one of the first three from the club's records.
+export const UNIFIED_QUESTION_PROMPT = `You read ONE message that asks MatchTime something, from a football club's WhatsApp group (the players' group or the organisers' own group), and say which of four kinds of request it is. You never answer it. The first three are fixed posts MatchTime sends as they are: the squad list, a help text, the asker's own stats link. Everything else is "other", and MatchTime answers it from the club's own records: its squad, its results, its stats and how this club is run.
 
 THE MESSAGE is the one you read, with who sent it. Above it, as context only: RECENT CHAT, MATCHTIME'S LAST POST, NOW and, when it is a WhatsApp reply, a THEY ARE REPLYING TO line with the message it quotes. Use them to see what THE MESSAGE refers to ("list?" under a question about the bench); the kind is what THE MESSAGE itself asks for. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
 kind, exactly one:
   list      they want to SEE the squad list for the upcoming match, in any words: asking for it, for it again, for the right or latest one, or telling MatchTime to post, send, share, show or make it. Asking for the list beside another question is still list. Anything narrower about the squad (how many, whether there is space, one person's place, who is on the bench, who is best rated on it) is other.
-  help      how MatchTime itself works: a bare "help", what MatchTime can do, how a part of it works, whether a part is on here and how to switch it on or off, where a setting is, what a badge means. Never a request to see today's names or numbers: a message that wants to see the list is list, however it is worded.
+  help      how to use MatchTime: a bare "help", what MatchTime can do, how to do something with it (what to type, how to bring a friend, how to pay), whether a part is on here and how to switch it on or off, where a setting is, what a badge means. Never a question about what happens or will happen at this club (the squad not filling, a place opening, someone dropping out, a game in doubt): that is answered from the club's records, so it is other. Never a request to see today's names or numbers either: a message that wants to see the list is list, however it is worded.
   my_stats  the asker wants to see their OWN stats, ratings, form or season summary: "my stats", "my rating", "istatistiklerim". One number of theirs in a table ("where am I in the ratings?", "who's my nemesis?") is other.
-  other     everything else: kickoff, venue, how many, space, one person's place, the bench, results, Man of the Match, ratings and tables, payments, who has rated, the admins, the fee, a suggestion, something said in the chat, a question about MatchTime itself that is not how it works, and any request to do something.
+  other     everything else: kickoff, venue, how many, space, one person's place, the bench, results, Man of the Match, ratings and tables, payments, who has rated, the admins, the fee, what happens at this club if something does or does not happen, a suggestion, something said in the chat, a follow-up or a correction to MatchTime's last reply, a question about MatchTime itself that is not how to use it, and any request to do something.
 
 personRef
 On other only: the one club member the message is about, as written, without a possessive or suffix ("Idris's" and "Idris'in" are "Idris"); "me" when it is about the asker's own numbers or pairings; "" when it names nobody, and on every other kind.
@@ -85,6 +89,7 @@ The asker's own stats:
 Everything else:
   "@Match Time how many spots left?" | "@Match Time kaç kişiyiz?" -> other
   "@Match Time what's the squad status?" | "@Match Time kadro durumu ne?" -> other
+  "@Match Time what happens if we don't fill the squad?" | "@Match Time kadro dolmazsa ne olur?" -> other
   "@Match Time who's on the bench?" | "@Match Time yedekte kim var?" -> other
   "@Match Time who are the 4 best rated on the list?" | "@Match Time listedeki en yüksek puanlı 4 kişi kim?" -> other
   "@Match Time is Zair in?" | "@Match Time Zair geliyor mu?" -> other, personRef "Zair"

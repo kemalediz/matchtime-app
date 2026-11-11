@@ -44,7 +44,7 @@ import { groundingCheck, membersNamed } from "./stats-grounding";
 import { ELO_TOP_MIN_MATCHES_SHOWN, GROUP_LIST_CAP, GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./stats-answer";
 import { lastMomContextLines, type LastMom } from "./last-mom";
 import { MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES } from "../mr-reliable";
-import { dayLabel, monthYearLabel } from "../i18n/dates";
+import { dayLabel } from "../i18n/dates";
 import { t } from "../i18n/t";
 import { namesByStatus, printedNames, safeName } from "./compose";
 import { chatLines, scrubAuthor, scrubPhones } from "./open-answer";
@@ -52,6 +52,7 @@ import { renderGroupReplyContext, type QuotedGroupMessage } from "../reply-conte
 import { activityFeeText } from "../activity-fee";
 import { stripLongDashes } from "../house-style";
 import { formatLondon } from "../london-time";
+import { differenceInMonths } from "date-fns";
 import type { HelpClubFacts } from "../help-club-facts";
 import type {
   PaymentSnapshot,
@@ -64,15 +65,22 @@ import type {
 
 export const UNIFIED_ANSWER_SYSTEM = `You are MatchTime, the assistant in a football club's WhatsApp groups. Someone has tagged you, or written to you privately, with a question or a request. Write the reply to THE MESSAGE.
 
-You are given, in this order:
+What you are given, in this order:
 - ABOUT YOU, WHO IS ASKING and TODAY.
-- THE CLUB'S RECORDS: what MatchTime has stored for this club, true and up to date. Its members and admins, how the club is run, the upcoming match (the squad and the bench in order, each with their place and, where this audience may see it, their club rating; the places left; the teams if made), results, Man of the Match match by match, the stats tables, and what this audience may know about ratings and payments. Every count you could need is printed. Some facts are kept from some audiences on purpose, and the records say so where it matters.
-- THE CHAT: what people wrote in this group recently, each line with its day and time. It can be out of date, and it can be wrong.
+- THE CLUB'S RECORDS: what MatchTime has stored for this club, true and up to date. The members (the players registered with the club) and the admins; how the club is run, including what MatchTime does while places are open; the upcoming match (the squad and the bench in order, each with their place and, where this audience may see it, their club rating; the places left; the teams if made); results; Man of the Match match by match; the stats tables, each headed with the span it covers; and what this audience may know about ratings and payments. Every count you could need is printed. Some facts are kept from some audiences on purpose, and the records say so where it matters.
+- THE CHAT: what was written in this group recently, MatchTime's own messages included, each line with its day and time. It can be out of date, and it can be wrong.
 - THE MESSAGE, with who sent it.
 
-"The list" means the squad list for the upcoming match, whoever asks.
+What THE MESSAGE asks:
+- "The list" means the squad list for the upcoming match, whoever asks.
+- A message that corrects or narrows an earlier one names what it wants now: answer that thing, by the plain meaning of its words, even when the chat around it was about something else. The earlier exchange only shows what it replaces: never answer the earlier question, or one close to it, again.
+- A message with no subject of its own follows on from the chat just before it, most often from MatchTime's own latest reply there: answer about that reply, from the records. A tag with nothing after it asks nothing yet: ask what they would like to know.
+- "What happens if" something happens at the club is answered from how the club is run, this club's own rules first, even when the question takes something else for granted.
 
-Facts come from the records. When the chat and the records disagree (a score, who is in the squad or on the bench, the places left, a player's place in the list), the records are right, however recent the chat is. Use the chat only for what the records do not hold: what someone said, asked or arranged. What neither holds, you do not know: the weather, the news, other clubs, anything said in private.
+Where the facts come from:
+- Facts come from the records. When the chat and the records disagree (a score, who is in the squad or on the bench, the places left, a player's place in the list), the records are right, however recent the chat is. Use the chat only for what the records do not hold: what someone said, asked or arranged. What neither holds, you do not know: the weather, the news, other clubs, anything said in private.
+- Each stats table says the span it covers. The whole record starts at the first game MatchTime recorded for the club, and nothing older exists: a question about a longer span (the last year, all time) is answered from the whole record, saying once where it starts.
+- Where the records hold only part of what is asked (the top 10 of a table when more are asked for), give that part and say where the rest is.
 
 Return "answer": the reply MatchTime sends.
 
@@ -94,6 +102,12 @@ The squad, the bench and the places:
 - "is Zair playing?" / "Zair geliyor mu?", with Zair Malik 2nd on the bench: "Zair Malik is on the bench, 2nd in line." / "Zair Malik yedekte, sırada 2."
 - "who's on the bench?" / "yedekte kim var?", with a bench of 2: "On the bench: 1. Ali Kaya, 2. Can Demir." / "Yedekte: 1. Ali Kaya, 2. Can Demir."
 - "who are the 2 highest rated on the list?" / "listedeki en yüksek puanlı 2 kişi kim?", from the club rating beside each name in the squad: "On this week's list: Ali Kaya 7.4, then Can Demir 7.1." / "Bu haftaki listede: Ali Kaya 7,4, sonra Can Demir 7,1."
+- "what happens if someone drops out on the day?" / "biri maç günü çıkarsa ne olur?", from how the club is run: "Their place opens and the first on the bench moves up. While a place is open I post the squad with a call for players at 17:00, and the organisers can ask the 2 partner clubs by tagging me." / "Yeri boşalır ve yedekteki ilk kişi kadroya girer. Yer boş kaldıkça kadroyu oyuncu çağrısıyla paylaşırım (saat: 17:00); organizatörler beni etiketleyerek 2 partner kulüpten oyuncu isteyebilir."
+- "what happens if not enough confirm?" / "yeterince kişi onay vermezse ne olur?", at a club with a monthly squad: "Nobody needs to confirm: the regulars on the month's list play every game unless they say OUT. A place that opens goes to the bench first, then to the pay as you go players." / "Kimsenin onay vermesi gerekmiyor: ayın listesindeki düzenli oyuncular OUT demedikçe her maçta oynar. Boşalan yer önce yedeğe, sonra maç başı ödeyen oyunculara gider."
+
+Corrections and follow-ups:
+- "no, I meant the bench, not the squad" / "hayır, kadroyu değil yedeği kastettim", after MatchTime listed the squad: "On the bench: 1. Ali Kaya, 2. Can Demir." / "Yedekte: 1. Ali Kaya, 2. Can Demir."
+- "why?" / "neden?", just after MatchTime said there is no ratings table yet: "A player needs 3 rated matches to be in the table, and nobody has 3 yet." / "Tabloya girmek için 3 puanlı maç gerekiyor ve henüz kimsede 3 yok."
 
 The records against the chat:
 - "what was the score?" / "skor neydi?", with the record Red 5, Yellow 6 and a chat line saying it was 6 to 5: "Fri 6 Nov: Red 5, Yellow 6." / "6 Kasım Cuma: Red 5, Yellow 6."
@@ -104,6 +118,8 @@ About you:
 
 Stats, Man of the Match and money:
 - "who won Man of the Match last week?" / "geçen haftanın maçın adamı kim?", with the last one on Tue 3 Nov: "Ali Kaya, on Tue 3 Nov, with 5 of the 11 votes." / "Maçın adamı (3 Kasım Salı): Ali Kaya, 5 oy (toplam 11)."
+- "who has played most in the last year?" / "son bir yılda en çok kim oynadı?", with the record starting on Tue 7 Apr 2026, 7 months before today: "My records start on Tue 7 Apr 2026, so this is all of them: Ali Kaya 19, then Can Demir 18." / "Kayıtlarım 7 Nisan 2026 Salı gününden başlıyor, yani hepsi bu: Ali Kaya 19, sonra Can Demir 18."
+- "top 20 ratings" / "en iyi 20 puan", in the players' group, which is shown the top 10: the 10 shown, one per line ("1. Ali Kaya 7.4"), then "The full table is on the stats page:" and its link. / The 10 shown, one per line ("1. Ali Kaya 7,4"), then "Tam tablo istatistik sayfasında:" and its link.
 - "top 5 ratings" / "en iyi 5 puan", when nobody has 3 rated matches yet: "Nobody has 3 rated matches yet, so there is no ratings table." / "Henüz kimsenin 3 puanlı maçı yok, puan tablosu oluşmadı."
 - "who hasn't paid?" / "kim ödemedi?", in the players' group: "I don't share payments in the group. The collector (Elvin Aliyev) has them." / "Ödemeleri grupta paylaşmıyorum. Toplayan kişide (Elvin Aliyev) var."
 
@@ -163,6 +179,11 @@ export interface UnifiedAnswerInput {
   /** How the club's squad works (`Organisation.squadMode`): a monthly
    *  club's rules go into HOW THE CLUB IS RUN (2026-11-11). Absent: weekly. */
   squadMode?: "weekly" | "monthly";
+  /** Who posts the club's list (`Organisation.listAnnouncer`), when the
+   *  caller's state reads otherwise: HQ's batch reads it as MatchTime's so
+   *  the organisers' list post is the full one (`answer-batch.ts`).
+   *  Absent: `state.features.listAnnouncer`. */
+  listAnnouncer?: "matchtime" | "organisers";
   /** The organisers only (2026-11-11): the ratings each player got in the
    *  last match that has ratings (`loadLastMatchRatings`). */
   lastMatchRatings?: LastMatchRatings | null;
@@ -239,8 +260,30 @@ function ratingLines(r: RatingProgress | null | undefined, names: boolean): stri
   return L;
 }
 
-function periodLines(p: UnifiedPeriod, cap: number): string[] {
-  const L = [`STATS, ${p.label.toUpperCase()} (since ${formatLondon(p.tables.since, "EEE d MMM yyyy")}):`];
+/** A day with its year, "Tue 7 Apr 2026", for where a span starts. */
+const fullDay = (d: Date) => formatLondon(d, "EEE d MMM yyyy");
+
+/** How long before today a day was, in whole months (round 3, 2026-11-12):
+ *  "the last year" is then read against a printed number, not worked out. */
+function monthsBefore(now: Date, then: Date): string {
+  const m = differenceInMonths(now, then);
+  return m < 1 ? "less than a month before today" : `${m} ${m === 1 ? "month" : "months"} before today`;
+}
+
+/**
+ * One shorter span of the tables. A span that starts before the record
+ * does (this year, for a club MatchTime has known since April) is headed by
+ * the record's first game, never by its calendar start (round 3,
+ * 2026-11-12: "STATS, THIS YEAR (since Thu 1 Jan 2026)" was answered as
+ * "my records only go back to 1 Jan 2026" when they start in April).
+ */
+function periodLines(p: UnifiedPeriod, cap: number, recordStart: Date | null): string[] {
+  const before = !!recordStart && recordStart.getTime() > p.tables.since.getTime();
+  const L = [
+    before
+      ? `STATS, ${p.label.toUpperCase()} (since ${fullDay(recordStart!)}, the first game recorded: the record starts inside this span, so it is the whole record):`
+      : `STATS, ${p.label.toUpperCase()} (since ${fullDay(p.tables.since)}):`,
+  ];
   const apps = p.tables.appearances.slice(0, GROUP_LIST_CAP);
   L.push(apps.length ? `- Appearances: ${apps.map((r) => `${r.name} ${r.matches}`).join(", ")}` : "- Appearances: none recorded");
   const rat = p.tables.ratings.slice(0, cap);
@@ -273,9 +316,25 @@ function statsLines(input: UnifiedAnswerInput, s: StatsSnapshot, squadIds: Array
   const organisers = input.audience === "organisers";
   const cap = organisers ? Number.MAX_SAFE_INTEGER : GROUP_LIST_CAP;
   const start = s.recordsStart.matches;
+  // Man of the Match can reach further back than the games, when the club's
+  // earlier awards were added (`types.ts`, recordsStart). Said where it is
+  // true (after the round 3 A/B: Sutton "most MoM so far" was told the
+  // record starts in April 2026; its awards go back to November 2024).
+  const momStart = s.recordsStart.mom;
+  const momEarlier = !!momStart && !!start && momStart.getTime() < start.getTime();
+  const older = momEarlier ? "nothing older exists, except Man of the Match (below)" : "nothing older exists";
   const L: string[] = [
-    `STATS, THE WHOLE RECORD (every completed game${start ? ` since ${monthYearLabel("en", start)}` : ""}: everything MatchTime has). MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.`,
+    `STATS, THE WHOLE RECORD: ${
+      start
+        ? `every completed game from the first game MatchTime recorded for this club, on ${fullDay(start)}, ${monthsBefore(input.now, start)}; ${older}.`
+        : `every completed game MatchTime has recorded for this club; ${older}.`
+    } MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.`,
   ];
+  // How much of each table this audience is shown (round 3, 2026-11-12:
+  // "tell us the top 50 rating holders" named nobody instead of the 10).
+  if (!organisers) {
+    L.push(`Here each table is its top ${GROUP_LIST_CAP}, as many as MatchTime shares here; the full tables are on the stats page (the link below).`);
+  }
   const ratings = s.ratings.slice(0, cap);
   if (ratings.length === 0) {
     L.push(`CLUB RATINGS: nobody has ${GROUP_RATINGS_MIN_GAMES} rated matches yet, so nobody is in the ratings table. A player needs ${GROUP_RATINGS_MIN_GAMES} rated matches to be in it.`);
@@ -297,11 +356,14 @@ function statsLines(input: UnifiedAnswerInput, s: StatsSnapshot, squadIds: Array
     if (unrated.length) L.push(`No club rating yet: ${unrated.map((x) => x.where === "bench" ? `${nameIn(input, x.userId)} (bench)` : nameIn(input, x.userId)).join(", ")}`);
   }
   if (s.appearances.length) {
-    L.push("", `APPEARANCES (top ${GROUP_LIST_CAP}, completed matches played${start ? `, every match since ${monthYearLabel("en", start)}` : ""}):`);
+    L.push("", `APPEARANCES (top ${GROUP_LIST_CAP}, completed matches played${start ? `, every match since ${fullDay(start)}` : ""}):`);
     s.appearances.slice(0, GROUP_LIST_CAP).forEach((r, i) => L.push(`${i + 1}. ${r.name}: ${r.matches} matches`));
   }
   if (s.mom.length) {
-    L.push("", `MAN OF THE MATCH WINS (top ${GROUP_LIST_CAP}):`);
+    L.push(
+      "",
+      `MAN OF THE MATCH WINS (top ${GROUP_LIST_CAP}${momEarlier ? `, every win on record since ${fullDay(momStart!)}: the club's earlier awards were added, so this reaches further back than the games` : ""}):`,
+    );
     s.mom.slice(0, GROUP_LIST_CAP).forEach((r, i) => L.push(`${i + 1}. ${r.name}: ${r.wins}`));
   }
   if (s.elo.length) {
@@ -329,11 +391,14 @@ function statsLines(input: UnifiedAnswerInput, s: StatsSnapshot, squadIds: Array
     const name = member?.name ?? s.chemistry[input.person.userId]?.name ?? null;
     if (name) {
       L.push("", `THE PLAYER THE QUESTION IS ABOUT: ${name}`);
-      const r = s.ratings.slice(0, cap).find((x) => x.userId === input.person!.userId);
+      // A DM asker's own rating is theirs to hear, wherever it ranks (round
+      // 3: "not shared here" beside their own stats block refused it once).
+      const ownInDm = input.audience === "dm" && input.person.self;
+      const r = s.ratings.slice(0, ownInDm ? undefined : cap).find((x) => x.userId === input.person!.userId);
       L.push(
         r
           ? `- club rating: ${d1(r.avg)} from ${r.games} rated matches, no. ${r.rank}`
-          : organisers
+          : organisers || ownInDm
             ? `- club rating: none yet (fewer than ${GROUP_RATINGS_MIN_GAMES} rated matches)`
             : "- club rating: not in the top of the table, so not shared here",
       );
@@ -351,7 +416,7 @@ function statsLines(input: UnifiedAnswerInput, s: StatsSnapshot, squadIds: Array
     }
   }
 
-  for (const p of input.periods ?? []) L.push("", ...periodLines(p, cap));
+  for (const p of input.periods ?? []) L.push("", ...periodLines(p, cap, start));
   if (typeof s.completedMatches === "number") L.push("", `Completed games MatchTime has recorded for this club: ${s.completedMatches}`);
   L.push(`The full tables are on the stats page: ${s.fullTableUrl}`);
 
@@ -413,7 +478,7 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
 
   L.push("", "════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════", "");
   const members = state.roster.map((m) => safeName(m.displayName ?? m.name, "")).filter(Boolean);
-  if (members.length) L.push(`MEMBERS (${members.length}): ${members.join(", ")}`);
+  if (members.length) L.push(`MEMBERS, the players registered with the club (${members.length}): ${members.join(", ")}`);
   const admins = state.roster.filter((m) => m.isAdmin).map((m) => safeName(m.displayName ?? m.name, "")).filter(Boolean);
   L.push(`ADMINS: ${admins.length ? admins.join(", ") : "none on record"}`);
 
@@ -428,13 +493,27 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
     );
     L.push(`- Teams are made: ${club.teamsReady === "off" ? "when an organiser asks" : `at ${club.teamsReady} on match day`}`);
   }
-  L.push(`- Who posts the squad list: ${state.features.listAnnouncer === "organisers" ? "the organisers" : "MatchTime"}`);
+  const announcer = input.listAnnouncer ?? state.features.listAnnouncer;
+  L.push(`- Who posts the squad list: ${announcer === "organisers" ? "the organisers" : "MatchTime"}`);
   L.push(`- Who fills an open place: ${state.features.benchPickMode === "organiser" ? "the organisers choose from the bench" : "the first on the bench moves up"}`);
   L.push(`- Man of the Match is chosen by: ${state.features.momChosenBy === "organisers" ? "the organisers" : "the players' vote"}`);
   if (input.squadMode === "monthly") L.push(...MONTHLY_RULES);
+  // What MatchTime does while the squad is not full (round 3, 2026-11-12:
+  // "what happens if 14 don't confirm?" had nothing to be answered from).
+  // The 17:00 post is `daily-update-rules.ts`: it goes out while places are
+  // open, before the drop-out deadline; to the organisers when they post
+  // the list, but a month's list always in the players' group.
+  if (state.features.attendance) {
+    const monthly = input.squadMode === "monthly";
+    const where = !monthly && announcer === "organisers" ? "to the organisers in HQ" : "in the players' group";
+    L.push(`- While places are open, MatchTime posts ${monthly ? "the month's list" : "the squad"} with a call for players at 17:00 ${where}, until the drop-out deadline.`);
+  }
   if (input.clubFacts) {
-    L.push(`- Partner clubs (clubs that lend each other players when short): ${input.clubFacts.partners.active} active`);
-    L.push(`- MatchTime player pool (nearby players asked when the club is short): ${input.clubFacts.pool.open ? "on" : "off"}`);
+    // Nothing asks partner clubs or the pool by itself: an organiser does
+    // (`partner-ask.ts`, `pool/`).
+    const n = input.clubFacts.partners.active;
+    L.push(`- Partner clubs (clubs that lend each other players when short): ${n > 0 ? `${n} active; the organisers can ask them for players by tagging MatchTime` : "none"}`);
+    L.push(`- MatchTime player pool (nearby players who joined it): ${input.clubFacts.pool.open ? "on; the organisers can ask it for players by tagging MatchTime" : "off"}`);
   }
   if (state.smallerFormats.length) {
     L.push(`- Smaller formats the club can play: ${state.smallerFormats.map((f) => `${f.sportName} (${f.totalPlayers} players)`).join(", ")}`);

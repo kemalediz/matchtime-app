@@ -40,6 +40,8 @@ import { loadClubSnapshot, loadPaymentSnapshot, loadRatingProgressSnapshot, load
 import { loadStatsChemistry, loadStatsPeriod, loadStatsTables } from "../src/lib/pipeline/load-stats.ts";
 import { loadRecentResults } from "../src/lib/pipeline/load-results.ts";
 import { loadHelpClubFacts } from "../src/lib/help-club-facts.ts";
+import { poolSwitchEnv } from "../src/lib/pool/flags.ts";
+import { poolPlatformOpenNow } from "../src/lib/pool/platform-switch.ts";
 import { asChatLines, loadWeekChat, WEEK_CHAT_MS } from "../src/lib/week-chat.ts";
 import { monthNotStartedFor } from "../src/lib/month-not-started.ts";
 import { organisersGroupReply, passesOrganisersNet } from "../src/lib/organisers-list-copy.ts";
@@ -51,7 +53,9 @@ import { buildDmQaApology } from "../src/lib/dm-copy.ts";
 import { normaliseLang } from "../src/lib/i18n/lang.ts";
 import type { Route, SquadState } from "../src/lib/pipeline/types.ts";
 
-const MAX_USD = 10;
+/** The hard stop for one run, in dollars: MAX_USD, else $2 (Kemal's cap
+ *  for anything not approved above it, 2026-10-21). */
+const MAX_USD = Number(process.env.MAX_USD ?? 2);
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 5);
 const LIMIT = process.env.LIMIT ? Number(process.env.LIMIT) : Infinity;
 const KEYS = process.env.KEYS ? new Set(process.env.KEYS.split(",").map((k) => k.trim()).filter(Boolean)) : null;
@@ -144,7 +148,9 @@ function snapshot(orgId: string) {
     results: (since: Date | null, lang: string) => once(`results:${orgId}:${since?.toISOString()}`, () => loadRecentResults(orgId, since, NOW, lang))(),
     payments: (cm: SquadState["completedMatch"]) => once(`pay:${orgId}`, () => loadPaymentSnapshot(orgId, cm))(),
     rating: (lang?: string) => once(`rating:${orgId}`, () => loadRatingProgressSnapshot(orgId, lang))(),
-    clubFacts: once(`facts:${orgId}`, () => loadHelpClubFacts(orgId, {})),
+    // The pool switch as production resolves it (round 3: `{}` read every
+    // club's pool as off, so FNF's "is the pool on?" was answered "off").
+    clubFacts: once(`facts:${orgId}`, async () => loadHelpClubFacts(orgId, poolSwitchEnv((await poolPlatformOpenNow()) === true))),
     week: once(`week:${orgId}`, async () =>
       asChatLines(await loadWeekChat({ orgId, channel: "group", since: new Date(NOW.getTime() - WEEK_CHAT_MS), includeMatchTime: true })),
     ),

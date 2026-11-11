@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { ModelRequest, ModelResponse, PipelineModel } from "../llm";
-import { HAIKU_CALL } from "../llm";
+import { HAIKU_CALL, MIN_CACHEABLE_TOKENS } from "../llm";
 import { answerUnified, buildUnifiedContext, matchRatingsFrom, UNIFIED_ANSWER_SYSTEM, type UnifiedAnswerInput } from "../unified-answer";
 import type { ClubSnapshot, StatsSnapshot } from "../types";
 import { NOW, fullName, world } from "./helpers";
@@ -377,7 +377,7 @@ describe("round 2, pass 2a: what the A/B found next", () => {
 
   it("the whole record is labelled with where it starts, so 'the last year' is not read as 'since 1 January'", () => {
     const { text } = buildUnifiedContext(input());
-    expect(text).toMatch(/STATS, THE WHOLE RECORD \(every completed game since April 2026: everything MatchTime has\)/);
+    expect(text).toMatch(/STATS, THE WHOLE RECORD[^\n]*on Tue 7 Apr 2026/);
   });
 
   it("who has rated: the count of those who rated is said, not left to be worked out from two name lists", () => {
@@ -397,5 +397,163 @@ describe("round 2, pass 2b: 'the list' is the squad", () => {
   it("the prompt says 'the list' means the squad list and teaches the top-rated-on-the-list answer from the squad lines", () => {
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"the list" means the squad list/i);
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"who are the 2 highest rated on the list\?".*club rating/);
+  });
+});
+
+/**
+ * ROUND 3 (2026-11-12). Each test reproduces what the round 2 A/B found in
+ * the context the model was given (ab-results-final.json, r2).
+ */
+const THIS_YEAR = {
+  label: "this year",
+  tables: {
+    since: new Date("2026-01-01T00:00:00.000Z"),
+    appearances: [{ userId: "u-erdal", name: fullName("erdal"), matches: 12 }],
+    ratings: [],
+    mom: [],
+  },
+};
+
+describe("round 3: where the record starts (Sutton and FNF 'who has played most in the last 1 year?')", () => {
+  it("a span that starts before the record is headed by the record's first game, never by its calendar start", () => {
+    // Round 2: "STATS, THIS YEAR (since Thu 1 Jan 2026)" with the record
+    // starting in April; the reply said "my records only go back to 1 Jan".
+    const { text } = buildUnifiedContext(input({ periods: [THIS_YEAR] }));
+    expect(text).not.toMatch(/1 Jan 2026/);
+    expect(text).toMatch(/STATS, THIS YEAR \([^\n]*Tue 7 Apr 2026[^\n]*whole record/);
+  });
+
+  it("a span inside the record keeps its own start", () => {
+    const last30 = { ...THIS_YEAR, label: "the last 30 days", tables: { ...THIS_YEAR.tables, since: new Date("2026-08-02T00:00:00.000Z") } };
+    const { text } = buildUnifiedContext(input({ periods: [last30] }));
+    expect(text).toMatch(/STATS, THE LAST 30 DAYS \(since Sun 2 Aug 2026\)/);
+  });
+
+  it("the whole record gives its first game's full date, how long ago that is, and that nothing older exists", () => {
+    const { text } = buildUnifiedContext(input());
+    const head = text.split("\n").find((l) => l.startsWith("STATS, THE WHOLE RECORD"))!;
+    expect(head).toMatch(/first game MatchTime recorded for this club, on Tue 7 Apr 2026, 4 months before today/);
+    expect(head).toMatch(/nothing older/);
+  });
+
+  it("the same in a DM: the record's start, not a calendar date", () => {
+    const { text } = buildUnifiedContext(input({ audience: "dm", periods: [THIS_YEAR] }));
+    expect(text).not.toMatch(/1 Jan 2026/);
+  });
+});
+
+describe("round 3: as much as this audience is shown (Sutton 'tell us the top 50 rating holders')", () => {
+  it("the players' group and a DM are told each table is its top 10, as many as are shared there, and where the rest are", () => {
+    for (const audience of ["players", "dm"] as const) {
+      const { text } = buildUnifiedContext(input({ audience }));
+      expect(text).toMatch(/each table is its top 10[^\n]*as many as MatchTime shares here[^\n]*the stats page/);
+    }
+  });
+
+  it("the organisers are not: they see the whole ratings table", () => {
+    expect(buildUnifiedContext(input({ audience: "organisers" })).text).not.toMatch(/as many as MatchTime shares here/);
+  });
+});
+
+describe("round 3: the registered players (FNF HQ 'I meant the registered players')", () => {
+  it("the members are labelled as the players registered with the club, with their count", () => {
+    const { text } = buildUnifiedContext(input());
+    expect(text).toMatch(/MEMBERS, the players registered with the club \(\d+\): /);
+  });
+});
+
+describe("round 3: what MatchTime does while places are open (FNF HQ 'what happens if 14 don't confirm?')", () => {
+  const facts = { pool: { open: true, platformOpen: true, clubFlag: true }, partners: { active: 2 } };
+  const run = (text: string) => text.slice(text.indexOf("HOW THE CLUB IS RUN"), text.indexOf("UPCOMING MATCH"));
+
+  it("says the 17:00 squad post goes on while places are open, in the players' group", () => {
+    const r = run(buildUnifiedContext(input({ clubFacts: facts })).text);
+    expect(r).toMatch(/While places are open[^\n]*17:00[^\n]*in the players' group[^\n]*drop-out deadline/);
+  });
+
+  it("goes to the organisers in HQ when the organisers post the list", () => {
+    const base = input();
+    const st = { ...base.state, features: { ...base.state.features, listAnnouncer: "organisers" as const } };
+    const r = run(buildUnifiedContext(input({ state: st, clubFacts: facts, audience: "organisers" })).text);
+    expect(r).toMatch(/While places are open[^\n]*17:00[^\n]*to the organisers in HQ/);
+  });
+
+  it("partner clubs and the pool: how many, whether on, and that the organisers ask them by tagging MatchTime", () => {
+    const r = run(buildUnifiedContext(input({ clubFacts: facts })).text);
+    expect(r).toMatch(/Partner clubs[^\n]*2 active[^\n]*organisers can ask them[^\n]*tagging MatchTime/);
+    expect(r).toMatch(/player pool[^\n]*on[^\n]*organisers can ask it[^\n]*tagging MatchTime/);
+    const off = run(buildUnifiedContext(input({ clubFacts: { pool: { open: false, platformOpen: true, clubFlag: false }, partners: { active: 0 } } })).text);
+    expect(off).toMatch(/Partner clubs[^\n]*none/);
+    expect(off).toMatch(/player pool[^\n]*off/);
+    expect(off).not.toMatch(/organisers can ask/);
+  });
+});
+
+describe("round 3: the prompt, rewritten whole", () => {
+  it("teaches a correction to be answered for what it now says, with an example in both languages", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/corrects or narrows/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"no, I meant the bench, not the squad"/);
+  });
+
+  it("teaches a message with no subject of its own to follow on from MatchTime's own latest reply", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/no subject of its own/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"why\?" \/ "neden\?"/);
+  });
+
+  it("teaches the spans: a longer span than the record is answered from the whole record, saying where it starts", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/nothing older exists/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"who has played most in the last year\?"/);
+  });
+
+  it("teaches giving what this audience is shown when more is asked for, with where the rest is", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"top 20 ratings"/);
+  });
+
+  it("teaches 'what happens if' about the club to be answered from how the club is run", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/what happens if/i);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/how the club is run/i);
+  });
+
+  it("stays above Haiku 5.5's cache floor", () => {
+    expect(UNIFIED_ANSWER_SYSTEM.length / 2.6).toBeGreaterThan(MIN_CACHEABLE_TOKENS["claude-haiku-5-5"] * 1.5);
+  });
+});
+
+describe("round 3, after the full A/B: what it found", () => {
+  it("Man of the Match reaching further back than the games says where it starts (Sutton 'most MoM so far': 'my records start on 21 Apr')", () => {
+    const stats = { ...STATS, recordsStart: { matches: STATS.recordsStart.matches, mom: new Date("2024-11-12T20:30:00.000Z") } };
+    const { text } = buildUnifiedContext(input({ stats }));
+    expect(text).toMatch(/MAN OF THE MATCH WINS \([^\n]*Tue 12 Nov 2024/);
+    expect(text.split("\n").find((l) => l.startsWith("STATS, THE WHOLE RECORD"))).toMatch(/except Man of the Match/);
+  });
+
+  it("Man of the Match starting with the games adds nothing", () => {
+    const { text } = buildUnifiedContext(input());
+    expect(text).not.toMatch(/except Man of the Match/);
+  });
+
+  it("the prompt: a tag with nothing after it is not a follow-up (FNF HQ '@Match Time' was answered about the ratings table)", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/A tag with nothing after it/);
+  });
+
+  it("the prompt: 'what happens if' is answered by the club's own rules, a monthly club's included (Vets 'what happens if 14 don't confirm?': 'the squad stays short')", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"what happens if not enough confirm\?".*monthly squad.*Nobody needs to confirm/);
+  });
+});
+
+describe("round 3: a DM asker's own club rating (Sutton DM 'what is Erdal's rating?', asked by Erdal, was refused once)", () => {
+  const ratings = Array.from({ length: 12 }, (_, i) => ({ userId: i === 11 ? "u-erdal" : `u-p${i}`, name: i === 11 ? fullName("erdal") : `Player ${i}`, avg: 8 - i * 0.1, games: 3, rank: i + 1, delta: 0 }));
+
+  it("in a DM, the asker's own rating is given even outside the top of the table: it is their own", () => {
+    const { text } = buildUnifiedContext(input({ audience: "dm", askerUserId: "u-erdal", stats: { ...STATS, ratings }, person: { userId: "u-erdal", self: true } }));
+    expect(text).toMatch(/club rating: 6\.9 from 3 rated matches, no\. 12/);
+    expect(text).not.toMatch(/club rating: not in the top of the table/);
+  });
+
+  it("someone else's rating outside the top is still not shared in a DM, nor one's own in the players' group", () => {
+    const other = buildUnifiedContext(input({ audience: "dm", stats: { ...STATS, ratings }, person: { userId: "u-erdal", self: false } })).text;
+    expect(other).toMatch(/club rating: not in the top of the table/);
+    const group = buildUnifiedContext(input({ stats: { ...STATS, ratings }, person: { userId: "u-erdal", self: true } })).text;
+    expect(group).toMatch(/club rating: not in the top of the table/);
   });
 });
