@@ -116,7 +116,7 @@ describe("lastMomFacts", () => {
   });
 
   it("no Man of the Match yet: nothing, and no open vote", () => {
-    expect(lastMomFacts([], { now: NOW, organisersPick: false })).toEqual({ last: null, openVoteDate: null });
+    expect(lastMomFacts([], { now: NOW, organisersPick: false })).toEqual({ last: null, openVoteDate: null, recent: [] });
   });
 
   it("a match with no votes at all is skipped", () => {
@@ -215,5 +215,49 @@ describe("lastMomContextLines (what the grounded answers read)", () => {
   it("none yet says so plainly; no facts at all prints nothing", () => {
     expect(lastMomContextLines({ last: null, openVoteDate: null }).join("\n")).toMatch(/LAST MAN OF THE MATCH: none decided yet/);
     expect(lastMomContextLines(undefined)).toEqual([]);
+  });
+});
+
+/**
+ * UNIFIED_ANSWERS round 2 (2026-11-11). "Can you remind me the last 3
+ * week's MoMs? I need to give their trophies tonight" (FNF HQ, Vets): the
+ * answer only had the last decided Man of the Match. `recent` is every
+ * decided one in the records read, newest first, so a period question has
+ * them all. A vote still open is never in it.
+ */
+describe("lastMomFacts: recent, every decided Man of the Match, newest first", () => {
+  it("lists each decided match's winners, skips an open vote, keeps ties shared", () => {
+    const f = lastMomFacts(
+      [
+        rec({ date: new Date(NOW.getTime() - 1 * DAY), announced: false, tally: [{ userId: "u-bh", name: "BH", votes: 2 }] }),
+        rec({ date: new Date("2026-11-02T20:15:00Z"), tally: [{ userId: "u-craig", name: "Craig", votes: 5 }, { userId: "u-ben", name: "Ben", votes: 1 }] }),
+        rec({
+          date: new Date("2026-10-26T20:15:00Z"),
+          tally: [
+            { userId: "u-mo", name: "Mo", votes: 3 },
+            { userId: "u-naim", name: "Naim", votes: 3 },
+          ],
+        }),
+      ],
+      { now: NOW, organisersPick: false },
+    );
+    expect(f.recent.map((r) => `${r.date.toISOString().slice(0, 10)} ${r.winners.map((w) => w.name).join("+")} ${r.totalVotes}`)).toEqual([
+      "2026-11-02 Craig 6",
+      "2026-10-26 Mo+Naim 6",
+    ]);
+    expect(f.last!.winners[0].name).toBe("Craig");
+  });
+
+  it("an organisers' pick is said as a pick", () => {
+    const f = lastMomFacts([rec({ date: new Date("2026-11-06T20:30:00Z"), tally: [{ userId: "u-akram", name: "Akram", votes: 1 }] })], {
+      now: NOW,
+      organisersPick: true,
+    });
+    expect(f.recent).toHaveLength(1);
+    expect(f.recent[0].pickedByOrganisers).toBe(true);
+  });
+
+  it("no votes at all: an empty list", () => {
+    expect(lastMomFacts([], { now: NOW, organisersPick: false }).recent).toEqual([]);
   });
 });

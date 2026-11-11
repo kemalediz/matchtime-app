@@ -354,6 +354,7 @@ import { recordVenueList } from "@/lib/venue-list-log";
 import { askWhichSource, nobodyLeftReply, sourcesAvailable } from "@/lib/ask-source";
 import { decideRecruitSource, type RecruitSource } from "@/lib/ask-source-rules";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
+import { unifiedAnswersEnabledForApiRequest } from "@/lib/unified-answers-flag";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 import { pastedListIds, type RoutedForListSignal } from "@/lib/pasted-list-signal";
 import type { MonthlyReading } from "@/lib/monthly-reader-prompt";
@@ -2471,6 +2472,8 @@ async function handleAnalyzeRequest(request: Request) {
           // The help's pool answer reads the switch as this request does,
           // only when a help question is answered.
           poolEnv: () => poolEnvForApiRequest(request),
+          // UNIFIED_ANSWERS (Kemal, 2026-11-10): off unless set.
+          unified: unifiedAnswersEnabledForApiRequest(request),
         })
       : null;
 

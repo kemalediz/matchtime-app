@@ -46,6 +46,17 @@ const NUMBER_WORDS_TR = /(?<!\p{L})(?:iki|üç|dört|beş|altı|yedi|sekiz|dokuz
 
 const norm = (n: string) => n.replace(",", ".").replace(/^0+(?=\d)/, "");
 
+/** The value of each number word the two checks above look for, for
+ *  `numberWords: "check"`. "once" and "twice" are 1 and 2. */
+const NUMBER_WORD_VALUE: Record<string, number> = {
+  once: 1, twice: 2, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
+  eighteen: 18, nineteen: 19, twenty: 20,
+  iki: 2, üç: 3, dört: 4, beş: 5, altı: 6, yedi: 7, sekiz: 8, dokuz: 9, yirmi: 20, otuz: 30,
+};
+const NUMBER_WORDS_ALL_EN = new RegExp(NUMBER_WORDS_EN.source, "gi");
+const NUMBER_WORDS_ALL_TR = new RegExp(NUMBER_WORDS_TR.source, "giu");
+
 /** Letters-only words of a text, folded, each with any apostrophe suffix
  *  ("Idris'in", "Sait's") removed. */
 function words(text: string): string[] {
@@ -66,15 +77,34 @@ export function groundingCheck(args: {
   question: string;
   grounding: GroundingContext;
   roster: Member[];
+  /**
+   * What a number written as a word means for the check (2026-11-11):
+   *   "refuse" (default, the generic stats answer) fails the reply, as it
+   *            always has: its prompt requires digits;
+   *   "check"  (the unified answer) checks the word as the number it
+   *            stands for, like a digit. "once a place opens" is 1, and a
+   *            1 in the context grounds it; "twelve" with no 12 fails.
+   */
+  numberWords?: "refuse" | "check";
 }): GroundingResult {
   const reply = (args.reply ?? "").trim();
   if (!reply) return { ok: false, why: "the reply is empty" };
   if (/\bNO_ANSWER\b/.test(reply)) return { ok: false, why: "the model said the tables do not answer it" };
 
-  const words_ = reply.match(NUMBER_WORDS_EN) ?? reply.match(NUMBER_WORDS_TR);
-  if (words_) return { ok: false, why: `a number written as a word ("${words_[0]}")` };
-
   const allowedNumbers = new Set([...args.grounding.numbers, ...(args.question.match(NUMBER) ?? [])].map(norm));
+
+  if (args.numberWords === "check") {
+    for (const w of [...(reply.match(NUMBER_WORDS_ALL_EN) ?? []), ...(reply.match(NUMBER_WORDS_ALL_TR) ?? [])]) {
+      const value = NUMBER_WORD_VALUE[w.toLocaleLowerCase("tr")] ?? NUMBER_WORD_VALUE[w.toLowerCase()];
+      if (value !== undefined && !allowedNumbers.has(String(value))) {
+        return { ok: false, why: `the number "${w}" (${value}) is not in the tables` };
+      }
+    }
+  } else {
+    const words_ = reply.match(NUMBER_WORDS_EN) ?? reply.match(NUMBER_WORDS_TR);
+    if (words_) return { ok: false, why: `a number written as a word ("${words_[0]}")` };
+  }
+
   for (const n of reply.match(NUMBER) ?? []) {
     if (!allowedNumbers.has(norm(n))) return { ok: false, why: `the number ${n} is not in the tables` };
   }
@@ -95,4 +125,29 @@ export function groundingCheck(args: {
     }
   }
   return { ok: true };
+}
+
+/**
+ * PURE. The members a reply names, by user id: by full name, or by a first
+ * name of 3 letters or more that no other member shares. The same matching
+ * as the check above (Turkish suffixes stripped, names folded). Used by the
+ * unified answer to see whether a reply reproduces the squad list.
+ */
+export function membersNamed(reply: string, roster: Member[]): Set<string> {
+  const replyWords = words(reply);
+  const replyText = ` ${replyWords.join(" ")} `;
+  const firstCount = new Map<string, number>();
+  for (const m of roster) {
+    const f = firstOf(m.name);
+    if (f) firstCount.set(f, (firstCount.get(f) ?? 0) + 1);
+  }
+  const out = new Set<string>();
+  for (const m of roster) {
+    const full = normaliseName(m.name);
+    if (!full) continue;
+    const first = firstOf(m.name);
+    if (replyText.includes(` ${full} `)) out.add(m.userId);
+    else if (first.length >= 3 && firstCount.get(first) === 1 && replyWords.includes(first)) out.add(m.userId);
+  }
+  return out;
 }

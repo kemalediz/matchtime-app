@@ -51,6 +51,7 @@ import {
 } from "../player-stats";
 import { GROUP_RATINGS_MIN_GAMES } from "./stats-answer";
 import { lastMomFacts, type LastMomFacts, type MomMatchRecord } from "./last-mom";
+import { matchRatingsFrom, type LastMatchRatings } from "./unified-answer";
 import { organisersPickMom } from "../mom-chooser";
 import { resolveTeamLabels } from "../team-labels";
 import { NOT_CANCELLED } from "../played-match";
@@ -119,9 +120,11 @@ export async function loadStatsTables(orgId: string, now: Date = new Date()): Pr
   };
 }
 
-/** Newest matches with Man of the Match votes read for the last decided
- *  one: a vote still open, at most one a week, sits in front of it. */
-const LAST_MOM_LOOKBACK = 5;
+/** Newest matches with Man of the Match votes read: the last decided one
+ *  (a vote still open, at most one a week, sits in front of it) and, since
+ *  2026-11-11, the recent ones match by match for the unified answer
+ *  ("the last 3 weeks' MoMs"): about two months of weekly games. */
+const LAST_MOM_LOOKBACK = 10;
 
 /**
  * THE LAST MAN OF THE MATCH (2026-11-10, `last-mom.ts` decides). The club's
@@ -146,7 +149,7 @@ export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFact
       },
     }),
   ]);
-  if (matches.length === 0) return { last: null, openVoteDate: null };
+  if (matches.length === 0) return { last: null, openVoteDate: null, recent: [] };
   const ids = matches.map((m) => m.id);
   const [counts, posted] = await Promise.all([
     db.moMVote.groupBy({ by: ["matchId", "playerId"], where: { matchId: { in: ids } }, _count: { playerId: true } }),
@@ -202,4 +205,33 @@ export async function loadStatsPeriod(orgId: string, since: Date): Promise<Omit<
     loadRatingLeaderboard(orgId, { minGames: GROUP_RATINGS_MIN_GAMES, limit: WHOLE_TABLE, since }),
   ]);
   return { appearances: record.appearances, ratings: rankedRows(ratings), mom: record.mom };
+}
+
+/**
+ * THE RATINGS EACH PLAYER GOT IN THE LAST RATED MATCH (2026-11-11), for the
+ * organisers' unified answer only (FNF HQ: "can you share the players who
+ * were rated for last week's match and their ratings?"). The club's newest
+ * match, not cancelled and already kicked off, that has Rating rows; each
+ * player's average score from their team-mates and how many rated them.
+ * Who rated whom is never read. READ-ONLY.
+ */
+export async function loadLastMatchRatings(orgId: string, now: Date): Promise<LastMatchRatings | null> {
+  const match = await db.match.findFirst({
+    where: { activity: { orgId }, ...NOT_CANCELLED, date: { lte: now }, ratings: { some: {} } },
+    orderBy: { date: "desc" },
+    select: { id: true, date: true },
+  });
+  if (!match) return null;
+  const groups = await db.rating.groupBy({
+    by: ["playerId"],
+    where: { matchId: match.id },
+    _avg: { score: true },
+    _count: { playerId: true },
+  });
+  const users = await db.user.findMany({ where: { id: { in: groups.map((g) => g.playerId) } }, select: { id: true, name: true } });
+  const nameOf = new Map(users.map((u) => [u.id, u.name ?? "?"]));
+  return matchRatingsFrom(
+    match.date,
+    groups.map((g) => ({ userId: g.playerId, name: nameOf.get(g.playerId) ?? "?", avg: Math.round((g._avg.score ?? 0) * 10) / 10, count: g._count.playerId })),
+  );
 }

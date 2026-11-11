@@ -114,6 +114,7 @@ import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { answerScopedQuestion, pickQaOrgAndQuote } from "@/lib/dm-qa";
+import { unifiedAnswersEnabledForApiRequest } from "@/lib/unified-answers-flag";
 import { handleCollectorFeeReply } from "@/lib/payment-flow";
 import { feeConfirmAboutKey } from "@/lib/fee-confirm-reaction";
 import { setDmSubscriptions } from "@/lib/notification-prefs";
@@ -1708,6 +1709,8 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
         includePhoneFlags,
         quoted: qa.quoted,
         phone: replyPhone,
+        // UNIFIED_ANSWERS (Kemal, 2026-11-10): off unless set.
+        unified: unifiedAnswersEnabledForApiRequest(request),
       });
       if (result) {
         await db.botJob.create({

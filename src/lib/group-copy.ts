@@ -355,6 +355,18 @@ export const ORGANISERS_SPACE_INTENT = "organisers_space";
  */
 export const OPEN_ANSWER_INTENT = "open_answer";
 
+/**
+ * The intent of the UNIFIED answer (UNIFIED_ANSWERS, 2026-11-10,
+ * `pipeline/unified-answer.ts`). Skipped by the squad-composition pass like
+ * the open answer. Unlike it, EXEMPT from the organisers-mode net
+ * (`passesOrganisersNet`, 2026-11-11): in a club whose organisers post the
+ * list its context names nobody in the squad or on the bench, and the
+ * answer turns a reply that copies the squad from the chat into the
+ * organisers' line itself (`reproducesSquad`). The net, which reads any
+ * numbered list as squad state, had swallowed a ratings table and a count.
+ */
+export const UNIFIED_ANSWER_INTENT = "unified_answer";
+
 /** PURE. Does the squad-composition pass skip a reply with this intent?
  *  `help` (2026-10-16): the help explainer, which a how-it-works question
  *  now reaches through the pipeline; its "Squad & availability" heading
@@ -371,6 +383,7 @@ export function skipsSquadComposition(intent: string | null | undefined): boolea
     intent === "help" ||
     intent === ORGANISERS_SPACE_INTENT ||
     intent === OPEN_ANSWER_INTENT ||
+    intent === UNIFIED_ANSWER_INTENT ||
     (VENUE_WORDS_OUTCOMES as readonly string[]).includes(intent)
   );
 }

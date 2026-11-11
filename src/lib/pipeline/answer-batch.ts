@@ -172,7 +172,7 @@ import type { SilenceFacts } from "../tagged-silence";
 import type { QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
-import { OPEN_ANSWER_INTENT, ORGANISERS_SPACE_INTENT } from "../group-copy";
+import { OPEN_ANSWER_INTENT, ORGANISERS_SPACE_INTENT, UNIFIED_ANSWER_INTENT } from "../group-copy";
 import { decide as decideDefault } from "./engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
@@ -193,6 +193,9 @@ import { TABLES_CUT_BY_PERIOD, planStatsQuestion, type StatsPlan } from "./stats
 import { cutsTheRecord, periodKey, periodSince } from "./stats-period";
 import { answerGenericStats } from "./stats-generic";
 import { answerOpenQuestion } from "./open-answer";
+import { answerUnified, type LastMatchRatings, type UnifiedPeriod } from "./unified-answer";
+import { isUnifiedAnswersEnabled } from "../unified-answers-flag";
+import type { HelpClubFacts } from "../help-club-facts";
 import {
   ANSWER_ENGINE_ROUTES,
   ANSWER_TEAM_ACTIONS,
@@ -214,6 +217,7 @@ import type {
   Route,
   SquadState,
   StatsChemistry,
+  StatsPeriod,
   StatsPeriodTables,
   StatsSnapshot,
 } from "./types";
@@ -230,6 +234,13 @@ import { extractorCacheKey, fanOutWarmFirst } from "./fan-out";
  * score messages through this extractor the moment another flag went on.
  */
 export const ANSWER_ROUTES = ANSWER_ENGINE_ROUTES;
+
+/** UNIFIED_ANSWERS: the shorter spans the unified answer is shown beside the
+ *  whole record, so "most games this year" needs no period from the model. */
+const UNIFIED_PERIODS: ReadonlyArray<readonly [string, StatsPeriod]> = [
+  ["the last 30 days", { kind: "last", count: 30, unit: "day" }],
+  ["this year", { kind: "this", unit: "year" }],
+];
 
 /**
  * The question topics answered from the database, and nothing else.
@@ -749,6 +760,16 @@ export interface AnswerBatchDeps {
    *  `club` question survived ownership. `matchId` is the upcoming match
    *  the fee is read from, or null. */
   loadClub?: (orgId: string, matchId: string | null) => Promise<ClubSnapshot>;
+  /** UNIFIED_ANSWERS only (2026-11-10): the pool and the partner clubs for
+   *  the unified answer's context. Defaults to `loadHelpClubFacts`. */
+  loadClubFacts?: (orgId: string) => Promise<HelpClubFacts>;
+  /** UNIFIED_ANSWERS, the organisers only (2026-11-11): the ratings each
+   *  player got in the last rated match. Defaults to `loadLastMatchRatings`. */
+  loadLastMatchRatings?: (orgId: string, now: Date) => Promise<LastMatchRatings | null>;
+  /** UNIFIED_ANSWERS, the organisers only (2026-11-11): the asker's own
+   *  stats block, for "what is my rating?" in HQ. Defaults to
+   *  `loadAskerOwnStats` (`unified-dm.ts`). Null: no stats for them. */
+  loadOwnStats?: (orgId: string, userId: string) => Promise<string | null>;
 }
 
 /**
@@ -883,8 +904,17 @@ export async function runAnswerBatch(args: {
    * so.
    */
   weekChat?: () => Promise<Array<{ author: string | null; body: string; at: Date | null }>>;
+  /**
+   * UNIFIED_ANSWERS (Kemal, 2026-11-10, `unified-answers-flag.ts`). Absent:
+   * the environment's flag, which is OFF unless set. On: the small question
+   * extractor (list, help, the asker's own stats, anything else), and every
+   * "anything else" answered by ONE model call over the club's data
+   * (`unified-answer.ts`) in place of the set answers. Off: unchanged.
+   */
+  unified?: boolean;
 }): Promise<AnswerBatchResult> {
   const { orgId, now, history, expectedMatchId, enabled, deps } = args;
+  const unified = args.unified ?? isUnifiedAnswersEnabled();
   const alsoAsks: ReadonlySet<string> = args.alsoAsks ?? new Set<string>();
   const messages: AnswerBatchMessage[] = args.messages.map((m) =>
     alsoAsks.has(m.waMessageId) && !m.gated ? { ...m, route: "question" as Route } : m,
@@ -907,6 +937,9 @@ export async function runAnswerBatch(args: {
   let clarificationFor = new Map<string, { c: StatsClarification }>();
   for (const m of messages) {
     if (m.gated || m.route !== "question" || alsoAsks.has(m.waMessageId)) continue;
+    // UNIFIED_ANSWERS: MatchTime asks no "who do you mean?" (the unified
+    // answer reads the roster itself), so no reply is read as one.
+    if (unified) continue;
     const c = (args.clarifications ?? []).find((q) => isFromAsker(q, m));
     if (c) clarificationFor.set(m.waMessageId, { c });
   }
@@ -946,6 +979,10 @@ export async function runAnswerBatch(args: {
   // The organisers are who the list is FOR when they announce it: they see
   // it as a club whose list MatchTime announces would. See `AnswerAudience`.
   // Their list also always says who is on the bench (`forOrganisers`).
+  // Who really posts the club's list, kept for the unified answer before
+  // the organisers' view hides it (round 3, 2026-11-12: FNF HQ was told
+  // MatchTime posts the list, and so where the 17:00 post goes, wrongly).
+  const clubListAnnouncer = state.features.listAnnouncer ?? "matchtime";
   if (organisers) state = { ...state, forOrganisers: true, features: { ...state.features, listAnnouncer: "matchtime" } };
 
   let features: OrgFeatures;
@@ -1108,6 +1145,7 @@ export async function runAnswerBatch(args: {
         // owners send one input and share one call (`trace.ts`, #340).
         reply: m.reply ?? null,
         ...(clar ? { clarifying: clar.c.questionBody } : {}),
+        ...(unified ? { unified: true } : {}),
         now,
       });
       for (const d of res.degradations) {
@@ -1198,6 +1236,24 @@ export async function runAnswerBatch(args: {
   // The question is about what happens when places are not filled, and the
   // true answer here is how the monthly squad works: the availability help,
   // for this club's settings. A fact from the database, not the words.
+  // UNIFIED_ANSWERS: the list asked for when there is no list to post (no
+  // match, a club with no squad, a match nobody vouched for) is answered by
+  // the unified answer, which says so, rather than by silence.
+  if (unified && squadBlock !== null) {
+    for (const [id, f] of factsById) {
+      if (f.kind === "question" && f.topic === "squad") factsById.set(id, { ...f, topic: "other" });
+    }
+  }
+  // UNIFIED_ANSWERS in HQ (2026-11-11): "what is my rating?" asked by an
+  // organiser had no answer on either path (the stats link is a DM, and HQ
+  // sends none). It is answered in HQ by the unified answer, from the
+  // asker's own stats (`loadOwnStats`): HQ is the organisers, who see every
+  // rating already. The players' group keeps the private link.
+  if (unified && organisers) {
+    for (const [id, f] of factsById) {
+      if (f.kind === "question" && f.topic === "my_stats") factsById.set(id, { ...f, topic: "other", personRef: "me" });
+    }
+  }
   if (args.monthNotStarted === true) {
     for (const [id, f] of factsById) {
       if (f.kind === "question" && f.topic === "options") factsById.set(id, { ...f, topic: "how_it_works", feature: "availability" });
@@ -1705,7 +1761,80 @@ export async function runAnswerBatch(args: {
     const f = factsById.get(id);
     return f?.kind === "question" && f.topic === "other";
   });
-  if (openIds.length > 0) {
+  if (openIds.length > 0 && unified) {
+    // ── Stage 2g, UNIFIED_ANSWERS: everything the audience may see ──
+    const u = await loadUnifiedData();
+    const byId = new Map(messages.map((m) => [m.waMessageId, m]));
+    const openAnswers: NonNullable<SquadState["openAnswers"]> = {};
+    for (const id of openIds) {
+      const m = byId.get(id);
+      const f = factsById.get(id);
+      // Whose pairings the tables show: the member the question names
+      // (who-is-who, never spelling), else the asker.
+      let person: { userId: string; self: boolean } | null = m?.senderUserId ? { userId: m.senderUserId, self: true } : null;
+      if (f?.kind === "question" && f.personRef && f.personRef.toLowerCase() !== "me") {
+        const r = resolvePerson(f.personRef, state.roster, peopleById.get(id));
+        if (r.kind === "resolved") person = { userId: r.member.userId, self: r.member.userId === m?.senderUserId };
+      }
+      if (person && u.stats && !u.stats.chemistry[person.userId]) {
+        const load = deps.loadChemistry ?? (async (o: string, uid: string) => (await import("./load-stats")).loadStatsChemistry(o, uid));
+        try {
+          const c = await load(orgId, person.userId);
+          if (c) u.stats.chemistry[person.userId] = c;
+        } catch (err) {
+          console.error("[answer-engine] unified chemistry read failed:", err);
+        }
+      }
+      const asker = m?.senderUserId ? state.roster.find((r) => r.userId === m.senderUserId) : undefined;
+      // The asker's own stats, in HQ only, when the question is about them.
+      const own: string[] = [];
+      if (organisers && m?.senderUserId && f?.kind === "question" && f.personRef?.toLowerCase() === "me") {
+        const loadOwn = deps.loadOwnStats ?? (async (o: string, uid: string) => (await import("../unified-dm")).loadAskerOwnStats(o, uid));
+        try {
+          const block = await loadOwn(orgId, m.senderUserId);
+          if (block) own.push(block);
+        } catch (err) {
+          console.error("[answer-engine] unified own stats read failed:", err);
+        }
+      }
+      const g = await answerUnified({
+        model,
+        audience: organisers ? "organisers" : "players",
+        state,
+        squadKnown: squadBlock === null,
+        stats: u.stats,
+        periods: u.periods,
+        person,
+        results: u.results,
+        payments: organisers ? u.payments : null,
+        ratingProgress: organisers || asker?.isAdmin ? u.ratingProgress : null,
+        clubFacts: u.clubFacts,
+        squadMode: features.squadMode === "monthly" ? "monthly" : "weekly",
+        listAnnouncer: clubListAnnouncer,
+        lastMatchRatings: organisers ? u.lastMatchRatings : null,
+        ...(own.length ? { own } : {}),
+        monthNotStarted: args.monthNotStarted === true,
+        history: u.chat,
+        chatWindow: u.chatWindow,
+        lastBotPost,
+        reply: m?.reply ?? null,
+        now,
+        question: m?.body ?? "",
+        askerUserId: m?.senderUserId ?? null,
+        askerName: m?.senderName ?? m?.authorName ?? null,
+      });
+      openAnswers[id] = g.result;
+      if (g.called) cost = { usd: cost.usd + g.costUsd, calls: cost.calls + g.calls, ms: Math.max(cost.ms, g.ms) };
+      // Ids and counts only (Kemal's logging rule): never the words.
+      console.log(
+        `[answer-engine] ${id}: unified answer ${"text" in g.result ? "answered" : "rejected"}, ${g.inputTokens} input tokens, $${g.costUsd.toFixed(5)}, ${g.ms} ms`,
+      );
+      if ("rejected" in g.result) {
+        degradations.push(`${ANSWER_DEGRADED_PREFIX} ${id}: unified answer not used (${g.result.rejected}); today's line instead`);
+      }
+    }
+    state = { ...state, openAnswers };
+  } else if (openIds.length > 0) {
     let stats: StatsSnapshot | null = state.stats ?? null;
     if (!stats && state.features.statsQa) {
       try {
@@ -1770,6 +1899,73 @@ export async function runAnswerBatch(args: {
       }
     }
     state = { ...state, openAnswers };
+  }
+
+  /**
+   * UNIFIED_ANSWERS: every read the unified answer's context is built from,
+   * once per batch. Each fails soft: a read that throws is left out of the
+   * context (the model then says it does not know) and noted here.
+   */
+  async function loadUnifiedData() {
+    const soft = async <T>(what: string, read: () => Promise<T>): Promise<T | null> => {
+      try {
+        return await read();
+      } catch (err) {
+        console.error(`[answer-engine] unified ${what} read failed:`, err);
+        degradations.push(
+          `${ANSWER_DEGRADED_PREFIX} the ${what} read for the unified answer failed (${err instanceof Error ? err.message : String(err)}); answered without it`,
+        );
+        return null;
+      }
+    };
+    const loadStats = deps.loadStats ?? (async (o: string, at: Date) => (await import("./load-stats")).loadStatsTables(o, at));
+    const loadPeriod = deps.loadStatsPeriod ?? (async (o: string, since: Date) => (await import("./load-stats")).loadStatsPeriod(o, since));
+    let stats: StatsSnapshot | null = null;
+    const periods: UnifiedPeriod[] = [];
+    if (state.features.statsQa) {
+      stats = state.stats ?? (await soft("stats", async () => ({ ...(await loadStats(orgId, now)), chemistry: {}, generic: {}, periods: {} })));
+      if (stats) stats = { ...stats, chemistry: { ...stats.chemistry } };
+      for (const [label, p] of UNIFIED_PERIODS) {
+        const since = periodSince(p, now);
+        if (!since || !stats) continue;
+        const t = await soft(`stats (${label})`, () => loadPeriod(orgId, since));
+        if (t) periods.push({ label, tables: { since, ...t } });
+      }
+    }
+    const loadResults =
+      deps.loadResults ??
+      (async (o: string, since: Date | null, n: Date, lang: string) => (await import("./load-results")).loadRecentResults(o, since, n, lang));
+    const results = await soft("results", () => loadResults(orgId, null, now, state.features.language));
+    const loadPayments =
+      deps.loadPayments ?? (async (o: string, cm: SquadState["completedMatch"]) => (await import("./load-state")).loadPaymentSnapshot(o, cm));
+    // Payments are read for the organisers only: the players' context never
+    // has them to leak (`unified-answer.ts`).
+    const payments = organisers ? await soft("payment", () => loadPayments(orgId, state.completedMatch)) : null;
+    const anyAdminAsks =
+      organisers || messages.some((m) => !!m.senderUserId && state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin));
+    const loadRating =
+      deps.loadRatingProgress ?? (async (o: string, l?: string) => (await import("./load-state")).loadRatingProgressSnapshot(o, l));
+    const ratingProgress = anyAdminAsks ? await soft("rating-progress", () => loadRating(orgId, state.features.language)) : null;
+    const clubFacts = await soft("club facts", async () =>
+      deps.loadClubFacts
+        ? deps.loadClubFacts(orgId)
+        : (await import("../help-club-facts")).loadHelpClubFacts(orgId, args.poolEnv ? await args.poolEnv() : {}),
+    );
+    let chat: Array<{ author: string | null; body: string; at?: Date | null }> = history;
+    let chatWindow: "week" | "recent" = "recent";
+    if (args.weekChat) {
+      const week = await soft("week of chat", () => args.weekChat!());
+      if (week) {
+        chat = week;
+        chatWindow = "week";
+      }
+    }
+    // The ratings each player got in the last match: the organisers only,
+    // and the read is not made for the players' group.
+    const loadLmr =
+      deps.loadLastMatchRatings ?? (async (o: string, n: Date) => (await import("./load-stats")).loadLastMatchRatings(o, n));
+    const lastMatchRatings = organisers && state.features.statsQa ? await soft("last match ratings", () => loadLmr(orgId, now)) : null;
+    return { stats, periods, results, payments, ratingProgress, clubFacts, chat, chatWindow, lastMatchRatings };
   }
 
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
@@ -2027,7 +2223,7 @@ export async function runAnswerBatch(args: {
     if (asked) return STATS_CLARIFICATION_INTENT;
     if (clarificationFor.has(id)) return STATS_CLARIFIED_INTENT;
     const f = factsById.get(id);
-    if (f?.kind === "question" && f.topic === "other") return OPEN_ANSWER_INTENT;
+    if (f?.kind === "question" && f.topic === "other") return unified ? UNIFIED_ANSWER_INTENT : OPEN_ANSWER_INTENT;
     if (f?.kind !== "question" || f.topic !== "stats") return "question";
     const plan = statsPlans.get(id);
     return plan?.kind === "generic" ? "stats_generic" : "stats_table";

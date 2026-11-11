@@ -8,7 +8,7 @@
  * never a question about it.
  */
 import { describe, expect, it } from "vitest";
-import { groundingCheck } from "../stats-grounding";
+import { groundingCheck, membersNamed } from "../stats-grounding";
 import { buildGenericStatsContext } from "../stats-generic";
 import type { Member, StatsSnapshot } from "../types";
 
@@ -118,5 +118,42 @@ describe("an ungrounded reply is rejected", () => {
   });
   it("an empty reply", () => {
     expect(check("   ").ok).toBe(false);
+  });
+});
+
+/**
+ * UNIFIED_ANSWERS round 2 (2026-11-11). FNF's players' group, "who are on
+ * the bench?": the unified answer was refused for the word "once" ("once a
+ * place opens"), so the asker got nothing. The check is fixed, not the word:
+ * with `numberWords: "check"` a number word is checked as the number it
+ * stands for, like a digit. The generic stats answer keeps "refuse".
+ */
+describe("number words checked as their value (numberWords: check)", () => {
+  const grounding = { names: [], numbers: ["1", "3", "11"] };
+  const check = (reply: string) => groundingCheck({ reply, question: "", grounding, roster: ROSTER, numberWords: "check" });
+
+  it("passes a number word whose value is in the context, 'once' included", () => {
+    expect(check("Once a place opens, the first on the bench moves up.")).toEqual({ ok: true });
+    expect(check("Eleven places left.")).toEqual({ ok: true });
+    expect(check("Üç kişi yedekte.")).toEqual({ ok: true });
+  });
+
+  it("refuses a number word whose value is not, as it refuses a digit", () => {
+    const r = check("Twelve places left.");
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.why).toMatch(/twelve/i);
+    expect(check("12 places left.").ok).toBe(false);
+  });
+
+  it("by default a number word is still refused outright (the generic stats answer)", () => {
+    const r = groundingCheck({ reply: "Once a place opens.", question: "", grounding, roster: ROSTER });
+    expect(r).toMatchObject({ ok: false, why: expect.stringMatching(/number written as a word/) });
+  });
+});
+
+describe("membersNamed: who a reply names, by full or first name", () => {
+  it("full names and unique first names, never a shared first name or a short one", () => {
+    const named = membersNamed("Sait and Idris Bello are in, so is Ab.", ROSTER);
+    expect([...named].sort()).toEqual(["u-idris", "u-sait"]);
   });
 });

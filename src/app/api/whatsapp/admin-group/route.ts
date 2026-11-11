@@ -19,6 +19,7 @@ import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { NextResponse } from "next/server";
 import { handleAdminGroupMessage } from "@/lib/admin-group";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
+import { unifiedAnswersEnabledForApiRequest } from "@/lib/unified-answers-flag";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
     groupId,
     ...(now ? { now } : {}),
     poolEnv: await poolEnvForApiRequest(request),
+    unifiedAnswers: unifiedAnswersEnabledForApiRequest(request),
     messageId: str(body.messageId),
     text: body.text,
     botMentioned: body?.botMentioned === true,
