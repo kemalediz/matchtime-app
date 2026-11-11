@@ -557,3 +557,23 @@ describe("round 3: a DM asker's own club rating (Sutton DM 'what is Erdal's rati
     expect(group).toMatch(/club rating: not in the top of the table/);
   });
 });
+
+describe("round 3: who is in, when the organisers post the list (FNF group 'Najib is out if we do 5aside, keep him in': NEW said Najib is in the squad; he is on the bench)", () => {
+  // The context named nobody, but only said MatchTime names nobody: it did
+  // not say MatchTime does not know who is where, so the message's own
+  // premise ("keep him in") was answered as a fact.
+  const base = input();
+  const st = { ...base.state, features: { ...base.state.features, listAnnouncer: "organisers" as const } };
+
+  it("says plainly who is in the squad or on the bench is not shared here, and that MatchTime cannot tell for any one player", () => {
+    const { text } = buildUnifiedContext(input({ state: st }));
+    expect(text).toMatch(/Who is in the squad and who is on the bench is not shared in this group: the organisers post the list\./);
+    expect(text).toMatch(/does not know here whether any one player is in the squad, on the bench or out/);
+    expect(text).toMatch(/even when the message or the chat says so/);
+  });
+
+  it("the organisers, and a club whose list MatchTime posts, still get every name", () => {
+    expect(buildUnifiedContext(input({ state: st, audience: "organisers" })).text).not.toMatch(/not shared in this group/);
+    expect(buildUnifiedContext(input()).text).not.toMatch(/not shared in this group/);
+  });
+});

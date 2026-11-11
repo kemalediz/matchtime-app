@@ -540,7 +540,13 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
     L.push(`- In the squad: ${confirmed.length} of ${state.maxPlayers}. Places left: ${Math.max(0, state.maxPlayers - confirmed.length)}. On the bench: ${bench.length}.`);
     const hideNames = audience === "players" && state.features.listAnnouncer === "organisers";
     if (hideNames) {
-      L.push("- The organisers post the list, so no squad, bench or team names are given here, and MatchTime names nobody in the squad or on the bench, even when the chat shows the list. Counts, results, stats and everything else are answered as usual.");
+      // Said as what MatchTime does not know, not only as what it may not
+      // say (round 3: "Najib is out if we do 5aside, keep him in" was
+      // answered "Najib is in the squad", from the message's own premise;
+      // he was on the bench).
+      L.push(
+        "- Who is in the squad and who is on the bench is not shared in this group: the organisers post the list. So MatchTime does not know here whether any one player is in the squad, on the bench or out, and never says, even when the message or the chat says so; it points to the organisers' list. No team names are given here either. Counts, results, stats and everything else are answered as usual.",
+      );
     } else {
       const ordered = (status: "CONFIRMED" | "BENCH") =>
         state.rows.filter((r) => r.status === status).sort((a, b) => a.position - b.position);
