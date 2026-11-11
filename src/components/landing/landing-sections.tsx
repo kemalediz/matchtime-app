@@ -53,6 +53,7 @@ import {
 import { t } from "@/lib/i18n/t";
 import { DISPLAY_FONT } from "./display-font";
 import { PRIVACY_PATH } from "@/lib/privacy-policy";
+import { CONTACT_PATH, OPERATED_BY_LINE, OPERATOR_LEGAL_NAME, OPERATOR_URL } from "@/lib/site-operator";
 import type { Card, ChatLine, ColorKey, Cta, IconKey, Spotlight, Step } from "./landing-content";
 import { HERO_POOL_INVITE } from "./landing-content";
 import { ChatDrawing } from "./chat-drawing";
@@ -567,7 +568,25 @@ export function PersonaCard({ role, bullets }: { role: string; bullets: string[]
   );
 }
 
-/** The website's footer, on the home page and /players. */
+/**
+ * "MatchTime is operated by Cressoft Consultancy Limited, registered in
+ * England and Wales.", the legal name linking to cressoft.io. Built from
+ * OPERATED_BY_LINE so every page says exactly the same words.
+ */
+export function OperatedBy({ linkClassName }: { linkClassName?: string }) {
+  const [before, after] = OPERATED_BY_LINE.split(OPERATOR_LEGAL_NAME);
+  return (
+    <>
+      {before}
+      <a href={OPERATOR_URL} target="_blank" rel="noreferrer" className={linkClassName}>
+        {OPERATOR_LEGAL_NAME}
+      </a>
+      {after}
+    </>
+  );
+}
+
+/** The website's footer: the home page, /players, /pricing and /contact. */
 export function LandingFooter() {
   return (
     <footer className="bg-slate-950 text-slate-400 py-10 px-5 sm:px-8 border-t border-white/5">
@@ -595,14 +614,16 @@ export function LandingFooter() {
           <Link href={PRIVACY_PATH} className="hover:text-white transition-colors">
             {t("en").privacy_link}
           </Link>
-          <a href="mailto:hello@matchtime.ai" className="hover:text-white transition-colors">
+          <Link href={CONTACT_PATH} className="hover:text-white transition-colors">
             Contact
-          </a>
-          <a href="https://cressoft.io" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
-            By Cressoft
-          </a>
+          </Link>
         </div>
-        <p className="text-xs text-slate-500">© {new Date().getFullYear()} MatchTime. All rights reserved.</p>
+      </div>
+      <div className="max-w-6xl mx-auto mt-6 pt-6 border-t border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-500">
+        <p>
+          <OperatedBy linkClassName="text-slate-300 underline underline-offset-2 hover:text-white transition-colors" />
+        </p>
+        <p>© {new Date().getFullYear()} MatchTime. All rights reserved.</p>
       </div>
     </footer>
   );

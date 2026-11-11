@@ -34,6 +34,7 @@ import { LandingHeader } from "./landing-nav";
 import { PricingTeaser } from "./pricing-section";
 import { HeroDeck } from "./hero-deck";
 import { tightStops } from "./tight-stops";
+import { OPERATOR_ORGANIZATION_LD } from "@/lib/site-operator";
 
 /**
  * Public marketing landing page served at `/` for signed-out visitors.
@@ -443,11 +444,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             description:
               "MatchTime lives in your WhatsApp group and runs your weekly football: attendance, the bench, chasing, partner clubs nearby and then the MatchTime player pool to fill a missing place, then balanced teams, ratings, Man of the Match, optional card or bank payments and an admin group for organisers.",
             url: "https://matchtime.ai",
-            publisher: {
-              "@type": "Organization",
-              name: "Cressoft",
-              url: "https://cressoft.io",
-            },
+            publisher: OPERATOR_ORGANIZATION_LD,
           }),
         }}
       />

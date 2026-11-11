@@ -6,11 +6,11 @@
 import { formatPolicyDate, type PolicyFacts, type PrivacyPolicyCopy } from "./privacy-policy-shared";
 
 export function buildPrivacyPolicyTr(f: PolicyFacts): PrivacyPolicyCopy {
-  const { company: c, email, ico } = f;
+  const { company: c, email, contactEmail, ico } = f;
   const date = formatPolicyDate(f.effectiveDate, "tr-TR");
   const name = c.legalName ?? "MatchTime";
   const number = c.companyNumber ? ` (şirket numarası ${c.companyNumber})` : "";
-  const office = c.registeredOffice ? ` Kayıtlı adresimiz: ${c.registeredOffice}.` : "";
+  const office = c.registeredOffice ? ` Kayıtlı adres: ${c.registeredOffice}.` : "";
 
   return {
     title: "Gizlilik politikası",
@@ -37,6 +37,7 @@ export function buildPrivacyPolicyTr(f: PolicyFacts): PrivacyPolicyCopy {
               " adresine e-posta gönderin. Yasa zorunlu tutmadığı için bir Veri Koruma Görevlisi atamadık; bu adres doğrudan sorumlu kişilere ulaşır.",
             ],
           },
+          { kind: "p", text: ["MatchTime ile ilgili diğer her konuda ", contactEmail, " adresine e-posta gönderin."] },
         ],
       },
       {

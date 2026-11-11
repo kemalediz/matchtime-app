@@ -6,11 +6,11 @@
 import { formatPolicyDate, type PolicyFacts, type PrivacyPolicyCopy } from "./privacy-policy-shared";
 
 export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
-  const { company: c, email, ico } = f;
+  const { company: c, email, contactEmail, ico } = f;
   const date = formatPolicyDate(f.effectiveDate, "en-GB");
   const name = c.legalName ?? "MatchTime";
   const number = c.companyNumber ? ` (company number ${c.companyNumber})` : "";
-  const office = c.registeredOffice ? ` Our registered office is ${c.registeredOffice}.` : "";
+  const office = c.registeredOffice ? ` Registered office: ${c.registeredOffice}.` : "";
 
   return {
     title: "Privacy policy",
@@ -27,7 +27,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
         blocks: [
           {
             kind: "p",
-            text: `MatchTime is run by ${name}, a company registered in England and Wales${number}.${office} We decide how your personal data is used, which makes us the controller under UK data protection law.`,
+            text: `MatchTime is operated by ${name}, a company registered in England and Wales${number}.${office} We decide how your personal data is used, which makes us the controller under UK data protection law.`,
           },
           {
             kind: "p",
@@ -37,6 +37,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
               ". We have not appointed a Data Protection Officer because the law does not require us to, so this address reaches the people responsible.",
             ],
           },
+          { kind: "p", text: ["For anything else about MatchTime, email ", contactEmail, "."] },
         ],
       },
       {
