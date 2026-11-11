@@ -149,3 +149,9 @@ describe("round 2: the list is defined by wanting to see it", () => {
     expect(UNIFIED_QUESTION_PROMPT).toMatch(/will we see you there\?.*-> other/);
   });
 });
+
+describe("round 2, pass 2a: 'squad status' is a count, not the list", () => {
+  it("is taught as other in both languages", () => {
+    expect(UNIFIED_QUESTION_PROMPT).toMatch(/what's the squad status\?.*kadro durumu ne\?.*-> other/);
+  });
+});

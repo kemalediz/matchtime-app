@@ -56,6 +56,7 @@ The asker's own stats:
 
 Everything else:
   "@Match Time how many spots left?" | "@Match Time kaç kişiyiz?" -> other
+  "@Match Time what's the squad status?" | "@Match Time kadro durumu ne?" -> other
   "@Match Time who's on the bench?" | "@Match Time yedekte kim var?" -> other
   "@Match Time who are the 4 best rated on the list?" | "@Match Time listedeki en yüksek puanlı 4 kişi kim?" -> other
   "@Match Time is Zair in?" | "@Match Time Zair geliyor mu?" -> other, personRef "Zair"

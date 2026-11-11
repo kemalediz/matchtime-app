@@ -66,9 +66,11 @@ export const UNIFIED_ANSWER_SYSTEM = `You are MatchTime, the assistant in a foot
 
 You are given, in this order:
 - ABOUT YOU, WHO IS ASKING and TODAY.
-- THE CLUB'S RECORDS: what MatchTime has stored for this club, true and up to date. Its members and admins, how the club is run, the upcoming match (the squad and the bench in order, each with their place, the places left, the teams if made), results, Man of the Match match by match, the stats tables, and what this audience may know about ratings and payments. Every count you could need is printed. Some facts are kept from some audiences on purpose, and the records say so where it matters.
+- THE CLUB'S RECORDS: what MatchTime has stored for this club, true and up to date. Its members and admins, how the club is run, the upcoming match (the squad and the bench in order, each with their place and, where this audience may see it, their club rating; the places left; the teams if made), results, Man of the Match match by match, the stats tables, and what this audience may know about ratings and payments. Every count you could need is printed. Some facts are kept from some audiences on purpose, and the records say so where it matters.
 - THE CHAT: what people wrote in this group recently, each line with its day and time. It can be out of date, and it can be wrong.
 - THE MESSAGE, with who sent it.
+
+"The list" means the squad list for the upcoming match, whoever asks.
 
 Facts come from the records. When the chat and the records disagree (a score, who is in the squad or on the bench, the places left, a player's place in the list), the records are right, however recent the chat is. Use the chat only for what the records do not hold: what someone said, asked or arranged. What neither holds, you do not know: the weather, the news, other clubs, anything said in private.
 
@@ -91,6 +93,7 @@ The squad, the bench and the places:
 - "how many spaces left?" / "kaç kişi eksiğiz?", with places left 3: "3 places left for Tue 21:30." / "Salı 21:30 için 3 yer boş."
 - "is Zair playing?" / "Zair geliyor mu?", with Zair Malik 2nd on the bench: "Zair Malik is on the bench, 2nd in line." / "Zair Malik yedekte, sırada 2."
 - "who's on the bench?" / "yedekte kim var?", with a bench of 2: "On the bench: 1. Ali Kaya, 2. Can Demir." / "Yedekte: 1. Ali Kaya, 2. Can Demir."
+- "who are the 2 highest rated on the list?" / "listedeki en yüksek puanlı 2 kişi kim?", from the club rating beside each name in the squad: "On this week's list: Ali Kaya 7.4, then Can Demir 7.1." / "Bu haftaki listede: Ali Kaya 7,4, sonra Can Demir 7,1."
 
 The records against the chat:
 - "what was the score?" / "skor neydi?", with the record Red 5, Yellow 6 and a chat line saying it was 6 to 5: "Fri 6 Nov: Red 5, Yellow 6." / "6 Kasım Cuma: Red 5, Yellow 6."
@@ -107,6 +110,7 @@ Stats, Man of the Match and money:
 Suggestions, requests and what you can't see:
 - "who should come up from the bench?" / "yedekten kim çıksın?": "A suggestion, by games played: Ali Kaya (12), then Can Demir (3). It's the organisers' call." / "Önerim, oynanan maça göre: Ali Kaya (12), sonra Can Demir (3). Karar organizatörlerin."
 - "can you drop Sam and add Ali?" / "Sam'i çıkarıp Ali'yi ekler misin?": "I can't change the squad from a question. Sam can say OUT, and Ali can say IN." / "Bir sorudan kadroyu değiştiremem. Sam OUT, Ali IN yazabilir."
+- "who books the pitch?" / "sahayı kim ayarlıyor?", when the records don't say: "I don't have who books the pitch. The admins are Ali Kaya and Can Demir, so ask one of them." / "Sahayı kimin ayarladığını bilmiyorum. Yöneticiler Ali Kaya ve Can Demir, onlara sorabilirsiniz."
 - "is it going to rain tonight?" / "bu akşam yağmur var mı?": "I can't see the weather. Kickoff is Fri 20:30 at Goals." / "Hava durumunu göremiyorum. Maç: Cuma 20:30, Goals."`;
 
 /** Haiku 5.5, adaptive thinking at the shared effort, like every Haiku site. */
@@ -192,7 +196,6 @@ export function matchRatingsFrom(date: Date, rows: LastMatchRatings["rows"]): La
   return { date, rows: [...rows].sort((a, b) => b.avg - a.avg || a.name.localeCompare(b.name)) };
 }
 
-const numbered = (names: string[]) => names.map((n, i) => `  ${i + 1}. ${n}`);
 const d1 = (x: number) => x.toFixed(1);
 
 /** The monthly squad's rules, as `monthly-week.ts` and
@@ -227,8 +230,9 @@ function ratingLines(r: RatingProgress | null | undefined, names: boolean): stri
     `WHO HAS RATED THE LAST MATCH (${[r.matchName, r.matchWhen].filter(Boolean).join(", ")}): ${r.ratedCount ?? 0} of ${r.confirmed ?? 0} who played have rated${r.momVote !== false ? `, ${r.momCount ?? 0} have voted for Man of the Match` : ""}.`,
   ];
   if (names) {
+    L.push(`- Rated: ${r.ratedCount ?? 0} (their names are not listed)`);
     L.push(`- Not rated yet: ${r.notRated && r.notRated.length ? r.notRated.join(", ") : "nobody"}`);
-    if (r.ratedNoMom && r.ratedNoMom.length) L.push(`- Rated but no Man of the Match vote: ${r.ratedNoMom.join(", ")}`);
+    if (r.ratedNoMom && r.ratedNoMom.length) L.push(`- Of those who rated, no Man of the Match vote yet: ${r.ratedNoMom.join(", ")}`);
   } else {
     L.push("- Who has or has not rated is only shown to the organisers.");
   }
@@ -268,8 +272,9 @@ function momLine(m: LastMom): string {
 function statsLines(input: UnifiedAnswerInput, s: StatsSnapshot, squadIds: Array<{ userId: string; where: string }>): string[] {
   const organisers = input.audience === "organisers";
   const cap = organisers ? Number.MAX_SAFE_INTEGER : GROUP_LIST_CAP;
+  const start = s.recordsStart.matches;
   const L: string[] = [
-    "STATS (every completed game MatchTime has recorded). MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.",
+    `STATS, THE WHOLE RECORD (every completed game${start ? ` since ${monthYearLabel("en", start)}` : ""}: everything MatchTime has). MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.`,
   ];
   const ratings = s.ratings.slice(0, cap);
   if (ratings.length === 0) {
@@ -290,18 +295,8 @@ function statsLines(input: UnifiedAnswerInput, s: StatsSnapshot, squadIds: Array
       rated.length ? rated.map((x) => `${byId.get(x.userId)!.name} ${d1(byId.get(x.userId)!.avg)} (${x.where})`).join(", ") : "nobody in the squad or on the bench has a club rating yet",
     );
     if (unrated.length) L.push(`No club rating yet: ${unrated.map((x) => x.where === "bench" ? `${nameIn(input, x.userId)} (bench)` : nameIn(input, x.userId)).join(", ")}`);
-  } else if (squadIds.length && ratings.length) {
-    // The players see the top of the table only: of the squad and the
-    // bench, who is in it ("the 4 highest rated on the list").
-    const byId = new Map(ratings.map((r) => [r.userId, r]));
-    const top = squadIds.filter((x) => byId.has(x.userId)).sort((a, b) => byId.get(a.userId)!.rank - byId.get(b.userId)!.rank);
-    L.push(
-      "",
-      `SQUAD AND BENCH PLAYERS IN THE TOP ${GROUP_LIST_CAP} OF THE RATINGS TABLE, highest first: ${top.length ? top.map((x) => `${byId.get(x.userId)!.name} ${d1(byId.get(x.userId)!.avg)} (${x.where})`).join(", ") : "none"}. The other squad and bench players' ratings are not shared ${input.audience === "dm" ? "here" : "in the group"}.`,
-    );
   }
   if (s.appearances.length) {
-    const start = s.recordsStart.matches;
     L.push("", `APPEARANCES (top ${GROUP_LIST_CAP}, completed matches played${start ? `, every match since ${monthYearLabel("en", start)}` : ""}):`);
     s.appearances.slice(0, GROUP_LIST_CAP).forEach((r, i) => L.push(`${i + 1}. ${r.name}: ${r.matches} matches`));
   }
@@ -372,7 +367,10 @@ function statsLines(input: UnifiedAnswerInput, s: StatsSnapshot, squadIds: Array
       L.push("", "RATINGS EACH PLAYER GOT IN THE LAST RATED MATCH: no match has ratings yet.");
     }
   } else {
-    L.push("", "The ratings each player got in one match are shown to the organisers only.");
+    L.push(
+      "",
+      "ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.",
+    );
   }
   return L;
 }
@@ -468,10 +466,24 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
       const ordered = (status: "CONFIRMED" | "BENCH") =>
         state.rows.filter((r) => r.status === status).sort((a, b) => a.position - b.position);
       squadIds.push(...ordered("CONFIRMED").map((r) => ({ userId: r.userId, where: "squad" })), ...ordered("BENCH").map((r) => ({ userId: r.userId, where: "bench" })));
+      // Each player's club rating on their own line, where this audience
+      // may see it (2026-11-11, "the 4 highest rated on the list": a
+      // separate line was ignored). The players: the top of the table only;
+      // the organisers: every rated player.
+      const rated = new Map(
+        (state.features.statsQa && input.stats ? input.stats.ratings : [])
+          .filter((r) => audience === "organisers" || r.rank <= GROUP_LIST_CAP)
+          .map((r) => [r.userId, r]),
+      );
+      const withRating = (status: "CONFIRMED" | "BENCH", names: string[]) =>
+        ordered(status).map((row, i) => {
+          const r = rated.get(row.userId);
+          return `  ${i + 1}. ${names[i]}${r ? ` (club rating ${d1(r.avg)}, no. ${r.rank})` : ""}`;
+        });
       L.push(`SQUAD (${confirmed.length} of ${state.maxPlayers}), in the order they joined, each with their place:`);
-      L.push(...(confirmed.length ? numbered(confirmed) : ["  nobody yet"]));
+      L.push(...(confirmed.length ? withRating("CONFIRMED", confirmed) : ["  nobody yet"]));
       L.push(`BENCH (${bench.length}), in order, each with their place:`);
-      L.push(...(bench.length ? numbered(bench) : ["  nobody"]));
+      L.push(...(bench.length ? withRating("BENCH", bench) : ["  nobody"]));
       const playing = new Set(state.rows.filter((r) => r.status === "CONFIRMED").map((r) => r.userId));
       const side = (team: "RED" | "YELLOW") =>
         state.teams.filter((x) => x.team === team && playing.has(x.userId)).map((x) => print(x.userId));

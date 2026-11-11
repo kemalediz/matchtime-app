@@ -295,7 +295,7 @@ describe("round 2: the stats the answer is given", () => {
     expect(org).toContain(`${fullName("sait")} 7.4 (6 ratings)`);
     const players = buildUnifiedContext(input({ lastMatchRatings })).text;
     expect(players).not.toContain("7.4 (6 ratings)");
-    expect(players).toMatch(/ratings each player got in one match are shown to the organisers only/i);
+    expect(players).toMatch(/ONE MATCH'S RATINGS[^\n]*the organisers see them/);
   });
 
   it("the asker's own stats, when the caller gives them (HQ 'my rating'), under a heading that is not 'you'", () => {
@@ -338,21 +338,64 @@ describe("matchRatingsFrom: one match's ratings per player (2026-11-11)", () => 
   });
 });
 
-describe("round 2: 'the 4 highest rated on the list' in the players' group", () => {
-  it("names the squad and bench players who are in the top of the table, and says the rest are not shared", () => {
-    const ratings = [
-      { userId: "u-erdal", name: fullName("erdal"), avg: 7.4, games: 9, rank: 1, delta: 0 },
-      { userId: "u-elvin", name: fullName("elvin"), avg: 7.1, games: 5, rank: 2, delta: 0 },
-      { userId: "u-sait", name: fullName("sait"), avg: 6.9, games: 4, rank: 3, delta: 0 },
-    ];
+describe("round 2: 'the 4 highest rated on the list' (A/B pass 2a: the model ignored a separate line)", () => {
+  const ratings = [
+    { userId: "u-erdal", name: fullName("erdal"), avg: 7.4, games: 9, rank: 1, delta: 0 },
+    { userId: "u-elvin", name: fullName("elvin"), avg: 7.1, games: 5, rank: 2, delta: 0 },
+    { userId: "u-sait", name: fullName("sait"), avg: 6.9, games: 4, rank: 3, delta: 0 },
+  ];
+
+  it("the players' group: a squad or bench player in the top of the table carries their club rating on their own line", () => {
     const { text } = buildUnifiedContext(input({ stats: { ...STATS, ratings } }));
-    expect(text).toContain(`SQUAD AND BENCH PLAYERS IN THE TOP ${10} OF THE RATINGS TABLE, highest first: ${fullName("erdal")} 7.4 (bench), ${fullName("sait")} 6.9 (squad)`);
-    expect(text).toMatch(/other squad and bench players' ratings are not shared in the group/);
+    expect(text).toContain(`  2. ${fullName("sait")} (club rating 6.9, no. 3)`);
+    expect(text).toContain(`  1. ${fullName("erdal")} (club rating 7.4, no. 1)`);
+    expect(text).toContain(`  1. ${fullName("kemal")}\n`);
+  });
+
+  it("the organisers: every rated squad and bench player carries it", () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ userId: i === 11 ? "u-kemal" : `u-p${i}`, name: i === 11 ? fullName("kemal") : `Player ${i}`, avg: 8 - i * 0.1, games: 3, rank: i + 1, delta: 0 }));
+    const { text } = buildUnifiedContext(input({ audience: "organisers", stats: { ...STATS, ratings: many } }));
+    expect(text).toContain(`  1. ${fullName("kemal")} (club rating 6.9, no. 12)`);
+    const players = buildUnifiedContext(input({ stats: { ...STATS, ratings: many } })).text;
+    expect(players).toContain(`  1. ${fullName("kemal")}\n`);
   });
 
   it("not when the organisers post the list: no squad names at all", () => {
     const base = input();
     const st = { ...base.state, features: { ...base.state.features, listAnnouncer: "organisers" as const } };
-    expect(buildUnifiedContext(input({ state: st })).text).not.toMatch(/SQUAD AND BENCH PLAYERS IN THE TOP/);
+    expect(buildUnifiedContext(input({ state: st, stats: { ...STATS, ratings } })).text).not.toMatch(/club rating 6\.9, no\. 3/);
+  });
+});
+
+describe("round 2, pass 2a: what the A/B found next", () => {
+  it("one match's ratings: said plainly as the organisers' only, and that the club ratings are everyone's", () => {
+    const { text } = buildUnifiedContext(input());
+    expect(text).toMatch(/ONE MATCH'S RATINGS[^\n]*not shared in the players' group or in private messages/);
+    expect(text).toMatch(/The club ratings above are shared with everyone/);
+    expect(text).not.toMatch(/shown to the organisers only/);
+  });
+
+  it("the whole record is labelled with where it starts, so 'the last year' is not read as 'since 1 January'", () => {
+    const { text } = buildUnifiedContext(input());
+    expect(text).toMatch(/STATS, THE WHOLE RECORD \(every completed game since April 2026: everything MatchTime has\)/);
+  });
+
+  it("who has rated: the count of those who rated is said, not left to be worked out from two name lists", () => {
+    const { text } = buildUnifiedContext(input({ askerUserId: "u-kemal", askerName: fullName("kemal"), ratingProgress: { ok: true, matchName: "Tuesday", matchWhen: "3 Nov", confirmed: 14, ratedCount: 4, momCount: 2, notRated: [fullName("zair")], ratedNoMom: [fullName("sait")] } }));
+    expect(text).toMatch(/- Rated: 4 \(their names are not listed\)/);
+    expect(text).toMatch(/- Of those who rated, no Man of the Match vote yet: /);
+  });
+});
+
+describe("round 2, pass 2a: the prompt teaches naming who to ask", () => {
+  it("a fact the records do not hold is answered with who to ask, by name (FNF HQ 'who coordinates booking?')", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"who books the pitch\?".*The admins are .*ask one of them/);
+  });
+});
+
+describe("round 2, pass 2b: 'the list' is the squad", () => {
+  it("the prompt says 'the list' means the squad list and teaches the top-rated-on-the-list answer from the squad lines", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"the list" means the squad list/i);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"who are the 2 highest rated on the list\?".*club rating/);
   });
 });
