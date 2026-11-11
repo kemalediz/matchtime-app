@@ -16,6 +16,7 @@
  * product names, matching rules, sending limits or numbers per town).
  */
 import { COMPANY_DETAILS, PRIVACY_POLICY_EFFECTIVE_DATE, PRIVACY_POLICY_VERSION, type CompanyDetails } from "../privacy-policy";
+import { CONTACT_EMAIL } from "../site-operator";
 import { normaliseLang, type Lang } from "./lang";
 import { buildPrivacyPolicyEn } from "./privacy-policy.en";
 import { buildPrivacyPolicyTr } from "./privacy-policy.tr";
@@ -50,6 +51,7 @@ export function privacyPolicy(
     version: PRIVACY_POLICY_VERSION,
     effectiveDate: PRIVACY_POLICY_EFFECTIVE_DATE,
     email,
+    contactEmail: { href: `mailto:${CONTACT_EMAIL}`, label: CONTACT_EMAIL },
     ico: { href: "https://ico.org.uk", label: "ico.org.uk" },
   });
 }

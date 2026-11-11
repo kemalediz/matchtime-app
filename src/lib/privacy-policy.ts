@@ -14,11 +14,14 @@
  * policy's own "changes" section says so).
  *
  * Sources (24 Oct 2026): the legal name, privacy email and "no ICO
- * registration to show yet" are Kemal's; the company number is the one
- * printed on Cressoft's own issued invoices; the registered office is the
- * one on cressoft.io's privacy notice. Never invent a field: leave it
- * null and `missingCompanyDetails()` (and its unit test) will say so.
+ * registration to show yet" are Kemal's. The legal name, company number
+ * and registered office were checked on Companies House on 11 Nov 2026
+ * and live in `site-operator.ts`, which the website's footer, /contact
+ * page and JSON-LD read too. Never invent a field: leave it null and
+ * `missingCompanyDetails()` (and its unit test) will say so.
  */
+
+import { OPERATOR_COMPANY_NUMBER, OPERATOR_LEGAL_NAME, OPERATOR_REGISTERED_OFFICE } from "./site-operator";
 
 export const PRIVACY_PATH = "/privacy";
 
@@ -37,9 +40,9 @@ export interface CompanyDetails {
 }
 
 export const COMPANY_DETAILS: CompanyDetails = {
-  legalName: "Cressoft Consultancy Limited",
-  companyNumber: "07628636",
-  registeredOffice: "167-169 Great Portland Street, London, W1W 5PF, United Kingdom",
+  legalName: OPERATOR_LEGAL_NAME,
+  companyNumber: OPERATOR_COMPANY_NUMBER,
+  registeredOffice: OPERATOR_REGISTERED_OFFICE,
   privacyEmail: "admin@cressoft.io",
 };
 

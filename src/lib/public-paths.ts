@@ -1,4 +1,5 @@
 import { PRIVACY_PATH } from "./privacy-policy";
+import { CONTACT_PATH } from "./site-operator";
 import { PLAYERS_PAGE_PATH, POOL_API_PREFIX, POOL_PLAY_PATH } from "./pool/paths";
 
 /**
@@ -35,6 +36,8 @@ export function isPublicPath(pathname: string): boolean {
     // The privacy policy: anyone must be able to read it before signing
     // up or sharing a detail (local player pool slice L0).
     pathname === PRIVACY_PATH ||
+    // Contact, and who operates MatchTime (2026-11-11), linked from the footer.
+    pathname === CONTACT_PATH ||
     // The website's page for players (2026-10-25), linked from the menu.
     pathname === PLAYERS_PAGE_PATH ||
     // The pricing page (2026-10-25), linked from the menu.

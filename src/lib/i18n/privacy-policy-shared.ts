@@ -57,8 +57,10 @@ export interface PolicyFacts {
   version: number;
   /** ISO date, formatted by each builder in its own language. */
   effectiveDate: string;
-  /** The contact email as a link, or the plain words when none is set. */
+  /** The privacy contact email as a link, or the plain words when none is set. */
   email: RichLink | string;
+  /** The general contact address (hello@matchtime.ai), as a link. */
+  contactEmail: RichLink;
   ico: RichLink;
 }
 

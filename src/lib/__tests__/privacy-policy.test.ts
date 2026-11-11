@@ -58,7 +58,7 @@ describe("company details (one config object)", () => {
   it("names the real legal entity, its number, registered office and privacy contact", () => {
     expect(COMPANY_DETAILS.legalName).toBe("Cressoft Consultancy Limited");
     expect(COMPANY_DETAILS.companyNumber).toBe("07628636");
-    expect(COMPANY_DETAILS.registeredOffice).toMatch(/W1W 5PF/);
+    expect(COMPANY_DETAILS.registeredOffice).toBe("5th Floor, 167-169 Great Portland Street, London W1W 5PF");
     expect(COMPANY_DETAILS.privacyEmail).toBe("admin@cressoft.io");
   });
 
@@ -130,9 +130,12 @@ describe("the policy in English and Turkish", () => {
     expect(text).toContain(COMPANY_DETAILS.privacyEmail);
   });
 
-  it.each(COPIES)("%s uses the configured privacy email as its only email address", (_lang, copy) => {
+  // 2026-11-11: the "who we are" section also gives the site's general
+  // contact address (hello@matchtime.ai); personal data requests still go
+  // to the configured privacy email.
+  it.each(COPIES)("%s uses only the configured privacy email and the site's contact address", (_lang, copy) => {
     const emails = (policyPlainText(copy).match(/[\w.+-]+@[\w-]+\.[\w.]+/g) ?? []).map((e) => e.replace(/\.$/, ""));
-    expect(new Set(emails)).toEqual(new Set([COMPANY_DETAILS.privacyEmail]));
+    expect(new Set(emails)).toEqual(new Set([COMPANY_DETAILS.privacyEmail, "hello@matchtime.ai"]));
   });
 
   it.each(COPIES)("%s states the minimum age of 18", (_lang, copy) => {

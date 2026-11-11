@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { PRIVACY_PATH } from "@/lib/privacy-policy";
+import { CONTACT_PATH } from "@/lib/site-operator";
 import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 
 const BASE =
@@ -50,6 +51,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${BASE}${POOL_PLAY_PATH}`,
       changeFrequency: "monthly",
       priority: 0.7,
+    },
+    {
+      // Contact, and who operates MatchTime (2026-11-11).
+      url: `${BASE}${CONTACT_PATH}`,
+      changeFrequency: "yearly",
+      priority: 0.4,
     },
     {
       url: `${BASE}${PRIVACY_PATH}`,

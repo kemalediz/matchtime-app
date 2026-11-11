@@ -10,6 +10,7 @@ import { test, expect } from "../fixtures";
 import type { Page } from "@playwright/test";
 import { LANDING_SPOTLIGHTS } from "@/components/landing/landing-content";
 import { poolPageCopy } from "@/lib/pool/page-copy";
+import { OPERATED_BY_LINE, REGISTERED_OFFICE_LINE } from "@/lib/site-operator";
 
 const MOBILE = { width: 375, height: 740 };
 const DESKTOP = { width: 1280, height: 900 };
@@ -84,6 +85,20 @@ test("every page link on the landing page answers 200, and the footer keeps the 
   }
   await footer.getByRole("link", { name: /privacy/i }).click();
   await page.waitForURL("**/privacy");
+});
+
+// 2026-11-11: Meta checks the site ties "MatchTime" to the legal business.
+test("the footer says who operates MatchTime and its Contact link opens /contact", async ({ page }) => {
+  await page.goto("/");
+  const footer = page.locator("footer");
+  await footer.scrollIntoViewIfNeeded();
+  await expect(footer).toContainText(OPERATED_BY_LINE);
+  await expect(footer.getByRole("link", { name: "Cressoft Consultancy Limited" })).toHaveAttribute("href", "https://cressoft.io");
+  await footer.getByRole("link", { name: "Contact", exact: true }).click();
+  await page.waitForURL("**/contact");
+  await expect(page.getByRole("heading", { level: 1, name: "Contact MatchTime" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "hello@matchtime.ai" })).toHaveAttribute("href", "mailto:hello@matchtime.ai");
+  await expect(page.locator("main, body").first()).toContainText(REGISTERED_OFFICE_LINE);
 });
 
 test("the whole page reads as plain words: no dashes, no real club names, bench not waiting list", async ({ page }) => {

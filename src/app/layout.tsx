@@ -5,6 +5,7 @@ import { Providers } from "@/components/providers";
 import { AppShell } from "@/components/layout/app-shell";
 import { WebAnalytics } from "@/components/web-analytics";
 import { SITE_META } from "@/components/landing/landing-content";
+import { OPERATOR_LEGAL_NAME, OPERATOR_URL } from "@/lib/site-operator";
 
 // Inter for body copy — tightly hinted, great on every device at every
 // size. `--font-geist-sans` kept as the CSS variable name so we don't
@@ -39,9 +40,10 @@ export const metadata: Metadata = {
   },
   description: SITE_META.description,
   keywords: SITE_META.keywords,
-  authors: [{ name: "Cressoft", url: "https://cressoft.io" }],
-  creator: "Cressoft",
-  publisher: "Cressoft",
+  // The legal business behind the brand (Meta checks the site names it).
+  authors: [{ name: OPERATOR_LEGAL_NAME, url: OPERATOR_URL }],
+  creator: OPERATOR_LEGAL_NAME,
+  publisher: OPERATOR_LEGAL_NAME,
   applicationName: "MatchTime",
   openGraph: {
     type: "website",
