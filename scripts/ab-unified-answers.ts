@@ -20,6 +20,9 @@
  *   node --env-file=../../../.env ./node_modules/.bin/tsx scripts/ab-unified-answers.ts <questions.json> <out.json>
  *
  * LIMIT=n runs the first n cases (LIMIT=1: the one-call measurement).
+ * KEYS=a,b runs only those case keys ("7-fnf-group,52-fnf-hq"), and
+ * PATHS=new answers them on the new path only: round 2's cheap pass over
+ * the cases round 1 found worse (2026-11-11).
  * Prints calls, tokens and dollars, per path.
  */
 import "./ab-readonly-db.ts";
@@ -51,6 +54,8 @@ import type { Route, SquadState } from "../src/lib/pipeline/types.ts";
 const MAX_USD = 10;
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 5);
 const LIMIT = process.env.LIMIT ? Number(process.env.LIMIT) : Infinity;
+const KEYS = process.env.KEYS ? new Set(process.env.KEYS.split(",").map((k) => k.trim()).filter(Boolean)) : null;
+const NEW_ONLY = process.env.PATHS === "new";
 const [, , QUESTIONS = "questions.json", OUT = "ab-results.json"] = process.argv;
 
 spendDevApiKeyOrExit("the unified answers A/B");
@@ -413,16 +418,18 @@ async function main() {
   console.log("read-only guard: a delete was refused before reaching the database");
   const qs = JSON.parse(readFileSync(QUESTIONS, "utf8")) as Question[];
   const all = await buildCases(qs);
-  const cases = all.slice(0, Number.isFinite(LIMIT) ? LIMIT : all.length);
+  const picked = KEYS ? all.filter((c) => KEYS.has(c.key)) : all;
+  const cases = picked.slice(0, Number.isFinite(LIMIT) ? LIMIT : picked.length);
   console.log(`${qs.length} questions, ${all.length} cases, running ${cases.length}`);
   const results: Array<Case & { old?: PathResult; new?: PathResult; error?: string }> = [];
+  if (KEYS && cases.length < KEYS.size) console.log(`KEYS: ${KEYS.size - cases.length} key(s) matched no case`);
   let next = 0;
   const worker = async () => {
     while (next < cases.length) {
       const c = cases[next++];
       const run = c.place === "group" ? askGroup : c.place === "hq" ? askHq : askDm;
       try {
-        const old = await run(c, false);
+        const old = NEW_ONLY ? undefined : await run(c, false);
         const neu = await run(c, true);
         results.push({ ...c, old, new: neu });
         const done = results.length;

@@ -82,6 +82,11 @@ export interface LastMomFacts {
   last: LastMom | null;
   /** A newer match whose vote is still open, by date only. */
   openVoteDate: Date | null;
+  /** Every DECIDED Man of the Match in the records read, newest first
+   *  (2026-11-11): "the last 3 weeks' MoMs" needs each match's winners, not
+   *  only the last. `last` is the first of these. A vote still open is never
+   *  in it. Absent on facts made before it existed: read as empty. */
+  recent?: LastMom[];
 }
 
 /** PURE. Decided: posted, or past the age at which it ever could be. */
@@ -90,34 +95,34 @@ function decided(m: MomMatchRecord, now: Date): boolean {
 }
 
 /** PURE. See the header. `records` in any order. */
-export function lastMomFacts(records: MomMatchRecord[], opts: { now: Date; organisersPick: boolean }): LastMomFacts {
+export function lastMomFacts(records: MomMatchRecord[], opts: { now: Date; organisersPick: boolean }): LastMomFacts & { recent: LastMom[] } {
   const withVotes = records
     .filter((r) => r.tally.some((t) => t.votes > 0))
     .sort((a, b) => b.date.getTime() - a.date.getTime());
   let openVoteDate: Date | null = null;
+  const recent: LastMom[] = [];
   for (const m of withVotes) {
     if (!decided(m, opts.now)) {
-      openVoteDate ??= m.date;
+      // Only a vote NEWER than the last decided one is "still open"; an
+      // older undecided one cannot exist (it would be past the age).
+      if (recent.length === 0) openVoteDate ??= m.date;
       continue;
     }
     const tally = m.tally
       .filter((t) => t.votes > 0)
       .sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name));
     const top = tally[0].votes;
-    return {
-      last: {
-        date: m.date,
-        teamLabels: m.teamLabels,
-        score: m.redScore !== null && m.yellowScore !== null ? { red: m.redScore, yellow: m.yellowScore } : null,
-        winners: tally.filter((t) => t.votes === top),
-        tally,
-        totalVotes: tally.reduce((s, t) => s + t.votes, 0),
-        pickedByOrganisers: opts.organisersPick && tally.length === 1 && tally[0].votes === 1,
-      },
-      openVoteDate,
-    };
+    recent.push({
+      date: m.date,
+      teamLabels: m.teamLabels,
+      score: m.redScore !== null && m.yellowScore !== null ? { red: m.redScore, yellow: m.yellowScore } : null,
+      winners: tally.filter((t) => t.votes === top),
+      tally,
+      totalVotes: tally.reduce((s, t) => s + t.votes, 0),
+      pickedByOrganisers: opts.organisersPick && tally.length === 1 && tally[0].votes === 1,
+    });
   }
-  return { last: null, openVoteDate };
+  return { last: recent[0] ?? null, openVoteDate, recent };
 }
 
 const both = (names: string[]) =>

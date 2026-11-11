@@ -19,7 +19,7 @@
  */
 import { VENUE_WORDS_OUTCOMES } from "./venue-from-words-rules";
 import { buildSquadRosterBlock } from "./scheduler-copy";
-import { ORGANISERS_SPACE_INTENT, displaysSquadState, stripSquadPostMarker, wantsSquadPost } from "./group-copy";
+import { ORGANISERS_SPACE_INTENT, UNIFIED_ANSWER_INTENT, displaysSquadState, stripSquadPostMarker, wantsSquadPost } from "./group-copy";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 
@@ -143,11 +143,19 @@ export function organisersGroupReply(reply: string | null, lang: Lang | string |
  *   `ORGANISERS_SPACE_INTENT` "is there still space?": the open places and
  *                             how to ask for one, no names (2026-10-20);
  *   the pitch set by words    its numbered list of places is not a squad
- *                             (`VENUE_WORDS_OUTCOMES`, 2026-10-28).
+ *                             (`VENUE_WORDS_OUTCOMES`, 2026-10-28);
+ *   `UNIFIED_ANSWER_INTENT`   the unified answer, whose context names
+ *                             nobody in the squad here and which guards a
+ *                             copied list itself (2026-11-11).
  *
  * Everything else, the list answers included, still goes through
  * `organisersGroupReply`.
  */
 export function passesOrganisersNet(intent: string | null | undefined): boolean {
-  return intent === "help" || intent === ORGANISERS_SPACE_INTENT || (VENUE_WORDS_OUTCOMES as readonly string[]).includes(intent ?? "");
+  return (
+    intent === "help" ||
+    intent === ORGANISERS_SPACE_INTENT ||
+    intent === UNIFIED_ANSWER_INTENT ||
+    (VENUE_WORDS_OUTCOMES as readonly string[]).includes(intent ?? "")
+  );
 }

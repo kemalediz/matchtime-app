@@ -9,7 +9,10 @@
  *     with the flag off;
  *   - anything else is ONE unified answer, and the players' group's context
  *     never carries payments while HQ's does;
- *   - with the flag off nothing changes: the open answer, not the unified one.
+ *   - with the flag off nothing changes: the open answer, not the unified one;
+ *   - round 2 (2026-11-11): the answer carries its own intent, the context
+ *     puts the records before the chat and says who MatchTime is, and "what
+ *     is my rating?" in HQ is answered there from the asker's own stats.
  */
 import { readFileSync } from "node:fs";
 import type { APIRequestContext } from "@playwright/test";
@@ -33,6 +36,8 @@ const HQ_PAID = "@Match Time who still owes?";
 const HQ_PAID_ANSWER = "I can't see any payments recorded.";
 const OPEN = "@Match Time is it cold tonight?";
 const OPEN_ANSWER = "I can't see the weather from here.";
+const HQ_MINE = "@Match Time what is my rating?";
+const HQ_MINE_ANSWER = "I have no rating for you yet.";
 
 let n = 0;
 type Result = { waMessageId: string; reply?: string | null; intent?: string | null };
@@ -72,6 +77,7 @@ test.beforeAll(async ({ db }) => {
     [PAID]: { route: "question", facts: { ...EMPTY, topic: "other", kind: "other", answer: PAID_ANSWER } },
     [HQ_PAID]: { route: "question", facts: { ...EMPTY, topic: "other", kind: "other", answer: HQ_PAID_ANSWER } },
     [OPEN]: { route: "question", facts: { ...EMPTY, topic: "other", kind: "other", answer: OPEN_ANSWER } },
+    [HQ_MINE]: { route: "question", facts: { ...EMPTY, topic: "my_stats", kind: "my_stats", answer: HQ_MINE_ANSWER } },
   });
 });
 
@@ -94,9 +100,13 @@ test("anything else is one unified answer, and nothing is written", async ({ req
   const before = await db.count(`SELECT count(*)::int AS c FROM "Attendance"`);
   const r = await ask(request, OPEN, true);
   expect(r.reply).toBe(OPEN_ANSWER);
-  expect(r.intent).toBe("open_answer");
+  expect(r.intent).toBe("unified_answer");
   expect(await db.count(`SELECT count(*)::int AS c FROM "Attendance"`)).toEqual(before);
-  expect(calls().some((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(OPEN))).toBe(true);
+  const user = calls().filter((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(OPEN)).pop()!.user;
+  // Round 2: who MatchTime is, and the records before the chat.
+  expect(user).toMatch(/^ABOUT YOU: You are MatchTime/);
+  expect(user.indexOf("THE CLUB'S RECORDS")).toBeLessThan(user.indexOf("THE CHAT"));
+  expect(user).not.toMatch(/CONTEXT/);
 });
 
 test("the players' group: payments are never in the context", async ({ request }) => {
@@ -118,6 +128,16 @@ test("HQ: the organisers' context carries the payments", async ({ request }) => 
   expect(user).toMatch(/organisers' own group \(HQ\)/);
   expect(user).toMatch(/^PAYMENTS/m);
   expect(user).not.toMatch(/not shared in the players' group/);
+});
+
+test("HQ 'what is my rating?' is answered in HQ by the unified answer (round 2)", async ({ request }) => {
+  const res = await request.post("/api/whatsapp/admin-group", {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY, [FLAG]: "1" },
+    data: { channel: "admin-group", botMentioned: true, groupId: HQ, messageId: `e2e-unified-hq-mine-${Date.now()}`, text: HQ_MINE, senderPhone: ADMIN, timestamp: String(Math.floor(Date.now() / 1000)) },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  expect(await res.json()).toMatchObject({ handled: true, outcome: "hq-answered", replyText: HQ_MINE_ANSWER });
+  expect(calls().some((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(HQ_MINE))).toBe(true);
 });
 
 test("with the flag off, an open question still gets the open answer", async ({ request }) => {

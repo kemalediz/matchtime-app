@@ -19,25 +19,29 @@
  * A NEW PROMPT, written whole (Kemal's rule, 2026-09-23); the old one in
  * `extractors.ts` is untouched and still runs with the flag off. Both are
  * saved under MDs/prompt-question-unified-{old,new}-2026-11-10.txt.
+ * Rewritten whole again for round 2 (2026-11-11): "which squad list to
+ * accept? mention it again" was read as help and "make the list" as
+ * anything else, so `list` is now defined by wanting to SEE the list in any
+ * words, and `help` by never being that (MDs/prompt-*-2026-11-11.txt).
  */
 import { HELP_BADGES, HELP_FEATURES, type HelpBadge, type HelpFeature, type QuestionFacts, type QuestionTopic } from "./types";
 
-export const UNIFIED_QUESTION_PROMPT = `You read ONE message that asks MatchTime something, from a football club's WhatsApp group (the players' group or the organisers' own group), and say which of four kinds of request it is. You never answer it: MatchTime answers everything else from the club's records.
+export const UNIFIED_QUESTION_PROMPT = `You read ONE message that asks MatchTime something, from a football club's WhatsApp group (the players' group or the organisers' own group), and say which of four kinds of request it is. You never answer it: MatchTime answers everything that is not one of the first three from the club's records.
 
 THE MESSAGE is the one you read, with who sent it. Above it, as context only: RECENT CHAT, MATCHTIME'S LAST POST, NOW and, when it is a WhatsApp reply, a THEY ARE REPLYING TO line with the message it quotes. Use them to see what THE MESSAGE refers to ("list?" under a question about the bench); the kind is what THE MESSAGE itself asks for. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
 kind, exactly one:
-  list      they want the squad list for the upcoming match: "the list", "the squad", "who's in", "who's playing", "liste", "kadro", "kimler var". Asking for the list beside another question is still list. Anything narrower about the squad (how many, whether there is space, one person's place, who is on the bench) is other.
-  help      help with MatchTime itself: a bare "help", what MatchTime can do, how a part of it works, whether a part is on here and how to switch it on or off, where a setting is, what a badge means. It asks HOW something works, never for today's names or numbers.
-  my_stats  the asker wants to see their OWN stats, ratings, form or season summary (MatchTime sends them privately): "my stats", "istatistiklerim". One number of theirs in a table ("where am I in the ratings?", "who's my nemesis?") is other.
-  other     everything else: kickoff, venue, how many, space, one person's place, the bench, results, Man of the Match, ratings and tables, payments, who has rated, the admins, the fee, a suggestion, something said in the chat, and any request to do something.
+  list      they want to SEE the squad list for the upcoming match, in any words: asking for it, for it again, for the right or latest one, or telling MatchTime to post, send, share, show or make it. Asking for the list beside another question is still list. Anything narrower about the squad (how many, whether there is space, one person's place, who is on the bench, who is best rated on it) is other.
+  help      how MatchTime itself works: a bare "help", what MatchTime can do, how a part of it works, whether a part is on here and how to switch it on or off, where a setting is, what a badge means. Never a request to see today's names or numbers: a message that wants to see the list is list, however it is worded.
+  my_stats  the asker wants to see their OWN stats, ratings, form or season summary: "my stats", "my rating", "istatistiklerim". One number of theirs in a table ("where am I in the ratings?", "who's my nemesis?") is other.
+  other     everything else: kickoff, venue, how many, space, one person's place, the bench, results, Man of the Match, ratings and tables, payments, who has rated, the admins, the fee, a suggestion, something said in the chat, a question about MatchTime itself that is not how it works, and any request to do something.
 
 personRef
 On other only: the one club member the message is about, as written, without a possessive or suffix ("Idris's" and "Idris'in" are "Idris"); "me" when it is about the asker's own numbers or pairings; "" when it names nobody, and on every other kind.
 
 feature
 On help only, the part of MatchTime it asks about; none on every other kind. The help menus name each part by one word after "help" ("help squad", "yardım kadro"), in brackets below, English then Turkish; on its own that word means that part.
-  availability   the squad (squad, kadro): saying In, Out or maybe, the squad list and changes to it, the bench
+  availability   the squad (squad, kadro): saying In, Out or maybe, how the squad list and changes to it work, the bench
   friend         bringing a friend (friend, arkadaş): the link a player forwards, how the friend joins, pulls out or pays
   teams          the two teams (teams, takımlar): how they are made, shown and changed
   find_players   finding players for an open place (players, oyuncu bulma): asking the group, DMing people, the organisers picking who fills a place
@@ -61,6 +65,8 @@ EXAMPLES, English | Turkish, then the fields that are not empty.
 The list:
   "@Match Time what's the list?" | "@Match Time liste ne?" -> list
   "@Match Time who's in?" | "@Match Time kimler var?" -> list
+  "@Match Time make the list" | "@Match Time listeyi yap" -> list
+  "@Match Time I'm confused which squad list is right, can you share it again?" | "@Match Time hangi liste doğru karıştı, tekrar atar mısın?" -> list
   "@Match Time anyone on the bench? send the list" | "@Match Time yedekte kimse var mı? listeyi atar mısın" -> list
 
 Help:
@@ -74,19 +80,19 @@ Help:
 
 The asker's own stats:
   "@Match Time my stats" | "@Match Time istatistiklerim" -> my_stats
-  "@Match Time send me my season summary" | "@Match Time sezon özetimi gönder" -> my_stats
+  "@Match Time what's my rating?" | "@Match Time puanım kaç?" -> my_stats
 
 Everything else:
   "@Match Time how many spots left?" | "@Match Time kaç kişiyiz?" -> other
   "@Match Time who's on the bench?" | "@Match Time yedekte kim var?" -> other
+  "@Match Time who are the 4 best rated on the list?" | "@Match Time listedeki en yüksek puanlı 4 kişi kim?" -> other
   "@Match Time is Zair in?" | "@Match Time Zair geliyor mu?" -> other, personRef "Zair"
   "@Match Time what time is kickoff?" | "@Match Time maç kaçta?" -> other
+  "@Match Time will we see you there?" | "@Match Time seni maçta görecek miyiz?" -> other
   "@Match Time who won Man of the Match last week?" | "@Match Time geçen haftanın maçın adamı kim?" -> other
-  "@Match Time leaderboard top 10" | "@Match Time en iyi 10" -> other
   "@Match Time who does Wasim play best with?" | "@Match Time Idris'in kimyası nasıl?" -> other, personRef "Wasim" | "Idris"
   "@Match Time who's my nemesis?" | "@Match Time en zorlandığım rakip kim?" -> other, personRef "me"
   "@Match Time who hasn't paid?" | "@Match Time kim ödemedi?" -> other
-  "@Match Time who are the admins?" | "@Match Time yöneticiler kim?" -> other
   "@Match Time suggest the starting squad" | "@Match Time ilk kadroyu öner" -> other
   "@Match Time can you add Ali?" | "@Match Time Ali'yi ekler misin?" -> other, personRef "Ali"`;
 

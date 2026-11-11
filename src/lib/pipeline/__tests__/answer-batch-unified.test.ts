@@ -106,6 +106,8 @@ async function ask(opts: {
   state?: SquadState;
   audience?: "players" | "organisers";
   senderUserId?: string;
+  features?: Partial<OrgFeatures>;
+  personRef?: string;
 }) {
   const state = opts.state ?? world({ confirmed: ["kemal", "sait", "idris"], bench: ["erdal", "zair"] });
   const { model, reqs } = stubModel(opts);
@@ -122,9 +124,11 @@ async function ask(opts: {
     deps: {
       model,
       loadState: async () => state,
-      loadFeatures: async () => FEATURES,
+      loadFeatures: async () => ({ ...FEATURES, ...(opts.features ?? {}) }),
       loadClub: async () => CLUB,
       loadStats: async () => (loads.push("stats"), TABLES),
+      loadLastMatchRatings: async () => (loads.push("lastMatchRatings"), { date: new Date("2026-08-25T20:30:00Z"), rows: [{ userId: "u-sait", name: fullName("sait"), avg: 7.4, count: 6 }] }),
+      loadOwnStats: async (_o: string, userId: string) => (loads.push(`own:${userId}`), "THE ASKER'S OWN STATS:\n- Average rating: 6.8"),
       loadStatsPeriod: async () => (loads.push("period"), { appearances: [], ratings: [], mom: [] }),
       loadChemistry: async () => (loads.push("chemistry"), null),
       loadResults: async () => (loads.push("results"), { since: null, more: false, rows: [] }),
@@ -162,7 +166,8 @@ describe("UNIFIED_ANSWERS on", () => {
   it("anything else is ONE unified answer over the club's data", async () => {
     const { outcome, reqs, loads } = await ask({ unified: true, kind: "other" });
     expect(outcome?.reply).toBe("11 places left for Tue 21:30.");
-    expect(outcome?.intent).toBe("open_answer");
+    // Its own intent (2026-11-11), so the organisers-mode net lets it pass.
+    expect(outcome?.intent).toBe("unified_answer");
     expect(reqs.map((r) => r.label)).toEqual(["extractor:question-unified", "unified-answer"]);
     expect(reqs.some((r) => r.label === "open-answer" || r.label === "stats-generic")).toBe(false);
     expect(loads).toEqual(expect.arrayContaining(["stats", "period", "results", "clubFacts"]));
@@ -235,6 +240,41 @@ describe("UNIFIED_ANSWERS on", () => {
     expect(r?.replyText).toBe("4 of the 13 still owe.");
     expect(loads).toEqual(["payments"]);
     expect(reqs.find((x) => x.label === "unified-answer")!.user).toMatch(/organisers' own group \(HQ\)/);
+  });
+});
+
+describe("UNIFIED_ANSWERS on: round 2 (2026-11-11)", () => {
+  it("a monthly club's context carries the monthly squad's rules; a weekly club's does not", async () => {
+    const monthly = await ask({ unified: true, kind: "other", features: { squadMode: "monthly" } as Partial<OrgFeatures> });
+    expect(monthly.reqs.find((r) => r.label === "unified-answer")!.user).toMatch(/MONTHLY squad/);
+    const weekly = await ask({ unified: true, kind: "other" });
+    expect(weekly.reqs.find((r) => r.label === "unified-answer")!.user).not.toMatch(/MONTHLY squad/);
+  });
+
+  it("the ratings each player got in the last match are read for the organisers only", async () => {
+    const org = await ask({ unified: true, kind: "other", audience: "organisers", answer: `${fullName("sait")} 7.4.` });
+    expect(org.loads).toContain("lastMatchRatings");
+    expect(org.reqs.find((r) => r.label === "unified-answer")!.user).toContain(`${fullName("sait")} 7.4 (6 ratings)`);
+    const players = await ask({ unified: true, kind: "other" });
+    expect(players.loads).not.toContain("lastMatchRatings");
+  });
+
+  it("HQ 'what is my rating?': answered there from the asker's own stats, no DM link", async () => {
+    const { outcome, reqs, loads } = await ask({ unified: true, kind: "my_stats", audience: "organisers", senderUserId: "u-kemal", answer: "Your average rating is 6.8." });
+    expect(outcome?.statsLinkRequest).toBe(false);
+    expect(outcome?.reply).toBe("Your average rating is 6.8.");
+    expect(loads).toContain("own:u-kemal");
+    expect(reqs.find((r) => r.label === "unified-answer")!.user).toContain("THE ASKER'S OWN STATS:");
+  });
+
+  it("HQ, a question about the asker's own numbers (personRef me) gets them too", async () => {
+    const { loads } = await ask({ unified: true, kind: "other", personRef: "me", audience: "organisers", senderUserId: "u-kemal", answer: "6.8." });
+    expect(loads).toContain("own:u-kemal");
+  });
+
+  it("the players' group never reads the asker's own block (their stats go by DM)", async () => {
+    const { loads } = await ask({ unified: true, kind: "other", personRef: "me", senderUserId: "u-sait" });
+    expect(loads.some((l) => l.startsWith("own:"))).toBe(false);
   });
 });
 

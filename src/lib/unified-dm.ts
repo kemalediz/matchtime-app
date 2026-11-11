@@ -26,6 +26,31 @@ const DM_PERIODS: ReadonlyArray<readonly [string, StatsPeriod]> = [
 ];
 
 /**
+ * THE ASKER'S OWN STATS as one block, for HQ's unified answer (2026-11-11,
+ * "what is my rating?" asked by an organiser): the DM's own lines under a
+ * heading that is not "you", which in the answer's context is MatchTime.
+ * Null when MatchTime has no stats for them.
+ */
+export async function loadAskerOwnStats(orgId: string, userId: string): Promise<string | null> {
+  const { loadPlayerSeasonStats } = await import("./player-stats");
+  const mine = await loadPlayerSeasonStats(orgId, userId);
+  if (!mine) return null;
+  const lines = formatOwnStatsLines({
+    gamesPlayed: mine.gamesPlayed,
+    totalOrgMatches: mine.totalOrgMatches,
+    attendanceRate: mine.attendanceRate,
+    avgRating: mine.avgRating,
+    fieldAvgSeason: mine.fieldAvgSeason,
+    momCount: mine.momCount,
+    record: mine.record,
+    form: { last5Avg: mine.form.last5Avg, trend: mine.form.trend },
+    bestPartner: mine.chemistry.bestByWinRate?.name ?? null,
+    nemesis: mine.rivalry.nemesis?.name ?? null,
+  });
+  return ["THE ASKER'S OWN STATS (they asked about themselves):", ...lines.slice(1)].join("\n");
+}
+
+/**
  * Everything the DM's unified answer is shown, read from the database.
  * Each read but the club's squad fails soft (left out, logged).
  */
@@ -54,7 +79,6 @@ export async function loadUnifiedDmInput(args: {
   const { loadRecentResults } = await import("./pipeline/load-results");
   const { loadHelpClubFacts } = await import("./help-club-facts");
   const { periodSince } = await import("./pipeline/stats-period");
-  const { loadPlayerSeasonStats } = await import("./player-stats");
   const { loadMyPayments } = await import("./my-payments");
 
   let state = await loadSquadState(orgId, now);
@@ -80,29 +104,18 @@ export async function loadUnifiedDmInput(args: {
   const results = await soft("results", () => loadRecentResults(orgId, null, now, state.features.language));
   const ratingProgress = args.askerIsAdmin ? await soft("rating-progress", () => loadRatingProgressSnapshot(orgId, state.features.language)) : null;
   const clubFacts = await soft("club facts", () => loadHelpClubFacts(orgId, {}));
+  const { getOrgFeatures } = await import("./org-features");
+  const features = await soft("features", () => getOrgFeatures(orgId));
 
   // THE ASKER'S OWN: his stats and his payments, the DM's own blocks.
   const own: string[] = [];
-  const mine = await soft("own stats", () => loadPlayerSeasonStats(orgId, userId));
-  if (mine) {
-    own.push(
-      formatOwnStatsLines({
-        gamesPlayed: mine.gamesPlayed,
-        totalOrgMatches: mine.totalOrgMatches,
-        attendanceRate: mine.attendanceRate,
-        avgRating: mine.avgRating,
-        fieldAvgSeason: mine.fieldAvgSeason,
-        momCount: mine.momCount,
-        record: mine.record,
-        form: { last5Avg: mine.form.last5Avg, trend: mine.form.trend },
-        bestPartner: mine.chemistry.bestByWinRate?.name ?? null,
-        nemesis: mine.rivalry.nemesis?.name ?? null,
-      }).join("\n"),
-    );
-  }
+  // Headed as the asker's, not "YOUR": in the answer's context "you" is
+  // MatchTime (ABOUT YOU, 2026-11-11).
+  const mine = await soft("own stats", () => loadAskerOwnStats(orgId, userId));
+  if (mine) own.push(mine);
   const fee = state.club?.feePerPlayer ?? null;
   const pay = await soft("own payments", () => loadMyPayments({ orgId, userId, upcomingFee: state.matchId ? fee : null }));
-  if (pay) own.push(formatMyPaymentsBlock(pay.payments, args.lang, pay.payLinks));
+  if (pay) own.push(formatMyPaymentsBlock(pay.payments, args.lang, pay.payLinks).replace(/^YOUR PAYMENTS/, "THE ASKER'S OWN PAYMENTS"));
 
   return {
     audience: "dm",
@@ -115,6 +128,7 @@ export async function loadUnifiedDmInput(args: {
     payments: null,
     ratingProgress,
     clubFacts,
+    squadMode: features?.squadMode === "monthly" ? "monthly" : "weekly",
     own,
     dmChat: renderReplyContext(args.replyContext),
     history: [],

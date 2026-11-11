@@ -126,3 +126,26 @@ describe("the extractor call", () => {
     expect(reqs[0].label).toBe("extractor:attendance");
   });
 });
+
+/**
+ * Round 2 (2026-11-11): the A/B saw "which squad list to accept? Could you
+ * mention it again?" read as help and "make the list" read as anything
+ * else. The prompt now defines list by wanting to SEE the list, in any
+ * words, and teaches both shapes in English and Turkish. A pin on the
+ * prompt's examples; the model's reading is checked by the paid A/B.
+ */
+describe("round 2: the list is defined by wanting to see it", () => {
+  const listExamples = UNIFIED_QUESTION_PROMPT.slice(UNIFIED_QUESTION_PROMPT.indexOf("The list:"), UNIFIED_QUESTION_PROMPT.indexOf("Help:"));
+  it("teaches 'make the list' and 'which list is right, share it again' as list, in both languages", () => {
+    expect(listExamples).toMatch(/make the list.*listeyi yap.*-> list/);
+    expect(listExamples).toMatch(/which squad list is right, can you share it again\?.*-> list/);
+  });
+
+  it("help never covers a request to see today's names", () => {
+    expect(UNIFIED_QUESTION_PROMPT).toMatch(/help {6}[^\n]*Never a request to see today's names/);
+  });
+
+  it("asking MatchTime whether it will be at the match is anything else, never help", () => {
+    expect(UNIFIED_QUESTION_PROMPT).toMatch(/will we see you there\?.*-> other/);
+  });
+});

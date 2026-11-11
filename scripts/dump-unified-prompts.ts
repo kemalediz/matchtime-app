@@ -3,6 +3,11 @@
  * the question extractor's old prompt (flag off) and new one (flag on), and
  * the unified answer's system prompt. Prints each size.
  *
+ * Round 2 (2026-11-11): both unified prompts were rewritten whole. The
+ * round 1 texts stay in MDs/prompt-question-unified-new-2026-11-10.txt and
+ * MDs/prompt-unified-answer-2026-11-10.txt (the OLD side of the review);
+ * this writes the round 2 texts beside them (the NEW side).
+ *
  *   ./node_modules/.bin/tsx scripts/dump-unified-prompts.ts
  */
 import { writeFileSync } from "node:fs";
@@ -13,8 +18,8 @@ import { OPEN_ANSWER_SYSTEM } from "../src/lib/pipeline/open-answer.ts";
 
 const out: Array<[string, string]> = [
   ["MDs/prompt-question-unified-old-2026-11-10.txt", EXTRACTOR_PROMPTS.question],
-  ["MDs/prompt-question-unified-new-2026-11-10.txt", UNIFIED_QUESTION_PROMPT],
-  ["MDs/prompt-unified-answer-2026-11-10.txt", UNIFIED_ANSWER_SYSTEM],
+  ["MDs/prompt-question-unified-2026-11-11.txt", UNIFIED_QUESTION_PROMPT],
+  ["MDs/prompt-unified-answer-2026-11-11.txt", UNIFIED_ANSWER_SYSTEM],
 ];
 for (const [path, text] of out) {
   writeFileSync(path, text + "\n");
