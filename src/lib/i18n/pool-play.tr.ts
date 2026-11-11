@@ -69,7 +69,8 @@ export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
     },
     errorSummary: "Lütfen işaretli cevapları kontrol et.",
     signup: {
-      heading: "Oyuncu havuzuna katıl",
+      heading: "Ücretsiz yerel oyuncu listesine katıl",
+      gameLine: (p) => `${p.area}, ${p.weekday} ${p.format} maçı: ${p.day}, ${p.time}, ${p.venue}`,
       earlyNote:
         "Havuz şehir şehir açılıyor. Şimdi kaydol, erken kayıt listesine gir: havuz senin bölgende açılana kadar sana maç mesajı gelmez.",
       openNote: "Havuz şehir şehir açılıyor. Şimdi kaydol, yakınındaki bir kulübün oyuncuya ihtiyacı olduğunda MatchTime sana yazabilir.",

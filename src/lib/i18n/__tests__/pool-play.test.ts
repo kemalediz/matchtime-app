@@ -118,14 +118,17 @@ describe("/play gets to the first field fast", () => {
       expect(above).not.toMatch(/phone number|never ask|telefon numaran|asla sormay/i);
     });
     it(`${lang}: a short headline and at most three very short lines`, () => {
-      expect(c.signup.heading.length).toBeLessThanOrEqual(30);
+      expect(c.signup.heading.length).toBeLessThanOrEqual(40);
       expect(c.signup.howItWorks.length).toBeLessThanOrEqual(3);
       for (const line of c.signup.howItWorks) expect(line.length).toBeLessThanOrEqual(90);
       expect(c.signup.earlyShort.length).toBeLessThanOrEqual(110);
     });
   }
-  it("the word free is never on the page", () => {
-    expect(ALL.filter((l) => /\bfree\b|ücretsiz|bedava/i.test(l.text))).toEqual([]);
+  // "free" is fine in copy (Kemal, 2026-10-28), and the headline says it
+  // (2026-11-11): the Facebook posts sell a "free list", the page names it.
+  it("the headline: the free local player list", () => {
+    expect(EN.signup.heading).toBe("Join the free local player list");
+    expect(TR.signup.heading).toBe("Ücretsiz yerel oyuncu listesine katıl");
   });
 });
 
