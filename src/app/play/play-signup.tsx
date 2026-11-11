@@ -68,6 +68,7 @@ export function PlaySignup({
   source,
   paused,
   invitedBy = null,
+  gameLine = null,
   earlyList,
   friend = null,
 }: {
@@ -78,6 +79,9 @@ export function PlaySignup({
   earlyList: boolean;
   /** Slice G1: the friend whose link this is, when his privacy switch shows his name. */
   invitedBy?: string | null;
+  /** The game a Facebook link sells, already worded (2026-11-11,
+   *  `campaign-game-line.ts`); null for every other visitor. */
+  gameLine?: string | null;
   /** A friend link (2026-10-31): the game shown at the top, his name filled in. */
   friend?: FriendLinkCard | null;
 }) {
@@ -213,6 +217,11 @@ export function PlaySignup({
         </p>
       )}
       {friend && <FriendCard friend={friend} lang={lang} />}
+      {gameLine && (
+        <p data-testid="pool-game-line" className="mb-3 text-sm font-semibold text-emerald-800">
+          {gameLine}
+        </p>
+      )}
       {invitedBy && (
         <p data-testid="pool-invited-by" className="mb-3 text-sm font-medium text-emerald-800">
           {poolShareCopy(lang).invitedBy(invitedBy)}

@@ -3,6 +3,7 @@ import { poolLinkPreviewCopy } from "@/lib/i18n/pool-link-preview";
 import { isPoolSignupPaused } from "@/lib/pool/flags";
 import { signupGoesOnEarlyListForPage } from "@/lib/pool/flags-page";
 import { poolInvitedByName } from "@/lib/pool/growth";
+import { loadCampaignGameLine } from "@/lib/pool/campaign-game-line-loader";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import { readSignupSource } from "@/lib/pool/profile-fields";
 import { poolPlaySharePath, poolShareMetadata } from "@/lib/pool/share-meta";
@@ -21,6 +22,9 @@ import { PoolFunnelBeacon } from "./funnel-beacon";
  * was opened with (`share-meta.ts`). Each visit, and the first touch of the
  * form, is counted per code by the beacon wrapped round the form
  * (`funnel-beacon.tsx`).
+ *
+ * A Facebook link (`?src=fb`, `fb1`, `fb2`) names the game its post sells
+ * at the top, while that game has a place (`campaign-game-line.ts`).
  */
 const en = poolPageCopy("en");
 
@@ -37,10 +41,13 @@ export async function generateMetadata({ searchParams }: Search): Promise<Metada
 
 export default async function PlayPage({ searchParams }: Search) {
   const source = readSignupSource(await searchParams);
-  const invitedBy = await poolInvitedByName(source.referralCode).catch(() => null);
+  const [invitedBy, gameLine] = await Promise.all([
+    poolInvitedByName(source.referralCode).catch(() => null),
+    loadCampaignGameLine(source.campaignCode, "en").catch(() => null),
+  ]);
   return (
     <PoolFunnelBeacon src={source.campaignCode} refCode={source.referralCode}>
-      <PlaySignup source={source} paused={isPoolSignupPaused()} invitedBy={invitedBy} earlyList={await signupGoesOnEarlyListForPage()} />
+      <PlaySignup source={source} paused={isPoolSignupPaused()} invitedBy={invitedBy} gameLine={gameLine} earlyList={await signupGoesOnEarlyListForPage()} />
     </PoolFunnelBeacon>
   );
 }

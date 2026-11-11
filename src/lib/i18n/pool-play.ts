@@ -82,6 +82,17 @@ export interface PoolFieldsCopy {
   languageLabel: string;
 }
 
+/** The parts of /play's game line, each already in the page's language:
+ *  "Tuesday", "7-a-side", "Sutton", "Tue 17 Nov", "9:30pm", the venue. */
+export interface PoolGameLineParts {
+  weekday: string;
+  format: string;
+  area: string;
+  day: string;
+  time: string;
+  venue: string;
+}
+
 export interface PoolPlayCopy {
   title: string;
   description: string;
@@ -93,6 +104,10 @@ export interface PoolPlayCopy {
   errorSummary: string;
   signup: {
     heading: string;
+    /** The game a Facebook link sells, at the top of /play (2026-11-11,
+     *  `pool/campaign-game-line.ts`). Every part comes already written in
+     *  this language. */
+    gameLine: (p: PoolGameLineParts) => string;
     /** /play's short note while a sign-up goes on the early sign-up list. */
     earlyShort: string;
     /** Shown while a sign-up goes on the early sign-up list
