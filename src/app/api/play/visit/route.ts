@@ -12,11 +12,34 @@
  * whether this is a link preview fetcher (`recordPoolVisit`) and is written
  * to the server log once per beacon to identify scanners (2026-11-06); it
  * is never stored.
+ *
+ * OUR OWN STAFF (2026-11-12): a beacon carrying the staff cookie, or a
+ * session for an owner or admin, gets the same 204 and counts nothing
+ * (`isPoolStaffVisit`). The session is looked up after the answer, and
+ * only when there is no cookie; a lookup that fails counts the visit.
  */
 import { after } from "next/server";
+import { cookies } from "next/headers";
+import { auth } from "@/lib/auth";
+import { getUserOrg, isOrgAdmin } from "@/lib/org";
 import { readSignupSource } from "@/lib/pool/profile-fields";
-import { readPoolPageStep } from "@/lib/pool/visit-rules";
+import { POOL_STAFF_COOKIE, isPoolStaffVisit, readPoolPageStep } from "@/lib/pool/visit-rules";
 import { recordPoolVisit } from "@/lib/pool/visits";
+
+/** Would the admin pages let this request's session in? Their own check
+ *  (`src/app/admin/layout.tsx`): the user's club, and an owner or admin of
+ *  it; a superadmin passes both. */
+async function adminSession(): Promise<boolean> {
+  try {
+    const userId = (await auth())?.user?.id;
+    if (!userId) return false;
+    const membership = await getUserOrg(userId);
+    return !!membership && (await isOrgAdmin(userId, membership.orgId));
+  } catch (err) {
+    console.warn("[pool-funnel] staff check failed, counting:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
 
 export async function POST(request: Request) {
   const text = await request.text().catch(() => "");
@@ -32,6 +55,15 @@ export async function POST(request: Request) {
   const source = readSignupSource(body);
   const userAgent = request.headers.get("user-agent");
   const now = new Date();
-  after(() => recordPoolVisit({ source, userAgent, now, step }));
+  const staffCookie = (await cookies()).get(POOL_STAFF_COOKIE)?.value ?? null;
+  after(async () => {
+    // The cookie decides without a database read; the session only without it.
+    const staff = isPoolStaffVisit({ staffCookie, adminSession: false }) || isPoolStaffVisit({ staffCookie, adminSession: await adminSession() });
+    if (staff) {
+      console.info(`[pool-funnel] skipped staff visit step=${step} code=${source.campaignCode ?? "-"} ref=${source.referralCode ? "yes" : "no"}`);
+      return;
+    }
+    await recordPoolVisit({ source, userAgent, now, step });
+  });
   return new Response(null, { status: 204 });
 }

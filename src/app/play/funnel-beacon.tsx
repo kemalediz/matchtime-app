@@ -3,7 +3,10 @@
 /**
  * The /play page's two funnel steps (visits 2026-11-03, steps 2026-11-04),
  * to POST /api/play/visit, each once per tab session for the same link:
- *   opened   once the page has loaded;
+ *   opened   once the visitor shows a person is there (2026-11-12): a
+ *            trusted tap, key, wheel or scroll, or 5 seconds on screen in
+ *            all, or a start, whichever comes first (`funnel-open.ts`,
+ *            which says why: link scanners on 10 and 12 November 2026);
  *   started  once a person first ENTERS something in the form (2026-11-06):
  *            the first trusted input or change on a form control that
  *            really changed its value, such as typing a character, picking
@@ -21,14 +24,28 @@
  */
 import { useEffect, useRef, type ReactNode, type SyntheticEvent } from "react";
 import { funnelControlValue, isPersonEntry } from "./funnel-start";
+import { POOL_OPEN_PERSON_SIGNALS, openGateNext, openGateStart, openGateWait, type OpenGateInput } from "./funnel-open";
 
 const ENDPOINT = "/api/play/visit";
 
+// The visit's key is the one /play has used since 2026-11-03, so a tab
+// already counted before the steps (or before 2026-11-12's gate) is not
+// counted again.
+const stepKey = (step: "opened" | "started", src: string | null, refCode: string | null) =>
+  `${step === "opened" ? "mt-play-visit" : "mt-play-started"}:${src ?? ""}:${refCode ?? ""}`;
+
+/** Already sent in this tab session? False when there is no storage. */
+function sentBefore(step: "opened" | "started", src: string | null, refCode: string | null): boolean {
+  try {
+    return !!window.sessionStorage.getItem(stepKey(step, src, refCode));
+  } catch {
+    return false;
+  }
+}
+
 function send(step: "opened" | "started", src: string | null, refCode: string | null) {
   try {
-    // The visit's key is the one /play has used since 2026-11-03, so a tab
-    // already counted before the steps is not counted again.
-    const key = `${step === "opened" ? "mt-play-visit" : "mt-play-started"}:${src ?? ""}:${refCode ?? ""}`;
+    const key = stepKey(step, src, refCode);
     if (window.sessionStorage.getItem(key)) return;
     window.sessionStorage.setItem(key, "1");
   } catch {
@@ -44,7 +61,53 @@ function send(step: "opened" | "started", src: string | null, refCode: string | 
 }
 
 export function PoolFunnelBeacon({ src, refCode, children }: { src: string | null; refCode: string | null; children: ReactNode }) {
-  useEffect(() => send("opened", src, refCode), [src, refCode]);
+  /** Open now if not yet: a start arriving first opens it (set while the gate listens). */
+  const openBeforeStart = useRef<(() => void) | null>(null);
+  // The opened gate: listens until a person shows he is there, then sends
+  // once and stops listening. A tab that already sent it does not listen.
+  useEffect(() => {
+    if (sentBefore("opened", src, refCode)) return;
+    const clock = () => performance.now();
+    const LISTEN = { capture: true, passive: true } as const;
+    let gate = openGateStart(clock(), document.visibilityState === "visible");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = () => {
+      clearTimeout(timer);
+      for (const type of POOL_OPEN_PERSON_SIGNALS) window.removeEventListener(type, onSignal, LISTEN);
+      document.removeEventListener("visibilitychange", onVisibility);
+      openBeforeStart.current = null;
+    };
+    const apply = (input: OpenGateInput) => {
+      const next = openGateNext(gate, input);
+      gate = next.gate;
+      if (!next.open) return;
+      stop();
+      send("opened", src, refCode);
+    };
+    /** Wake when 5 visible seconds will have passed, if the page stays on
+     *  screen; again if the timer woke a moment early. */
+    const schedule = () => {
+      clearTimeout(timer);
+      const wait = openGateWait(gate, clock());
+      if (wait === null) return;
+      timer = setTimeout(() => {
+        apply({ kind: "tick", now: clock() });
+        if (!gate.opened) schedule();
+      }, wait);
+    };
+    function onSignal(e: Event) {
+      apply({ kind: "signal", type: e.type, isTrusted: e.isTrusted });
+    }
+    function onVisibility() {
+      apply({ kind: "visibility", visible: document.visibilityState === "visible", now: clock() });
+      if (!gate.opened) schedule();
+    }
+    for (const type of POOL_OPEN_PERSON_SIGNALS) window.addEventListener(type, onSignal, LISTEN);
+    document.addEventListener("visibilitychange", onVisibility);
+    openBeforeStart.current = () => apply({ kind: "started" });
+    schedule();
+    return stop;
+  }, [src, refCode]);
 
   const started = useRef(false);
   /** What each control held when first focused, to tell a real change. Only read, never written back. */
@@ -64,6 +127,7 @@ export function PoolFunnelBeacon({ src, refCode, children }: { src: string | nul
     const click = lastClick.current?.target === e.target ? lastClick.current.trusted : undefined;
     if (!isPersonEntry({ type: e.type, isTrusted: e.nativeEvent.isTrusted, target: e.target }, { before: before.current.get(e.target), clickTrusted: click })) return;
     started.current = true;
+    openBeforeStart.current?.();
     send("started", src, refCode);
   };
 

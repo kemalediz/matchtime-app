@@ -1,7 +1,13 @@
 /**
  * The /play sign-up funnel (2026-11-04), end to end on the real dev server:
  *   - opening /play counts "opened" once per tab session (as since
- *     2026-11-03), and the first time a person enters something in the
+ *     2026-11-03), but only once a person shows he is there (2026-11-12,
+ *     after link scanners): a tap, a key, a wheel or a scroll, or 5 seconds
+ *     on screen; a page nobody touches for less counts nothing, and typing
+ *     first counts opened before started;
+ *   - our own staff count nothing (2026-11-12): a browser that loaded an
+ *     /admin page as an owner or admin carries the staff cookie;
+ *   - the first time a person enters something in the
  *     form (types a character, ticks a box) counts "started" once per tab
  *     session, under the same code; focus, clicks and a script's synthetic
  *     events count nothing (2026-11-06, after a scanner);
@@ -12,6 +18,7 @@
  * The server's own steps (sent, confirmed) are e2e/sim/pool/funnel-steps.spec.ts.
  * No model anywhere: $0.
  */
+import type { Page } from "@playwright/test";
 import { test, expect, resetDb, signInAs, U } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { poolFunnelPeriodStart, poolVisitDay } from "@/lib/pool/visit-rules";
@@ -32,6 +39,32 @@ const count = async (db: TestDb, code: string, step: string) =>
 /** Give an after-answer write its chance, then check it never came. */
 const settle = () => new Promise((r) => setTimeout(r, 1500));
 
+/** Wait until React has hydrated the sign-up, so the beacon is listening. */
+const hydrated = (page: Page) =>
+  page.waitForFunction(() => {
+    const form = document.querySelector("form");
+    return !!form && Object.keys(form).some((k) => k.startsWith("__reactProps"));
+  });
+
+/** The steps the page's beacon sends, in the order it sends them. Read in
+ *  the page: Playwright's request events do not report `sendBeacon`. */
+async function watchBeacons(page: Page): Promise<() => Promise<string[]>> {
+  await page.addInitScript(() => {
+    const sent: Promise<string>[] = [];
+    (window as unknown as { __mtBeacons: Promise<string>[] }).__mtBeacons = sent;
+    const original = navigator.sendBeacon.bind(navigator);
+    navigator.sendBeacon = (url, data) => {
+      if (String(url).endsWith("/api/play/visit") && data instanceof Blob) sent.push(data.text());
+      return original(url, data);
+    };
+  });
+  return () =>
+    page.evaluate(async () => {
+      const sent = (window as unknown as { __mtBeacons?: Promise<string>[] }).__mtBeacons ?? [];
+      return (await Promise.all(sent)).map((body) => JSON.parse(body).step as string);
+    });
+}
+
 test.describe("the page's steps", () => {
   test.use({ userAgent: PERSON, locale: "en-GB" });
 
@@ -39,9 +72,10 @@ test.describe("the page's steps", () => {
     await db.run(`INSERT INTO "PoolCampaign" (code, source, label) VALUES ($1, 'facebook', 'Funnel web e2e') ON CONFLICT DO NOTHING`, [CODE]);
   });
 
-  test("opened on load; started only once a person types, once; nothing for focus, clicks or a script's events", async ({ page, db }) => {
+  test("opened once a person is there; started only once a person types, once; nothing for focus, clicks or a script's events", async ({ page, db }) => {
     await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
     await page.goto(`/play?src=${CODE}`);
+    // Nobody touches it: opened after 5 seconds on screen.
     await expect.poll(() => count(db, CODE, "opened"), { timeout: 15_000 }).toBe(1);
 
     const form = page.locator("form");
@@ -86,6 +120,105 @@ test.describe("the page's steps", () => {
     await expect.poll(() => count(db, CODE, "started"), { timeout: 15_000 }).toBe(2);
     expect(await count(db, CODE, "opened")).toBe(2);
     await context.close();
+  });
+
+  test("a load nobody touches for under 5 seconds counts no open", async ({ page, db }) => {
+    await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
+    const beacons = await watchBeacons(page);
+    await page.goto(`/play?src=${CODE}`);
+    await hydrated(page);
+    await page.waitForTimeout(3_000);
+    expect(await beacons()).toEqual([]);
+    expect(await count(db, CODE, "opened")).toBe(0);
+  });
+
+  test("a scroll, or a tap, counts one open at once", async ({ browser, db }) => {
+    await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
+    for (const [n, act] of [
+      [1, (page: Page) => page.mouse.wheel(0, 300)],
+      [2, (page: Page) => page.getByRole("heading", { level: 1 }).click()],
+    ] as const) {
+      const context = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
+      const page = await context.newPage();
+      await page.goto(`/play?src=${CODE}`);
+      await hydrated(page);
+      await act(page);
+      // Well inside the 5 seconds: the scroll or tap counted, not the clock.
+      await expect.poll(() => count(db, CODE, "opened"), { timeout: 3_000 }).toBe(n);
+      await page.mouse.wheel(0, 300);
+      await settle();
+      expect(await count(db, CODE, "opened")).toBe(n);
+      await context.close();
+    }
+  });
+
+  test("5 seconds on screen counts one open, not sooner", async ({ page, db }) => {
+    await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
+    const beacons = await watchBeacons(page);
+    await page.goto(`/play?src=${CODE}`);
+    await hydrated(page);
+    const shown = Date.now();
+    await expect.poll(async () => (await beacons()).length, { timeout: 15_000 }).toBe(1);
+    expect(Date.now() - shown).toBeGreaterThanOrEqual(4_500);
+    await expect.poll(() => count(db, CODE, "opened"), { timeout: 15_000 }).toBe(1);
+    expect(await beacons()).toEqual(["opened"]);
+  });
+
+  test("typing before any other sign sends opened first, then started", async ({ page, db }) => {
+    await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
+    const beacons = await watchBeacons(page);
+    await page.goto(`/play?src=${CODE}`);
+    await hydrated(page);
+    // Text put in without a key or a tap (as a phone's autofill or dictation does): no other sign came first.
+    await page.locator("form input[name=name]").focus();
+    await page.keyboard.insertText("S");
+    await expect.poll(() => beacons(), { timeout: 3_000 }).toEqual(["opened", "started"]);
+    await expect.poll(() => count(db, CODE, "started"), { timeout: 15_000 }).toBe(1);
+    expect(await count(db, CODE, "opened")).toBe(1);
+  });
+
+  test("a browser with the staff cookie counts nothing, though the page still sends", async ({ browser, baseURL, db }) => {
+    await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
+    const context = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
+    await context.addCookies([{ name: "mt-staff", value: "1", url: baseURL! }]);
+    const page = await context.newPage();
+    const beacons = await watchBeacons(page);
+    await page.goto(`/play?src=${CODE}`);
+    await hydrated(page);
+    await page.mouse.wheel(0, 300);
+    await page.locator("form input[name=name]").pressSequentially("Staff");
+    await expect.poll(() => beacons(), { timeout: 5_000 }).toEqual(["opened", "started"]);
+    await page.waitForLoadState("networkidle");
+    await settle();
+    expect(await count(db, CODE, "opened")).toBe(0);
+    expect(await count(db, CODE, "started")).toBe(0);
+    await context.close();
+  });
+
+  test("an owner who loads /admin gets the staff cookie and his /play visit counts nothing; a player gets none", async ({ browser, db }) => {
+    await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
+    const owner = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
+    const page = await owner.newPage();
+    await signInAs(page, U.admin, "/admin");
+    await expect.poll(async () => (await owner.cookies()).find((c) => c.name === "mt-staff")?.value, { timeout: 30_000 }).toBe("1");
+    const cookie = (await owner.cookies()).find((c) => c.name === "mt-staff")!;
+    expect(cookie.path).toBe("/");
+    expect(cookie.sameSite).toBe("Lax");
+    expect(cookie.expires * 1000 - Date.now()).toBeGreaterThan(360 * 86_400_000);
+    await page.goto(`/play?src=${CODE}`);
+    await hydrated(page);
+    await page.mouse.wheel(0, 300);
+    await page.waitForLoadState("networkidle");
+    await settle();
+    expect(await count(db, CODE, "opened")).toBe(0);
+    await owner.close();
+
+    const player = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
+    const playerPage = await player.newPage();
+    await signInAs(playerPage, U.player, "/admin");
+    await playerPage.waitForLoadState("networkidle");
+    expect((await player.cookies()).find((c) => c.name === "mt-staff")).toBeUndefined();
+    await player.close();
   });
 
   test("a fetcher's beacon counts nothing, and a page cannot claim the server's steps", async ({ request, db }) => {

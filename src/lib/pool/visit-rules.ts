@@ -97,6 +97,36 @@ export function poolVisitDay(now: Date): string {
   return formatInTimeZone(now, "Europe/London", "yyyy-MM-dd");
 }
 
+// ── Our own staff ──────────────────────────────────────────────────────
+
+/**
+ * OUR OWN VISITS ARE NOT VISITS (2026-11-12). Kemal's tests and QA checks
+ * of /play were counted as people opening and starting it. So a browser
+ * that has loaded an /admin page as an owner or admin carries this cookie
+ * (set by `StaffMark` in the admin layout, a year long, so a staff phone is
+ * known on /play even when signed out), and the beacon counts nothing for
+ * it, nor for a request that carries an owner's or admin's session.
+ * Nothing about the person is stored either way.
+ */
+export const POOL_STAFF_COOKIE = "mt-staff";
+const POOL_STAFF_COOKIE_VALUE = "1";
+const POOL_STAFF_COOKIE_MAX_AGE = 365 * 24 * 3600;
+
+/** Is this beacon from our own staff? `adminSession`: the request's session
+ *  passes the admin pages' own check (`getUserOrg` + `isOrgAdmin`). */
+export function isPoolStaffVisit(a: { staffCookie: string | null | undefined; adminSession: boolean }): boolean {
+  return a.staffCookie === POOL_STAFF_COOKIE_VALUE || a.adminSession;
+}
+
+/** The staff cookie as `document.cookie` takes it. First-party, the whole
+ *  site, Lax so it is sent when /play is opened from a link elsewhere, and
+ *  Secure on https (every deployment; plain http is only `next dev`). */
+export function poolStaffCookie(o: { secure: boolean }): string {
+  const parts = [`${POOL_STAFF_COOKIE}=${POOL_STAFF_COOKIE_VALUE}`, `Max-Age=${POOL_STAFF_COOKIE_MAX_AGE}`, "Path=/", "SameSite=Lax"];
+  if (o.secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
 // ── The owner's view ───────────────────────────────────────────────────
 
 export const POOL_FUNNEL_PERIODS = ["today", "7d", "30d"] as const;
