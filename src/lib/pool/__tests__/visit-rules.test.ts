@@ -8,13 +8,16 @@
 import { describe, expect, it } from "vitest";
 import {
   POOL_FUNNEL_STEPS,
+  POOL_STAFF_COOKIE,
   POOL_VISIT_DIRECT,
   POOL_VISIT_REFERRAL,
   isLinkPreviewFetcher,
+  isPoolStaffVisit,
   poolFunnelDrops,
   poolFunnelPeriodStart,
   poolFunnelTotals,
   poolProfileBucket,
+  poolStaffCookie,
   poolVisitBucket,
   poolVisitDay,
   readPoolFunnelPeriod,
@@ -175,5 +178,25 @@ describe("the drop between steps", () => {
   });
   it("a step above the one before (opened yesterday, sent today) loses nobody, never a negative", () => {
     expect(poolFunnelDrops({ opened: 2, started: 1, sent: 3, confirmed: 2 })[2]).toEqual({ step: "sent", count: 3, lost: 0, lostPct: 0 });
+  });
+});
+
+describe("our own staff's visits (2026-11-12)", () => {
+  it("the staff cookie, set when an owner or admin loads /admin, skips the count", () => {
+    expect(POOL_STAFF_COOKIE).toBe("mt-staff");
+    expect(isPoolStaffVisit({ staffCookie: "1", adminSession: false })).toBe(true);
+  });
+  it("a session for an owner or admin skips it too, cookie or not", () => {
+    expect(isPoolStaffVisit({ staffCookie: null, adminSession: true })).toBe(true);
+    expect(isPoolStaffVisit({ staffCookie: "1", adminSession: true })).toBe(true);
+  });
+  it("anybody else counts: no cookie, an empty or other value, no admin session", () => {
+    for (const staffCookie of [null, undefined, "", "0", "yes", "true"]) {
+      expect(isPoolStaffVisit({ staffCookie, adminSession: false })).toBe(false);
+    }
+  });
+  it("the cookie: a year long, the whole site, sent on a link opened from elsewhere, Secure on https", () => {
+    expect(poolStaffCookie({ secure: true })).toBe("mt-staff=1; Max-Age=31536000; Path=/; SameSite=Lax; Secure");
+    expect(poolStaffCookie({ secure: false })).toBe("mt-staff=1; Max-Age=31536000; Path=/; SameSite=Lax");
   });
 });

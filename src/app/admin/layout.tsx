@@ -13,6 +13,7 @@ import { CONNECT_FOCUS_HOME, PATHNAME_HEADER, connectFocusAdminView } from "@/li
 import { connectFocusFor } from "@/lib/connect-focus-server";
 import { ConnectFocusGate } from "@/components/club-connect/connect-focus-gate";
 import { guestPlayersTabShown } from "@/lib/pool/guest-report-loader";
+import { StaffMark } from "./staff-mark";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -38,6 +39,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         lang={membership.org.language}
         labels={{ back: s.cf_back, club: s.cf_edit_tab_club, game: s.cf_edit_tab_game }}
       >
+        <StaffMark />
         <OrgLangProvider lang={membership.org.language}>{children}</OrgLangProvider>
       </ConnectFocusGate>
     );
@@ -52,6 +54,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto">
+      {/* Our own staff's /play visits are not counted (2026-11-12). */}
+      <StaffMark />
       {banner && (
         <div
           role="status"
