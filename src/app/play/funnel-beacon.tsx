@@ -14,7 +14,10 @@
  *            script's synthetic event count nothing (`funnel-start.ts`,
  *            which says why: a scanner on 6 November 2026).
  * Sent and confirmed are counted by the server where they happen
- * (`src/lib/pool/visits.ts`), never from here.
+ * (`src/lib/pool/visits.ts`), never from here. Each beacon also carries
+ * what opened the page (opened only) and how long it had been on screen
+ * (2026-11-13), for the visit log the server keeps 90 days
+ * (`src/lib/pool/visit-log-rules.ts`).
  *
  * It WRAPS the sign-up rather than living in it: the form's events bubble
  * up to this box (`display: contents`, so it adds no box to the layout),
@@ -24,7 +27,19 @@
  */
 import { useEffect, useRef, type ReactNode, type SyntheticEvent } from "react";
 import { funnelControlValue, isPersonEntry } from "./funnel-start";
-import { POOL_OPEN_PERSON_SIGNALS, openGateNext, openGateStart, openGateWait, type OpenGateInput } from "./funnel-open";
+import {
+  POOL_OPEN_PERSON_SIGNALS,
+  openGateNext,
+  openGateStart,
+  openGateWait,
+  openTriggerOf,
+  visibleClockNext,
+  visibleClockStart,
+  visibleSoFar,
+  type OpenGateInput,
+  type VisibleClock,
+} from "./funnel-open";
+import type { PoolOpenTrigger } from "@/lib/pool/visit-log-rules";
 
 const ENDPOINT = "/api/play/visit";
 
@@ -43,7 +58,11 @@ function sentBefore(step: "opened" | "started", src: string | null, refCode: str
   }
 }
 
-function send(step: "opened" | "started", src: string | null, refCode: string | null) {
+/** For the visit log (2026-11-13): what opened the page (opened only) and
+ *  how long it had been on screen. The server checks and clamps both. */
+type BeaconDetail = { trigger: PoolOpenTrigger | null; visibleMs: number };
+
+function send(step: "opened" | "started", src: string | null, refCode: string | null, detail: BeaconDetail) {
   try {
     const key = stepKey(step, src, refCode);
     if (window.sessionStorage.getItem(key)) return;
@@ -52,7 +71,7 @@ function send(step: "opened" | "started", src: string | null, refCode: string | 
     // No storage (private mode): count it anyway.
   }
   try {
-    const body = JSON.stringify({ src, ref: refCode, step });
+    const body = JSON.stringify({ src, ref: refCode, step, trigger: detail.trigger, visibleMs: Math.round(detail.visibleMs) });
     const sent = typeof navigator.sendBeacon === "function" && navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "text/plain" }));
     if (!sent) void fetch(ENDPOINT, { method: "POST", body, keepalive: true }).catch(() => {});
   } catch {
@@ -63,6 +82,20 @@ function send(step: "opened" | "started", src: string | null, refCode: string | 
 export function PoolFunnelBeacon({ src, refCode, children }: { src: string | null; refCode: string | null; children: ReactNode }) {
   /** Open now if not yet: a start arriving first opens it (set while the gate listens). */
   const openBeforeStart = useRef<(() => void) | null>(null);
+  // The page's time on screen since it mounted, for both beacons (the
+  // gate's own clock stops when it opens). Declared first, so it is
+  // running before the gate below can send.
+  const pageClock = useRef<VisibleClock | null>(null);
+  const visibleNow = () => (pageClock.current ? visibleSoFar(pageClock.current, performance.now()) : 0);
+  useEffect(() => {
+    const visible = () => document.visibilityState === "visible";
+    pageClock.current = visibleClockStart(performance.now(), visible());
+    const onVisibility = () => {
+      if (pageClock.current) pageClock.current = visibleClockNext(pageClock.current, visible(), performance.now());
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
   // The opened gate: listens until a person shows he is there, then sends
   // once and stops listening. A tab that already sent it does not listen.
   useEffect(() => {
@@ -82,7 +115,7 @@ export function PoolFunnelBeacon({ src, refCode, children }: { src: string | nul
       gate = next.gate;
       if (!next.open) return;
       stop();
-      send("opened", src, refCode);
+      send("opened", src, refCode, { trigger: openTriggerOf(input), visibleMs: visibleNow() });
     };
     /** Wake when 5 visible seconds will have passed, if the page stays on
      *  screen; again if the timer woke a moment early. */
@@ -128,7 +161,7 @@ export function PoolFunnelBeacon({ src, refCode, children }: { src: string | nul
     if (!isPersonEntry({ type: e.type, isTrusted: e.nativeEvent.isTrusted, target: e.target }, { before: before.current.get(e.target), clickTrusted: click })) return;
     started.current = true;
     openBeforeStart.current?.();
-    send("started", src, refCode);
+    send("started", src, refCode, { trigger: null, visibleMs: visibleNow() });
   };
 
   return (

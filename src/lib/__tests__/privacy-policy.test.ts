@@ -149,6 +149,27 @@ describe("the policy in English and Turkish", () => {
     expect(text).toMatch(/24/);
   });
 
+  // 2026-11-13: Kemal's three conditions for keeping /play visit details:
+  // only what the analysis needs, deleted after 90 days, and said here.
+  it.each(COPIES)("%s says what a visit to the join page keeps, without an IP address, and that it goes after 90 days", (_lang, copy) => {
+    const held = sectionText(copy, "what-we-hold");
+    expect(held).toMatch(/90/);
+    expect(held).toMatch(/IP/);
+    expect(sectionText(copy, "how-long")).toMatch(/90/);
+  });
+
+  it("English names each thing a join page visit keeps", () => {
+    const held = sectionText(privacyPolicy("en"), "what-we-hold").toLowerCase();
+    for (const item of ["page for joining the player pool", "for 90 days", "when it happened", "which of our links", "friend's link", "how long the page was open", "what they first did", "browser and device type", "no ip address", "deleted automatically after 90 days"]) {
+      expect(held).toContain(item);
+    }
+  });
+
+  it("the version moved on with the new visit record, and the date with it", () => {
+    expect(PRIVACY_POLICY_VERSION).toBe(3);
+    expect(PRIVACY_POLICY_EFFECTIVE_DATE).toBe("2026-11-13");
+  });
+
   it.each(COPIES)("%s says a reply comes within one month and names the ICO", (_lang, copy) => {
     const text = sectionText(copy, "your-rights");
     expect(text).toMatch(/ICO/);

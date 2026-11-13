@@ -91,6 +91,10 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
             kind: "p",
             text: "We never ask for or keep a full postcode, your exact location or your date of birth.",
           },
+          {
+            kind: "p",
+            text: "When someone opens the page for joining the player pool, we keep a record of that visit for 90 days: when it happened, which of our links brought them there or whether a friend's link did, how long the page was open, what they first did on it (such as a tap, a scroll or a key press), and a general browser and device type (such as a phone or a computer). It holds no IP address and nothing that identifies the person, and it is deleted automatically after 90 days.",
+          },
         ],
       },
       {
@@ -198,6 +202,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
               "Player pool: records of offers keep only what is needed to keep things fair and stop misuse, and are made anonymous after 24 months.",
               "When a pool profile is deleted, we keep a short record of any block or report for 24 months, so a person who was blocked cannot simply sign up again, and the record of your consent for 6 years, to show what you agreed to.",
               "When a group message tags people, we note who was tagged (their WhatsApp number and name), so an organiser can ask MatchTime to invite them. That note is deleted after 7 days.",
+              "The record of a visit to the page for joining the player pool is deleted automatically after 90 days.",
               "Billing and payment records are kept for 6 years, as tax law requires.",
               "If you ask us to delete your details, we remove your name and phone number. A game you played as a guest stays in that club's history, as it does for any past guest.",
             ],

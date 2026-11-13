@@ -4,7 +4,9 @@
  * one to its bucket's day with ONE atomic upsert, and a failure is logged
  * and swallowed (a count must never break or slow the page, the sign-up or
  * the confirm). Nothing about the person is stored: no address, no user
- * agent, no id, only the bucket, the day, the step and the count.
+ * agent, no id, only the bucket, the day, the step and the count. Since
+ * 2026-11-13 each page step also leaves one visit log row, kept 90 days:
+ * the coarse fields of `visit-log-rules.ts` only, best-effort on its own.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,12 +14,13 @@ const dbMock = vi.hoisted(() => ({
   db: {
     poolCampaign: { findFirst: vi.fn() },
     poolProfile: { findUnique: vi.fn() },
+    poolVisitEvent: { create: vi.fn(), deleteMany: vi.fn() },
     $executeRaw: vi.fn(),
   },
 }));
 vi.mock("../../db", () => dbMock);
 
-import { recordPoolSignupConfirmed, recordPoolSignupSent, recordPoolVisit } from "../visits";
+import { purgeOldPoolVisitEvents, recordPoolSignupConfirmed, recordPoolSignupSent, recordPoolVisit } from "../visits";
 import { POOL_VISIT_DIRECT, POOL_VISIT_REFERRAL } from "../visit-rules";
 
 const info = vi.spyOn(console, "info").mockImplementation(() => {});
@@ -40,7 +43,15 @@ beforeEach(() => {
   dbMock.db.poolCampaign.findFirst.mockResolvedValue({ code: "fb-sutton" });
   dbMock.db.poolProfile.findUnique.mockResolvedValue({ userId: "u-friend" });
   dbMock.db.$executeRaw.mockResolvedValue(1);
+  dbMock.db.poolVisitEvent.create.mockResolvedValue({});
+  dbMock.db.poolVisitEvent.deleteMany.mockResolvedValue({ count: 0 });
 });
+
+/** The one visit event row written. */
+function eventRow(): Record<string, unknown> {
+  expect(dbMock.db.poolVisitEvent.create).toHaveBeenCalledTimes(1);
+  return (dbMock.db.poolVisitEvent.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+}
 
 describe("recordPoolVisit: the page's steps, opened and started", () => {
   it("a person on a live campaign's link: one more opened for that code today", async () => {
@@ -76,12 +87,14 @@ describe("recordPoolVisit: the page's steps, opened and started", () => {
     expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: "zzzzzz" }, userAgent: PERSON, now: NOW })).toBe("fb-sutton");
   });
 
-  it("a link preview fetcher writes nothing at all", async () => {
+  it("a link preview fetcher counts nothing; its visit is logged only as a scanner (2026-11-13)", async () => {
     for (const ua of ["facebookexternalhit/1.1", "WhatsApp/2.23.20.0 A", "Twitterbot/1.0", null]) {
       expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: ua, now: NOW, step: "started" })).toBeNull();
     }
-    expect(dbMock.db.poolCampaign.findFirst).not.toHaveBeenCalled();
     expect(dbMock.db.$executeRaw).not.toHaveBeenCalled();
+    const rows = dbMock.db.poolVisitEvent.create.mock.calls.map((c) => (c[0] as { data: Record<string, unknown> }).data);
+    expect(rows).toHaveLength(4);
+    for (const row of rows) expect(row).toMatchObject({ code: "fb-sutton", step: "started", scanner: true });
   });
 
   it("stores nothing about the person: only the bucket, the day and the step are bound", async () => {
@@ -98,6 +111,81 @@ describe("recordPoolVisit: the page's steps, opened and started", () => {
     expect(warn).toHaveBeenCalledTimes(2);
     expect(String(warn.mock.calls[0][0])).toContain("[pool-funnel]");
     warn.mockRestore();
+  });
+});
+
+describe("recordPoolVisit: the visit log, kept 90 days (2026-11-13)", () => {
+  const ALLOWED = ["at", "browser", "code", "device", "hasRef", "inApp", "openedBy", "scanner", "step", "visibleMs"];
+
+  it("one row per counted beacon, holding only the allowed fields", async () => {
+    await recordPoolVisit({
+      source: { campaignCode: "fb-sutton", referralCode: null },
+      userAgent: PERSON,
+      now: new Date("2026-11-03T12:34:56.789Z"),
+      step: "opened",
+      detail: { openedBy: "scroll", visibleMs: 2300 },
+    });
+    const row = eventRow();
+    expect(Object.keys(row).sort()).toEqual(ALLOWED);
+    expect(row).toEqual({
+      at: new Date("2026-11-03T12:34:00.000Z"),
+      code: "fb-sutton",
+      step: "opened",
+      openedBy: "scroll",
+      visibleMs: 2300,
+      hasRef: false,
+      browser: "safari",
+      inApp: "none",
+      device: "mobile",
+      scanner: false,
+    });
+  });
+
+  it("a friend's link: hasRef only, never the code, and never the user agent", async () => {
+    await recordPoolVisit({ source: { campaignCode: null, referralCode: "AB12cd" }, userAgent: PERSON, now: NOW, step: "started" });
+    const row = eventRow();
+    expect(row).toMatchObject({ code: POOL_VISIT_REFERRAL, step: "started", hasRef: true, openedBy: null, visibleMs: null });
+    const stored = JSON.stringify(row);
+    for (const secret of ["AB12cd", "iPhone", "Mozilla", "Safari/604"]) expect(stored).not.toContain(secret);
+  });
+
+  it("no detail from an old cached page: the row is still written, its detail none", async () => {
+    await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: PERSON, now: NOW });
+    expect(eventRow()).toMatchObject({ code: POOL_VISIT_DIRECT, step: "opened", openedBy: null, visibleMs: null });
+  });
+
+  it("a failed log write never costs the count", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    dbMock.db.poolVisitEvent.create.mockRejectedValue(new Error('relation "PoolVisitEvent" does not exist'));
+    expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW })).toBe("fb-sutton");
+    expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03", "opened"]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("[pool-funnel]");
+    warn.mockRestore();
+  });
+
+  it("a failed count still logs the visit", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    dbMock.db.$executeRaw.mockRejectedValue(new Error("pool down"));
+    expect(await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: PERSON, now: NOW })).toBeNull();
+    expect(eventRow()).toMatchObject({ code: POOL_VISIT_DIRECT, scanner: false });
+    warn.mockRestore();
+  });
+});
+
+describe("purgeOldPoolVisitEvents: the daily cron deletes the log after 90 days", () => {
+  it("deletes every row older than 90 days", async () => {
+    dbMock.db.poolVisitEvent.deleteMany.mockResolvedValue({ count: 7 });
+    expect(await purgeOldPoolVisitEvents(new Date("2026-11-13T06:00:00Z"))).toBe(7);
+    expect(dbMock.db.poolVisitEvent.deleteMany).toHaveBeenCalledWith({ where: { at: { lt: new Date("2026-08-15T06:00:00Z") } } });
+  });
+
+  it("a failure (the table not migrated yet) is 0, never a throw into the cron", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    dbMock.db.poolVisitEvent.deleteMany.mockRejectedValue(new Error('relation "PoolVisitEvent" does not exist'));
+    expect(await purgeOldPoolVisitEvents(new Date("2026-11-13T06:00:00Z"))).toBe(0);
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
   });
 });
 

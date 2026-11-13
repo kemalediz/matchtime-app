@@ -3781,6 +3781,45 @@ model PoolCampaignVisit {
   @@id([code, day, step])
 }
 
+/// The /play visit log (2026-11-13, src/lib/pool/visit-log-rules.ts): one
+/// row per page beacon (opened, started), so drop-off can be explained
+/// after the server log has gone. Only what the funnel analysis needs and
+/// nothing that identifies a person: NO IP address, NO user agent (only
+/// the coarse label below), NO friend's share code (only `hasRef`), no user
+/// id, no cookie. Link preview fetchers are logged with `scanner` and never
+/// counted in "PoolCampaignVisit". Migration 20261113120000_pool_visit_events.
+/// RETENTION 90 days from `at`: deleted by the daily 06:00 cron
+/// (`purgeOldPoolVisitEvents`, POOL_VISIT_RETENTION_DAYS).
+model PoolVisitEvent {
+  id        String   @id @default(cuid())
+  /// When, to the minute.
+  at        DateTime
+  /// The bucket the counters use: a campaign code, "_direct" or "_referral".
+  code      String
+  /// "opened" or "started".
+  step      String
+  /// What opened the page (opened only): pointer, touch, key, wheel,
+  /// scroll, visible-time or before-start. Null on started, or from a page
+  /// that did not say.
+  openedBy  String?
+  /// Time on screen when the beacon was sent (ms, to a tenth of a second,
+  /// at most a day).
+  visibleMs Int?
+  /// Whether a friend's share code came with the visit (never the code).
+  hasRef    Boolean  @default(false)
+  /// chrome, safari, firefox, edge, samsung or other.
+  browser   String
+  /// An app's in-app browser: facebook, instagram, nextdoor, whatsapp,
+  /// other or none.
+  inApp     String
+  /// mobile, tablet, desktop or other (not a browser).
+  device    String
+  /// A link preview fetcher or scripted browser.
+  scanner   Boolean  @default(false)
+
+  @@index([at])
+}
+
 /// A member vouched for a friend for ONE match (friend link, 2026-10-31,
 /// src/lib/friend-link). The link names the match and nothing about the
 /// friend: his details arrive only through the /play form and his own

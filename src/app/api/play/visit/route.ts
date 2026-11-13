@@ -4,14 +4,20 @@
  * whatever it is sent, and counts AFTER the answer (`after`), so it never
  * slows the page.
  *
- * Body: `{ src, ref, step }`, `src` and `ref` as the page's own URL carried
- * them, read exactly as the page reads them (`readSignupSource`). `step` is
- * "opened" (or missing) or "started", the two only the browser sees; "sent"
- * and "confirmed" are counted by the server where they happen, so a body
- * naming them counts nothing (`readPoolPageStep`). The user agent decides
- * whether this is a link preview fetcher (`recordPoolVisit`) and is written
- * to the server log once per beacon to identify scanners (2026-11-06); it
- * is never stored.
+ * Body: `{ src, ref, step, trigger, visibleMs }`, `src` and `ref` as the
+ * page's own URL carried them, read exactly as the page reads them
+ * (`readSignupSource`). `step` is "opened" (or missing) or "started", the
+ * two only the browser sees; "sent" and "confirmed" are counted by the
+ * server where they happen, so a body naming them counts nothing
+ * (`readPoolPageStep`). `trigger` (what opened the page) and `visibleMs`
+ * (its time on screen) are for the visit log (2026-11-13), checked and
+ * clamped here (`readPoolVisitDetail`); a page that sends neither still
+ * counts. The user agent decides whether this is a link preview fetcher
+ * (`recordPoolVisit`) and is written to the server log once per beacon to
+ * identify scanners (2026-11-06). The user agent itself is never stored:
+ * the visit log keeps only a coarse label read off it (browser family,
+ * in-app browser, device class, scanner). No address, cookie or user id is
+ * passed on.
  *
  * OUR OWN STAFF (2026-11-12): a beacon carrying the staff cookie, or a
  * session for an owner or admin, gets the same 204 and counts nothing
@@ -24,6 +30,7 @@ import { auth } from "@/lib/auth";
 import { getUserOrg, isOrgAdmin } from "@/lib/org";
 import { readSignupSource } from "@/lib/pool/profile-fields";
 import { POOL_STAFF_COOKIE, isPoolStaffVisit, readPoolPageStep } from "@/lib/pool/visit-rules";
+import { readPoolVisitDetail } from "@/lib/pool/visit-log-rules";
 import { recordPoolVisit } from "@/lib/pool/visits";
 
 /** Would the admin pages let this request's session in? Their own check
@@ -53,6 +60,7 @@ export async function POST(request: Request) {
   const step = readPoolPageStep(body.step);
   if (!step) return new Response(null, { status: 204 });
   const source = readSignupSource(body);
+  const detail = readPoolVisitDetail(body, step);
   const userAgent = request.headers.get("user-agent");
   const now = new Date();
   const staffCookie = (await cookies()).get(POOL_STAFF_COOKIE)?.value ?? null;
@@ -63,7 +71,7 @@ export async function POST(request: Request) {
       console.info(`[pool-funnel] skipped staff visit step=${step} code=${source.campaignCode ?? "-"} ref=${source.referralCode ? "yes" : "no"}`);
       return;
     }
-    await recordPoolVisit({ source, userAgent, now, step });
+    await recordPoolVisit({ source, userAgent, now, step, detail });
   });
   return new Response(null, { status: 204 });
 }

@@ -13,6 +13,10 @@
  *     events count nothing (2026-11-06, after a scanner);
  *   - a fetcher calling the beacon counts nothing, and a page claiming the
  *     server's steps (sent, confirmed) counts nothing;
+ *   - each beacon carries what opened the page and its time on screen, and
+ *     the visit log (2026-11-13, kept 90 days) keeps them with a coarse
+ *     browser label and nothing that identifies the visitor; a fetcher is
+ *     logged as a scanner, our staff not at all;
  *   - the owner's source codes page shows opened, started, sent and
  *     confirmed for today, 7 days or 30 days, with the drop between steps.
  * The server's own steps (sent, confirmed) are e2e/sim/pool/funnel-steps.spec.ts.
@@ -58,12 +62,33 @@ async function watchBeacons(page: Page): Promise<() => Promise<string[]>> {
       return original(url, data);
     };
   });
-  return () =>
-    page.evaluate(async () => {
-      const sent = (window as unknown as { __mtBeacons?: Promise<string>[] }).__mtBeacons ?? [];
-      return (await Promise.all(sent)).map((body) => JSON.parse(body).step as string);
-    });
+  return async () => (await beaconBodies(page)).map((b) => b.step as string);
 }
+
+/** Every beacon body the page sent, parsed (after `watchBeacons`). */
+const beaconBodies = (page: Page) =>
+  page.evaluate(async () => {
+    const sent = (window as unknown as { __mtBeacons?: Promise<string>[] }).__mtBeacons ?? [];
+    return (await Promise.all(sent)).map((body) => JSON.parse(body) as Record<string, unknown>);
+  });
+
+type VisitEvent = {
+  at: Date;
+  code: string;
+  step: string;
+  openedBy: string | null;
+  visibleMs: number | null;
+  hasRef: boolean;
+  browser: string;
+  inApp: string;
+  device: string;
+  scanner: boolean;
+};
+const visitEvents = (db: TestDb, code: string) =>
+  db.all<VisitEvent>(
+    `SELECT "at", "code", "step", "openedBy", "visibleMs", "hasRef", "browser", "inApp", "device", "scanner" FROM "PoolVisitEvent" WHERE code = $1 ORDER BY "step", "at"`,
+    [code],
+  );
 
 test.describe("the page's steps", () => {
   test.use({ userAgent: PERSON, locale: "en-GB" });
@@ -223,6 +248,7 @@ test.describe("the page's steps", () => {
 
   test("a fetcher's beacon counts nothing, and a page cannot claim the server's steps", async ({ request, db }) => {
     await db.run(`DELETE FROM "PoolCampaignVisit"`);
+    await db.run(`DELETE FROM "PoolVisitEvent"`);
     const fetcher = await request.post("/api/play/visit", { headers: { "user-agent": FACEBOOK }, data: JSON.stringify({ src: CODE, step: "started" }) });
     expect(fetcher.status()).toBe(204);
     for (const step of ["sent", "confirmed"]) {
@@ -231,6 +257,93 @@ test.describe("the page's steps", () => {
     }
     await settle();
     expect(await db.one(`SELECT count(*)::int AS n FROM "PoolCampaignVisit"`)).toEqual({ n: 0 });
+    // The fetcher is in the visit log as a scanner (2026-11-13), and only it.
+    expect(await visitEvents(db, CODE)).toEqual([expect.objectContaining({ step: "started", scanner: true, device: "other", inApp: "none" })]);
+    expect(await db.one(`SELECT count(*)::int AS n FROM "PoolVisitEvent"`)).toEqual({ n: 1 });
+  });
+});
+
+test.describe("the visit log, kept 90 days (2026-11-13)", () => {
+  test.use({ userAgent: PERSON, locale: "en-GB" });
+
+  test.beforeAll(async ({ db }) => {
+    await db.run(`INSERT INTO "PoolCampaign" (code, source, label) VALUES ($1, 'facebook', 'Funnel web e2e') ON CONFLICT DO NOTHING`, [CODE]);
+  });
+
+  test("the table holds only the funnel's fields: no address, user agent, friend's code, user id or cookie", async ({ db }) => {
+    const cols = await db.all<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'PoolVisitEvent' ORDER BY column_name`,
+    );
+    expect(cols.map((c) => c.column_name)).toEqual(["at", "browser", "code", "device", "hasRef", "id", "inApp", "openedBy", "scanner", "step", "visibleMs"]);
+  });
+
+  test("a scroll then typing: each beacon carries what opened the page and its time on screen, and the log keeps them with a coarse label", async ({ page, db }) => {
+    await db.run(`DELETE FROM "PoolVisitEvent" WHERE code = $1`, [CODE]);
+    const beacons = await watchBeacons(page);
+    await page.goto(`/play?src=${CODE}&ref=AB12cd`);
+    await hydrated(page);
+    await page.mouse.wheel(0, 300);
+    await page.locator("form input[name=name]").pressSequentially("S");
+    await expect.poll(() => beacons(), { timeout: 5_000 }).toEqual(["opened", "started"]);
+
+    const [opened, started] = await beaconBodies(page);
+    expect(opened).toMatchObject({ src: CODE, ref: "AB12cd", step: "opened", trigger: "wheel" });
+    expect(started).toMatchObject({ step: "started", trigger: null });
+    for (const b of [opened, started]) {
+      expect(Number.isInteger(b.visibleMs)).toBe(true);
+      expect(b.visibleMs as number).toBeGreaterThanOrEqual(0);
+      expect(b.visibleMs as number).toBeLessThan(5_000);
+    }
+    expect(started.visibleMs as number).toBeGreaterThanOrEqual(opened.visibleMs as number);
+
+    await expect.poll(async () => (await visitEvents(db, CODE)).length, { timeout: 15_000 }).toBe(2);
+    const rows = await visitEvents(db, CODE);
+    const label = { code: CODE, hasRef: true, browser: "safari", inApp: "none", device: "mobile", scanner: false };
+    expect(rows[0]).toMatchObject({ ...label, step: "opened", openedBy: "wheel" });
+    expect(rows[1]).toMatchObject({ ...label, step: "started", openedBy: null });
+    for (const r of rows) {
+      expect(r.visibleMs! % 100).toBe(0);
+      expect(new Date(r.at).getUTCSeconds()).toBe(0);
+      expect(JSON.stringify(r)).not.toMatch(/AB12cd|iPhone|Mozilla/);
+    }
+  });
+
+  test("5 seconds on screen: opened by the clock, with about 5 seconds on screen", async ({ page, db }) => {
+    await db.run(`DELETE FROM "PoolVisitEvent" WHERE code = $1`, [CODE]);
+    const beacons = await watchBeacons(page);
+    await page.goto(`/play?src=${CODE}`);
+    await hydrated(page);
+    await expect.poll(() => beacons(), { timeout: 15_000 }).toEqual(["opened"]);
+    const [opened] = await beaconBodies(page);
+    expect(opened.trigger).toBe("visible-time");
+    expect(opened.visibleMs as number).toBeGreaterThanOrEqual(4_500);
+    await expect.poll(async () => (await visitEvents(db, CODE)).map((r) => [r.openedBy, r.hasRef]), { timeout: 15_000 }).toEqual([["visible-time", false]]);
+  });
+
+  test("our own staff: nothing in the log either", async ({ browser, baseURL, db }) => {
+    await db.run(`DELETE FROM "PoolVisitEvent" WHERE code = $1`, [CODE]);
+    const context = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
+    await context.addCookies([{ name: "mt-staff", value: "1", url: baseURL! }]);
+    const page = await context.newPage();
+    const beacons = await watchBeacons(page);
+    await page.goto(`/play?src=${CODE}`);
+    await hydrated(page);
+    await page.mouse.wheel(0, 300);
+    await expect.poll(() => beacons(), { timeout: 5_000 }).toEqual(["opened"]);
+    await page.waitForLoadState("networkidle");
+    await settle();
+    expect(await visitEvents(db, CODE)).toEqual([]);
+    await context.close();
+  });
+
+  test("a body out of bounds is clamped, an unknown trigger dropped", async ({ request, db }) => {
+    await db.run(`DELETE FROM "PoolVisitEvent" WHERE code = $1`, [CODE]);
+    const res = await request.post("/api/play/visit", {
+      headers: { "user-agent": PERSON },
+      data: JSON.stringify({ src: CODE, step: "opened", trigger: "<script>", visibleMs: 9e15 }),
+    });
+    expect(res.status()).toBe(204);
+    await expect.poll(async () => (await visitEvents(db, CODE)).map((r) => [r.openedBy, r.visibleMs]), { timeout: 15_000 }).toEqual([[null, 86_400_000]]);
   });
 });
 
