@@ -108,6 +108,9 @@ export interface PoolPlayCopy {
      *  `pool/campaign-game-line.ts`). Every part comes already written in
      *  this language. */
     gameLine: (p: PoolGameLineParts) => string;
+    /** Under the game line, only for a club whose first game is free for
+     *  newcomers (Sutton FC, 2026-11-13, `pool/campaign-game-line.ts`). */
+    firstGameFree: string;
     /** /play's short note while a sign-up goes on the early sign-up list. */
     earlyShort: string;
     /** Shown while a sign-up goes on the early sign-up list

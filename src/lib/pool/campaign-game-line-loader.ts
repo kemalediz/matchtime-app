@@ -1,6 +1,7 @@
 /**
- * Loads /play's game line for a campaign code (2026-11-11). SERVER ONLY.
- * The rule and the map of codes to clubs are `campaign-game-line.ts`.
+ * Loads /play's game line, and the club's offer under it, for a campaign
+ * code (2026-11-11; offer 2026-11-13). SERVER ONLY. The rule and the map
+ * of codes to clubs are `campaign-game-line.ts`.
  *
  * The match is the club's next UPCOMING one that has not kicked off (a
  * co-timed ghost from a format switch loses to the lower id, as in
@@ -11,9 +12,9 @@
 import { db } from "../db";
 import type { Lang } from "../i18n/lang";
 import { askPlacesOpen } from "../monthly-week-asks";
-import { campaignGameClub, campaignGameLine } from "./campaign-game-line";
+import { campaignGameClub, campaignGameForClub, type CampaignGame } from "./campaign-game-line";
 
-export async function loadCampaignGameLine(code: string | null, lang: Lang, now: Date = new Date()): Promise<string | null> {
+export async function loadCampaignGame(code: string | null, lang: Lang, now: Date = new Date()): Promise<CampaignGame | null> {
   const club = campaignGameClub(code);
   if (!club) return null;
   const match = await db.match.findFirst({
@@ -23,5 +24,5 @@ export async function loadCampaignGameLine(code: string | null, lang: Lang, now:
   });
   if (!match) return null;
   const placesOpen = await askPlacesOpen(match.id);
-  return campaignGameLine({ code, match: { date: match.date, maxPlayers: match.maxPlayers, venue: match.activity.venue, placesOpen }, now, lang });
+  return campaignGameForClub({ club, match: { date: match.date, maxPlayers: match.maxPlayers, venue: match.activity.venue, placesOpen }, now, lang });
 }

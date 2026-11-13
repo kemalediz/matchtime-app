@@ -69,6 +69,7 @@ export function PlaySignup({
   paused,
   invitedBy = null,
   gameLine = null,
+  gameOffer = null,
   earlyList,
   friend = null,
 }: {
@@ -82,6 +83,9 @@ export function PlaySignup({
   /** The game a Facebook link sells, already worded (2026-11-11,
    *  `campaign-game-line.ts`); null for every other visitor. */
   gameLine?: string | null;
+  /** The club's offer under that line (Sutton FC's first game free,
+   *  2026-11-13); shown only with the line. */
+  gameOffer?: string | null;
   /** A friend link (2026-10-31): the game shown at the top, his name filled in. */
   friend?: FriendLinkCard | null;
 }) {
@@ -218,9 +222,16 @@ export function PlaySignup({
       )}
       {friend && <FriendCard friend={friend} lang={lang} />}
       {gameLine && (
-        <p data-testid="pool-game-line" className="mb-3 text-sm font-semibold text-emerald-800">
-          {gameLine}
-        </p>
+        <div className="mb-3">
+          <p data-testid="pool-game-line" className="text-sm font-semibold text-emerald-800">
+            {gameLine}
+          </p>
+          {gameOffer && (
+            <p data-testid="pool-game-offer" className="mt-0.5 text-sm font-medium text-emerald-700">
+              {gameOffer}
+            </p>
+          )}
+        </div>
       )}
       {invitedBy && (
         <p data-testid="pool-invited-by" className="mb-3 text-sm font-medium text-emerald-800">
