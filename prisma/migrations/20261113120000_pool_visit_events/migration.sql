@@ -8,11 +8,18 @@
 --   (or: npx tsx scripts/apply-pool-visit-event-migration.ts [--apply])
 --
 -- WHAT IS KEPT (Kemal's conditions, 2026-11-13): only what the funnel
--- analysis needs and nothing that identifies a person. The minute, the
--- bucket (a campaign code, "_direct" or "_referral"), the step, what opened
--- the page, its time on screen, WHETHER a friend's code came with it, and a
--- coarse browser label (family, in-app browser, device class, scanner). NO
--- IP address, NO user agent, NO friend's code, no user id, no cookie.
+-- analysis needs. The time to the HOUR (not the minute: a minute plus the
+-- code could be matched to a sign-up made just after), the bucket (a
+-- campaign code, "_direct" or "_referral"), the step, what opened the page,
+-- its time on screen, WHETHER a friend's code came with it, and a coarse
+-- browser label (family, in-app browser, device class, scanner). NO IP
+-- address, NO user agent, NO friend's code, no user id, no cookie. Never
+-- joined to a sign-up or a profile (the privacy policy promises it).
+--
+-- VOLUME CAP: at most 200 rows per code and hour (POOL_VISIT_LOG_CAP_PER_HOUR):
+-- anyone can post the beacon. Above it the visit still counts in
+-- "PoolCampaignVisit"; only its row is skipped. "PoolVisitEvent_code_at_idx"
+-- serves that check.
 --
 -- RETENTION: 90 DAYS. Rows are deleted once "at" is 90 days old, by the
 -- daily 06:00 cron (/api/cron/close-ratings, purgeOldPoolVisitEvents in
@@ -60,6 +67,7 @@ CREATE TABLE IF NOT EXISTS "PoolVisitEvent" (
 );
 
 CREATE INDEX IF NOT EXISTS "PoolVisitEvent_at_idx" ON "PoolVisitEvent"("at");
+CREATE INDEX IF NOT EXISTS "PoolVisitEvent_code_at_idx" ON "PoolVisitEvent"("code", "at");
 
 ALTER TABLE "PoolVisitEvent" DROP CONSTRAINT IF EXISTS "PoolVisitEvent_code_check";
 ALTER TABLE "PoolVisitEvent" ADD CONSTRAINT "PoolVisitEvent_code_check"

@@ -21,8 +21,8 @@
  * The visit log is the same, on its own: its failure never costs a count.
  *
  * PRIVACY. Stored in the counters: the bucket (a campaign code, "_direct"
- * or "_referral"), the London day, the step and a count. In the visit log:
- * the minute, the bucket, the step, what opened the page, its time on
+ * or "_referral"), the London day, the step and a count. In the visit log
+ * (never linked to a sign-up or profile): the hour, the bucket, the step, what opened the page, its time on
  * screen, whether a friend's code came with it, and a coarse browser label
  * (browser family, in-app browser, device class, scanner). No id, no
  * address, no cookie, no friend's code, and never the user agent itself:
@@ -31,7 +31,14 @@
  * never stored.
  */
 import { db } from "../db";
-import { POOL_VISIT_RETENTION_DAYS, poolVisitEventRow, poolVisitPurgeBefore, type PoolVisitDetail, type PoolVisitEventRow } from "./visit-log-rules";
+import {
+  POOL_VISIT_RETENTION_DAYS,
+  poolVisitEventRow,
+  poolVisitLogHasRoom,
+  poolVisitPurgeBefore,
+  type PoolVisitDetail,
+  type PoolVisitEventRow,
+} from "./visit-log-rules";
 import {
   isLinkPreviewFetcher,
   poolProfileBucket,
@@ -89,11 +96,17 @@ async function pageStepBucket(source: { campaignCode: string | null; referralCod
 /**
  * One row in the visit log (2026-11-13, `visit-log-rules.ts`): only the
  * fields `poolVisitEventRow` builds, never the user agent or the friend's
- * code. Best-effort on its own: a failure (the table not yet migrated, a
- * blip) is logged and costs nothing else, the count least of all.
+ * code. Skipped once the code's hour already holds
+ * POOL_VISIT_LOG_CAP_PER_HOUR rows (review of #600): anyone can post the
+ * beacon. The check and the write are two statements, so a burst can pass
+ * the cap by a few rows: a bound, not a count. Best-effort on its own: a
+ * failure (the table not yet migrated, a blip) is logged and costs nothing
+ * else, the count least of all.
  */
 async function logVisitEvent(row: PoolVisitEventRow): Promise<void> {
   try {
+    const rowsThisHour = await db.poolVisitEvent.count({ where: { code: row.code, at: row.at } });
+    if (!poolVisitLogHasRoom(rowsThisHour)) return;
     await db.poolVisitEvent.create({ data: row });
   } catch (err) {
     console.warn(`[pool-funnel] ${row.step} visit not logged:`, err instanceof Error ? err.message : err);

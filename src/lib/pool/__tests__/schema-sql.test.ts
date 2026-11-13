@@ -384,8 +384,14 @@ describe("the visit log migration (2026-11-13): one row per beacon, kept 90 days
     ];
     for (const f of [EVENTS, CHECKS]) for (const c of checks) expect(code(read(f)), `${f}: ${c}`).toContain(c);
   });
-  it("is indexed by time, for the daily deletion and the analysis", () => {
+  it("is indexed by time, for the daily deletion, and by code and hour, for the volume cap", () => {
     expect(sql).toContain(`CREATE INDEX IF NOT EXISTS "PoolVisitEvent_at_idx" ON "PoolVisitEvent"("at");`);
+    expect(sql).toContain(`CREATE INDEX IF NOT EXISTS "PoolVisitEvent_code_at_idx" ON "PoolVisitEvent"("code", "at");`);
+    expect(read("prisma/schema.prisma")).toMatch(/model PoolVisitEvent \{[^}]*@@index\(\[code, at\]\)/);
+  });
+  it("says the time is kept to the hour, and the cap", () => {
+    expect(read(EVENTS)).toMatch(/to the HOUR/);
+    expect(read(EVENTS)).toMatch(/200 rows per code and hour/);
   });
   it("is additive, idempotent and one transaction with no session-level SET and no data written", () => {
     expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);

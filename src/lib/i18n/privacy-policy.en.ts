@@ -93,7 +93,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
           },
           {
             kind: "p",
-            text: "When someone opens the page for joining the player pool, we keep a record of that visit for 90 days: when it happened, which of our links brought them there or whether a friend's link did, how long the page was open, what they first did on it (such as a tap, a scroll or a key press), and a general browser and device type (such as a phone or a computer). It holds no IP address and nothing that identifies the person, and it is deleted automatically after 90 days.",
+            text: "When someone opens the page for joining the player pool, we keep a record of that visit for 90 days: the hour of the visit, which of our links brought them there or whether a friend's link did, whether they started filling in the form, how long the page was on screen, what they first did on it (such as a tap, a scroll or a key press), a general browser type, whether the page was opened inside an app such as Facebook or Nextdoor, the type of device (such as a phone or a computer), and whether it was an automatic link preview rather than a person. The record holds no IP address, no full browser details and no friend's code. It does not on its own show who the visitor was, and we never link it to sign-ups or profiles. It is deleted automatically after 90 days.",
           },
         ],
       },
@@ -108,6 +108,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
               "Player pool: to keep your profile and match you to games, because you asked us to. It is the service you signed up for.",
               "Player pool: to send you offers of games, because you gave your consent. You can withdraw it at any time, as easily as you gave it.",
               "Player pool: to keep a turn-up record and to act on blocks and reports, because we have a legitimate interest in keeping games reliable and safe for everyone.",
+              "To see which of our links bring people to the player pool page and where they leave, because we have a legitimate interest in improving it.",
               "To keep billing and payment records, because the law requires it.",
               "To keep MatchTime secure and fix problems, because we have a legitimate interest in a safe service that works.",
             ],

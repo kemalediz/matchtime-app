@@ -3783,16 +3783,19 @@ model PoolCampaignVisit {
 
 /// The /play visit log (2026-11-13, src/lib/pool/visit-log-rules.ts): one
 /// row per page beacon (opened, started), so drop-off can be explained
-/// after the server log has gone. Only what the funnel analysis needs and
-/// nothing that identifies a person: NO IP address, NO user agent (only
-/// the coarse label below), NO friend's share code (only `hasRef`), no user
-/// id, no cookie. Link preview fetchers are logged with `scanner` and never
-/// counted in "PoolCampaignVisit". Migration 20261113120000_pool_visit_events.
+/// after the server log has gone. Only what the funnel analysis needs: NO
+/// IP address, NO user agent (only the coarse label below), NO friend's
+/// share code (only `hasRef`), no user id, no cookie, and the time only to
+/// the hour. NEVER joined to a sign-up or a profile (the privacy policy
+/// promises it; `visit-log-unlinked.test.ts`). At most 200 rows per code
+/// and hour (POOL_VISIT_LOG_CAP_PER_HOUR). Link preview fetchers are logged
+/// with `scanner` and never counted in "PoolCampaignVisit". Migration
+/// 20261113120000_pool_visit_events.
 /// RETENTION 90 days from `at`: deleted by the daily 06:00 cron
 /// (`purgeOldPoolVisitEvents`, POOL_VISIT_RETENTION_DAYS).
 model PoolVisitEvent {
   id        String   @id @default(cuid())
-  /// When, to the minute.
+  /// When, to the hour.
   at        DateTime
   /// The bucket the counters use: a campaign code, "_direct" or "_referral".
   code      String
@@ -3818,6 +3821,7 @@ model PoolVisitEvent {
   scanner   Boolean  @default(false)
 
   @@index([at])
+  @@index([code, at])
 }
 
 /// A member vouched for a friend for ONE match (friend link, 2026-10-31,

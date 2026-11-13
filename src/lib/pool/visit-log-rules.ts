@@ -10,17 +10,22 @@
  * each beacon also leaves one row, "PoolVisitEvent".
  *
  * WHAT IS KEPT, on Kemal's conditions (2026-11-13): only what the funnel
- * analysis needs, nothing that identifies a person, 90 days, said in the
- * privacy policy. A row is the minute, the bucket the counters use (a
- * campaign code, "_direct" or "_referral"), the step, what opened the page,
- * how long it had been on screen, WHETHER a friend's code came with it, and
- * a coarse label read off the user agent here: a browser family, an app's
- * in-app browser, a device class and the scanner flag. Never the IP
- * address, the user agent itself, the friend's code, a user id or a cookie.
+ * analysis needs, 90 days, said in the privacy policy. A row is the HOUR,
+ * the bucket the counters use (a campaign code, "_direct" or "_referral"),
+ * the step, what opened the page, how long it had been on screen, WHETHER a
+ * friend's code came with it, and a coarse label read off the user agent
+ * here: a browser family, an app's in-app browser, a device class and the
+ * scanner flag. Never the IP address, the user agent itself, the friend's
+ * code, a user id or a cookie. At most POOL_VISIT_LOG_CAP_PER_HOUR rows per
+ * code and hour.
+ *
+ * NEVER LINKED (review of #600): the policy promises the log is never tied
+ * to a sign-up or a profile. Only `visits.ts` touches the table, to add,
+ * count and delete; `__tests__/visit-log-unlinked.test.ts` keeps it so.
  *
  * Reading a user agent into a label is parsing a browser's own string, not
  * understanding people. The lists are short on purpose: a rare browser is
- * "other", so the label can never single anyone out.
+ * "other", so the label alone does not single anyone out.
  */
 import { isLinkPreviewFetcher } from "../link-preview-fetchers";
 import type { PoolPageStep } from "./visit-rules";
@@ -119,9 +124,23 @@ export function poolBrowserLabel(userAgent: string | null | undefined): PoolBrow
 
 // ── The row ────────────────────────────────────────────────────────────
 
-/** The visit's time, to the minute: when, not exactly when. */
-export function poolVisitMinute(now: Date): Date {
-  return new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+/** The visit's time, to the HOUR (review of #600): a minute plus the code
+ *  could be matched to a sign-up made a minute later with the same code,
+ *  tying a named person to his browser. An hour cannot single one out as
+ *  easily, and the funnel analysis needs no more. */
+export function poolVisitHour(now: Date): Date {
+  return new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000);
+}
+
+/** At most this many rows per code and hour (review of #600): anyone can
+ *  post the beacon, so a flood must not fill the table for 90 days. Real
+ *  traffic is far below it (the 24 opens of 4 November 2026 were a whole
+ *  day). Above it the visit still counts; only its row is skipped. */
+export const POOL_VISIT_LOG_CAP_PER_HOUR = 200;
+
+/** May one more row go in, with `rowsThisHour` already in the code's hour? */
+export function poolVisitLogHasRoom(rowsThisHour: number): boolean {
+  return rowsThisHour < POOL_VISIT_LOG_CAP_PER_HOUR;
 }
 
 export interface PoolVisitEventRow extends PoolVisitDetail, PoolBrowserLabel {
@@ -143,7 +162,7 @@ export function poolVisitEventRow(a: {
 }): PoolVisitEventRow {
   const label = poolBrowserLabel(a.userAgent);
   return {
-    at: poolVisitMinute(a.now),
+    at: poolVisitHour(a.now),
     code: a.code,
     step: a.step,
     openedBy: a.detail.openedBy,

@@ -2,9 +2,9 @@
  * The /play visit log's pure rules (2026-11-13). The daily counters could
  * not say why visitors left on 12 November, and the beacon's detail lived
  * only in the server log for a day. Kemal approved keeping a visit's detail
- * for 90 days on three conditions: only what the funnel analysis needs and
- * nothing that identifies a person (no address, no raw user agent, no
- * referral code, no id, no cookie), deleted automatically after 90 days,
+ * for 90 days on three conditions: only what the funnel analysis needs (no
+ * address, no raw user agent, no referral code, no id, no cookie, the time
+ * only to the hour), deleted automatically after 90 days,
  * and said in the privacy notice. These pin the first two.
  */
 import { describe, expect, it } from "vitest";
@@ -17,7 +17,9 @@ import {
   POOL_VISIT_RETENTION_DAYS,
   poolBrowserLabel,
   poolVisitEventRow,
-  poolVisitMinute,
+  POOL_VISIT_LOG_CAP_PER_HOUR,
+  poolVisitHour,
+  poolVisitLogHasRoom,
   poolVisitPurgeBefore,
   readPoolVisitDetail,
 } from "../visit-log-rules";
@@ -138,10 +140,10 @@ describe("readPoolVisitDetail: what the beacon may add, checked and clamped", ()
   });
 });
 
-describe("poolVisitEventRow: the row, and nothing that identifies a person", () => {
+describe("poolVisitEventRow: the row, and no address, user agent or friend's code", () => {
   const NOW = new Date("2026-11-13T12:34:56.789Z");
 
-  it("holds exactly the minute, the bucket, the step, the detail, whether a friend's link was used and the coarse label", () => {
+  it("holds exactly the hour, the bucket, the step, the detail, whether a friend's link was used and the coarse label", () => {
     const row = poolVisitEventRow({
       code: "_referral",
       step: "opened",
@@ -151,7 +153,7 @@ describe("poolVisitEventRow: the row, and nothing that identifies a person", () 
       userAgent: FB_IPHONE,
     });
     expect(row).toEqual({
-      at: new Date("2026-11-13T12:34:00.000Z"),
+      at: new Date("2026-11-13T12:00:00.000Z"),
       code: "_referral",
       step: "opened",
       openedBy: "touch",
@@ -184,7 +186,24 @@ describe("retention: 90 days, then deleted", () => {
     expect(poolVisitPurgeBefore(new Date("2026-11-13T06:00:00Z"))).toEqual(new Date("2026-08-15T06:00:00Z"));
   });
 
-  it("keeps the time to the minute only", () => {
-    expect(poolVisitMinute(new Date("2026-11-13T12:34:56.789Z"))).toEqual(new Date("2026-11-13T12:34:00.000Z"));
+  // Review of #600: a minute plus the code could be matched to a sign-up
+  // made a minute later with the same code. An hour does not single one out so easily.
+  it("keeps the time to the hour only", () => {
+    expect(poolVisitHour(new Date("2026-11-13T12:34:56.789Z"))).toEqual(new Date("2026-11-13T12:00:00.000Z"));
+    expect(poolVisitHour(new Date("2026-11-13T12:59:59.999Z"))).toEqual(new Date("2026-11-13T12:00:00.000Z"));
+    expect(poolVisitHour(new Date("2026-11-13T13:00:00.000Z"))).toEqual(new Date("2026-11-13T13:00:00.000Z"));
+  });
+});
+
+describe("the volume cap: at most 200 rows per code and hour", () => {
+  it("is 200, generous for real traffic (the 24 opens of 4 November 2026 were a whole day)", () => {
+    expect(POOL_VISIT_LOG_CAP_PER_HOUR).toBe(200);
+  });
+
+  it("has room until the bucket's hour holds 200 rows, then none", () => {
+    expect(poolVisitLogHasRoom(0)).toBe(true);
+    expect(poolVisitLogHasRoom(199)).toBe(true);
+    expect(poolVisitLogHasRoom(200)).toBe(false);
+    expect(poolVisitLogHasRoom(5_000)).toBe(false);
   });
 });

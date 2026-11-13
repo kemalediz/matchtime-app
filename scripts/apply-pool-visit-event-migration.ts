@@ -14,7 +14,8 @@
  * constraints dropped and re-added), so a re-run is a no-op.
  *
  * WHAT IT DOES, all additive: CREATE TABLE "PoolVisitEvent" (new, empty, no
- * foreign key), its 7 CHECKs and one index on "at". It rewrites, backfills,
+ * foreign key), its 7 CHECKs and two indexes ("at" for the deletion, "code",
+ * "at" for the volume cap). It rewrites, backfills,
  * drops or renames nothing. The dry run prints the table's state and the
  * funnel counters' row count; the apply checks that count is unchanged.
  */

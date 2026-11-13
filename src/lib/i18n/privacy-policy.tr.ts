@@ -93,7 +93,7 @@ export function buildPrivacyPolicyTr(f: PolicyFacts): PrivacyPolicyCopy {
           },
           {
             kind: "p",
-            text: "Biri oyuncu havuzuna katılma sayfasını açtığında, bu ziyaretin kaydını 90 gün saklarız: ziyaretin ne zaman olduğu, kişiyi sayfaya bizim hangi bağlantımızın ya da bir arkadaşının bağlantısının getirdiği, sayfanın ne kadar süre açık kaldığı, kişinin sayfada ilk ne yaptığı (örneğin dokunma, kaydırma ya da bir tuşa basma) ve genel bir tarayıcı ve cihaz türü (örneğin telefon ya da bilgisayar). Bu kayıtta IP adresi ya da kişiyi tanımlayan hiçbir bilgi yoktur ve kayıt 90 gün sonra otomatik olarak silinir.",
+            text: "Biri oyuncu havuzuna katılma sayfasını açtığında, bu ziyaretin kaydını 90 gün saklarız: ziyaretin hangi saatte olduğu, kişiyi sayfaya bizim hangi bağlantımızın ya da bir arkadaşının bağlantısının getirdiği, formu doldurmaya başlayıp başlamadığı, sayfanın ekranda ne kadar süre kaldığı, kişinin sayfada ilk ne yaptığı (örneğin dokunma, kaydırma ya da bir tuşa basma), genel bir tarayıcı türü, sayfanın Facebook ya da Nextdoor gibi bir uygulamanın içinde açılıp açılmadığı, cihaz türü (örneğin telefon ya da bilgisayar) ve ziyaretin bir kişi değil otomatik bir bağlantı önizlemesi olup olmadığı. Bu kayıtta IP adresi, tarayıcının tüm ayrıntıları ya da arkadaş kodu yoktur. Kayıt tek başına ziyaretçinin kim olduğunu göstermez ve onu hiçbir zaman havuz başvurularıyla ya da profillerle ilişkilendirmeyiz. Kayıt 90 gün sonra otomatik olarak silinir.",
           },
         ],
       },
@@ -108,6 +108,7 @@ export function buildPrivacyPolicyTr(f: PolicyFacts): PrivacyPolicyCopy {
               "Oyuncu havuzu: profilinizi tutmak ve sizi maçlarla eşleştirmek için, çünkü bunu siz istediniz. Kaydolduğunuz hizmet budur.",
               "Oyuncu havuzu: size maç teklifleri göndermek için, çünkü onay verdiniz. Onayınızı, verdiğiniz kadar kolay bir şekilde, istediğiniz zaman geri çekebilirsiniz.",
               "Oyuncu havuzu: maça gelme kaydını tutmak, engellemeler ve şikayetlerle ilgilenmek için, çünkü maçların herkes için güvenilir ve güvenli olmasında meşru menfaatimiz var.",
+              "Oyuncu havuzu sayfasına insanları hangi bağlantılarımızın getirdiğini ve sayfadan nerede ayrıldıklarını görmek için, çünkü sayfayı iyileştirmekte meşru menfaatimiz var.",
               "Fatura ve ödeme kayıtlarını saklamak için, çünkü yasa bunu zorunlu kılar.",
               "MatchTime'ı güvende tutmak ve sorunları gidermek için, çünkü düzgün çalışan, güvenli bir hizmette meşru menfaatimiz var.",
             ],

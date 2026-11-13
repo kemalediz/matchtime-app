@@ -15,7 +15,7 @@
  *     server's steps (sent, confirmed) counts nothing;
  *   - each beacon carries what opened the page and its time on screen, and
  *     the visit log (2026-11-13, kept 90 days) keeps them with a coarse
- *     browser label and nothing that identifies the visitor; a fetcher is
+ *     browser label, the hour only, no address or user agent; a fetcher is
  *     logged as a scanner, our staff not at all;
  *   - the owner's source codes page shows opened, started, sent and
  *     confirmed for today, 7 days or 30 days, with the drop between steps.
@@ -303,7 +303,7 @@ test.describe("the visit log, kept 90 days (2026-11-13)", () => {
     expect(rows[1]).toMatchObject({ ...label, step: "started", openedBy: null });
     for (const r of rows) {
       expect(r.visibleMs! % 100).toBe(0);
-      expect(new Date(r.at).getUTCSeconds()).toBe(0);
+      expect([new Date(r.at).getMinutes(), new Date(r.at).getSeconds()]).toEqual([0, 0]);
       expect(JSON.stringify(r)).not.toMatch(/AB12cd|iPhone|Mozilla/);
     }
   });

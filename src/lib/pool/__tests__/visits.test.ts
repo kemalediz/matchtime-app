@@ -14,7 +14,7 @@ const dbMock = vi.hoisted(() => ({
   db: {
     poolCampaign: { findFirst: vi.fn() },
     poolProfile: { findUnique: vi.fn() },
-    poolVisitEvent: { create: vi.fn(), deleteMany: vi.fn() },
+    poolVisitEvent: { create: vi.fn(), count: vi.fn(), deleteMany: vi.fn() },
     $executeRaw: vi.fn(),
   },
 }));
@@ -44,6 +44,7 @@ beforeEach(() => {
   dbMock.db.poolProfile.findUnique.mockResolvedValue({ userId: "u-friend" });
   dbMock.db.$executeRaw.mockResolvedValue(1);
   dbMock.db.poolVisitEvent.create.mockResolvedValue({});
+  dbMock.db.poolVisitEvent.count.mockResolvedValue(0);
   dbMock.db.poolVisitEvent.deleteMany.mockResolvedValue({ count: 0 });
 });
 
@@ -128,7 +129,7 @@ describe("recordPoolVisit: the visit log, kept 90 days (2026-11-13)", () => {
     const row = eventRow();
     expect(Object.keys(row).sort()).toEqual(ALLOWED);
     expect(row).toEqual({
-      at: new Date("2026-11-03T12:34:00.000Z"),
+      at: new Date("2026-11-03T12:00:00.000Z"),
       code: "fb-sutton",
       step: "opened",
       openedBy: "scroll",
@@ -169,6 +170,37 @@ describe("recordPoolVisit: the visit log, kept 90 days (2026-11-13)", () => {
     dbMock.db.$executeRaw.mockRejectedValue(new Error("pool down"));
     expect(await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: PERSON, now: NOW })).toBeNull();
     expect(eventRow()).toMatchObject({ code: POOL_VISIT_DIRECT, scanner: false });
+    warn.mockRestore();
+  });
+});
+
+describe("recordPoolVisit: the visit log's volume cap (review of #600)", () => {
+  it("counts the bucket's rows in the visit's hour before writing", async () => {
+    await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: new Date("2026-11-03T12:34:56Z") });
+    expect(dbMock.db.poolVisitEvent.count).toHaveBeenCalledWith({ where: { code: "fb-sutton", at: new Date("2026-11-03T12:00:00Z") } });
+    expect(dbMock.db.poolVisitEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("once the code's hour holds 200 rows, no more are written, and the visit still counts", async () => {
+    dbMock.db.poolVisitEvent.count.mockResolvedValue(200);
+    expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW })).toBe("fb-sutton");
+    expect(dbMock.db.poolVisitEvent.create).not.toHaveBeenCalled();
+    expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03", "opened"]);
+  });
+
+  it("199 rows: room for one more", async () => {
+    dbMock.db.poolVisitEvent.count.mockResolvedValue(199);
+    await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW });
+    expect(dbMock.db.poolVisitEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed check writes no row, is logged, and never costs the count", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    dbMock.db.poolVisitEvent.count.mockRejectedValue(new Error("pool down"));
+    expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW })).toBe("fb-sutton");
+    expect(dbMock.db.poolVisitEvent.create).not.toHaveBeenCalled();
+    expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03", "opened"]);
+    expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   });
 });
