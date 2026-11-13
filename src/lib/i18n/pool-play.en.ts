@@ -70,6 +70,7 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
     signup: {
       heading: "Join the free local player list",
       gameLine: (p) => `${p.weekday} ${p.format} in ${p.area}: ${p.day}, ${p.time}, ${p.venue}`,
+      firstGameFree: "First game free for new players",
       earlyNote:
         "The pool is opening town by town. Sign up now and you join the early sign-up list: you won't get any game messages until it opens near you.",
       openNote: "The pool is opening town by town. Sign up now and MatchTime can message you when a club near you needs a player.",

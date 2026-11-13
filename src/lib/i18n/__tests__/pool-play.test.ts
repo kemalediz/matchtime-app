@@ -161,3 +161,10 @@ describe("the confirm screen says he is not in yet", () => {
     expect(TR.signup.reminderHeading).toBe("Neredeyse bitti");
   });
 });
+
+describe("Sutton FC's first game free (2026-11-13)", () => {
+  it("the exact English and Turkish", () => {
+    expect(EN.signup.firstGameFree).toBe("First game free for new players");
+    expect(TR.signup.firstGameFree).toBe("Yeni oyunculara ilk maç ücretsiz");
+  });
+});

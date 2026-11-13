@@ -2,8 +2,9 @@
  * /play from a Facebook post (2026-11-11): the headline is "Join the free
  * local player list" for everyone, and a link with ?src=fb, fb1 or fb2
  * names the game its post sells (Sutton FC's next upcoming match) at the
- * top, while that game has a place. Another code, or a full game, shows no
- * line. The club is made in the test database with Sutton FC's id, since
+ * top, while that game has a place. A Nextdoor link (?src=nd) does the same
+ * (2026-11-13), and under the line Sutton FC's offer reads "First game free
+ * for new players". Another code, or a full game, shows neither. The club is made in the test database with Sutton FC's id, since
  * the codes are mapped to that id in code (`campaign-game-line.ts`).
  * No model anywhere: $0.
  */
@@ -44,6 +45,7 @@ async function seedSutton(db: TestDb): Promise<Date> {
 }
 
 const line = (page: Page) => page.getByTestId("pool-game-line");
+const offer = (page: Page) => page.getByTestId("pool-game-offer");
 
 test("the headline is the free local player list", async ({ page }) => {
   await page.goto("/play");
@@ -56,27 +58,40 @@ test("a Facebook link names Sutton FC's next game; another code does not", async
   const expected = campaignGameLine({ code: "fb1", match: { date, maxPlayers: 14, venue: "Goals North Cheam", placesOpen: 14 }, now: new Date(), lang: "en" })!;
   expect(expected).toMatch(/^\w+day 7-a-side in Sutton: \w{3} \d{1,2} \w{3}, \d{1,2}(:\d{2})?[ap]m, Goals North Cheam$/);
 
-  for (const src of ["fb", "fb1", "fb2"]) {
+  for (const src of ["fb", "fb1", "fb2", "nd"]) {
     await page.goto(`/play?src=${src}`);
     await expect(page.getByRole("heading", { level: 1, name: EN.signup.heading })).toBeVisible();
     await expect(line(page)).toHaveText(expected);
+    await expect(offer(page)).toHaveText("First game free for new players");
   }
 
-  for (const src of ["fb3", "nd", "site-hero"]) {
+  for (const src of ["fb3", "os", "lf", "site-hero"]) {
     await page.goto(`/play?src=${src}`);
     await expect(page.getByRole("heading", { level: 1, name: EN.signup.heading })).toBeVisible();
     await expect(line(page)).toHaveCount(0);
+    await expect(offer(page)).toHaveCount(0);
   }
 });
 
-test("a full game: no line", async ({ page, db }) => {
+test("no link code: no game line and no offer, even with a game", async ({ page, db }) => {
+  await seedSutton(db);
+  await page.goto("/play");
+  await expect(page.getByRole("heading", { level: 1, name: EN.signup.heading })).toBeVisible();
+  await expect(line(page)).toHaveCount(0);
+  await expect(offer(page)).toHaveCount(0);
+});
+
+test("a full game: no line and no offer, from Facebook or Nextdoor", async ({ page, db }) => {
   await seedSutton(db);
   await db.run(`UPDATE "Match" SET "maxPlayers" = 2 WHERE id = $1`, [MATCH_ID]);
   await db.run(
     `INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt") VALUES ('e2e-fb-att-1', $1, $2, 'CONFIRMED', 1, now()), ('e2e-fb-att-2', $1, $3, 'CONFIRMED', 2, now())`,
     [MATCH_ID, U.admin, U.player],
   );
-  await page.goto("/play?src=fb1");
-  await expect(page.getByRole("heading", { level: 1, name: EN.signup.heading })).toBeVisible();
-  await expect(line(page)).toHaveCount(0);
+  for (const src of ["fb1", "nd"]) {
+    await page.goto(`/play?src=${src}`);
+    await expect(page.getByRole("heading", { level: 1, name: EN.signup.heading })).toBeVisible();
+    await expect(line(page)).toHaveCount(0);
+    await expect(offer(page)).toHaveCount(0);
+  }
 });

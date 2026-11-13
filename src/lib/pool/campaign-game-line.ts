@@ -20,6 +20,11 @@
  * MatchTime's posts about one club's game. The map also carries the area
  * the post names, because nothing stored says "Sutton" for this club
  * (`Organisation.town` is null, and is a WhatsApp-number slug anyway).
+ *
+ * Nextdoor (`?src=nd`, 2026-11-13) sells the same game. Each club entry
+ * also says whether its first game is free for newcomers; Sutton FC's is
+ * (permanent), so under its line /play says "First game free for new
+ * players". The offer comes only with the line: no line, no offer.
  */
 import { templateTimeLabel } from "../club-graphics-layout";
 import { dayLabel, weekdayLabel } from "../i18n/dates";
@@ -27,14 +32,28 @@ import { flexFormatCopy } from "../i18n/flex-format";
 import type { Lang } from "../i18n/lang";
 import { poolPageCopy } from "./page-copy";
 
-/** Sutton Football Club (production org id). */
-const SUTTON_FC = { orgId: "cmnnwhdx30000zfr85q18lyy9", area: "Sutton" } as const;
+/** The club a campaign code sells a game of. */
+export interface CampaignGameClub {
+  orgId: string;
+  /** The area the posts name. */
+  area: string;
+  /** The club gives a newcomer's first game free (Sutton FC, permanent
+   *  since 2026-11-12), so /play says so under the game line. A club
+   *  without the offer gets the line and no offer: the page never implies
+   *  another club's games are free. */
+  firstGameFree: boolean;
+}
 
-/** Campaign code to the club whose game its posts sell, and the area they name. */
-const CAMPAIGN_GAME_CLUBS: Readonly<Record<string, { orgId: string; area: string }>> = Object.freeze({
+/** Sutton Football Club (production org id). */
+const SUTTON_FC: CampaignGameClub = Object.freeze({ orgId: "cmnnwhdx30000zfr85q18lyy9", area: "Sutton", firstGameFree: true });
+
+/** Campaign code to the club whose game its posts sell: the Facebook posts
+ *  (fb, fb1, fb2) and Nextdoor (nd, 2026-11-13). */
+const CAMPAIGN_GAME_CLUBS: Readonly<Record<string, CampaignGameClub>> = Object.freeze({
   fb: SUTTON_FC,
   fb1: SUTTON_FC,
   fb2: SUTTON_FC,
+  nd: SUTTON_FC,
 });
 
 /** How far ahead a game may be and still be named. */
@@ -43,10 +62,10 @@ const WINDOW_MS = CAMPAIGN_GAME_WINDOW_DAYS * 24 * 3600_000;
 
 /** The club a campaign code's posts sell a game of, or null. Codes arrive
  *  lowercased (`readSignupSource`). */
-export function campaignGameClub(code: string | null | undefined): { orgId: string; area: string } | null {
+export function campaignGameClub(code: string | null | undefined): CampaignGameClub | null {
   if (!code || !Object.hasOwn(CAMPAIGN_GAME_CLUBS, code)) return null;
   const club = CAMPAIGN_GAME_CLUBS[code];
-  return { orgId: club.orgId, area: club.area };
+  return { orgId: club.orgId, area: club.area, firstGameFree: club.firstGameFree };
 }
 
 /** The club's next upcoming match, as the line needs it. */
@@ -60,14 +79,22 @@ export interface CampaignGameMatch {
   placesOpen: number;
 }
 
+/** What /play shows for the game: the line, and under it the club's offer
+ *  (null when the club has none). */
+export interface CampaignGame {
+  line: string;
+  offer: string | null;
+}
+
+type GameArgs = { match: CampaignGameMatch | null; now: Date; lang: Lang };
+
 /**
- * The line, or null when the code sells no game or the game is not one a
- * stranger can join now: no match, kicked off, more than 8 days away, full,
- * or no venue to name.
+ * The game for a club, or null when the game is not one a stranger can join
+ * now: no club, no match, kicked off, more than 8 days away, full, or no
+ * venue to name. The offer never shows without the line.
  */
-export function campaignGameLine(a: { code: string | null; match: CampaignGameMatch | null; now: Date; lang: Lang }): string | null {
-  const club = campaignGameClub(a.code);
-  const m = a.match;
+export function campaignGameForClub(a: GameArgs & { club: CampaignGameClub | null }): CampaignGame | null {
+  const { club, match: m } = a;
   if (!club || !m) return null;
   const ahead = m.date.getTime() - a.now.getTime();
   if (ahead <= 0 || ahead > WINDOW_MS) return null;
@@ -75,7 +102,8 @@ export function campaignGameLine(a: { code: string | null; match: CampaignGameMa
   const venue = m.venue.trim();
   const perSide = Math.floor(m.maxPlayers / 2);
   if (!venue || perSide < 1) return null;
-  return poolPageCopy(a.lang).signup.gameLine({
+  const copy = poolPageCopy(a.lang).signup;
+  const line = copy.gameLine({
     weekday: weekdayLabel(a.lang, m.date),
     format: flexFormatCopy(a.lang).side(perSide),
     area: club.area,
@@ -83,4 +111,15 @@ export function campaignGameLine(a: { code: string | null; match: CampaignGameMa
     time: templateTimeLabel(a.lang, m.date),
     venue,
   });
+  return { line, offer: club.firstGameFree ? copy.firstGameFree : null };
+}
+
+/** The game a campaign code sells, or null (see {@link campaignGameForClub}). */
+export function campaignGame(a: GameArgs & { code: string | null }): CampaignGame | null {
+  return campaignGameForClub({ ...a, club: campaignGameClub(a.code) });
+}
+
+/** Just the line of {@link campaignGame}. */
+export function campaignGameLine(a: GameArgs & { code: string | null }): string | null {
+  return campaignGame(a)?.line ?? null;
 }
