@@ -31,6 +31,10 @@
  * browser's user agent still counts as opened, but it no longer counts as
  * started unless it really enters something, and every beacon's user agent
  * is logged on the server (`visits.ts`) so such a scanner can be named.
+ *
+ * THE VISIT LOG (2026-11-13) keeps a little more per beacon for 90 days:
+ * no address, no user agent, no friend's code, the time to the hour, and
+ * never linked to a sign-up (`visit-log-rules.ts`).
  */
 import { formatInTimeZone } from "date-fns-tz";
 import { isLinkPreviewFetcher } from "../link-preview-fetchers";

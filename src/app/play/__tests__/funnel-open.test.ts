@@ -6,7 +6,19 @@
  * after a Facebook comment went up, and never touched it.
  */
 import { describe, expect, it } from "vitest";
-import { POOL_OPEN_PERSON_SIGNALS, POOL_OPEN_VISIBLE_MS, openGateNext, openGateStart, openGateWait, type OpenGate } from "../funnel-open";
+import {
+  POOL_OPEN_PERSON_SIGNALS,
+  POOL_OPEN_VISIBLE_MS,
+  openGateNext,
+  openGateStart,
+  openGateWait,
+  openTriggerOf,
+  visibleClockNext,
+  visibleClockStart,
+  visibleSoFar,
+  type OpenGate,
+} from "../funnel-open";
+import { POOL_OPEN_TRIGGERS } from "@/lib/pool/visit-log-rules";
 
 const signal = (type: string, isTrusted = true) => ({ kind: "signal" as const, type, isTrusted });
 const visibility = (visible: boolean, now: number) => ({ kind: "visibility" as const, visible, now });
@@ -119,5 +131,35 @@ describe("how long to wait for 5 visible seconds", () => {
 
   it("never negative when the clock ran late", () => {
     expect(openGateWait(openGateStart(0, true), 9_000)).toBe(0);
+  });
+});
+
+describe("what opened it, sent with the beacon (2026-11-13)", () => {
+  it("names the signal, the clock or the start; every name is one the server keeps", () => {
+    expect(openTriggerOf(signal("pointerdown"))).toBe("pointer");
+    expect(openTriggerOf(signal("touchstart"))).toBe("touch");
+    expect(openTriggerOf(signal("keydown"))).toBe("key");
+    expect(openTriggerOf(signal("wheel"))).toBe("wheel");
+    expect(openTriggerOf(signal("scroll"))).toBe("scroll");
+    expect(openTriggerOf(tick(5_000))).toBe("visible-time");
+    expect(openTriggerOf(visibility(false, 7_000))).toBe("visible-time");
+    expect(openTriggerOf({ kind: "started" })).toBe("before-start");
+    for (const type of POOL_OPEN_PERSON_SIGNALS) expect(POOL_OPEN_TRIGGERS).toContain(openTriggerOf(signal(type)));
+  });
+});
+
+describe("the page's visible clock, for the time on screen each beacon reports", () => {
+  it("adds up the time on screen and leaves out the time hidden", () => {
+    let c = visibleClockStart(0, true);
+    expect(visibleSoFar(c, 3_000)).toBe(3_000);
+    c = visibleClockNext(c, false, 3_000);
+    expect(visibleSoFar(c, 13_000)).toBe(3_000);
+    c = visibleClockNext(c, true, 13_000);
+    c = visibleClockNext(c, true, 14_000);
+    expect(visibleSoFar(c, 15_000)).toBe(5_000);
+  });
+
+  it("starts at nothing in a background tab", () => {
+    expect(visibleSoFar(visibleClockStart(0, false), 60_000)).toBe(0);
   });
 });

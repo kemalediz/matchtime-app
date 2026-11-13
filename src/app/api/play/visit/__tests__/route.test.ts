@@ -48,7 +48,33 @@ describe("POST /api/play/visit", () => {
       userAgent: PERSON,
       now: expect.any(Date),
       step: "started",
+      detail: { openedBy: null, visibleMs: null },
     });
+  });
+
+  it("passes on what opened the page and its visible time, checked and clamped (2026-11-13)", async () => {
+    await POST(req(JSON.stringify({ src: "fb-sutton", step: "opened", trigger: "scroll", visibleMs: 5234 })));
+    await POST(req(JSON.stringify({ src: "fb-sutton", step: "opened", trigger: "<script>", visibleMs: 9e15 })));
+    await POST(req(JSON.stringify({ src: "fb-sutton", step: "started", trigger: "key", visibleMs: -1 })));
+    for (const task of later.tasks) await task();
+    expect(visits.recordPoolVisit.mock.calls.map((c) => c[0].detail)).toEqual([
+      { openedBy: "scroll", visibleMs: 5200 },
+      { openedBy: null, visibleMs: 24 * 3600 * 1000 },
+      { openedBy: null, visibleMs: 0 },
+    ]);
+  });
+
+  it("never passes on anything that identifies the visitor: no address, no cookie", async () => {
+    const r = new Request("http://localhost/api/play/visit", {
+      method: "POST",
+      body: JSON.stringify({ src: "fb-sutton", ref: "AB12cd", step: "opened", trigger: "touch", visibleMs: 100, userId: "u1", ip: "1.2.3.4" }),
+      headers: { "user-agent": PERSON, "x-forwarded-for": "203.0.113.9", cookie: "session=abc" },
+    });
+    await POST(r);
+    await later.tasks[0]();
+    const arg = visits.recordPoolVisit.mock.calls[0][0];
+    expect(Object.keys(arg).sort()).toEqual(["detail", "now", "source", "step", "userAgent"]);
+    expect(JSON.stringify(arg)).not.toMatch(/203\.0\.113\.9|1\.2\.3\.4|session=abc|u1/);
   });
 
   it("no step is opened: a page cached before steps existed still counts its visit", async () => {

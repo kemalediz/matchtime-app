@@ -24,7 +24,14 @@
  *     before either: opened goes first, so a start never exists without an
  *     open.
  * Once only: after the gate has opened nothing opens it again.
+ *
+ * WHAT OPENED IT, AND THE TIME ON SCREEN (2026-11-13): the beacon sends
+ * which of these opened the page (`openTriggerOf`) and how long the page
+ * had been on screen (`visibleSoFar`, on the page's own visible clock), for
+ * the visit log (`src/lib/pool/visit-log-rules.ts`), kept 90 days.
  */
+import type { PoolOpenTrigger } from "@/lib/pool/visit-log-rules";
+
 
 /** The events that show a person is there, when trusted. */
 export const POOL_OPEN_PERSON_SIGNALS = ["pointerdown", "touchstart", "keydown", "wheel", "scroll"] as const;
@@ -33,12 +40,16 @@ const SIGNALS: ReadonlySet<string> = new Set(POOL_OPEN_PERSON_SIGNALS);
 /** On screen this long in all (ms) and it is a person reading. */
 export const POOL_OPEN_VISIBLE_MS = 5_000;
 
-export interface OpenGate {
-  readonly opened: boolean;
+/** Time on screen, on any one clock (ms). */
+export interface VisibleClock {
   /** Visible time banked from stretches that have ended (ms). */
   readonly visibleMs: number;
   /** When the current visible stretch began, or null while hidden. */
   readonly visibleSince: number | null;
+}
+
+export interface OpenGate extends VisibleClock {
+  readonly opened: boolean;
 }
 
 export type OpenGateInput =
@@ -47,13 +58,25 @@ export type OpenGateInput =
   | { kind: "tick"; now: number }
   | { kind: "started" };
 
-/** The gate when the page mounts, `now` on any one clock (ms). */
-export function openGateStart(now: number, visible: boolean): OpenGate {
-  return { opened: false, visibleMs: 0, visibleSince: visible ? now : null };
+export function visibleClockStart(now: number, visible: boolean): VisibleClock {
+  return { visibleMs: 0, visibleSince: visible ? now : null };
 }
 
-function visibleSoFar(g: OpenGate, now: number): number {
-  return g.visibleMs + (g.visibleSince === null ? 0 : Math.max(now - g.visibleSince, 0));
+/** The time on screen so far (ms). */
+export function visibleSoFar(c: VisibleClock, now: number): number {
+  return c.visibleMs + (c.visibleSince === null ? 0 : Math.max(now - c.visibleSince, 0));
+}
+
+/** The clock once the page is shown or hidden: hiding banks the stretch;
+ *  shown again while already visible, the stretch runs on. */
+export function visibleClockNext<C extends VisibleClock>(c: C, visible: boolean, now: number): C {
+  if (visible) return c.visibleSince === null ? { ...c, visibleSince: now } : c;
+  return { ...c, visibleMs: visibleSoFar(c, now), visibleSince: null };
+}
+
+/** The gate when the page mounts, `now` on any one clock (ms). */
+export function openGateStart(now: number, visible: boolean): OpenGate {
+  return { opened: false, ...visibleClockStart(now, visible) };
 }
 
 /** The gate after one input, and whether THIS input opened it. */
@@ -68,14 +91,32 @@ export function openGateNext(g: OpenGate, input: OpenGateInput): { gate: OpenGat
     case "tick":
       return visibleSoFar(g, input.now) >= POOL_OPEN_VISIBLE_MS ? open(g) : { gate: g, open: false };
     case "visibility": {
-      if (input.visible) {
-        // Shown again while already visible: the stretch runs on.
-        return { gate: g.visibleSince === null ? { ...g, visibleSince: input.now } : g, open: false };
-      }
-      const banked: OpenGate = { ...g, visibleMs: visibleSoFar(g, input.now), visibleSince: null };
+      const next = visibleClockNext(g, input.visible, input.now);
       // A stretch that reached 5 seconds while the timer ran late still counts.
-      return banked.visibleMs >= POOL_OPEN_VISIBLE_MS ? open(banked) : { gate: banked, open: false };
+      return !input.visible && next.visibleMs >= POOL_OPEN_VISIBLE_MS ? open(next) : { gate: next, open: false };
     }
+  }
+}
+
+const SIGNAL_TRIGGER: Record<string, PoolOpenTrigger> = {
+  pointerdown: "pointer",
+  touchstart: "touch",
+  keydown: "key",
+  wheel: "wheel",
+  scroll: "scroll",
+} satisfies Record<(typeof POOL_OPEN_PERSON_SIGNALS)[number], PoolOpenTrigger>;
+
+/** What the input that opened the gate is called in the visit log; null
+ *  for a signal that never opens it. */
+export function openTriggerOf(input: OpenGateInput): PoolOpenTrigger | null {
+  switch (input.kind) {
+    case "signal":
+      return SIGNAL_TRIGGER[input.type] ?? null;
+    case "started":
+      return "before-start";
+    case "tick":
+    case "visibility":
+      return "visible-time";
   }
 }
 

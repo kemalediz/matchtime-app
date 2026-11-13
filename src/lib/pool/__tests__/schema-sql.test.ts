@@ -22,6 +22,7 @@ import { POOL_SPORTS, POOL_SPORT_KEYS, OTHER_SPORT, SPORT_LEVELS } from "../spor
 import { POOL_CONFIRM_CODE_ALPHABET, POOL_CONFIRM_CODE_LENGTH, POOL_TRAVEL_MILES, POSTCODE_DISTRICT_RE } from "../rules";
 import * as V from "../vocab";
 import { POOL_FUNNEL_STEPS } from "../visit-rules";
+import * as L from "../visit-log-rules";
 
 const ROOT = join(__dirname, "..", "..", "..", "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -354,5 +355,61 @@ describe("the funnel steps migration (2026-11-04)", () => {
   });
   it("the schema has the step, defaulting to opened", () => {
     expect(read("prisma/schema.prisma")).toMatch(/model PoolCampaignVisit \{[^}]*step\s+String\s+@default\("opened"\)/);
+  });
+});
+
+describe("the visit log migration (2026-11-13): one row per beacon, kept 90 days", () => {
+  const EVENTS = "prisma/migrations/20261113120000_pool_visit_events/migration.sql";
+  const sql = code(read(EVENTS));
+  const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "PoolVisitEvent"'));
+  const cols = table.slice(0, table.indexOf(");"));
+
+  it("holds exactly the columns the funnel analysis needs", () => {
+    const names = [...cols.matchAll(/^\s*"([^"]+)" [A-Z]/gm)].map((m) => m[1]);
+    expect(names).toEqual(["id", "at", "code", "step", "openedBy", "visibleMs", "hasRef", "browser", "inApp", "device", "scanner"]);
+    expect(cols).toMatch(/PRIMARY KEY \("id"\)/);
+  });
+  it("keeps nothing that identifies a person: no address, user agent, referral code, user id or cookie", () => {
+    expect(cols).not.toMatch(/\bip\b|address|agent|"ua"|userId|"ref"|referralCode|cookie|session|phone|name"/i);
+  });
+  it("each label column is one of its values, pinned to the TypeScript, in the migration and the CHECK file alike", () => {
+    const checks = [
+      inList("step", ["opened", "started"]),
+      nullOrIn("openedBy", L.POOL_OPEN_TRIGGERS),
+      inList("browser", L.POOL_BROWSERS),
+      inList("inApp", L.POOL_IN_APPS),
+      inList("device", L.POOL_DEVICES),
+      `CHECK ("visibleMs" IS NULL OR ("visibleMs" >= 0 AND "visibleMs" <= ${L.POOL_VISIT_MAX_VISIBLE_MS}))`,
+      `CHECK ("code" IN ('_direct', '_referral') OR ("code" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length("code") <= 32))`,
+    ];
+    for (const f of [EVENTS, CHECKS]) for (const c of checks) expect(code(read(f)), `${f}: ${c}`).toContain(c);
+  });
+  it("is indexed by time, for the daily deletion, and by code and hour, for the volume cap", () => {
+    expect(sql).toContain(`CREATE INDEX IF NOT EXISTS "PoolVisitEvent_at_idx" ON "PoolVisitEvent"("at");`);
+    expect(sql).toContain(`CREATE INDEX IF NOT EXISTS "PoolVisitEvent_code_at_idx" ON "PoolVisitEvent"("code", "at");`);
+    expect(read("prisma/schema.prisma")).toMatch(/model PoolVisitEvent \{[^}]*@@index\(\[code, at\]\)/);
+  });
+  it("says the time is kept to the hour, and the cap", () => {
+    expect(read(EVENTS)).toMatch(/to the HOUR/);
+    expect(read(EVENTS)).toMatch(/200 rows per code and hour/);
+  });
+  it("is additive, idempotent and one transaction with no session-level SET and no data written", () => {
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+    const dropped = [...sql.matchAll(/DROP CONSTRAINT IF EXISTS "([^"]+)"/g)].map((m) => m[1]);
+    const added = new Set([...sql.matchAll(/ADD CONSTRAINT "([^"]+)"/g)].map((m) => m[1]));
+    for (const name of dropped) expect(added.has(name), name).toBe(true);
+    expect(sql).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
+    expect(sql).toMatch(/^\s*BEGIN;/m);
+    expect(sql).toMatch(/^\s*SET LOCAL lock_timeout = '5s';/m);
+    expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
+    expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
+    expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
+  });
+  it("states its retention in its header", () => {
+    expect(read(EVENTS)).toMatch(/RETENTION: 90 DAYS/);
+  });
+  it("the schema has the model, indexed by time", () => {
+    expect(read("prisma/schema.prisma")).toMatch(/model PoolVisitEvent \{[^}]*@@index\(\[at\]\)/);
   });
 });

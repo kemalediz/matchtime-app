@@ -211,6 +211,30 @@ ALTER TABLE "PoolCampaignVisit" DROP CONSTRAINT IF EXISTS "PoolCampaignVisit_ste
 ALTER TABLE "PoolCampaignVisit" ADD CONSTRAINT "PoolCampaignVisit_step_check"
   CHECK ("step" IN ('opened', 'started', 'sent', 'confirmed'));
 
+-- PoolVisitEvent (2026-11-13): src/lib/pool/visit-log-rules.ts; applied to
+-- production by prisma/migrations/20261113120000_pool_visit_events
+ALTER TABLE "PoolVisitEvent" DROP CONSTRAINT IF EXISTS "PoolVisitEvent_code_check";
+ALTER TABLE "PoolVisitEvent" ADD CONSTRAINT "PoolVisitEvent_code_check"
+  CHECK ("code" IN ('_direct', '_referral') OR ("code" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length("code") <= 32));
+ALTER TABLE "PoolVisitEvent" DROP CONSTRAINT IF EXISTS "PoolVisitEvent_step_check";
+ALTER TABLE "PoolVisitEvent" ADD CONSTRAINT "PoolVisitEvent_step_check"
+  CHECK ("step" IN ('opened', 'started'));
+ALTER TABLE "PoolVisitEvent" DROP CONSTRAINT IF EXISTS "PoolVisitEvent_openedBy_check";
+ALTER TABLE "PoolVisitEvent" ADD CONSTRAINT "PoolVisitEvent_openedBy_check"
+  CHECK ("openedBy" IS NULL OR "openedBy" IN ('pointer', 'touch', 'key', 'wheel', 'scroll', 'visible-time', 'before-start'));
+ALTER TABLE "PoolVisitEvent" DROP CONSTRAINT IF EXISTS "PoolVisitEvent_visibleMs_check";
+ALTER TABLE "PoolVisitEvent" ADD CONSTRAINT "PoolVisitEvent_visibleMs_check"
+  CHECK ("visibleMs" IS NULL OR ("visibleMs" >= 0 AND "visibleMs" <= 86400000));
+ALTER TABLE "PoolVisitEvent" DROP CONSTRAINT IF EXISTS "PoolVisitEvent_browser_check";
+ALTER TABLE "PoolVisitEvent" ADD CONSTRAINT "PoolVisitEvent_browser_check"
+  CHECK ("browser" IN ('chrome', 'safari', 'firefox', 'edge', 'samsung', 'other'));
+ALTER TABLE "PoolVisitEvent" DROP CONSTRAINT IF EXISTS "PoolVisitEvent_inApp_check";
+ALTER TABLE "PoolVisitEvent" ADD CONSTRAINT "PoolVisitEvent_inApp_check"
+  CHECK ("inApp" IN ('facebook', 'instagram', 'nextdoor', 'whatsapp', 'other', 'none'));
+ALTER TABLE "PoolVisitEvent" DROP CONSTRAINT IF EXISTS "PoolVisitEvent_device_check";
+ALTER TABLE "PoolVisitEvent" ADD CONSTRAINT "PoolVisitEvent_device_check"
+  CHECK ("device" IN ('mobile', 'tablet', 'desktop', 'other'));
+
 -- GuestPlace
 ALTER TABLE "GuestPlace" DROP CONSTRAINT IF EXISTS "GuestPlace_source_check";
 ALTER TABLE "GuestPlace" ADD CONSTRAINT "GuestPlace_source_check"
