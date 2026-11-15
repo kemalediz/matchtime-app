@@ -172,7 +172,8 @@ const SHARE_RE = /^[A-Za-z0-9]{4,12}$/;
  * Where a visitor came from, off the /play URL: `?src=<campaign>` (a
  * PoolCampaign code: lowercase letters, digits, hyphens; slice G1's links,
  * `growth-rules.ts`; `?c=` is read the same) or `?ref=<share code>` (a
- * friend's PoolProfile.shareCode). Anything else is dropped, never stored.
+ * friend's PoolProfile.shareCode). A blank `src` (`?src=&c=os`) is no
+ * code, so `c` is read. Anything else is dropped, never stored.
  * Whether the code exists is the server's question.
  *
  * Nextdoor rewrites a typed `?src=nd` to `?nd` in the post (seen
@@ -183,7 +184,7 @@ const SHARE_RE = /^[A-Za-z0-9]{4,12}$/;
 export function readSignupSource(params: Record<string, unknown>): { campaignCode: string | null; referralCode: string | null } {
   const noCode = (v: unknown) => v == null || (typeof v === "string" && v.trim() === "");
   const bareNd = noCode(params.src) && noCode(params.c) && typeof params.nd === "string";
-  const raw = bareNd ? "nd" : typeof params.src === "string" ? params.src : params.c;
+  const raw = bareNd ? "nd" : typeof params.src === "string" && !noCode(params.src) ? params.src : params.c;
   const c = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   const ref = typeof params.ref === "string" ? params.ref.trim() : "";
   return {

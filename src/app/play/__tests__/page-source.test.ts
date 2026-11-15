@@ -10,15 +10,24 @@ import type { ReactElement } from "react";
 const loadCampaignGame = vi.fn();
 vi.mock("@/lib/pool/campaign-game-line-loader", () => ({ loadCampaignGame: (...a: unknown[]) => loadCampaignGame(...a) }));
 vi.mock("@/lib/pool/growth", () => ({ poolInvitedByName: vi.fn(async () => null) }));
-vi.mock("@/lib/pool/flags-page", () => ({ signupGoesOnEarlyListForPage: vi.fn(async () => false) }));
+const paused = vi.hoisted(() => ({ on: false }));
+vi.mock("@/lib/pool/flags-page", () => ({
+  signupGoesOnEarlyListForPage: vi.fn(async () => false),
+  poolSignupPausedForPage: vi.fn(async () => paused.on),
+}));
 vi.mock("../play-signup", () => ({ PlaySignup: () => null }));
 vi.mock("../funnel-beacon", () => ({ PoolFunnelBeacon: () => null }));
 
 import PlayPage from "../page";
 
-type Beacon = ReactElement<{ src: string | null; refCode: string | null; children: ReactElement<{ source: unknown; gameLine: string | null }> }>;
+type Beacon = ReactElement<{
+  src: string | null;
+  refCode: string | null;
+  children: ReactElement<{ source: unknown; paused: boolean; gameLine: string | null; gameOffer: string | null }>;
+}>;
 
-const render = async (q: Record<string, string>) => {
+const render = async (q: Record<string, string>, o: { paused?: boolean } = {}) => {
+  paused.on = o.paused ?? false;
   loadCampaignGame.mockReset();
   loadCampaignGame.mockResolvedValue({ line: "Tuesday 7pm, 7-a-side", offer: "First game free for new players" });
   return (await PlayPage({ searchParams: Promise.resolve(q) })) as Beacon;
@@ -37,5 +46,22 @@ describe("/play passes one code to the game line, the beacon and the form", () =
     const page = await render({ src: "fb1", nd: "" });
     expect(loadCampaignGame).toHaveBeenCalledWith("fb1", "en");
     expect(page.props.src).toBe("fb1");
+  });
+});
+
+describe("/play while sign-ups are paused (review, 2026-11-15)", () => {
+  it("does not load the game at all, and the form gets no line or offer", async () => {
+    const page = await render({ src: "fb1" }, { paused: true });
+    expect(loadCampaignGame).not.toHaveBeenCalled();
+    expect(page.props.children.props.paused).toBe(true);
+    expect(page.props.children.props.gameLine).toBeNull();
+    expect(page.props.children.props.gameOffer).toBeNull();
+  });
+
+  it("open: the game is loaded as before", async () => {
+    const page = await render({ src: "fb1" });
+    expect(loadCampaignGame).toHaveBeenCalledWith("fb1", "en");
+    expect(page.props.children.props.paused).toBe(false);
+    expect(page.props.children.props.gameOffer).toBe("First game free for new players");
   });
 });
