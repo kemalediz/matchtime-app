@@ -1,6 +1,7 @@
 /**
- * UNIFIED_ANSWERS (Kemal, 2026-11-10): OFF unless explicitly
- * "1"/"true"/"on"/"yes".
+ * UNIFIED_ANSWERS (Kemal, 2026-11-10). The code's default is OFF: on only
+ * when the variable is "1"/"true"/"on"/"yes". PRODUCTION SETS IT: live with
+ * UNIFIED_ANSWERS=1 since 2026-11-11 23:18 UTC (#595). Unset it to go back.
  *
  * Kemal: "any question that is being asked should go to other category and
  * just answered by LLM after looking at all data. this way we can get rid of
@@ -13,9 +14,10 @@
  * ever in the organisers' context). The question extractor shrinks to those
  * four and "anything else" (`UNIFIED_QUESTION_PROMPT`).
  *
- * OFF, nothing changes: the extractor, the engine, the composer and the DM
- * answer are exactly what they were (`__tests__/unified-answers-off.test.ts`).
- * It stays off until Kemal has seen the side by side A/B on real questions.
+ * OFF, the old path: the extractor, the engine, the composer and the DM
+ * answer as they were before #595 (pinned by "UNIFIED_ANSWERS off" in
+ * `pipeline/__tests__/answer-batch-unified.test.ts` and the flag-off case of
+ * `e2e/api/unified-answers.spec.ts`).
  *
  * TEST SEAM, the same double gate as picture-reading-flag.ts: the header
  * `x-mt-test-unified-answers` may say "1" or "0", honoured only when the

@@ -343,6 +343,8 @@ async function askDm(c: Case, unified: boolean): Promise<PathResult> {
     lang,
     replyContext: noReplyContext(),
     now: NOW,
+    // The pool switch as the live DM reads it (review of #595, 2026-11-15).
+    poolEnv: async () => poolSwitchEnv((await poolPlatformOpenNow()) === true),
   });
   const g = await answerUnified({ ...input, model });
   const rejected = "rejected" in g.result ? g.result.rejected : null;

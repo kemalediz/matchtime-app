@@ -16,6 +16,7 @@ import type { OrgFeatures } from "../../org-features";
 import type { ClubSnapshot, Route, SquadState, StatsSnapshot } from "../types";
 import { NOW, fullName, world } from "./helpers";
 import { answerHqQuestion } from "../../admin-group-question";
+import { AiBudgetExceededError } from "../../ai-budget-context";
 
 const FEATURES = {
   botEnabled: true,
@@ -62,12 +63,13 @@ const OLD_SQUAD = {
 
 /** A model that answers each label: the old or the new extractor, and the
  *  unified answer. */
-function stubModel(opts: { kind?: string; feature?: string; personRef?: string; answer?: string; old?: Record<string, unknown> } = {}) {
+function stubModel(opts: { kind?: string; feature?: string; personRef?: string; answer?: string; old?: Record<string, unknown>; capAnswer?: boolean } = {}) {
   const reqs: ModelRequest[] = [];
   const model: PipelineModel = {
     name: "stub",
     async complete(req: ModelRequest): Promise<ModelResponse> {
       reqs.push(req);
+      if (req.label === "unified-answer" && opts.capAnswer) throw new AiBudgetExceededError("org:org-1", "unified-answer");
       let text: string;
       if (req.label === "unified-answer") text = JSON.stringify({ answer: opts.answer ?? "11 places left for Tue 21:30." });
       else if (req.label === "extractor:question-unified")
@@ -108,6 +110,7 @@ async function ask(opts: {
   senderUserId?: string;
   features?: Partial<OrgFeatures>;
   personRef?: string;
+  capAnswer?: boolean;
 }) {
   const state = opts.state ?? world({ confirmed: ["kemal", "sait", "idris"], bench: ["erdal", "zair"] });
   const { model, reqs } = stubModel(opts);
@@ -328,5 +331,80 @@ describe("UNIFIED_ANSWERS on: round 3 (2026-11-12)", () => {
     expect(user).toMatch(/While places are open[^\n]*17:00 to the organisers in HQ/);
     // The organisers still see every name.
     expect(user).toContain(`1. ${fullName("kemal")}`);
+  });
+});
+
+/**
+ * WHO THE QUESTION IS ABOUT (review of #595, 2026-11-15). The subject
+ * started as the asker and was replaced only when the named person resolved
+ * to exactly one member, so "what is Alex's rating?" (two Alexes) or "what is
+ * Zed's rating?" (nobody) put THE PLAYER THE QUESTION IS ABOUT: <the asker>,
+ * with the asker's numbers, in the context. Now a question that names
+ * someone else who does not resolve has no subject block at all; the tables
+ * still carry everyone's numbers under their own names. Made-up people.
+ */
+describe("UNIFIED_ANSWERS on: the person a question names", () => {
+  const people: Array<[string, string]> = [
+    ["u-bruno", "Bruno Carr"],
+    ["u-alex1", "Alex Dale"],
+    ["u-alex2", "Alex Ewing"],
+    ["u-cosmo", "Cosmo Finch"],
+  ];
+  const state = (): SquadState => {
+    const base = world({ players: [] });
+    return {
+      ...base,
+      roster: people.map(([userId, name]) => ({ userId, name, isAdmin: false, hasPhone: true })),
+      rows: [
+        { userId: "u-bruno", status: "CONFIRMED", position: 1 },
+        { userId: "u-alex1", status: "CONFIRMED", position: 2 },
+      ],
+    };
+  };
+  const contextFor = async (personRef: string) => {
+    const { reqs, loads } = await ask({ unified: true, kind: "other", personRef, state: state(), senderUserId: "u-bruno", answer: "I can't tell that." });
+    return { user: reqs.find((r) => r.label === "unified-answer")!.user, loads };
+  };
+
+  it("an ambiguous name (two Alexes): no subject block, never the asker as the subject", async () => {
+    const { user, loads } = await contextFor("Alex");
+    expect(user).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
+    expect(loads).not.toContain("chemistry");
+  });
+
+  it("an unknown or misspelt name: no subject block either", async () => {
+    expect((await contextFor("Zed")).user).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
+    expect((await contextFor("Brunno Kar")).user).not.toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  it("UNCHANGED: a name that resolves to one member is the subject", async () => {
+    const { user } = await contextFor("Cosmo");
+    expect(user).toContain("THE PLAYER THE QUESTION IS ABOUT: Cosmo Finch");
+  });
+
+  it("UNCHANGED: 'me', or no name at all, is the asker", async () => {
+    expect((await contextFor("me")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+    expect((await contextFor("")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+});
+
+/**
+ * THE DAILY AI CAP IN THE GROUPS (review of #595, 2026-11-15). Unchanged by
+ * the fix, on purpose: a group at its cap is told so once by the route
+ * before any model is asked (`route.ts`, the capped router), and a cap that
+ * trips between the extractor and the answer leaves the message unanswered
+ * here and disowned, exactly as the open answer did before #595. It never
+ * throws out of the batch.
+ */
+describe("UNIFIED_ANSWERS on: the daily AI cap trips at the answer", () => {
+  it("the players' group: no reply, the message is disowned with the reason, nothing throws", async () => {
+    const { res, outcome } = await ask({ unified: true, kind: "other", capAnswer: true });
+    expect(outcome).toBeUndefined();
+    expect(res.degradations.join(" ")).toMatch(/daily AI cap/);
+  });
+
+  it("HQ: the same", async () => {
+    const { outcome } = await ask({ unified: true, kind: "other", audience: "organisers", capAnswer: true });
+    expect(outcome).toBeUndefined();
   });
 });

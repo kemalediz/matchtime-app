@@ -1770,11 +1770,16 @@ export async function runAnswerBatch(args: {
       const m = byId.get(id);
       const f = factsById.get(id);
       // Whose pairings the tables show: the member the question names
-      // (who-is-who, never spelling), else the asker.
+      // (who-is-who, never spelling), else the asker. A question that names
+      // someone who does not resolve to one member (two of that name,
+      // nobody, a misspelling) has NO subject: it is not about the asker,
+      // and showing the asker's numbers as the subject's is how "what is
+      // Alex's rating?" got the asker's (review of #595, 2026-11-15). The
+      // tables still carry everyone's under their own names.
       let person: { userId: string; self: boolean } | null = m?.senderUserId ? { userId: m.senderUserId, self: true } : null;
       if (f?.kind === "question" && f.personRef && f.personRef.toLowerCase() !== "me") {
         const r = resolvePerson(f.personRef, state.roster, peopleById.get(id));
-        if (r.kind === "resolved") person = { userId: r.member.userId, self: r.member.userId === m?.senderUserId };
+        person = r.kind === "resolved" ? { userId: r.member.userId, self: r.member.userId === m?.senderUserId } : null;
       }
       if (person && u.stats && !u.stats.chemistry[person.userId]) {
         const load = deps.loadChemistry ?? (async (o: string, uid: string) => (await import("./load-stats")).loadStatsChemistry(o, uid));

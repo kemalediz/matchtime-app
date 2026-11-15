@@ -1711,6 +1711,8 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
         phone: replyPhone,
         // UNIFIED_ANSWERS (Kemal, 2026-11-10): off unless set.
         unified: unifiedAnswersEnabledForApiRequest(request),
+        // The pool switch, resolved as the group and HQ resolve it.
+        poolEnv: () => poolEnvForApiRequest(request),
       });
       if (result) {
         await db.botJob.create({

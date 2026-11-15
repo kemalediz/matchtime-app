@@ -9,6 +9,7 @@ import { HAIKU_CALL, MIN_CACHEABLE_TOKENS } from "../llm";
 import { answerUnified, buildUnifiedContext, matchRatingsFrom, UNIFIED_ANSWER_SYSTEM, type UnifiedAnswerInput } from "../unified-answer";
 import type { ClubSnapshot, StatsSnapshot } from "../types";
 import { NOW, fullName, world } from "./helpers";
+import { AiBudgetExceededError } from "../../ai-budget-context";
 
 const CLUB: ClubSnapshot = { collectorName: "Elvin Aliyev", feePerPlayer: 6.5, feeSplitTotal: false, teamsReady: "10:00" };
 const STATS: StatsSnapshot = {
@@ -185,6 +186,23 @@ describe("the call", () => {
     const { model } = stub(new Error("529 Overloaded"));
     const r = await answerUnified({ ...input(), model });
     expect(r.result).toMatchObject({ rejected: expect.stringMatching(/529/) });
+    expect(r.capped).toBe(false);
+  });
+
+  it("the daily AI cap is told apart from a failed call (review of #595): rejected, and `capped`", async () => {
+    const { model } = stub(new AiBudgetExceededError("org:org-1", "unified-answer"));
+    const r = await answerUnified({ ...input(), model });
+    expect(r.result).toMatchObject({ rejected: expect.stringMatching(/daily AI cap/) });
+    expect(r.capped).toBe(true);
+    // Nothing was billed: the cap refuses before the SDK is called.
+    expect(r.costUsd).toBe(0);
+    expect(r.called).toBe(false);
+    expect(r.calls).toBe(0);
+  });
+
+  it("a grounded answer is not capped", async () => {
+    const { model } = stub("11 places left for Tue 21:30.");
+    expect((await answerUnified({ ...input(), model })).capped).toBe(false);
   });
 });
 

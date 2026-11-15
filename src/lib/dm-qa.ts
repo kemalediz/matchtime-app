@@ -387,6 +387,9 @@ export async function answerScopedQuestion(args: {
   phone?: string | null;
   /** UNIFIED_ANSWERS as the caller read it. Absent: the environment's flag. */
   unified?: boolean;
+  /** The player pool switch as the request resolved it, for the unified
+   *  answer's pool facts (`pool/switch-env.ts`). Absent: closed. */
+  poolEnv?: () => Promise<Record<string, string | undefined>>;
 }): Promise<ScopedAnswer | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   // TEST-ONLY seam: the e2e suite runs with no Anthropic key. Instead of
@@ -506,6 +509,7 @@ async function answerScopedQuestionUnified(args: {
   lang: Lang;
   apiKey: string | null;
   stubMode: boolean;
+  poolEnv?: () => Promise<Record<string, string | undefined>>;
 }): Promise<ScopedAnswer | null> {
   const replyContext = await loadDmReplyContext(db, {
     userId: args.userId,
@@ -524,6 +528,7 @@ async function answerScopedQuestionUnified(args: {
     lang: args.lang,
     replyContext,
     now: new Date(),
+    ...(args.poolEnv ? { poolEnv: args.poolEnv } : {}),
   });
   if (args.stubMode) {
     return { answer: `[unified-dm-stub]\n${buildUnifiedContext(input).text}`, orgId: args.orgId, orgName: args.orgName };
@@ -531,6 +536,14 @@ async function answerScopedQuestionUnified(args: {
   const model = anthropicModel({ apiKey: args.apiKey ?? undefined });
   try {
     const g = await withOrgAiBudget(args.orgId, () => answerUnified({ ...input, model }));
+    // The daily cap: no answer and nothing sent, as the old DM answer does.
+    // `answerUnified` never throws, so the cap comes back as `capped`
+    // (review of #595, 2026-11-15: it came back as a plain rejection and the
+    // apology went out).
+    if (g.capped) {
+      console.log(`[dm-qa] org=${args.orgId} is at its daily AI cap; no answer composed`);
+      return null;
+    }
     if ("rejected" in g.result) {
       console.error(`[dm-qa] org=${args.orgId}: unified answer not used (${g.result.rejected}); the apology instead`);
       return { answer: buildDmQaApology(args.lang), orgId: args.orgId, orgName: args.orgName };

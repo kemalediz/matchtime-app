@@ -30,8 +30,14 @@ const DM_PERIODS: ReadonlyArray<readonly [string, StatsPeriod]> = [
  * "what is my rating?" asked by an organiser): the DM's own lines under a
  * heading that is not "you", which in the answer's context is MatchTime.
  * Null when MatchTime has no stats for them.
+ *
+ * `aboutThemselves`: HQ adds the block only when the question is about the
+ * asker (its extractor said so), and says so. A DM adds it to every
+ * question and cannot know who a question names, so it never says so
+ * (review of #595, 2026-11-15: "what is Bruno's rating?" had the asker's
+ * stats headed "they asked about themselves").
  */
-export async function loadAskerOwnStats(orgId: string, userId: string): Promise<string | null> {
+export async function loadAskerOwnStats(orgId: string, userId: string, aboutThemselves = true): Promise<string | null> {
   const { loadPlayerSeasonStats } = await import("./player-stats");
   const mine = await loadPlayerSeasonStats(orgId, userId);
   if (!mine) return null;
@@ -47,7 +53,7 @@ export async function loadAskerOwnStats(orgId: string, userId: string): Promise<
     bestPartner: mine.chemistry.bestByWinRate?.name ?? null,
     nemesis: mine.rivalry.nemesis?.name ?? null,
   });
-  return ["THE ASKER'S OWN STATS (they asked about themselves):", ...lines.slice(1)].join("\n");
+  return [aboutThemselves ? "THE ASKER'S OWN STATS (they asked about themselves):" : "THE ASKER'S OWN STATS:", ...lines.slice(1)].join("\n");
 }
 
 /**
@@ -64,6 +70,9 @@ export async function loadUnifiedDmInput(args: {
   lang: Lang;
   replyContext: ReplyContext;
   now: Date;
+  /** The player pool switch as the request resolved it (`pool/switch-env.ts`,
+   *  the same as the players' group and HQ). Absent: closed, the safe side. */
+  poolEnv?: () => Promise<Record<string, string | undefined>>;
 }): Promise<Omit<UnifiedAnswerInput, never>> {
   const { orgId, userId, now } = args;
   const soft = async <T>(what: string, read: () => Promise<T>): Promise<T | null> => {
@@ -75,7 +84,7 @@ export async function loadUnifiedDmInput(args: {
     }
   };
   const { loadSquadState, loadClubSnapshot, loadRatingProgressSnapshot } = await import("./pipeline/load-state");
-  const { loadStatsTables, loadStatsChemistry, loadStatsPeriod } = await import("./pipeline/load-stats");
+  const { loadStatsTables, loadStatsPeriod } = await import("./pipeline/load-stats");
   const { loadRecentResults } = await import("./pipeline/load-results");
   const { loadHelpClubFacts } = await import("./help-club-facts");
   const { periodSince } = await import("./pipeline/stats-period");
@@ -91,8 +100,6 @@ export async function loadUnifiedDmInput(args: {
     const t = await soft("stats", () => loadStatsTables(orgId, now));
     if (t) {
       stats = { ...t, chemistry: {}, generic: {}, periods: {} };
-      const c = await soft("chemistry", () => loadStatsChemistry(orgId, userId));
-      if (c) stats.chemistry[userId] = c;
       for (const [label, p] of DM_PERIODS) {
         const since = periodSince(p, now);
         if (!since) continue;
@@ -103,7 +110,7 @@ export async function loadUnifiedDmInput(args: {
   }
   const results = await soft("results", () => loadRecentResults(orgId, null, now, state.features.language));
   const ratingProgress = args.askerIsAdmin ? await soft("rating-progress", () => loadRatingProgressSnapshot(orgId, state.features.language)) : null;
-  const clubFacts = await soft("club facts", () => loadHelpClubFacts(orgId, {}));
+  const clubFacts = await soft("club facts", async () => loadHelpClubFacts(orgId, args.poolEnv ? await args.poolEnv() : {}));
   const { getOrgFeatures } = await import("./org-features");
   const features = await soft("features", () => getOrgFeatures(orgId));
 
@@ -111,7 +118,7 @@ export async function loadUnifiedDmInput(args: {
   const own: string[] = [];
   // Headed as the asker's, not "YOUR": in the answer's context "you" is
   // MatchTime (ABOUT YOU, 2026-11-11).
-  const mine = await soft("own stats", () => loadAskerOwnStats(orgId, userId));
+  const mine = await soft("own stats", () => loadAskerOwnStats(orgId, userId, false));
   if (mine) own.push(mine);
   const fee = state.club?.feePerPlayer ?? null;
   const pay = await soft("own payments", () => loadMyPayments({ orgId, userId, upcomingFee: state.matchId ? fee : null }));
@@ -123,7 +130,13 @@ export async function loadUnifiedDmInput(args: {
     squadKnown: true,
     stats,
     periods,
-    person: { userId, self: true },
+    // No subject block (review of #595, 2026-11-15). A DM has no reading of
+    // who its question names, so "THE PLAYER THE QUESTION IS ABOUT: <the
+    // asker>" was a guess, and "what is Bruno's rating?" was given the
+    // asker's numbers under it. The asker's own numbers are THE ASKER'S OWN
+    // STATS (what the DM answer has always shown); anyone else's are in
+    // the tables, under their own names.
+    person: null,
     results,
     payments: null,
     ratingProgress,
