@@ -170,6 +170,18 @@ describe("readSignupSource: where the visitor came from, off the URL", () => {
     expect(readSignupSource({})).toEqual({ campaignCode: null, referralCode: null });
     expect(readSignupSource({ c: ["a", "b"] })).toEqual({ campaignCode: null, referralCode: null });
   });
+  it("a bare `nd` (Nextdoor rewrites ?src=nd to ?nd, 2026-11-15) is the Nextdoor code", () => {
+    expect(readSignupSource({ nd: "" })).toEqual({ campaignCode: "nd", referralCode: null });
+    expect(readSignupSource({ nd: "x" })).toEqual({ campaignCode: "nd", referralCode: null });
+    expect(readSignupSource({ nd: "", ref: "Ab12Cd" })).toEqual({ campaignCode: "nd", referralCode: "Ab12Cd" });
+  });
+  it("`src` and `c` win over a bare `nd`; no other bare key counts", () => {
+    expect(readSignupSource({ src: "fb1", nd: "" })).toEqual({ campaignCode: "fb1", referralCode: null });
+    expect(readSignupSource({ c: "os", nd: "" })).toEqual({ campaignCode: "os", referralCode: null });
+    expect(readSignupSource({ src: ["a", "b"], nd: "" })).toEqual({ campaignCode: null, referralCode: null });
+    expect(readSignupSource({ fb1: "" })).toEqual({ campaignCode: null, referralCode: null });
+    expect(readSignupSource({ nd: undefined })).toEqual({ campaignCode: null, referralCode: null });
+  });
 });
 
 describe("validatePublicPoolSignup: the public sign-up pages are English only (2026-11-02)", () => {

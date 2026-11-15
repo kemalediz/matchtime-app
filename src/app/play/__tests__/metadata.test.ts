@@ -36,6 +36,10 @@ describe("/play's metadata", () => {
     expect((await meta({ c: "nd-cheam" })).openGraph).toMatchObject({ url: "/play?src=nd-cheam" });
   });
 
+  it("Nextdoor's rewritten link (?nd, 2026-11-15) reads as src=nd", async () => {
+    expect((await meta({ nd: "" })).openGraph).toMatchObject({ url: "/play?src=nd" });
+  });
+
   it("a code the page would ignore is dropped from og:url", async () => {
     expect((await meta({ src: "not a code!" })).openGraph).toMatchObject({ url: "/play" });
   });
