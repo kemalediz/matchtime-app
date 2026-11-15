@@ -50,7 +50,8 @@ const MINIMAL: HelpFeatures = { ...ALL_ON, teamBalancing: false, momVoting: fals
 const KEYS: BadgeKey[] = ["first-game", "ten-games", "ironman", "first-mom", "mom-machine", "masterclass", "reliable", "above-field"];
 
 const group = (q?: string, lang = "en") => buildHelpReply("badges", ALL_ON, lang, { audience: "group", badgeQuery: q });
-const dm = (q?: string, lang = "en") => buildHelpReply("badges", ALL_ON, lang, { audience: "player", badgeQuery: q });
+// A DM, as dm-help.ts asks it: `dm: true` (review 2026-11-15).
+const dm = (q?: string, lang = "en") => buildHelpReply("badges", ALL_ON, lang, { audience: "player", badgeQuery: q, dm: true });
 
 describe("the badge catalogue is the stats page's", () => {
   const src = fs.readFileSync(path.resolve(__dirname, "../player-stats.ts"), "utf8");
@@ -178,6 +179,27 @@ describe("the badge list", () => {
     expect(group()).toContain("*@Match Time help badges Mr Reliable*");
     expect(dm()).toContain("*help badges Mr Reliable*");
     expect(dm()).not.toContain("@Match Time help badges");
+  });
+
+  // Review 2026-11-15: the untagged form went to every audience but the
+  // players' group asker, so the admin group (HQ), and an organiser asking
+  // in the players' group, were told to type it without the tag, which
+  // MatchTime ignores in a group. Only a DM drops the tag.
+  it("keeps the tag in every group, whoever asks, and drops it only by DM", () => {
+    const tagged = "*@Match Time help badges Mr Reliable*";
+    const taggedTr = "*@Match Time yardım rozetler Mr Reliable*";
+    // The players' group: a player, and an organiser (answer-batch.ts).
+    expect(buildHelpReply("badges", ALL_ON, "en", { audience: "group" })).toContain(tagged);
+    expect(buildHelpReply("badges", ALL_ON, "en", { audience: "admin" })).toContain(tagged);
+    // The admin group (admin-group-help.ts).
+    expect(buildHelpReply("badges", ALL_ON, "en", { audience: "admin", adminGroup: true })).toContain(tagged);
+    expect(buildHelpReply("badges", ALL_ON, "tr", { audience: "admin", adminGroup: true })).toContain(taggedTr);
+    // A DM, a player's or an organiser's (dm-help.ts).
+    for (const audience of ["player", "admin"] as const) {
+      const out = buildHelpReply("badges", ALL_ON, "en", { audience, dm: true });
+      expect(out).toContain("*help badges Mr Reliable*");
+      expect(out).not.toContain("@Match Time help badges");
+    }
   });
 
   it("is listed in bare help even when every feature is off", () => {

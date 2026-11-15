@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Mail } from "lucide-react";
 import { LandingHeader } from "@/components/landing/landing-nav";
 import { DISPLAY_FONT, LandingFooter, OperatedBy } from "@/components/landing/landing-sections";
-import { CONTACT_EMAIL, OPERATED_BY_LINE, REGISTERED_OFFICE_LINE } from "@/lib/site-operator";
+import { CONTACT_EMAIL, CONTACT_PATH, OPERATED_BY_LINE, REGISTERED_OFFICE_LINE } from "@/lib/site-operator";
+import { ownPageUrlMetadata } from "@/lib/page-canonical";
 
 /**
  * /contact (2026-11-11): how to reach MatchTime, and who operates it.
@@ -14,6 +15,7 @@ import { CONTACT_EMAIL, OPERATED_BY_LINE, REGISTERED_OFFICE_LINE } from "@/lib/s
 export const metadata: Metadata = {
   title: "Contact",
   description: `How to contact MatchTime. ${OPERATED_BY_LINE}`,
+  ...ownPageUrlMetadata(CONTACT_PATH),
 };
 
 export default function ContactPage() {

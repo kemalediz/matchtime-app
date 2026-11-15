@@ -13,8 +13,13 @@ import { lastMomContextLines, lastMomFacts, type MomMatchRecord } from "../last-
 const NOW = new Date("2026-11-10T19:25:00Z");
 const DAY = 24 * 60 * 60 * 1000;
 
+const TUE = { orgId: "org-1", venue: "Goals Sutton", dayOfWeek: 2 };
+
 function rec(o: Partial<MomMatchRecord> & { date: Date }): MomMatchRecord {
   return {
+    id: `m-${o.date.toISOString()}`,
+    activityId: "act-tue",
+    fixture: TUE,
     teamLabels: ["Red", "Yellow"],
     redScore: 7,
     yellowScore: 9,
@@ -78,6 +83,81 @@ describe("lastMomFacts", () => {
     );
     expect(f.last!.winners.map((w) => w.name)).toEqual(["Mojib"]);
     expect(f.openVoteDate!.getTime()).toBe(NOW.getTime() - 2 * DAY);
+  });
+
+  // Review 2026-11-15. The scheduler gives up on an announcement for good
+  // once the next fixture kicks off (bot-scheduler.ts, 6e), so a match can
+  // be undecided-looking, never announced, and still be final well before
+  // day 9. B (1 day ago, vote open), A (4 days ago, never announced and
+  // superseded by B), C (14 days ago, announced): A is the last one.
+  describe("a match whose announcement the scheduler gave up on (the next fixture kicked off)", () => {
+    const B = rec({ date: new Date(NOW.getTime() - 1 * DAY), announced: false, tally: [{ userId: "u-sait", name: "Sait", votes: 4 }] });
+    const A = rec({
+      date: new Date(NOW.getTime() - 4 * DAY),
+      announced: false,
+      tally: [
+        { userId: "u-habib", name: "Habib", votes: 3 },
+        { userId: "u-mojib", name: "Mojib", votes: 1 },
+      ],
+    });
+    const C = rec({ date: new Date(NOW.getTime() - 14 * DAY), announced: true });
+    const fixture = (r: MomMatchRecord) => ({ id: r.id, date: r.date, status: "COMPLETED", activityId: r.activityId, activity: r.fixture });
+
+    it("is decided: it is the answer, and the newer open vote is named by date only", () => {
+      const f = lastMomFacts([B, A, C], { now: NOW, organisersPick: false, fixtures: [B, A, C].map(fixture) });
+      expect(f.last!.date.getTime()).toBe(A.date.getTime());
+      expect(f.last!.winners.map((w) => w.name)).toEqual(["Habib"]);
+      expect(f.last!.tally.map((t) => `${t.name} ${t.votes}`)).toEqual(["Habib 3", "Mojib 1"]);
+      expect(f.openVoteDate!.getTime()).toBe(B.date.getTime());
+      expect(f.recent.map((m) => m.date.getTime())).toEqual([A.date.getTime(), C.date.getTime()]);
+      expect(lastMomContextLines(f).join("\n")).not.toContain("Sait");
+    });
+
+    it("a next game today with no votes supersedes the one before it, as it stops its announcement", () => {
+      // Played 3 days ago, never announced; the next one kicked off 2 hours
+      // ago and has no votes yet (so it is no record, only a fixture).
+      const prev = rec({ date: new Date(NOW.getTime() - 3 * DAY), announced: false, tally: [{ userId: "u-sait", name: "Sait", votes: 4 }] });
+      const today = { id: "m-today", date: new Date(NOW.getTime() - 2 * 60 * 60 * 1000), status: "UPCOMING", activityId: "act-tue", activity: TUE };
+      const f = lastMomFacts([prev, C], { now: NOW, organisersPick: false, fixtures: [fixture(prev), fixture(C), today] });
+      expect(f.last!.date.getTime()).toBe(prev.date.getTime());
+      expect(f.openVoteDate).toBeNull();
+      // Before it kicks off, the vote is still open.
+      const before = lastMomFacts([prev, C], { now: new Date(today.date.getTime() - 60_000), organisersPick: false, fixtures: [fixture(prev), fixture(C), today] });
+      expect(before.last!.date.getTime()).toBe(C.date.getTime());
+      expect(before.openVoteDate!.getTime()).toBe(prev.date.getTime());
+    });
+
+    it("a cancelled next fixture supersedes nothing: the vote is still open", () => {
+      const f = lastMomFacts([A, C], {
+        now: NOW,
+        organisersPick: false,
+        fixtures: [fixture(A), fixture(C), { ...fixture(B), status: "CANCELLED" }],
+      });
+      expect(f.last!.date.getTime()).toBe(C.date.getTime());
+      expect(f.openVoteDate!.getTime()).toBe(A.date.getTime());
+    });
+
+    it("another club's match, or another weekly fixture, supersedes nothing", () => {
+      for (const other of [
+        { ...fixture(B), id: "x", activityId: "act-x", activity: { ...TUE, orgId: "org-2" } },
+        { ...fixture(B), id: "y", activityId: "act-thu", activity: { ...TUE, dayOfWeek: 4 } },
+      ]) {
+        const f = lastMomFacts([A, C], { now: NOW, organisersPick: false, fixtures: [fixture(A), fixture(C), other] });
+        expect(f.last!.date.getTime()).toBe(C.date.getTime());
+        expect(f.openVoteDate!.getTime()).toBe(A.date.getTime());
+      }
+    });
+
+    it("a tie in the given-up match stays shared", () => {
+      const tied = { ...A, tally: [{ userId: "u-habib", name: "Habib", votes: 2 }, { userId: "u-mojib", name: "Mojib", votes: 2 }] };
+      const f = lastMomFacts([B, tied, C], { now: NOW, organisersPick: false, fixtures: [B, tied, C].map(fixture) });
+      expect(f.last!.winners.map((w) => w.name)).toEqual(["Habib", "Mojib"]);
+    });
+
+    it("with no fixtures read, nothing is superseded (as before)", () => {
+      const f = lastMomFacts([B, A, C], { now: NOW, organisersPick: false });
+      expect(f.last!.date.getTime()).toBe(C.date.getTime());
+    });
   });
 
   it("a match too old ever to be announced counts as decided", () => {

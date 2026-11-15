@@ -68,7 +68,7 @@ test('tagged "help payments" (payments OFF) → how fee collection works and how
   expect(r.reply).not.toContain("/r/");
 });
 
-test('tagged bare "help" → the topic list; payments off is a topic like any other, never marked for the players\' group', async ({
+test('tagged bare "help" → the topic list; a player sees only what is on, so payments off is not listed', async ({
   request,
   db,
 }) => {
@@ -76,11 +76,12 @@ test('tagged bare "help" → the topic list; payments off is a topic like any ot
   const r = await sim.post("pete", "@Match Time help", { tag: true, ...asHelp() });
   expect(r.intent).toBe("help");
   expect(r.reply).toMatch(/MatchTime help/);
-  // The topic list (2026-11-10, Kemal): one line per topic, off ones too
-  // (off features must be findable); "(off here)" is for organisers only.
+  // The topic list (2026-11-10, Kemal): one line per topic. Since
+  // 2026-11-15 (Kemal) a player's menu lists only what is switched on for
+  // the club; off topics, marked "(off here)", are for organisers only.
   expect(r.reply).toContain("e.g. *@Match Time help teams*");
   expect(r.reply).toContain("\n📈 *ratings*: rating each other after a game\n");
-  expect(r.reply).toContain("\n💷 *payments*: paying the match fee\n");
+  expect(r.reply).not.toContain("*payments*");
   expect(r.reply).not.toContain("(off here)");
 });
 

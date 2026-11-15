@@ -16,12 +16,16 @@
  * the open answer (`open-answer.ts`), which shares the context, has them too.
  *
  * WHICH MATCH. The most recent match whose Man of the Match is DECIDED: its
- * result has been posted (`<matchId>:mom-announcement`), or it is too old
- * for one ever to be posted. The same rule that decides when a vote counts
- * toward the badges (`badge-announcements.ts`, `badgeMatchFinalised`). A
- * vote still open is never told: the group hears its result from the
- * announcement, so a newer match still voting is named by its date only,
- * with no name and no count from it.
+ * result has been posted (`<matchId>:mom-announcement`), or the scheduler
+ * has given up on posting one for good. It gives up at the same two stops
+ * it applies (bot-scheduler.ts, section 6e): the match is older than the
+ * hard stop (`BADGE_FINAL_AFTER_DAYS`, pinned equal to the scheduler's
+ * `MOM_ANNOUNCE_MAX_AGE_DAYS`), or the club's next fixture has kicked off
+ * (`momAnnouncementSuperseded`, the one rule both read; review
+ * 2026-11-15). A vote still open is never told: the group hears its result
+ * from the announcement, so a newer match still voting is named by its
+ * date only, with no name and no count from it. A match given up on is
+ * told with the figures its announcement would have posted.
  *
  * WHAT IS SAID. The match (day, the two teams, the score and who won it),
  * the winner, or every winner of a tie with "shared" (the announcement's own
@@ -40,6 +44,8 @@
  * PURE. No Prisma, no clock: `load-stats.ts` reads, this decides and writes.
  */
 import { BADGE_FINAL_AFTER_DAYS } from "../badge-announcements";
+import type { RecurringFixtureKey } from "../match-slot";
+import { momAnnouncementSuperseded, type MomFixtureMatch } from "../mom-announcement-stop";
 import { dayLabel } from "../i18n/dates";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -53,7 +59,11 @@ export interface MomVoteCount {
 
 /** One match with Man of the Match votes, as `load-stats.ts` reads it. */
 export interface MomMatchRecord {
+  id: string;
   date: Date;
+  activityId: string;
+  /** Its activity's recurring fixture, for the next-fixture stop. */
+  fixture: RecurringFixtureKey;
   /** The match's own team names (`resolveTeamLabels`), red first. */
   teamLabels: [string, string];
   redScore: number | null;
@@ -89,22 +99,35 @@ export interface LastMomFacts {
   recent?: LastMom[];
 }
 
-/** PURE. Decided: posted, or past the age at which it ever could be. */
-function decided(m: MomMatchRecord, now: Date): boolean {
-  return m.announced || now.getTime() - m.date.getTime() > BADGE_FINAL_AFTER_DAYS * DAY_MS;
+/** PURE. Decided: posted, or given up on for good by the scheduler (past
+ *  the age at which it ever could be, or its next fixture kicked off). */
+function decided(m: MomMatchRecord, now: Date, fixtures: readonly MomFixtureMatch[]): boolean {
+  if (m.announced) return true;
+  if (now.getTime() - m.date.getTime() > BADGE_FINAL_AFTER_DAYS * DAY_MS) return true;
+  return momAnnouncementSuperseded({ id: m.id, date: m.date, activityId: m.activityId, activity: m.fixture }, fixtures, now);
 }
 
-/** PURE. See the header. `records` in any order. */
-export function lastMomFacts(records: MomMatchRecord[], opts: { now: Date; organisersPick: boolean }): LastMomFacts & { recent: LastMom[] } {
+/** PURE. See the header. `records` in any order. `fixtures`: the club's
+ *  matches the next-fixture stop reads, as the scheduler does (not
+ *  historical; cancelled ones are ignored by the rule). Absent: none is
+ *  known, so no match is superseded. */
+export function lastMomFacts(
+  records: MomMatchRecord[],
+  opts: { now: Date; organisersPick: boolean; fixtures?: readonly MomFixtureMatch[] },
+): LastMomFacts & { recent: LastMom[] } {
+  const fixtures = opts.fixtures ?? [];
   const withVotes = records
     .filter((r) => r.tally.some((t) => t.votes > 0))
     .sort((a, b) => b.date.getTime() - a.date.getTime());
   let openVoteDate: Date | null = null;
   const recent: LastMom[] = [];
   for (const m of withVotes) {
-    if (!decided(m, opts.now)) {
-      // Only a vote NEWER than the last decided one is "still open"; an
-      // older undecided one cannot exist (it would be past the age).
+    if (!decided(m, opts.now, fixtures)) {
+      // Only a vote NEWER than the last decided one is named "still open".
+      // An older undecided one CAN exist: a club with two weekly fixtures
+      // whose Thursday vote was announced early (everyone voted) while
+      // Tuesday's still waits for its backstop, Thursday being another
+      // fixture. It is skipped, never told, and not named either.
       if (recent.length === 0) openVoteDate ??= m.date;
       continue;
     }

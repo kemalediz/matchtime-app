@@ -26,6 +26,12 @@ describe("shouldShowSidebar", () => {
     expect(shouldShowSidebar("/players/x", "unauthenticated")).toBe(true);
   });
 
+  it("shows /contact full-bleed for visitors and with the sidebar for signed-in users (review 2026-11-15)", () => {
+    expect(shouldShowSidebar("/contact", "unauthenticated")).toBe(false);
+    expect(shouldShowSidebar("/contact", "authenticated")).toBe(true);
+    expect(shouldShowSidebar("/contact", "loading")).toBe(true);
+  });
+
   it("shows the player pool's pages full-bleed, signed in or not (slice L2)", () => {
     for (const status of ["authenticated", "unauthenticated", "loading"] as const) {
       expect(shouldShowSidebar("/play", status)).toBe(false);

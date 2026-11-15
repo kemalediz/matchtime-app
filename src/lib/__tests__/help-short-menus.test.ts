@@ -378,14 +378,15 @@ describe("(e) the features a club has not switched on: \"(off here)\" on their o
     }
   });
 
-  it("an organiser's players' menu marks them too; a player's lists them without the marker", () => {
+  it("an organiser's players' menu marks them too; a player's leaves them out (2026-11-15)", () => {
     const admin = topicLines(buildHelpReply(null, FNF, "en", { audience: "admin" }));
     expect(admin.filter((l) => l.endsWith(" (off here)")).map(wordOf)).toEqual(["payments", "partners", "pool"]);
     const dm = topicLines(buildHelpReply(null, FNF, "tr", { audience: "admin", dm: true }));
     expect(dm.filter((l) => l.endsWith(" (burada kapalı)")).map(wordOf)).toEqual(["ödeme", "partner", "havuz"]);
     const player = buildHelpReply(null, FNF, "en", { audience: "group" });
     expect(player).not.toContain("(off here)");
-    expect(topicLines(player).map(wordOf)).toEqual(expect.arrayContaining(["payments", "partners", "pool"]));
+    // Players see only what is on for their club (Kemal, 2026-11-15).
+    for (const off of ["payments", "partners", "pool"]) expect(topicLines(player).map(wordOf)).not.toContain(off);
   });
 
   it("a pool the platform has closed is neither offered nor listed", () => {

@@ -266,8 +266,9 @@ describe("handleDmHelp", () => {
       expect(text).not.toContain(POINTER);
       expect(text).not.toContain("https://");
       expect(buildAdminLink).not.toHaveBeenCalled();
-      // How to drill down, typed without the tag in a DM.
-      expect(text.split("\n")[1]).toBe("Message me *help* and a topic to learn more, e.g. *help payments*");
+      // How to drill down, typed without the tag in a DM. The example is a
+      // topic that is on (2026-11-15): payments are off for this club.
+      expect(text.split("\n")[1]).toBe("Message me *help* and a topic to learn more, e.g. *help availability*");
       expect(text).toContain("\n💷 *payments*: paying the match fee (off here)\n");
       expect(text).toContain("\n⚙️ *settings*: club settings and the settings page\n");
       expect(text.split("\n").at(-1)).toBe("❓ Anything else: just ask");

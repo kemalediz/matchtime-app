@@ -119,10 +119,13 @@ describe("buildHowToUseMe — feature awareness", () => {
 });
 
 describe("buildHelpReply in Turkish lists the Turkish topic words", () => {
-  it("bare help names each topic by the word a player types, off ones too (2026-11-10)", () => {
+  it("bare help names each topic by the word a player types; off ones on an organiser's menu only (2026-11-15)", () => {
     const r = buildHelpReply(null, { ...ALL_ON, paymentTracking: false }, "tr");
     expect(r).toContain("@Match Time yardım takımlar");
-    expect(r).toMatch(/^✅ \*kadro\*: [\s\S]*^🟥🟦 \*takımlar\*: [\s\S]*^💷 \*ödeme\*: /m);
+    expect(r).toMatch(/^✅ \*kadro\*: [\s\S]*^🟥🟦 \*takımlar\*: /m);
+    expect(r).not.toContain("*ödeme*");
+    const admin = buildHelpReply(null, { ...ALL_ON, paymentTracking: false }, "tr", { audience: "admin" });
+    expect(admin).toMatch(/^✅ \*kadro\*: [\s\S]*^🟥🟦 \*takımlar\*: [\s\S]*^💷 \*ödeme\*: .*\(burada kapalı\)$/m);
     expect(r).not.toMatch(/[—–]/);
   });
   it("a topic that is off explains itself in Turkish", () => {
@@ -266,8 +269,9 @@ describe("buildHelpReply — bare help (topic null)", () => {
     expect(r).toMatch(/MatchTime help/);
     expect(r).toContain("✅ *availability*: saying in, out or maybe");
     expect(r).toContain("📈 *ratings*: rating each other after a game");
-    // Payments are off: a topic like any other, never marked for the players' group.
-    expect(r).toContain("💷 *payments*: paying the match fee\n");
+    // Payments are off: not on the players' menu (Kemal, 2026-11-15), and
+    // marked off on an organiser's.
+    expect(r).not.toContain("*payments*");
     expect(buildHelpReply(null, feats, "en", { audience: "admin" })).toContain("💷 *payments*: paying the match fee (off here)");
     expect(r).not.toContain(buildHowToUseMe({ ...feats, feesNudge: false }));
   });

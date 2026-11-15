@@ -1924,24 +1924,16 @@ Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
 📈 *ratings*: rating each other after a game
 🏅 *badges*: what your badges mean
 ⏰ *reminders*: what I remind you about
-💷 *payments*: paying the match fee
-🤝 *partners*: playing with partner clubs
 📅 *schedule*: when and where you play
 ❓ Anything else: just tag me and ask
 
 ### R143 buildHelpReply / bare, attendance only
 ℹ️ *MatchTime help*
-Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
+Tag me with *help* and a topic to learn more, e.g. *@Match Time help availability*
 
 ✅ *availability*: saying in, out or maybe
 👫 *friend*: bringing a friend to play
-🟥🟦 *teams*: how the teams are made
-⭐ *mom*: Man of the Match
-📈 *ratings*: rating each other after a game
 🏅 *badges*: what your badges mean
-⏰ *reminders*: what I remind you about
-💷 *payments*: paying the match fee
-🤝 *partners*: playing with partner clubs
 📅 *schedule*: when and where you play
 ❓ Anything else: just tag me and ask
 
@@ -2464,7 +2456,6 @@ Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*
 📈 *ratings*: rating each other after a game
 🏅 *badges*: what your badges mean
 ⏰ *reminders*: what I remind you about
-💷 *payments*: paying the match fee
 🤝 *partners*: playing with partner clubs
 🌍 *pool*: the player pool
 📅 *schedule*: when and where you play

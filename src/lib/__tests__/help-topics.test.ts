@@ -194,10 +194,16 @@ describe("bare help lists what applies to this club", () => {
   // about, on or off (Kemal: off features must be findable).
   const wordsOf = (r: string) => [...r.matchAll(/^\S+ \*([^*]+)\*: /gmu)].map((m) => m[1]);
   it("the pool and partner clubs are listed while on or switchable on; a pool the platform has closed is not", () => {
-    const off = wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.off, partners: PARTNERS.none }));
+    // Off but switchable: an organiser's menu lists them; a player's only
+    // lists what is on (Kemal, 2026-11-15).
+    const admin = { audience: "admin" } as const;
+    const off = wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.off, partners: PARTNERS.none }, "en", admin));
     expect(off).toContain("partners");
     expect(off).toContain("pool");
-    expect(wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.closed, partners: PARTNERS.none }))).not.toContain("pool");
+    const offPlayers = wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.off, partners: PARTNERS.none }));
+    expect(offPlayers).not.toContain("partners");
+    expect(offPlayers).not.toContain("pool");
+    expect(wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.closed, partners: PARTNERS.none }, "en", admin))).not.toContain("pool");
     const on = wordsOf(buildHelpReply(null, { ...BASE, pool: POOL.on, partners: PARTNERS.one }));
     expect(on).toContain("pool");
     expect(on).toContain("partners");

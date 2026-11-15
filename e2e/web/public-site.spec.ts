@@ -35,6 +35,31 @@ for (const [path, heading] of GUIDES) {
   });
 }
 
+// Review 2026-11-15: /contact showed the empty app sidebar to visitors.
+test("signed-out visitor reads /contact full-bleed, with no app sidebar", async ({ page }) => {
+  const res = await page.goto("/contact");
+  expect(res?.status()).toBe(200);
+  await expect(page.getByRole("heading", { level: 1, name: "Contact MatchTime" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("link", { name: /^matches$/i })).toHaveCount(0);
+});
+
+// Review 2026-11-15: every page named the HOME page as its canonical and
+// og:url (the root layout set both). Each public page now names itself.
+// Read as a fetcher that reads only the head does.
+test("each public page names itself as canonical and og:url", async ({ request }) => {
+  const FETCHER = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
+  for (const path of ["/", "/contact", "/pricing", "/privacy", "/players", "/help", "/help/player", "/help/admin"]) {
+    const res = await request.get(path, { headers: { "user-agent": FETCHER } });
+    expect(res.status(), path).toBe(200);
+    const html = await res.text();
+    const head = html.slice(0, html.indexOf("</head>"));
+    const want = path === "/" ? /^https?:\/\/[^/]+\/?$/ : new RegExp(`^https?://[^/]+${path}$`);
+    expect(head.match(/<link rel="canonical" href="([^"]+)"/)?.[1], `${path} canonical`).toMatch(want);
+    expect(head.match(/<meta property="og:url" content="([^"]+)"/)?.[1], `${path} og:url`).toMatch(want);
+  }
+});
+
 test("the price: free months first on the home teaser and on /pricing, then the price; the player guide link works", async ({ page }) => {
   expect(FIRST_FREE).toBe("Your first three months are free");
   // /pricing is the price's own page (Kemal, 2026-10-25).

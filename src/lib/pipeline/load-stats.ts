@@ -130,7 +130,8 @@ const LAST_MOM_LOOKBACK = 10;
  * THE LAST MAN OF THE MATCH (2026-11-10, `last-mom.ts` decides). The club's
  * newest matches that have MoMVote rows, not cancelled, already kicked off;
  * each one's votes counted per player voted FOR (who voted is never
- * selected), whether its result was posted, and the club's chooser.
+ * selected), whether its result was posted, the club's chooser, and the
+ * club's later matches for the scheduler's next-fixture stop.
  */
 export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFacts> {
   const [org, matches] = await Promise.all([
@@ -145,15 +146,25 @@ export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFact
         redScore: true,
         yellowScore: true,
         teamLabels: true,
-        activity: { select: { sport: { select: { teamLabels: true } } } },
+        activityId: true,
+        activity: { select: { orgId: true, venue: true, dayOfWeek: true, sport: { select: { teamLabels: true } } } },
       },
     }),
   ]);
   if (matches.length === 0) return { last: null, openVoteDate: null, recent: [] };
   const ids = matches.map((m) => m.id);
-  const [counts, posted] = await Promise.all([
+  const oldest = matches[matches.length - 1].date;
+  const [counts, posted, fixtures] = await Promise.all([
     db.moMVote.groupBy({ by: ["matchId", "playerId"], where: { matchId: { in: ids } }, _count: { playerId: true } }),
     db.sentNotification.findMany({ where: { key: { in: ids.map((id) => `${id}:mom-announcement`) } }, select: { key: true } }),
+    // The club's matches since the oldest one read, for the next-fixture
+    // stop (review 2026-11-15): the scheduler gives up on an announcement
+    // once the next fixture kicks off, votes or none. Read as the
+    // scheduler reads its siblings: not historical, not cancelled.
+    db.match.findMany({
+      where: { activity: { orgId }, isHistorical: false, ...NOT_CANCELLED, date: { gt: oldest, lte: now } },
+      select: { id: true, date: true, status: true, activityId: true, activity: { select: { orgId: true, venue: true, dayOfWeek: true } } },
+    }),
   ]);
   const users = await db.user.findMany({
     where: { id: { in: [...new Set(counts.map((c) => c.playerId))] } },
@@ -162,7 +173,10 @@ export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFact
   const nameOf = new Map(users.map((u) => [u.id, u.name ?? "?"]));
   const announced = new Set(posted.map((p) => p.key));
   const records: MomMatchRecord[] = matches.map((m) => ({
+    id: m.id,
     date: m.date,
+    activityId: m.activityId,
+    fixture: { orgId: m.activity.orgId, venue: m.activity.venue, dayOfWeek: m.activity.dayOfWeek },
     teamLabels: resolveTeamLabels({ teamLabels: m.teamLabels }, org, m.activity.sport, org?.language),
     redScore: m.redScore,
     yellowScore: m.yellowScore,
@@ -171,7 +185,7 @@ export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFact
       .map((c) => ({ userId: c.playerId, name: nameOf.get(c.playerId) ?? "?", votes: c._count.playerId })),
     announced: announced.has(`${m.id}:mom-announcement`),
   }));
-  return lastMomFacts(records, { now, organisersPick: organisersPickMom(org) });
+  return lastMomFacts(records, { now, organisersPick: organisersPickMom(org), fixtures });
 }
 
 /** One named player's chemistry, as the stats page shows it. */

@@ -2,8 +2,9 @@ import Link from "next/link";
 import { firstMonthsFree } from "@/lib/i18n/free-period";
 import { STANDARD_PRICE_LABEL } from "@/lib/club-price-words";
 import { UserCog, Users, ArrowRight } from "lucide-react";
+import { ownPageUrlMetadata } from "@/lib/page-canonical";
 
-export const metadata = { title: "Help & guides" };
+export const metadata = { title: "Help & guides", ...ownPageUrlMetadata("/help") };
 
 export default function HelpLandingPage() {
   return (

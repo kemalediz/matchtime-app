@@ -9,8 +9,9 @@ import {
 import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
 import { isPictureReadingEnabled } from "@/lib/picture-reading-flag";
+import { ownPageUrlMetadata } from "@/lib/page-canonical";
 
-export const metadata = { title: "Organiser guide" };
+export const metadata = { title: "Organiser guide", ...ownPageUrlMetadata("/help/admin") };
 
 export default async function AdminGuidePage() {
   // With the approval hold on, approval does not make MatchTime speak: it
