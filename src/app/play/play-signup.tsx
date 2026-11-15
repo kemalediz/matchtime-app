@@ -81,7 +81,8 @@ export function PlaySignup({
   /** Slice G1: the friend whose link this is, when his privacy switch shows his name. */
   invitedBy?: string | null;
   /** The game a Facebook link sells, already worded (2026-11-11,
-   *  `campaign-game-line.ts`); null for every other visitor. */
+   *  `campaign-game-line.ts`); null for every other visitor. Not shown
+   *  while `paused`, nor its offer. */
   gameLine?: string | null;
   /** The club's offer under that line (Sutton FC's first game free,
    *  2026-11-13); shown only with the line. */
@@ -221,7 +222,8 @@ export function PlaySignup({
         </p>
       )}
       {friend && <FriendCard friend={friend} lang={lang} />}
-      {gameLine && (
+      {/* Only with the form: paused, there is no game to join (review, 2026-11-15). */}
+      {gameLine && !paused && (
         <div className="mb-3">
           <p data-testid="pool-game-line" className="text-sm font-semibold text-emerald-800">
             {gameLine}
