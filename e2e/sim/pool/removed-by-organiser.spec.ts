@@ -63,7 +63,7 @@ async function organiserReAdds(pool: PoolWorld, page: Page, club: PoolClub, p: P
   await onPlayersPage(pool, page, club);
   await page.getByRole("button", { name: "Add player" }).click();
   await page.getByPlaceholder("Name (e.g. Mo)").fill(p.name ?? "");
-  await page.getByPlaceholder("Phone (optional, e.g. 07952130028)").fill(`+${p.phone.replace(/^\+/, "")}`);
+  await page.getByPlaceholder("Phone (optional, e.g. 07700900123)").fill(`+${p.phone.replace(/^\+/, "")}`);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("Welcomed back an existing player")).toBeVisible();
 }

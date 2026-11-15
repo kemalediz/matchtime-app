@@ -48,15 +48,15 @@ function makeTx(keep: Row, drop: Row) {
   return { tx, userUpdates };
 }
 
-const keep = { id: "keep", name: null, image: null, phoneNumber: "+447404111243", email: "wa-1@placeholder.matchtime", password: null, emailVerified: null, onboarded: false };
-const drop = { id: "drop", name: "Habib", image: "https://x/y.png", phoneNumber: "+447700900123", email: "manual-x@placeholder.matchtime", password: null, emailVerified: null, onboarded: false };
+const keep = { id: "keep", name: null, image: null, phoneNumber: "+447700900456", email: "wa-1@placeholder.matchtime", password: null, emailVerified: null, onboarded: false };
+const drop = { id: "drop", name: "Zeno", image: "https://x/y.png", phoneNumber: "+447700900123", email: "manual-x@placeholder.matchtime", password: null, emailVerified: null, onboarded: false };
 
 describe("mergePlayersCore keepIdentity", () => {
   it("by default fills the keeper's empty name and image from the dropped row", async () => {
     const { tx, userUpdates } = makeTx(keep, drop);
     await mergePlayersCore(tx, "keep", "drop", { saveAliasInOrgIds: [] });
     const patch = userUpdates.find((u) => u.where.id === "keep");
-    expect(patch?.data).toMatchObject({ name: "Habib", image: "https://x/y.png" });
+    expect(patch?.data).toMatchObject({ name: "Zeno", image: "https://x/y.png" });
   });
 
   it("with keepIdentity the keeper's User row is never patched", async () => {

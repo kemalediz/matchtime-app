@@ -3,14 +3,14 @@
  * club (FNF incident 2026-10-18).
  *
  * The club's OWNER (Alex Admin, who has NO role at the other club) types
- * the number of "Habib Rahman", a Sutton Lenders player, onto the club's
- * phoneless "Habib":
+ * the number of "Zeno Marsh", a Sutton Lenders player, onto the club's
+ * phoneless "Zeno":
  *
  *   - the page asks "same person?" with the first name and the other
  *     club's name only, never the raw Server Components error;
  *   - "No" keeps the number unsaved and says why;
  *   - the same question in Turkish for a Turkish club;
- *   - "Yes" links them: this club's Habib is merged INTO the existing
+ *   - "Yes" links them: this club's Zeno is merged INTO the existing
  *     account (its id and phone stay), which now has both memberships and
  *     this club's attendance and seed; nothing at the other club changes;
  *     the audit row names who linked.
@@ -27,9 +27,9 @@ import { MATCH, ORG_ID } from "../helpers/constants";
 test.describe.configure({ mode: "serial" });
 
 const OTHER = "e2e-xc-sutton";
-const KEEP = "e2e-xc-habib-sutton";
-const DROP = "e2e-xc-habib-fnf";
-const PHONE = "+447404111243";
+const KEEP = "e2e-xc-zeno-sutton";
+const DROP = "e2e-xc-zeno-fnf";
+const PHONE = "+447700900456";
 
 test.beforeAll(async ({ db }) => {
   resetDb();
@@ -39,7 +39,7 @@ test.beforeAll(async ({ db }) => {
   );
   // The existing account at the other club.
   await db.run(
-    `INSERT INTO "User" (id,name,email,"phoneNumber",onboarded,"isActive","updatedAt") VALUES ($1,'Habib Rahman','wa-447404111243@placeholder.matchtime',$2,false,true,now())`,
+    `INSERT INTO "User" (id,name,email,"phoneNumber",onboarded,"isActive","updatedAt") VALUES ($1,'Zeno Marsh','wa-447700900456@placeholder.matchtime',$2,false,true,now())`,
     [KEEP, PHONE],
   );
   await db.run(
@@ -49,7 +49,7 @@ test.beforeAll(async ({ db }) => {
   await db.run(`INSERT INTO "UserAlias" (id,"userId","orgId",alias,source) VALUES ('e2e-xc-alias-b',$1,$2,'habo','manual')`, [KEEP, OTHER]);
   // This club's phoneless placeholder, pasted from a list.
   await db.run(
-    `INSERT INTO "User" (id,name,email,"phoneNumber",onboarded,"isActive","updatedAt") VALUES ($1,'Habib','manual-e2exc-1@placeholder.matchtime',NULL,false,true,now())`,
+    `INSERT INTO "User" (id,name,email,"phoneNumber",onboarded,"isActive","updatedAt") VALUES ($1,'Zeno','manual-e2exc-1@placeholder.matchtime',NULL,false,true,now())`,
     [DROP],
   );
   await db.run(
@@ -66,10 +66,10 @@ test.afterAll(() => {
   resetDb();
 });
 
-function habibPhone(page: import("@playwright/test").Page) {
+function zenoPhone(page: import("@playwright/test").Page) {
   return page
     .locator("div")
-    .filter({ has: page.locator('input[value="Habib"]') })
+    .filter({ has: page.locator('input[value="Zeno"]') })
     .filter({ has: page.locator('input[type="tel"]') })
     .last()
     .locator('input[type="tel"]');
@@ -77,22 +77,22 @@ function habibPhone(page: import("@playwright/test").Page) {
 
 test("the admin is asked 'same person?' with the first name and club only, and No keeps it unsaved", async ({ page, db }) => {
   await signInAs(page, U.admin, "/admin/players");
-  await expect(page.locator('input[value="Habib"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('input[value="Zeno"]')).toBeVisible({ timeout: 30_000 });
   const usersBefore = await db.count(`SELECT COUNT(*) FROM "User"`);
 
-  const input = habibPhone(page);
-  await input.fill("+44 7404 111243");
+  const input = zenoPhone(page);
+  await input.fill("+44 7700 900456");
   await input.press("Enter");
 
   const dialog = page.getByTestId("phone-link-dialog");
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   await expect(dialog.getByText("Same person?", { exact: true })).toBeVisible();
   await expect(page.getByTestId("phone-link-question")).toHaveText(
-    "This number belongs to Habib, who plays at Sutton Lenders. Same person?",
+    "This number belongs to Zeno, who plays at Sutton Lenders. Same person?",
   );
   // Nothing else of the other club's player: no surname, no rating, no alias.
   const dialogText = await dialog.innerText();
-  expect(dialogText).not.toContain("Rahman");
+  expect(dialogText).not.toContain("Marsh");
   expect(dialogText).not.toContain("habo");
   expect(dialogText).not.toMatch(/\b9\b|1234/);
   expect(dialogText).not.toMatch(/[–—]/);
@@ -112,8 +112,8 @@ test("a record somebody signed in on is refused before any 'same person?' questi
   await db.run(`UPDATE "User" SET onboarded = true WHERE id = $1`, [DROP]);
   try {
     await signInAs(page, U.admin, "/admin/players");
-    await expect(page.locator('input[value="Habib"]')).toBeVisible({ timeout: 30_000 });
-    const input = habibPhone(page);
+    await expect(page.locator('input[value="Zeno"]')).toBeVisible({ timeout: 30_000 });
+    const input = zenoPhone(page);
     await input.fill(PHONE);
     await input.press("Enter");
     await expect(
@@ -131,14 +131,14 @@ test("a Turkish club gets the question in Turkish", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   try {
     await signInAs(page, U.admin, "/admin/players");
-    await expect(page.locator('input[value="Habib"]')).toBeVisible({ timeout: 30_000 });
-    const input = habibPhone(page);
+    await expect(page.locator('input[value="Zeno"]')).toBeVisible({ timeout: 30_000 });
+    const input = zenoPhone(page);
     await input.fill(PHONE);
     await input.press("Enter");
     const dialog = page.getByTestId("phone-link-dialog");
     await expect(dialog).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("phone-link-question")).toHaveText(
-      "Bu numara Sutton Lenders kulübünde oynayan Habib adlı kişiye ait. Aynı kişi mi?",
+      "Bu numara Sutton Lenders kulübünde oynayan Zeno adlı kişiye ait. Aynı kişi mi?",
     );
     await expect(dialog.getByRole("button", { name: "Evet, bağla" })).toBeVisible();
     await dialog.getByRole("button", { name: "Hayır, farklı bir numara" }).click();
@@ -154,9 +154,9 @@ test("Yes links them: this club's data moves onto the existing account, the othe
   await db.run(`UPDATE "User" SET image = 'https://example.test/drop.png' WHERE id = $1`, [DROP]);
   await db.run(`UPDATE "User" SET image = NULL WHERE id = $1`, [KEEP]);
   await signInAs(page, U.admin, "/admin/players");
-  await expect(page.locator('input[value="Habib"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('input[value="Zeno"]')).toBeVisible({ timeout: 30_000 });
 
-  const input = habibPhone(page);
+  const input = zenoPhone(page);
   await input.fill(PHONE);
   await input.press("Enter");
   const dialog = page.getByTestId("phone-link-dialog");
@@ -170,7 +170,7 @@ test("Yes links them: this club's data moves onto the existing account, the othe
     `SELECT "phoneNumber" AS phone, name, image FROM "User" WHERE id = $1`,
     [KEEP],
   );
-  expect(keep).toEqual({ phone: PHONE, name: "Habib Rahman", image: null });
+  expect(keep).toEqual({ phone: PHONE, name: "Zeno Marsh", image: null });
 
   // Both memberships; this club's carries this club's seed.
   const mA = await db.one<{ seed: number; role: string }>(
@@ -200,13 +200,13 @@ test("Yes links them: this club's data moves onto the existing account, the othe
   expect(await db.count(`SELECT COUNT(*) FROM "UserMerge" WHERE "oldUserId" = $1 AND "orgId" <> $2`, [DROP, ORG_ID])).toBe(0);
 
   // The row on the page now is the linked account, with the number.
-  await expect(page.locator('input[value="Habib Rahman"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('input[value="Zeno Marsh"]')).toBeVisible({ timeout: 15_000 });
 
   // #314 still holds: the linked account belongs to another club too, so
   // this club cannot change its number.
   const linked = page
     .locator("div")
-    .filter({ has: page.locator('input[value="Habib Rahman"]') })
+    .filter({ has: page.locator('input[value="Zeno Marsh"]') })
     .filter({ has: page.locator('input[type="tel"]') })
     .last()
     .locator('input[type="tel"]');

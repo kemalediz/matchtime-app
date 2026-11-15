@@ -505,7 +505,7 @@ export default function PlayersPage() {
             <input
               value={addPhone}
               onChange={(e) => setAddPhone(e.target.value)}
-              placeholder="Phone (optional, e.g. 07952130028)"
+              placeholder="Phone (optional, e.g. 07700900123)"
               className="flex-1 h-11 px-3 rounded-lg border border-slate-200 bg-white font-mono text-sm text-slate-800"
               onKeyDown={(e) => e.key === "Enter" && handleAddPlayer()}
             />
