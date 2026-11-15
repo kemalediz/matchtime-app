@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const A = "fnf";
 const B = "sutton";
-const PHONE = "+447404111243";
+const PHONE = "+447700900456";
 
 interface U { id: string; name: string | null; email: string; phoneNumber: string | null; password: string | null; isSuperadmin: boolean; onboarded?: boolean }
 interface M { userId: string; orgId: string; role: "OWNER" | "ADMIN" | "PLAYER"; leftAt: Date | null; guestFromOrgId: string | null }
@@ -110,15 +110,15 @@ beforeEach(() => {
     { id: "adminA", name: "Alex Admin", email: "a@x.io", phoneNumber: "+447700900001", password: null, isSuperadmin: false },
     { id: "playerA", name: "Pat Player", email: "p@x.io", phoneNumber: "+447700900002", password: null, isSuperadmin: false },
     { id: "adminB", name: "Bea Admin", email: "b@x.io", phoneNumber: "+447700900003", password: null, isSuperadmin: false },
-    { id: "habibA", name: "Habib", email: "manual-abc@placeholder.matchtime", phoneNumber: null, password: null, isSuperadmin: false },
-    { id: "habibB", name: "Habib Rahman", email: "wa-447404111243@placeholder.matchtime", phoneNumber: PHONE, password: null, isSuperadmin: false },
+    { id: "zenoA", name: "Zeno", email: "manual-abc@placeholder.matchtime", phoneNumber: null, password: null, isSuperadmin: false },
+    { id: "zenoB", name: "Zeno Marsh", email: "wa-447700900456@placeholder.matchtime", phoneNumber: PHONE, password: null, isSuperadmin: false },
   ];
   mems = [
     { userId: "adminA", orgId: A, role: "OWNER", leftAt: null, guestFromOrgId: null },
     { userId: "playerA", orgId: A, role: "PLAYER", leftAt: null, guestFromOrgId: null },
     { userId: "adminB", orgId: B, role: "ADMIN", leftAt: null, guestFromOrgId: null },
-    { userId: "habibA", orgId: A, role: "PLAYER", leftAt: null, guestFromOrgId: null },
-    { userId: "habibB", orgId: B, role: "PLAYER", leftAt: null, guestFromOrgId: null },
+    { userId: "zenoA", orgId: A, role: "PLAYER", leftAt: null, guestFromOrgId: null },
+    { userId: "zenoB", orgId: B, role: "PLAYER", leftAt: null, guestFromOrgId: null },
   ];
 });
 
@@ -126,28 +126,28 @@ describe("authorisation", () => {
   it("a club-A admin with no role at club B is offered the link", async () => {
     as("adminA");
     expect(mems.some((m) => m.userId === "adminA" && m.orgId === B)).toBe(false);
-    const r = await updatePlayerPhone("habibA", A, "+44 7404 111243");
+    const r = await updatePlayerPhone("zenoA", A, "+44 7700 900456");
     expect(r).toEqual({
       ok: false,
       error: "That number already belongs to someone else and can't be used twice.",
-      link: { phone: PHONE, firstName: "Habib", clubNames: ["Sutton Football Club"], thisClub: "FNF" },
+      link: { phone: PHONE, firstName: "Zeno", clubNames: ["Sutton Football Club"], thisClub: "FNF" },
     });
     // Nothing else of the other user: not their id, surname or email.
     const wire = JSON.stringify(r);
-    expect(wire).not.toContain("habibB");
-    expect(wire).not.toContain("Rahman");
+    expect(wire).not.toContain("zenoB");
+    expect(wire).not.toContain("Marsh");
     expect(wire).not.toContain("placeholder.matchtime");
-    expect(users.find((u) => u.id === "habibA")!.phoneNumber).toBeNull();
+    expect(users.find((u) => u.id === "zenoA")!.phoneNumber).toBeNull();
   });
 
   it("a club-A admin with no role at club B can link", async () => {
     as("adminA");
-    const r = await linkPlayerByPhone("habibA", A, PHONE);
-    expect(r).toEqual({ ok: true, keptUserId: "habibB" });
+    const r = await linkPlayerByPhone("zenoA", A, PHONE);
+    expect(r).toEqual({ ok: true, keptUserId: "zenoB" });
     expect(mergePlayersCore).toHaveBeenCalledTimes(1);
-    expect(mergePlayersCore).toHaveBeenCalledWith(expect.anything(), "habibB", "habibA", { saveAliasInOrgIds: [A], keepIdentity: true, actorUserId: "adminA" });
+    expect(mergePlayersCore).toHaveBeenCalledWith(expect.anything(), "zenoB", "zenoA", { saveAliasInOrgIds: [A], keepIdentity: true, actorUserId: "adminA" });
     expect(userMergeUpdateMany).toHaveBeenCalledWith({
-      where: { oldUserId: "habibA", survivorUserId: "habibB", orgId: A },
+      where: { oldUserId: "zenoA", survivorUserId: "zenoB", orgId: A },
       data: { actorUserId: "adminA", reason: "cross-club-phone-link" },
     });
   });
@@ -155,24 +155,24 @@ describe("authorisation", () => {
   it("an ADMIN (not only the OWNER) of club A can link", async () => {
     mems.find((m) => m.userId === "adminA")!.role = "ADMIN";
     as("adminA");
-    expect((await linkPlayerByPhone("habibA", A, PHONE)).ok).toBe(true);
+    expect((await linkPlayerByPhone("zenoA", A, PHONE)).ok).toBe(true);
   });
 
   it("a plain player of club A can neither be offered nor link", async () => {
     as("playerA");
-    const offer = await updatePlayerPhone("habibA", A, PHONE);
+    const offer = await updatePlayerPhone("zenoA", A, PHONE);
     expect(offer).toEqual({ ok: false, error: "Only an owner or admin of this club can change a player's number." });
-    const link = await linkPlayerByPhone("habibA", A, PHONE);
+    const link = await linkPlayerByPhone("zenoA", A, PHONE);
     expect(link).toEqual({ ok: false, error: "Only an owner or admin of this club can change a player's number." });
     expect(mergePlayersCore).not.toHaveBeenCalled();
   });
 
   it("an admin of club B only cannot act on club A's players", async () => {
     as("adminB");
-    const offer = await updatePlayerPhone("habibA", A, PHONE);
+    const offer = await updatePlayerPhone("zenoA", A, PHONE);
     expect(offer.ok).toBe(false);
     expect(!offer.ok && offer.link).toBeUndefined();
-    const link = await linkPlayerByPhone("habibA", A, PHONE);
+    const link = await linkPlayerByPhone("zenoA", A, PHONE);
     expect(link).toEqual({ ok: false, error: "Only an owner or admin of this club can change a player's number." });
     expect(mergePlayersCore).not.toHaveBeenCalled();
   });
@@ -180,30 +180,30 @@ describe("authorisation", () => {
   it("a former admin of club A (left) cannot link", async () => {
     mems.find((m) => m.userId === "adminA")!.leftAt = new Date();
     as("adminA");
-    expect((await linkPlayerByPhone("habibA", A, PHONE)).ok).toBe(false);
+    expect((await linkPlayerByPhone("zenoA", A, PHONE)).ok).toBe(false);
     expect(mergePlayersCore).not.toHaveBeenCalled();
   });
 
   it("signed out: refused as data", async () => {
     authMock.mockResolvedValue(null);
-    expect((await linkPlayerByPhone("habibA", A, PHONE)).ok).toBe(false);
-    expect((await updatePlayerPhone("habibA", A, PHONE)).ok).toBe(false);
+    expect((await linkPlayerByPhone("zenoA", A, PHONE)).ok).toBe(false);
+    expect((await updatePlayerPhone("zenoA", A, PHONE)).ok).toBe(false);
   });
 });
 
 describe("the rules, through the actions", () => {
   it("a player of A who is also at another club is refused, with no name", async () => {
-    mems.push({ userId: "habibA", orgId: "third", role: "PLAYER", leftAt: null, guestFromOrgId: null });
+    mems.push({ userId: "zenoA", orgId: "third", role: "PLAYER", leftAt: null, guestFromOrgId: null });
     orgs.third = { name: "Third FC", language: "en", approvalStatus: "approved" };
     as("adminA");
-    const offer = await updatePlayerPhone("habibA", A, PHONE);
+    const offer = await updatePlayerPhone("zenoA", A, PHONE);
     expect(offer.ok).toBe(false);
     expect(!offer.ok && offer.link).toBeUndefined();
     // #314 refuses first: a record in another club is not this club's to
     // change at all, whatever number is typed.
     expect(!offer.ok && offer.error).toBe(en.pg_err_player_owns_account);
-    expect(JSON.stringify(offer)).not.toContain("Habib");
-    const link = await linkPlayerByPhone("habibA", A, PHONE);
+    expect(JSON.stringify(offer)).not.toContain("Zeno");
+    const link = await linkPlayerByPhone("zenoA", A, PHONE);
     expect(link.ok).toBe(false);
     expect(mergePlayersCore).not.toHaveBeenCalled();
   });
@@ -216,38 +216,38 @@ describe("the rules, through the actions", () => {
   });
 
   it("a same-club collision is unchanged: no link, the holder is named", async () => {
-    mems.push({ userId: "habibB", orgId: A, role: "PLAYER", leftAt: null, guestFromOrgId: null });
+    mems.push({ userId: "zenoB", orgId: A, role: "PLAYER", leftAt: null, guestFromOrgId: null });
     as("adminA");
-    const r = await updatePlayerPhone("habibA", A, PHONE);
+    const r = await updatePlayerPhone("zenoA", A, PHONE);
     expect(r).toEqual({
       ok: false,
-      error: "That number already belongs to Habib in this club. To combine the two, use Merge.",
+      error: "That number already belongs to Zeno in this club. To combine the two, use Merge.",
     });
-    const link = await linkPlayerByPhone("habibA", A, PHONE);
+    const link = await linkPlayerByPhone("zenoA", A, PHONE);
     expect(link.ok).toBe(false);
     expect(mergePlayersCore).not.toHaveBeenCalled();
   });
 
   it("a free number saves as before", async () => {
     as("adminA");
-    const r = await updatePlayerPhone("habibA", A, "+447700900777");
+    const r = await updatePlayerPhone("zenoA", A, "+447700900777");
     expect(r).toEqual({ ok: true, phoneNumber: "+447700900777" });
   });
 });
 
 describe("#314's account guard holds on the link path", () => {
   it("a club-A record somebody signed in on (onboarded) is refused before any offer", async () => {
-    users.find((u) => u.id === "habibA")!.onboarded = true;
+    users.find((u) => u.id === "zenoA")!.onboarded = true;
     as("adminA");
-    const offer = await updatePlayerPhone("habibA", A, PHONE);
+    const offer = await updatePlayerPhone("zenoA", A, PHONE);
     expect(offer).toEqual({ ok: false, error: en.pg_err_player_owns_account });
-    expect(JSON.stringify(offer)).not.toContain("Habib");
+    expect(JSON.stringify(offer)).not.toContain("Zeno");
   });
 
   it("linkPlayerByPhone called directly cannot merge away a record somebody signed in on", async () => {
-    users.find((u) => u.id === "habibA")!.onboarded = true;
+    users.find((u) => u.id === "zenoA")!.onboarded = true;
     as("adminA");
-    const link = await linkPlayerByPhone("habibA", A, PHONE);
+    const link = await linkPlayerByPhone("zenoA", A, PHONE);
     expect(link.ok).toBe(false);
     expect(mergePlayersCore).not.toHaveBeenCalled();
     expect(userMergeUpdateMany).not.toHaveBeenCalled();
@@ -256,8 +256,8 @@ describe("#314's account guard holds on the link path", () => {
   it("an unapproved club can neither be offered nor link", async () => {
     orgs[A].approvalStatus = "draft";
     as("adminA");
-    expect(await updatePlayerPhone("habibA", A, PHONE)).toEqual({ ok: false, error: en.pg_err_club_not_approved });
-    expect(await linkPlayerByPhone("habibA", A, PHONE)).toEqual({ ok: false, error: en.pg_err_club_not_approved });
+    expect(await updatePlayerPhone("zenoA", A, PHONE)).toEqual({ ok: false, error: en.pg_err_club_not_approved });
+    expect(await linkPlayerByPhone("zenoA", A, PHONE)).toEqual({ ok: false, error: en.pg_err_club_not_approved });
     expect(mergePlayersCore).not.toHaveBeenCalled();
   });
 
@@ -265,21 +265,21 @@ describe("#314's account guard holds on the link path", () => {
     orgs[A].approvalStatus = "draft";
     users.find((u) => u.id === "adminA")!.isSuperadmin = true;
     as("adminA");
-    expect(await linkPlayerByPhone("habibA", A, PHONE)).toEqual({ ok: true, keptUserId: "habibB" });
+    expect(await linkPlayerByPhone("zenoA", A, PHONE)).toEqual({ ok: true, keptUserId: "zenoB" });
   });
 
   it("after a link the other club's account is not this club's to edit", async () => {
     // What the link leaves behind: the existing account, now in both clubs.
-    mems.push({ userId: "habibB", orgId: A, role: "PLAYER", leftAt: null, guestFromOrgId: null });
+    mems.push({ userId: "zenoB", orgId: A, role: "PLAYER", leftAt: null, guestFromOrgId: null });
     as("adminA");
-    expect(await updatePlayerPhone("habibB", A, "+447700900777")).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+    expect(await updatePlayerPhone("zenoB", A, "+447700900777")).toEqual({ ok: false, error: en.pg_err_player_owns_account });
   });
 });
 
 describe("readable errors, never a throw", () => {
   it("an invalid number", async () => {
     as("adminA");
-    expect(await updatePlayerPhone("habibA", A, "12")).toEqual({
+    expect(await updatePlayerPhone("zenoA", A, "12")).toEqual({
       ok: false,
       error: "That doesn't look like a valid phone number. Use the international format, for example +44 7700 900123.",
     });
@@ -289,11 +289,11 @@ describe("readable errors, never a throw", () => {
     as("adminA");
     blowUp = true;
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(await updatePlayerPhone("habibA", A, PHONE)).toEqual({
+    expect(await updatePlayerPhone("zenoA", A, PHONE)).toEqual({
       ok: false,
       error: "Couldn't save the number. Please try again.",
     });
-    expect(await linkPlayerByPhone("habibA", A, PHONE)).toEqual({
+    expect(await linkPlayerByPhone("zenoA", A, PHONE)).toEqual({
       ok: false,
       error: "Couldn't save the number. Please try again.",
     });
@@ -303,10 +303,10 @@ describe("readable errors, never a throw", () => {
   it("in Turkish for a Turkish club", async () => {
     orgs[A].language = "tr";
     as("adminA");
-    const r = await updatePlayerPhone("habibA", A, PHONE);
+    const r = await updatePlayerPhone("zenoA", A, PHONE);
     expect(!r.ok && r.error).toBe("Bu numara zaten başka birine ait ve iki kez kullanılamaz.");
     as("playerA");
-    expect(await linkPlayerByPhone("habibA", A, PHONE)).toEqual({
+    expect(await linkPlayerByPhone("zenoA", A, PHONE)).toEqual({
       ok: false,
       error: "Bir oyuncunun numarasını yalnızca bu kulübün sahibi veya yöneticisi değiştirebilir.",
     });

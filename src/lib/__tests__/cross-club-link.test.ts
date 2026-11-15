@@ -19,7 +19,7 @@ vi.mock("@/lib/merge-players-core", () => ({
 import { linkAcrossClubsCore, loadCrossClubLinkFacts } from "../cross-club-link";
 
 const A = "fnf";
-const PHONE = "+447404111243";
+const PHONE = "+447700900456";
 
 type Count = ReturnType<typeof vi.fn>;
 function makeTx(over: {
@@ -44,7 +44,7 @@ function makeTx(over: {
   const tx = {
     user: {
       findUnique: vi.fn(async ({ where }: { where: { phoneNumber?: string; id?: string } }) => {
-        if (where.phoneNumber) return over.keep === undefined ? { id: "keep", name: "Habib Rahman", isSuperadmin: false } : over.keep;
+        if (where.phoneNumber) return over.keep === undefined ? { id: "keep", name: "Zeno Marsh", isSuperadmin: false } : over.keep;
         return over.dropUser === undefined
           ? { id: "drop", email: "manual-x@placeholder.matchtime", password: null, onboarded: false, emailVerified: null, isSuperadmin: false }
           : over.dropUser;
@@ -94,7 +94,7 @@ describe("loadCrossClubLinkFacts", () => {
     });
     expect(f.keep).toEqual({
       id: "keep",
-      name: "Habib Rahman",
+      name: "Zeno Marsh",
       isSuperadmin: false,
       hasMembershipInOrg: false,
       clubNames: ["Sutton Football Club"],
@@ -134,7 +134,7 @@ describe("loadCrossClubLinkFacts", () => {
   });
 
   it("counts a sign in of club A's player's own", async () => {
-    for (const over of [{ accounts: 1 }, { sessions: 1 }, { dropUser: { id: "drop", email: "habib@gmail.com", password: null } }, { dropUser: { id: "drop", email: "manual-x@placeholder.matchtime", password: "hash" } }]) {
+    for (const over of [{ accounts: 1 }, { sessions: 1 }, { dropUser: { id: "drop", email: "zeno@example.com", password: null } }, { dropUser: { id: "drop", email: "manual-x@placeholder.matchtime", password: "hash" } }]) {
       const f = await loadCrossClubLinkFacts(makeTx(over), { orgId: A, dropUserId: "drop", phone: PHONE });
       expect(f.drop.hasOwnSignIn).toBe(true);
     }
