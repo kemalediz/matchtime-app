@@ -15,8 +15,9 @@ import { PoolFunnelBeacon } from "./funnel-beacon";
  * and never the MatchTime number: that comes back only in the sign-up
  * route's answer (src/app/api/play/signup/route.ts). The page is English
  * only (2026-11-02): no switch, no language field. `?src=` (a campaign,
- * `?c=` too) and `?ref=` (a friend's share code) are read here and sent
- * with the form.
+ * `?c=` too; a bare `?nd` is `src=nd`, as Nextdoor rewrites the link) and
+ * `?ref=` (a friend's share code) are read here (`readSignupSource`) and
+ * sent with the form.
  *
  * Its link preview (2026-11-03) is the player's, with og:url the link it
  * was opened with (`share-meta.ts`). Each visit, and the first touch of the
