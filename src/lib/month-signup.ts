@@ -1215,7 +1215,6 @@ export async function handleSignupPaste(args: {
     }
   }
 
-
   // Slice 4, D3: a new "(paid)" mark on a regular's line is a CLAIM,
   // whoever wrote it. It never confirms anything.
   if (outcome.paidClaims.length > 0) {

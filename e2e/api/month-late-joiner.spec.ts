@@ -177,10 +177,10 @@ async function say(
   return json.results?.find((r) => r.waMessageId === waMessageId) ?? { handledBy: json.ignored ?? "none", intent: null, react: null };
 }
 
-async function dmReply(request: APIRequestContext, who: Person, body: string): Promise<Record<string, unknown>> {
+async function dmReply(request: APIRequestContext, who: Person, body: string, extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: KEY,
-    data: { phone: digits(who.phone), body, waMessageId: `e2e-lj-dm-${Date.now()}-${++seq}`, authorName: who.name },
+    data: { phone: digits(who.phone), body, waMessageId: `e2e-lj-dm-${Date.now()}-${++seq}`, authorName: who.name, ...extra },
   });
   expect(res.status(), await res.text()).toBe(200);
   return (await res.json()) as Record<string, unknown>;
@@ -576,7 +576,8 @@ test("hole 4: a count that fits closes the open question: 3, 4, 2, then 'all of 
   expect(await say(request, EN, P.seq, a)).toMatchObject({ react: null });
   expect(await say(request, EN, P.seq, b)).toMatchObject({ react: null });
   expect(await say(request, EN, P.seq, c)).toMatchObject({ react: "✅" });
-  expect(await dmReply(request, P.seq, "all of them")).not.toMatchObject({ handled: "month-join-yes" });
+  // Quoting the question itself, so it is what he answers (not the join DM since).
+  expect(await dmReply(request, P.seq, "all of them", { quotedText: whichAsk(EN, EN.games), quotedFromMatchTime: true })).not.toMatchObject({ handled: "month-join-yes" });
   expect(await monthRow(db, EN, P.seq)).toMatchObject({ kind: "regular", gamesCommitted: 2, amountDuePence: 1500 });
 });
 

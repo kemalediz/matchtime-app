@@ -99,7 +99,7 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     // somebody else is counted against HIS games, not the month's.
     const covers = monthCoversLine(
       m.members
-        .filter((x) => isRegularMember(x))
+        .filter((x) => isRegularMember(x) && Number.isInteger(x.gamesCovered))
         .flatMap((x) => {
           const r = members.find((y) => y.userId === x.userId);
           return r ? [{ name: r.name || "no name yet", ref: r.ref, covered: x.gamesCovered }] : [];
@@ -126,7 +126,7 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     cover: months.map((m) => ({
       label: labelOf(m),
       games: m.kickoffs.map((k) => ({ day: day(k), played: k.getTime() <= now.getTime() })),
-      regulars: m.members.filter((x) => isRegularMember(x)).map((x) => ({ userId: x.userId, covered: x.gamesCovered })),
+      regulars: m.members.filter((x) => isRegularMember(x) && Number.isInteger(x.gamesCovered)).map((x) => ({ userId: x.userId, covered: x.gamesCovered })),
     })),
     week: liveWeek ? { game: formatLondon(liveWeek.matchDate, "EEE d MMM yyyy, HH:mm"), text: (await renderWeekList(liveWeek)).text } : null,
   };

@@ -76,6 +76,12 @@ describe("loadMonthlyReaderContext", () => {
     );
   });
 
+  it("under the month's list, the games each REGULAR covers, by ref (an organiser's line about him counts against them)", async () => {
+    const { ctx } = await turnFor("will", new Date(Date.UTC(2026, 10, 12, 12)));
+    // davide p1, lee p2 are regulars; pat (PAYG) and bea (bench) are not.
+    expect(ctx.months[0]).toContain("  Games each regular on it covers: davide (p1) 5, lee (p2) 3.");
+  });
+
   it("a game at the very moment of kick-off is played: it is not one a joiner covers", async () => {
     const { ctx } = await turnFor("will", NOV[2]);
     expect(ctx.months[0]).toContain("Mon 16 Nov (played)");

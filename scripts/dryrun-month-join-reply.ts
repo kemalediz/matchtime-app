@@ -57,6 +57,7 @@ async function main() {
         history: [],
         reply: { at: new Date("2026-11-10T11:00:00Z"), text: ASK(lang), topic: null, match: null, author: null },
         now: new Date("2026-11-10T12:00:00Z"),
+        dm: true,
       },
       ctx,
       { model },

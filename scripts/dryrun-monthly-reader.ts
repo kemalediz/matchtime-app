@@ -11,7 +11,7 @@
  *   node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-monthly-reader.ts [--first] [--late]
  *
  * `--first` runs the first case only (measure one call before the rest).
- * `--late` runs the nine games-count cases only (2026-11-16).
+ * `--late` runs the eleven games-count cases only (2026-11-16).
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it), through the exact
  * production call (`readMonthlyMessage`, `MONTHLY_READER_CALL`, the
  * production prompt and checks). Touches no database and sends nothing.
@@ -84,7 +84,8 @@ const NOV_RUNNING = `  November 2026 (month 11): under way. 5 games: Mon 2 Nov (
     8. Craig (4 games)
     9. Ben
     10. Kemal Ediz
-    11. Jon`;
+    11. Jon
+  Games each regular on it covers: Davide De Souza (p1) 5, Steff (p4) 5, Jordan Daniels (p7) 5, Shane Walcountians (p2) 5, CJ Barber (p3) 5, Steve (p9) 5, Sam Miles (p11) 5, Craig (p21) 5, Ben (p12) 5, Kemal Ediz (p5) 3, Jon (p17) 5.`;
 const OCT_RUNNING = `  October 2026 (month 10): under way. 4 games: Mon 5 Oct (played), Mon 12 Oct (played), Mon 19 Oct, Mon 26 Oct; 2 still to play: Mon 19 Oct, Mon 26 Oct.`;
 
 const ctx = (months: string[], week: MonthlyReaderContext["week"], cover?: MonthlyReaderContext["cover"]): MonthlyReaderContext => ({
@@ -350,7 +351,7 @@ const CASES: Case[] = [
  * the month's total. November under way on 10 Nov, three games still to play
  * (16, 23, 30); none of these senders is on its list yet. The early joiner,
  * in sign-up, still counts against the month's five. `--late` runs these
- * nine only, once each.
+ * eleven only, once each.
  */
 const LATE_CASES: Case[] = [
   C("late: except the last week", "I'm in for November except the last week", "Oumesh", NOV_WEEK3, "2026-11-10T12:00:00Z", signup("in", 11, 2)),
@@ -370,12 +371,17 @@ const LATE_CASES: Case[] = [
       history: [],
       reply: { at: at("2026-11-10T11:00:00Z"), text: "📋 Join November as a regular for the 3 games left, £22.50? Reply yes and I'll put you on it.", topic: null, match: null, author: null },
       now: at("2026-11-10T12:00:00Z"),
+      dm: true,
     },
     ctx: NOV_WEEK3,
     check: signup("in", 11, 2),
   },
   // Kemal is a regular who joined late and covers three.
   C("a late joiner on the list changing his games", "Actually I'm in for November except the last week", "Kemal", NOV_WEEK3, "2026-11-10T12:00:00Z", signup("in", 11, 2)),
+  // The organiser's line about him: counted against HIS 3 (the covers line), never the month's 5.
+  // A bare "yes" in the GROUP (no DM, no question of MatchTime's) is no sign-up.
+  C("a bare yes in the group", "yes", "Ben", NOV_WEEK3, "2026-11-10T12:00:00Z", none, [{ author: "Davide De Souza", body: "Anyone fancy a pint after?" }]),
+  C("an organiser's line about a late joiner",NOV_HALF.replace("10. Kemal", "10. Kemal except the last week"), "Davide", NOV_WEEK3, "2026-11-10T12:00:00Z", line(/Kemal/, (e) => e.facts?.games === 2, "games 2")),
 ];
 
 async function main() {
