@@ -21,6 +21,7 @@ import {
   buildMonthlyReaderUserTurn,
   MONTHLY_READER_SCHEMA,
   MONTHLY_READER_SYSTEM,
+  monthCoversLine,
   monthHeadLine,
   parseMonthlyReading,
   type MonthlyReaderContext,
@@ -94,10 +95,21 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     const state = m.open ? "sign-up open" : started ? "under way" : "sign-up closed, not started yet";
     // "Still to play" is exactly the games a joiner now covers (`applySignup`'s gamesLeft).
     const games = m.kickoffs.map((k) => ({ day: day(k), played: k.getTime() <= now.getTime() }));
+    // What each regular on it covers, by ref (2026-11-16): a list line about
+    // somebody else is counted against HIS games, not the month's.
+    const covers = monthCoversLine(
+      m.members
+        .filter((x) => isRegularMember(x))
+        .flatMap((x) => {
+          const r = members.find((y) => y.userId === x.userId);
+          return r ? [{ name: r.name || "no name yet", ref: r.ref, covered: x.gamesCovered }] : [];
+        }),
+    );
     return [
       monthHeadLine({ label, monthNumber: m.monthNumber, state, games }),
       `  Its list as MatchTime has it:`,
       ...renderSignupList(m).text.split("\n").map((l) => `    ${l}`),
+      ...(covers ? [covers] : []),
     ].join("\n");
   });
 

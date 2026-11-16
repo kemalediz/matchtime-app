@@ -208,32 +208,48 @@ export type GamesFit = { kind: "all" } | { kind: "some"; games: number } | { kin
  *   - no count: every game he covers;
  *   - a count below them: those games;
  *   - one game covered and a count of 1: that one game, so every game;
+ *   - a count below the games he has already PLAYED this month does not
+ *     fit either (`minGames`; the setter refuses it, `fewer-than-played`);
  *   - any other count does not fit (at or above what he covers: a partial
  *     phrase counted against something else, or a misreading). It is never
  *     stored, least of all as "every game" (`checkGamesCommitted` would):
  *     he is asked which of the games he covers he will play.
  */
-export function fitGamesCommitted(games: number | null, covers: number): GamesFit {
+export function fitGamesCommitted(games: number | null, covers: number, minGames = 0): GamesFit {
   if (games === null) return { kind: "all" };
-  if (covers === 1 && games === 1) return { kind: "all" };
-  if (isWholeNumber(games) && games >= 1 && games < covers) return { kind: "some", games };
+  if (covers === 1 && games === 1 && minGames <= 1) return { kind: "all" };
+  if (isWholeNumber(games) && games >= Math.max(1, minGames) && games < covers) return { kind: "some", games };
   return { kind: "ask" };
 }
 
+export interface GamesCover {
+  /** The games he covers: what his count is checked against. */
+  covers: number;
+  /** Those of them still to play: what a question to him lists. */
+  remaining: Date[];
+  /** Those of them already behind him: added to his answer about the rest. */
+  pastCovered: number;
+  /** From his row (a regular, or a leaver who paid and keeps his games). */
+  fromRow: boolean;
+}
+
 /**
- * A JOINER'S ANSWER to "which of them will you play?", read against the
- * games that question LISTED (2026-11-16): `fit` is his answer checked
- * against them (`fitGamesCommitted(answer, listed)`). A listed game played
- * before he answered was one of his ("all but the last one" of three, the
- * first played since, is one more game): it is taken off his count, and
- * what is left is checked against the games he now covers. "none": all he
- * chose has been played, there is nothing to join for.
+ * PURE. THE GAMES HE COVERS (2026-11-16). `rowCovered`: his row's games
+ * when the row counts (a regular; a leaver who paid keeps his), else null:
+ * he would cover the games still to play from now. A row covers the
+ * month's last N games; a row covering 0 covers none, and a cover above
+ * the games scheduled (a week cancelled since) covers the games there are.
  */
-export function joinerGamesFromAnswer(fit: GamesFit, listed: number, playedSince: number): GamesFit | { kind: "none" } {
-  if (fit.kind !== "some" || playedSince <= 0) return fit;
-  const games = fit.games - playedSince;
-  if (games <= 0) return { kind: "none" };
-  return fitGamesCommitted(games, listed - playedSince).kind === "some" ? { kind: "some", games } : { kind: "all" };
+export function coverFor(p: { kickoffs: Date[]; rowCovered: number | null; now: Date }): GamesCover {
+  const future = (d: Date) => d.getTime() > p.now.getTime();
+  if (p.rowCovered === null) {
+    const remaining = p.kickoffs.filter(future);
+    return { covers: remaining.length, remaining, pastCovered: 0, fromRow: false };
+  }
+  const n = Math.min(Math.max(0, p.rowCovered), p.kickoffs.length);
+  const covered = n === 0 ? [] : p.kickoffs.slice(-n);
+  const remaining = covered.filter(future);
+  return { covers: n, remaining, pastCovered: n - remaining.length, fromRow: true };
 }
 
 /** share x (games paid for - credits applied). null while no share is set; never negative. */

@@ -4831,11 +4831,22 @@ export const en = {
       ? `📋 ${p.month} has 1 game left: ${p.dates.join(", ")}. Will you play it? Reply and I'll put you on the list for it.`
       : `📋 ${p.month} has ${p.games} games left: ${p.dates.slice(0, -1).join(", ")} and ${p.dates.at(-1)}. Which of them will you play? Reply and I'll put you on the list for those.`,
   /** The same question to a regular already on the month whose new count
-   *  did not fit the games he covers (2026-11-16). `dates` are his games. */
-  msu_dm_games_which: (p: { month: string; games: number; dates: string[] }): string =>
-    p.games === 1
-      ? `📋 You're on the ${p.month} list for 1 game: ${p.dates.join(", ")}. Will you play it? Reply and I'll note it.`
-      : `📋 You're on the ${p.month} list for ${p.games} games: ${p.dates.slice(0, -1).join(", ")} and ${p.dates.at(-1)}. Which of them will you play? Reply and I'll note it.`,
+   *  did not fit the games he covers (2026-11-16). `games`: the games he
+   *  covers; `played`: those of them behind him; `dates`: the rest, the only
+   *  ones listed. */
+  msu_dm_games_which: (p: { month: string; games: number; played: number; dates: string[] }): string => {
+    const list = p.dates.length === 1 ? p.dates[0] : `${p.dates.slice(0, -1).join(", ")} and ${p.dates.at(-1)}`;
+    const word = (n: number) => `${n} ${n === 1 ? "game" : "games"}`;
+    const head =
+      p.played > 0
+        ? `📋 You're on the ${p.month} list for ${word(p.games)}, ${p.played} played already. ${p.dates.length === 1 ? "1 is" : `${p.dates.length} are`} left: ${list}.`
+        : `📋 You're on the ${p.month} list for ${word(p.games)}: ${list}.`;
+    return `${head} ${p.dates.length === 1 ? "Will you play it?" : "Which of them will you play?"} Reply and I'll note it.`;
+  },
+  /** To the organisers (2026-11-16), once a month and player: a games count
+   *  that could be neither recorded nor asked about. `words`: his message. */
+  msu_admin_games_unrecorded: (p: { name: string; month: string; words: string }): string =>
+    `I couldn't record ${p.name}'s ${p.month} games from "${p.words}". Set them on the month page.`,
   /** To a member whose paste had more new players than one paste may add. */
   mwk_dm_paste_guests_refused: (p: { names: string[] }): string =>
     `📋 One list can only add a few new players, so I didn't add ${p.names.join(", ")}. An organiser can add them.`,

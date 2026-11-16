@@ -3472,10 +3472,15 @@ export const tr: Strings = {
     p.games === 1
       ? `📋 ${p.month} ayında 1 maç kaldı: ${p.dates.join(", ")}. Oynayacak mısın? Yanıt ver, seni o maç için listeye ekleyeyim.`
       : `📋 ${p.month} ayında ${p.games} maç kaldı: ${p.dates.slice(0, -1).join(", ")} ve ${p.dates.at(-1)}. Hangilerinde oynayacaksın? Yanıt ver, seni o maçlar için listeye ekleyeyim.`,
-  msu_dm_games_which: (p) =>
-    p.games === 1
-      ? `📋 ${p.month} listesinde 1 maç için varsın: ${p.dates.join(", ")}. Oynayacak mısın? Yanıt ver, not edeyim.`
-      : `📋 ${p.month} listesinde ${p.games} maç için varsın: ${p.dates.slice(0, -1).join(", ")} ve ${p.dates.at(-1)}. Hangilerinde oynayacaksın? Yanıt ver, not edeyim.`,
+  msu_dm_games_which: (p) => {
+    const list = p.dates.length === 1 ? p.dates[0] : `${p.dates.slice(0, -1).join(", ")} ve ${p.dates.at(-1)}`;
+    const head =
+      p.played > 0
+        ? `📋 ${p.month} listesinde ${p.games} maç için varsın, ${p.played} maç oynandı. Kalan ${p.dates.length} maç: ${list}.`
+        : `📋 ${p.month} listesinde ${p.games} maç için varsın: ${list}.`;
+    return `${head} ${p.dates.length === 1 ? "Oynayacak mısın?" : "Hangilerinde oynayacaksın?"} Yanıt ver, not edeyim.`;
+  },
+  msu_admin_games_unrecorded: (p) => `${p.name} için ${p.month} maçlarını "${p.words}" mesajından kaydedemedim. Ay sayfasından ayarla.`,
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,

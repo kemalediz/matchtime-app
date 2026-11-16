@@ -90,7 +90,7 @@ export async function joinMonthAsOrganiser(p: {
   weekDay?: number | null;
   now: Date;
 }): Promise<JoinResult> {
-  const { applySignup, commitMonthGames, loadSignupMonth } = await import("./month-signup");
+  const { applySignup, loadSignupMonth } = await import("./month-signup");
   const month = await loadSignupMonth(p.monthId);
   const gamesLeft = month ? month.kickoffs.filter((k) => k.getTime() > p.now.getTime()).length : 0;
   const days = p.line.payg ? (p.line.paygDays.length > 0 ? p.line.paygDays : p.weekDay ? [p.weekDay] : []) : [];
@@ -112,7 +112,13 @@ export async function joinMonthAsOrganiser(p: {
       const { claimMonthPaid } = await import("./month-payment");
       if (await claimMonthPaid({ monthId: p.monthId, userId: p.userId, source: "organiser", amountPence: p.line.paidPence, now: p.now })) changed = true;
     }
-    if (p.line.games !== null && (await commitMonthGames(p.monthId, p.userId, p.line.games))) changed = true;
+    // His games through the one guard (2026-11-16): against the games HE
+    // covers; one that does not fit is asked of him, never stored raw.
+    if (p.line.games !== null) {
+      const { guardedRegularGames } = await import("./month-signup");
+      const after = await loadSignupMonth(p.monthId);
+      if (after && (await guardedRegularGames({ month: after, userId: p.userId, games: p.line.games, words: `${p.line.games} games`, now: p.now })) === "stored") changed = true;
+    }
   }
   // As the months page does after an organiser's change: what a returning
   // regular is owed is worked out at once (the hourly sweep retries).

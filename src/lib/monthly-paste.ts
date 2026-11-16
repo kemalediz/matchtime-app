@@ -510,11 +510,11 @@ export async function handleMonthlyPaste(args: {
     const month = await loadSignupMonth(week.monthId);
     for (const g of gamesFor) {
       if (!month) break;
-      const done = await guardedRegularGames({ month, userId: g.userId, games: g.games, self: g.self, original: args.text ?? null, now });
+      const done = await guardedRegularGames({ month, userId: g.userId, games: g.games, words: args.text ?? null, writtenBy: g.self ? null : sender.name, now });
       if (done === "stored") applied.push(`games:${g.games}:${g.userId}`);
-      else if (done === "asked") {
+      else if (done === "asked" || done === "noted") {
         asked = true;
-        applied.push(`games-asked:${g.userId}`);
+        applied.push(`games-${done}:${g.userId}`);
       }
     }
   }
@@ -614,7 +614,7 @@ export async function handleMonthlyPaste(args: {
 
   return {
     // Asking who somebody is, or about his games, changes nothing yet.
-    changed: applied.some((x) => !x.startsWith("asked-who:") && !x.startsWith("games-asked:")),
+    changed: applied.some((x) => !x.startsWith("asked-who:") && !x.startsWith("games-asked:") && !x.startsWith("games-noted:")),
     applied,
     ignored: outcome.ignored,
     notAdded: outcome.notAdded,

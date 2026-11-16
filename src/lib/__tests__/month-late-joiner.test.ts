@@ -10,10 +10,11 @@
  * Pure: no database and no model.
  */
 import { describe, expect, it } from "vitest";
-import { fitGamesCommitted, joinerGamesFromAnswer } from "../squad-month-rules";
+import { coverFor, fitGamesCommitted } from "../squad-month-rules";
 import {
   buildMonthlyReaderUserTurn,
   MONTHLY_READER_SYSTEM,
+  monthCoversLine,
   monthHeadLine,
   type MonthlyReaderContext,
   type MonthlyReaderInput,
@@ -50,26 +51,43 @@ describe("fitGamesCommitted: a count against the games he covers", () => {
   });
 });
 
-describe("joinerGamesFromAnswer: an answer read against the games the question listed", () => {
-  it("no game listed has been played since: the answer as it is", () => {
-    expect(joinerGamesFromAnswer({ kind: "some", games: 2 }, 3, 0)).toEqual({ kind: "some", games: 2 });
+describe("fitGamesCommitted: a regular cannot commit to fewer games than he has already played", () => {
+  it("a full-month regular who has played 2 typing '1 game': does not fit, asked", () => {
+    expect(fitGamesCommitted(1, 5, 2)).toEqual({ kind: "ask" });
   });
 
-  it("a listed game played before he answered counts towards his games ('all but the last one' of 3, the first played: 1 more)", () => {
-    expect(joinerGamesFromAnswer({ kind: "some", games: 2 }, 3, 1)).toEqual({ kind: "some", games: 1 });
+  it("at least the games played and below his cover: fits", () => {
+    expect(fitGamesCommitted(2, 5, 2)).toEqual({ kind: "some", games: 2 });
+    expect(fitGamesCommitted(4, 5, 2)).toEqual({ kind: "some", games: 4 });
   });
 
-  it("3 of 4 listed, the first played since: 2 of the 3 he now covers", () => {
-    expect(joinerGamesFromAnswer({ kind: "some", games: 3 }, 4, 1)).toEqual({ kind: "some", games: 2 });
+  it("no count is every game, whatever he has played", () => {
+    expect(fitGamesCommitted(null, 5, 2)).toEqual({ kind: "all" });
+  });
+});
+
+describe("coverFor: the games he covers, those still to play, and those behind him", () => {
+  const K = [2, 9, 16, 23, 30].map((d) => new Date(Date.UTC(2026, 10, d, 20)));
+  const now = new Date(Date.UTC(2026, 10, 12, 12)); // after the 9th
+  it("not on the month as a regular: the games still to play, none behind him", () => {
+    expect(coverFor({ kickoffs: K, rowCovered: null, now })).toEqual({ covers: 3, remaining: K.slice(2), pastCovered: 0, fromRow: false });
   });
 
-  it("only games already played: nothing to join", () => {
-    expect(joinerGamesFromAnswer({ kind: "some", games: 1 }, 3, 1)).toEqual({ kind: "none" });
+  it("a full-month regular: all five, three still to play, two behind him", () => {
+    expect(coverFor({ kickoffs: K, rowCovered: 5, now })).toEqual({ covers: 5, remaining: K.slice(2), pastCovered: 2, fromRow: true });
   });
 
-  it("every game, or a count that does not fit, passes through", () => {
-    expect(joinerGamesFromAnswer({ kind: "all" }, 3, 1)).toEqual({ kind: "all" });
-    expect(joinerGamesFromAnswer({ kind: "ask" }, 3, 1)).toEqual({ kind: "ask" });
+  it("a late joiner covering 3: the month's last three, none behind him", () => {
+    expect(coverFor({ kickoffs: K, rowCovered: 3, now })).toEqual({ covers: 3, remaining: K.slice(2), pastCovered: 0, fromRow: true });
+  });
+
+  it("a row covering 0: no game at all, never every date", () => {
+    expect(coverFor({ kickoffs: K, rowCovered: 0, now })).toEqual({ covers: 0, remaining: [], pastCovered: 0, fromRow: true });
+  });
+
+  it("a cover above the games scheduled (a week cancelled since): only the games there are", () => {
+    const four = K.slice(0, 4);
+    expect(coverFor({ kickoffs: four, rowCovered: 5, now })).toEqual({ covers: 4, remaining: four.slice(2), pastCovered: 2, fromRow: true });
   });
 });
 
@@ -163,6 +181,34 @@ describe("the reader's context: the games still to play, and the games the SENDE
   it("a sender who is nobody of the club gets no such line", () => {
     expect(buildMonthlyReaderUserTurn(input("u-nobody", "Stranger"), CTX)).not.toContain("THE SENDER COVERS");
   });
+
+  it("a regular whose row covers 0 games covers no game, never every date", () => {
+    const zero: MonthlyReaderContext = { ...CTX, cover: [{ label: "November 2026", games: NOV, regulars: [{ userId: "u-will", covered: 0 }] }] };
+    const turn = buildMonthlyReaderUserTurn(input("u-will", "Will Frost"), zero);
+    expect(turn).toContain("THE SENDER COVERS in November 2026: no game (a regular on its list).");
+  });
+
+  it("a cover above the games scheduled (a week cancelled since): the games there are", () => {
+    const over: MonthlyReaderContext = { ...CTX, cover: [{ label: "November 2026", games: NOV.slice(0, 4), regulars: [{ userId: "u-will", covered: 5 }] }] };
+    expect(buildMonthlyReaderUserTurn(input("u-will", "Will Frost"), over)).toContain(
+      "THE SENDER COVERS in November 2026: 4 games, Mon 2 Nov (played), Mon 9 Nov (played), Mon 16 Nov, Mon 23 Nov (a regular on its list).",
+    );
+  });
+
+  it("every regular's cover is on the month, so an organiser's line about him is counted against HIS games", () => {
+    expect(
+      monthCoversLine([
+        { name: "Davide De Souza", ref: "p1", covered: 5 },
+        { name: "Lee Late", ref: "p3", covered: 3 },
+      ]),
+    ).toBe("  Games each regular on it covers: Davide De Souza (p1) 5, Lee Late (p3) 3.");
+    expect(monthCoversLine([])).toBeNull();
+  });
+
+  it("a DM answering MatchTime's question says so; a group message does not", () => {
+    expect(buildMonthlyReaderUserTurn(input("u-will", "Will Frost", { dm: true }), CTX)).toContain("THE MESSAGE is his DM to MatchTime, answering its question above.");
+    expect(buildMonthlyReaderUserTurn(input("u-will", "Will Frost"), CTX)).not.toContain("his DM to MatchTime");
+  });
 });
 
 describe("the prompt counts every games count against the games he covers", () => {
@@ -179,6 +225,15 @@ describe("the prompt counts every games count against the games he covers", () =
     expect(MONTHLY_READER_SYSTEM).toMatch(/not the 23rd/);
     expect(MONTHLY_READER_SYSTEM).toMatch(/pay-as-you-go player becoming a regular/);
     expect(MONTHLY_READER_SYSTEM).toMatch(/a plain "yes" or "ok"/);
+  });
+
+  it("a bare 'yes' is a sign-up only as his DM answer to MatchTime's own question", () => {
+    expect(MONTHLY_READER_SYSTEM).toMatch(/only in a DM/);
+    expect(MONTHLY_READER_SYSTEM).toMatch(/in the group a bare "yes" is not a sign-up/);
+  });
+
+  it("an organiser's line about somebody else counts against that person's own games", () => {
+    expect(MONTHLY_READER_SYSTEM).toContain("Games each regular on it covers");
   });
 
   it("stays above Haiku 5.5's cacheable minimum, with no long dashes", () => {
@@ -204,11 +259,29 @@ describe("the one DM question: which of the games he covers will he play (Englis
   });
 
   it("a regular already on the month: English and Turkish", () => {
-    expect(t("en").msu_dm_games_which({ month: "November", games: 3, dates: ["Mon 16 Nov", "Mon 23 Nov", "Mon 30 Nov"] })).toBe(
+    expect(t("en").msu_dm_games_which({ month: "November", games: 3, played: 0, dates: ["Mon 16 Nov", "Mon 23 Nov", "Mon 30 Nov"] })).toBe(
       "📋 You're on the November list for 3 games: Mon 16 Nov, Mon 23 Nov and Mon 30 Nov. Which of them will you play? Reply and I'll note it.",
     );
-    expect(t("tr").msu_dm_games_which({ month: "Kasım", games: 3, dates: ["16 Kasım Pazartesi", "23 Kasım Pazartesi", "30 Kasım Pazartesi"] })).toBe(
+    expect(t("tr").msu_dm_games_which({ month: "Kasım", games: 3, played: 0, dates: ["16 Kasım Pazartesi", "23 Kasım Pazartesi", "30 Kasım Pazartesi"] })).toBe(
       "📋 Kasım listesinde 3 maç için varsın: 16 Kasım Pazartesi, 23 Kasım Pazartesi ve 30 Kasım Pazartesi. Hangilerinde oynayacaksın? Yanıt ver, not edeyim.",
+    );
+  });
+
+  it("a full-month regular with games behind him: only the games still to play are listed, with how many are played", () => {
+    expect(t("en").msu_dm_games_which({ month: "November", games: 5, played: 2, dates: ["Mon 16 Nov", "Mon 23 Nov", "Mon 30 Nov"] })).toBe(
+      "📋 You're on the November list for 5 games, 2 played already. 3 are left: Mon 16 Nov, Mon 23 Nov and Mon 30 Nov. Which of them will you play? Reply and I'll note it.",
+    );
+    expect(t("tr").msu_dm_games_which({ month: "Kasım", games: 5, played: 2, dates: ["16 Kasım Pazartesi", "23 Kasım Pazartesi", "30 Kasım Pazartesi"] })).toBe(
+      "📋 Kasım listesinde 5 maç için varsın, 2 maç oynandı. Kalan 3 maç: 16 Kasım Pazartesi, 23 Kasım Pazartesi ve 30 Kasım Pazartesi. Hangilerinde oynayacaksın? Yanıt ver, not edeyim.",
+    );
+  });
+
+  it("the organisers' one line when a count can be neither recorded nor asked about", () => {
+    expect(t("en").msu_admin_games_unrecorded({ name: "Mo Many", month: "November", words: "in for November bar the last" })).toBe(
+      `I couldn't record Mo Many's November games from "in for November bar the last". Set them on the month page.`,
+    );
+    expect(t("tr").msu_admin_games_unrecorded({ name: "Mo Many", month: "Kasım", words: "Kasım varım son hafta hariç" })).toBe(
+      `Mo Many için Kasım maçlarını "Kasım varım son hafta hariç" mesajından kaydedemedim. Ay sayfasından ayarla.`,
     );
   });
 });

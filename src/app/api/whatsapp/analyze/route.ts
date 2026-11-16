@@ -1697,9 +1697,11 @@ async function handleAnalyzeRequest(request: Request) {
           ? `month sign-up (${res.choice}): not changed, the player says they have paid; they are told by DM`
           : res.asked
             ? `month sign-up (${res.choice}): his games do not fit the games he covers, so nothing is stored for them; he is asked by DM which of them he will play`
-            : `month sign-up (${res.choice}), read by the monthly reader: ${res.changed ? `now ${res.outcome}` : `already ${res.outcome}`}`,
+            : res.unrecorded
+              ? `month sign-up (${res.choice}): his games could be neither recorded nor asked about; consumed, and the organisers are told once`
+              : `month sign-up (${res.choice}), read by the monthly reader: ${res.changed ? `now ${res.outcome}` : `already ${res.outcome}`}`,
         // No ✅ for a commitment that was not recorded (2026-11-16).
-        react: res.locked || res.asked ? null : "✅",
+        react: res.locked || res.asked || res.unrecorded ? null : "✅",
         reply: null,
       });
     }
