@@ -15,6 +15,10 @@ vi.mock("@/lib/club-connect", () => ({ matchtimeWaNumber: () => "447700900555" }
 vi.mock("@/lib/pool/request-ip", () => ({ poolRequestIp: () => "203.0.113.9" }));
 vi.mock("@/lib/pool/signup-status-token", () => ({ poolSignupStatusToken: () => "tok" }));
 vi.mock("@/lib/friend-link/page", () => ({ openFriendLink: async () => null }));
+const staff = vi.hoisted(() => ({ isPoolStaffRequest: vi.fn() }));
+vi.mock("@/lib/pool/staff-request", () => staff);
+const jar = vi.hoisted(() => ({ cookies: new Map<string, string>() }));
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: (name: string) => (jar.cookies.has(name) ? { name, value: jar.cookies.get(name) } : undefined) }) }));
 
 import { POST } from "../route";
 
@@ -23,6 +27,8 @@ const SHORT = { name: "Ali K", area: { kind: "district", district: "sm1" }, days
 
 beforeEach(() => {
   vi.clearAllMocks();
+  jar.cookies.clear();
+  staff.isPoolStaffRequest.mockResolvedValue(false);
   signup.createPoolSignup.mockResolvedValue({ ok: true, id: "p1", code: "ABCDE", expiresAt: new Date("2026-11-07T12:00:00Z"), earlyList: true });
 });
 
@@ -64,5 +70,28 @@ describe("the short form", () => {
     });
     expect(res.status).toBe(200);
     expect(signup.createPoolSignup.mock.calls[0][0].fields).toMatchObject({ maxMiles: 5, availability: [{ day: 2, fromMin: 1140, toMin: 1320 }] });
+  });
+});
+
+describe("a sign-up from a MatchTime staff browser is a staff test (2026-11-16)", () => {
+  it("is made exactly as any other, marked staffTest, so it is counted as neither sent nor confirmed", async () => {
+    staff.isPoolStaffRequest.mockResolvedValue(true);
+    jar.cookies.set("mt-staff", "2");
+    const res = await post(SHORT);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, code: "ABCDE", waLink: expect.stringContaining("wa.me/447700900555") });
+    expect(staff.isPoolStaffRequest).toHaveBeenCalledWith("2");
+    expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: true });
+  });
+
+  it("anybody else's is not", async () => {
+    await post(SHORT);
+    expect(staff.isPoolStaffRequest).toHaveBeenCalledWith(null);
+    expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: false });
+  });
+
+  it("a refused form never asks", async () => {
+    await post({ ...SHORT, days: [] });
+    expect(staff.isPoolStaffRequest).not.toHaveBeenCalled();
   });
 });

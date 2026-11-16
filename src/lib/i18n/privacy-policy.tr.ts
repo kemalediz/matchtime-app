@@ -93,7 +93,7 @@ export function buildPrivacyPolicyTr(f: PolicyFacts): PrivacyPolicyCopy {
           },
           {
             kind: "p",
-            text: "Biri oyuncu havuzuna katılma sayfasını açtığında, bu ziyaretin kaydını 90 gün saklarız: ziyaretin hangi saatte olduğu, kişiyi sayfaya bizim hangi bağlantımızın ya da bir arkadaşının bağlantısının getirdiği, formu doldurmaya başlayıp başlamadığı, sayfanın ekranda ne kadar süre kaldığı, kişinin sayfada ilk ne yaptığı (örneğin dokunma, kaydırma ya da bir tuşa basma), genel bir tarayıcı türü, sayfanın Facebook ya da Nextdoor gibi bir uygulamanın içinde açılıp açılmadığı, cihaz türü (örneğin telefon ya da bilgisayar) ve ziyaretin bir kişi değil otomatik bir bağlantı önizlemesi olup olmadığı. Bu kayıtta IP adresi, tarayıcının tüm ayrıntıları ya da arkadaş kodu yoktur. Kayıt tek başına ziyaretçinin kim olduğunu göstermez ve onu hiçbir zaman havuz başvurularıyla ya da profillerle ilişkilendirmeyiz. Kayıt 90 gün sonra otomatik olarak silinir.",
+            text: "Oyuncu havuzuna katılma sayfası açıldığında her ziyaretin ayrı bir kaydını tutmayız, yalnızca günlük toplamlar tutarız. Her gün için sayfayı açanların ve formu doldurmaya başlayanların sayısını tutarız; bu sayıları kişileri sayfaya bizim hangi bağlantımızın getirdiğine (ya da bir arkadaşının bağlantısının getirip getirmediğine), sayfada bir kişinin olduğunu ilk neyin gösterdiğine (örneğin dokunma, kaydırma ya da bir tuşa basma), genel bir tarayıcı türüne, sayfanın Facebook ya da Nextdoor gibi bir uygulamanın içinde açılıp açılmadığına, cihaz türüne (örneğin telefon ya da bilgisayar) ve ziyaretin bir kişi değil otomatik bir bağlantı önizlemesi olup olmadığına göre ayırırız. Bu toplamlarda günün saati, IP adresi, tarayıcının tüm ayrıntıları ya da arkadaş kodu yoktur ve onları hiçbir zaman havuz başvurularıyla ya da profillerle ilişkilendirmeyiz. Toplamlar 90 gün sonra otomatik olarak silinir.",
           },
         ],
       },
@@ -203,7 +203,7 @@ export function buildPrivacyPolicyTr(f: PolicyFacts): PrivacyPolicyCopy {
               "Oyuncu havuzu: teklif kayıtlarında yalnızca işleri adil tutmak ve kötüye kullanımı önlemek için gerekenler kalır ve bu kayıtlar 24 ay sonra anonim hale getirilir.",
               "Bir havuz profili silindiğinde, engellenen biri kolayca yeniden kaydolamasın diye engelleme ve şikayetlerin kısa bir kaydını 24 ay, neyi kabul ettiğinizi gösterebilmek için de onay kaydınızı 6 yıl saklarız.",
               "Bir grup mesajında kişiler etiketlendiğinde, bir organizatör MatchTime'dan onları davet etmesini isteyebilsin diye kimlerin etiketlendiğini (WhatsApp numaraları ve adları) not ederiz. Bu not 7 gün sonra silinir.",
-              "Oyuncu havuzuna katılma sayfasına yapılan bir ziyaretin kaydı 90 gün sonra otomatik olarak silinir.",
+              "Oyuncu havuzuna katılma sayfasına yapılan ziyaretlerin günlük toplamları 90 gün sonra otomatik olarak silinir.",
               "Fatura ve ödeme kayıtları, vergi mevzuatının gerektirdiği gibi 6 yıl saklanır.",
               "Bilgilerinizin silinmesini isterseniz adınızı ve telefon numaranızı sileriz. Misafir olarak oynadığınız bir maç, her eski misafirde olduğu gibi o kulübün geçmişinde kalır.",
             ],

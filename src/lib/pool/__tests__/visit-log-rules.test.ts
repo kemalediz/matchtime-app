@@ -1,11 +1,11 @@
 /**
- * The /play visit log's pure rules (2026-11-13). The daily counters could
- * not say why visitors left on 12 November, and the beacon's detail lived
- * only in the server log for a day. Kemal approved keeping a visit's detail
- * for 90 days on three conditions: only what the funnel analysis needs (no
- * address, no raw user agent, no referral code, no id, no cookie, the time
- * only to the hour), deleted automatically after 90 days,
- * and said in the privacy notice. These pin the first two.
+ * The /play visit breakdown's pure rules. 2026-11-13: one row per beacon,
+ * kept 90 days. 2026-11-16 (Kemal): DAILY TOTALS ONLY. At our traffic an
+ * hour-stamped row per visit could be matched to the one person who signed
+ * up that hour, so nothing per visit is kept any more: per code, London day,
+ * step and coarse category (what opened the page, browser type, in-app
+ * browser, device, scanner), a count. No hour, no time on screen, no
+ * friend's code, no address, no user agent. Deleted after 90 days.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -13,15 +13,12 @@ import {
   POOL_DEVICES,
   POOL_IN_APPS,
   POOL_OPEN_TRIGGERS,
-  POOL_VISIT_MAX_VISIBLE_MS,
   POOL_VISIT_RETENTION_DAYS,
+  POOL_VISIT_TRIGGERS,
   poolBrowserLabel,
-  poolVisitEventRow,
-  POOL_VISIT_LOG_CAP_PER_HOUR,
-  poolVisitHour,
-  poolVisitLogHasRoom,
-  poolVisitPurgeBefore,
-  readPoolVisitDetail,
+  poolVisitDailyKey,
+  poolVisitPurgeBeforeDay,
+  readPoolPageBeacon,
 } from "../visit-log-rules";
 
 const FB_IPHONE =
@@ -104,76 +101,77 @@ describe("poolBrowserLabel: a coarse label, never the user agent", () => {
   });
 });
 
-describe("readPoolVisitDetail: what the beacon may add, checked and clamped", () => {
-  it("opened: what first showed a person, and the visible time rounded to a tenth of a second", () => {
-    expect(readPoolVisitDetail({ trigger: "scroll", visibleMs: 5234.6 }, "opened")).toEqual({ openedBy: "scroll", visibleMs: 5200 });
+describe("readPoolPageBeacon: only a well-formed beacon counts (2026-11-16)", () => {
+  it("the page sends opened only after a real tap, touch, key, wheel or scroll, or a start before them", () => {
+    expect([...POOL_OPEN_TRIGGERS]).toEqual(["pointer", "touch", "key", "wheel", "scroll", "before-start"]);
     for (const trigger of POOL_OPEN_TRIGGERS) {
-      expect(readPoolVisitDetail({ trigger, visibleMs: 0 }, "opened").openedBy).toBe(trigger);
+      expect(readPoolPageBeacon({ src: "fb", step: "opened", trigger })).toEqual({ step: "opened", trigger });
     }
   });
 
-  it("the triggers are the gate's own, and only those", () => {
-    expect([...POOL_OPEN_TRIGGERS]).toEqual(["pointer", "touch", "key", "wheel", "scroll", "visible-time", "before-start"]);
+  // 15 November 2026: all 4 counted opens were scanners that waited exactly
+  // 5000 ms. Time on screen no longer opens anything, so a beacon saying so
+  // is not one the page sends.
+  it("an opened beacon opened by time on screen, or with no trigger, counts nothing", () => {
+    expect(readPoolPageBeacon({ src: "fb", step: "opened", trigger: "visible-time", visibleMs: 5000 })).toBeNull();
+    expect(readPoolPageBeacon({ src: "fb", step: "opened" })).toBeNull();
+    expect(readPoolPageBeacon({ src: "fb" })).toBeNull();
+    expect(readPoolPageBeacon({})).toBeNull();
   });
 
-  it("a trigger it does not know, or of the wrong type, is none", () => {
-    for (const trigger of ["click", "SCROLL", "", 3, null, {}, ["key"]]) {
-      expect(readPoolVisitDetail({ trigger, visibleMs: 100 }, "opened").openedBy).toBeNull();
+  it("a trigger it does not know, or of the wrong type, counts nothing", () => {
+    for (const trigger of ["click", "SCROLL", "", 3, null, {}, ["key"], "none"]) {
+      expect(readPoolPageBeacon({ step: "opened", trigger })).toBeNull();
     }
   });
 
-  it("started never carries a trigger: only opened has one", () => {
-    expect(readPoolVisitDetail({ trigger: "key", visibleMs: 12_000 }, "started")).toEqual({ openedBy: null, visibleMs: 12_000 });
+  it("no step is opened, as before: it still needs its trigger", () => {
+    expect(readPoolPageBeacon({ src: "fb", trigger: "touch" })).toEqual({ step: "opened", trigger: "touch" });
   });
 
-  it("visible time: a whole number from 0 to 24 hours; anything that is not a finite number is none", () => {
-    expect(readPoolVisitDetail({ visibleMs: -5 }, "opened").visibleMs).toBe(0);
-    expect(readPoolVisitDetail({ visibleMs: 1e12 }, "opened").visibleMs).toBe(POOL_VISIT_MAX_VISIBLE_MS);
-    expect(POOL_VISIT_MAX_VISIBLE_MS).toBe(24 * 3600 * 1000);
-    for (const visibleMs of ["5000", null, undefined, Number.NaN, Number.POSITIVE_INFINITY, true, {}]) {
-      expect(readPoolVisitDetail({ visibleMs }, "opened").visibleMs).toBeNull();
+  it("started is unchanged: it counts whatever trigger it carries, stored as none", () => {
+    for (const trigger of [undefined, null, "key", "visible-time", "<script>"]) {
+      expect(readPoolPageBeacon({ step: "started", trigger })).toEqual({ step: "started", trigger: "none" });
     }
   });
 
-  it("a page cached before the log existed sends neither: both none", () => {
-    expect(readPoolVisitDetail({ src: "fb", step: "opened" }, "opened")).toEqual({ openedBy: null, visibleMs: null });
+  it("sent, confirmed and anything else are the server's or nobody's: nothing", () => {
+    for (const step of ["sent", "confirmed", "paid", 3, null]) {
+      expect(readPoolPageBeacon({ step, trigger: "touch" })).toBeNull();
+    }
+  });
+
+  it("what is stored: the page's triggers, visible-time from the days before 16 November 2026, and none", () => {
+    expect([...POOL_VISIT_TRIGGERS]).toEqual(["pointer", "touch", "key", "wheel", "scroll", "before-start", "visible-time", "none"]);
   });
 });
 
-describe("poolVisitEventRow: the row, and no address, user agent or friend's code", () => {
+describe("poolVisitDailyKey: the daily total a beacon adds one to, and nothing per visit", () => {
   const NOW = new Date("2026-11-13T12:34:56.789Z");
 
-  it("holds exactly the hour, the bucket, the step, the detail, whether a friend's link was used and the coarse label", () => {
-    const row = poolVisitEventRow({
+  it("holds exactly the bucket, the London day, the step, what opened the page and the coarse label", () => {
+    const key = poolVisitDailyKey({ code: "_referral", step: "opened", trigger: "touch", now: NOW, userAgent: FB_IPHONE });
+    expect(key).toEqual({
       code: "_referral",
+      day: "2026-11-13",
       step: "opened",
-      now: NOW,
-      detail: { openedBy: "touch", visibleMs: 900 },
-      referralCode: "AB12cd",
-      userAgent: FB_IPHONE,
-    });
-    expect(row).toEqual({
-      at: new Date("2026-11-13T12:00:00.000Z"),
-      code: "_referral",
-      step: "opened",
-      openedBy: "touch",
-      visibleMs: 900,
-      hasRef: true,
+      trigger: "touch",
       browser: "safari",
       inApp: "facebook",
       device: "mobile",
       scanner: false,
     });
-    const stored = JSON.stringify(row);
-    expect(stored).not.toContain("AB12cd");
-    expect(stored).not.toContain("iPhone");
-    expect(stored).not.toContain("FBAN");
+    const stored = JSON.stringify(key);
+    for (const secret of ["iPhone", "FBAN", "12:34", "12:00"]) expect(stored).not.toContain(secret);
   });
 
-  it("no friend's code: hasRef false", () => {
-    expect(
-      poolVisitEventRow({ code: "_direct", step: "started", now: NOW, detail: { openedBy: null, visibleMs: null }, referralCode: null, userAgent: null }),
-    ).toMatchObject({ hasRef: false, scanner: true, openedBy: null, visibleMs: null });
+  it("the day is London's: 00:30 in summer time is the next day", () => {
+    const key = poolVisitDailyKey({ code: "_direct", step: "started", trigger: "none", now: new Date("2026-07-01T23:30:00Z"), userAgent: SAFARI_IPHONE });
+    expect(key.day).toBe("2026-07-02");
+  });
+
+  it("no user agent: a scanner", () => {
+    expect(poolVisitDailyKey({ code: "_direct", step: "started", trigger: "none", now: NOW, userAgent: null })).toMatchObject({ scanner: true, device: "other" });
   });
 });
 
@@ -182,28 +180,9 @@ describe("retention: 90 days, then deleted", () => {
     expect(POOL_VISIT_RETENTION_DAYS).toBe(90);
   });
 
-  it("deletes every row from before 90 days ago", () => {
-    expect(poolVisitPurgeBefore(new Date("2026-11-13T06:00:00Z"))).toEqual(new Date("2026-08-15T06:00:00Z"));
-  });
-
-  // Review of #600: a minute plus the code could be matched to a sign-up
-  // made a minute later with the same code. An hour does not single one out so easily.
-  it("keeps the time to the hour only", () => {
-    expect(poolVisitHour(new Date("2026-11-13T12:34:56.789Z"))).toEqual(new Date("2026-11-13T12:00:00.000Z"));
-    expect(poolVisitHour(new Date("2026-11-13T12:59:59.999Z"))).toEqual(new Date("2026-11-13T12:00:00.000Z"));
-    expect(poolVisitHour(new Date("2026-11-13T13:00:00.000Z"))).toEqual(new Date("2026-11-13T13:00:00.000Z"));
-  });
-});
-
-describe("the volume cap: at most 200 rows per code and hour", () => {
-  it("is 200, generous for real traffic (the 24 opens of 4 November 2026 were a whole day)", () => {
-    expect(POOL_VISIT_LOG_CAP_PER_HOUR).toBe(200);
-  });
-
-  it("has room until the bucket's hour holds 200 rows, then none", () => {
-    expect(poolVisitLogHasRoom(0)).toBe(true);
-    expect(poolVisitLogHasRoom(199)).toBe(true);
-    expect(poolVisitLogHasRoom(200)).toBe(false);
-    expect(poolVisitLogHasRoom(5_000)).toBe(false);
+  it("deletes every day's totals from before 90 days ago, by London day", () => {
+    expect(poolVisitPurgeBeforeDay(new Date("2026-11-13T06:00:00Z"))).toBe("2026-08-15");
+    // 00:30 London on 1 July is still 30 June in UTC.
+    expect(poolVisitPurgeBeforeDay(new Date("2026-06-30T23:30:00Z"))).toBe("2026-04-02");
   });
 });

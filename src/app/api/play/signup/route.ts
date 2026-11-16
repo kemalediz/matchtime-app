@@ -15,9 +15,18 @@
  * .test.ts` names both): only after a valid, rate-limited sign-up, never in
  * the page, a bundle or the sitemap. A stranger has to be able to write to
  * MatchTime; that is the whole point of the pool's WhatsApp-first sign-up.
+ *
+ * STAFF TESTS (2026-11-16). A sign-up from a MatchTime staff browser (the
+ * staff cookie, or a `User.isSuperadmin` session: `isPoolStaffRequest`) is
+ * made and answered exactly as any other, and stored with
+ * `PoolProfile.staffTest`, so the /play funnel counts it as neither sent
+ * nor confirmed (`visits.ts`). Asked only for a form that is valid.
  */
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { poolRequestIp } from "@/lib/pool/request-ip";
+import { isPoolStaffRequest } from "@/lib/pool/staff-request";
+import { POOL_STAFF_COOKIE } from "@/lib/pool/visit-rules";
 import { matchtimeWaNumber } from "@/lib/club-connect";
 import { waMeLink } from "@/lib/club-connect-rules";
 import { poolConfirmPrefill } from "@/lib/pool/confirm-rules";
@@ -51,12 +60,16 @@ export async function POST(request: Request) {
     if (!opened || opened.state !== "open") return NextResponse.json({ ok: false, reason: "link-closed" }, { status: 409 });
     friendLink = { id: opened.id, issuedByUserId: opened.issuedByUserId, kickoff: opened.facts.kickoff };
   }
+  // A MatchTime staff browser's sign-up (2026-11-16) is made as any other,
+  // and marked so the funnel counts it as neither sent nor confirmed.
+  const staffTest = await isPoolStaffRequest((await cookies()).get(POOL_STAFF_COOKIE)?.value ?? null);
   const res = await createPoolSignup({
     fields: valid.value,
     ip: poolRequestIp(request),
     source,
     earlyList: !(await poolOpenForApiRequest(request)),
     friendLink,
+    staffTest,
   });
   if (!res.ok) {
     const status = res.reason === "busy" ? 429 : 422;

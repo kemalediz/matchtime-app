@@ -18,6 +18,7 @@ import {
   poolFunnelTotals,
   poolProfileBucket,
   poolStaffCookie,
+  poolStaffCookieCleared,
   poolVisitBucket,
   poolVisitDay,
   readPoolFunnelPeriod,
@@ -181,22 +182,33 @@ describe("the drop between steps", () => {
   });
 });
 
-describe("our own staff's visits (2026-11-12)", () => {
-  it("the staff cookie, set when an owner or admin loads /admin, skips the count", () => {
+describe("our own staff's visits (2026-11-12): MatchTime staff only, since 2026-11-16", () => {
+  it("the staff cookie skips the count; since 2026-11-16 it holds 2, set only for MatchTime staff", () => {
     expect(POOL_STAFF_COOKIE).toBe("mt-staff");
-    expect(isPoolStaffVisit({ staffCookie: "1", adminSession: false })).toBe(true);
+    expect(isPoolStaffVisit({ staffCookie: "2", staffSession: false })).toBe(true);
   });
-  it("a session for an owner or admin skips it too, cookie or not", () => {
-    expect(isPoolStaffVisit({ staffCookie: null, adminSession: true })).toBe(true);
-    expect(isPoolStaffVisit({ staffCookie: "1", adminSession: true })).toBe(true);
+  it("a session for MatchTime staff (User.isSuperadmin) skips it too, cookie or not", () => {
+    expect(isPoolStaffVisit({ staffCookie: null, staffSession: true })).toBe(true);
+    expect(isPoolStaffVisit({ staffCookie: "2", staffSession: true })).toBe(true);
+    expect(isPoolStaffVisit({ staffCookie: "1", staffSession: true })).toBe(true);
   });
-  it("anybody else counts: no cookie, an empty or other value, no admin session", () => {
-    for (const staffCookie of [null, undefined, "", "0", "yes", "true"]) {
-      expect(isPoolStaffVisit({ staffCookie, adminSession: false })).toBe(false);
+  // Until 2026-11-16 every club owner or admin who opened /admin got "1"
+  // for a year. That cookie says nothing about whose browser it is, so it
+  // now counts like no cookie at all.
+  it("the old cookie every club organiser got until 2026-11-16 counts, signed in or not", () => {
+    expect(isPoolStaffVisit({ staffCookie: "1", staffSession: false })).toBe(false);
+  });
+  it("anybody else counts: no cookie, an empty or other value, no staff session", () => {
+    for (const staffCookie of [null, undefined, "", "0", "1", "yes", "true", "22"]) {
+      expect(isPoolStaffVisit({ staffCookie, staffSession: false })).toBe(false);
     }
   });
   it("the cookie: a year long, the whole site, sent on a link opened from elsewhere, Secure on https", () => {
-    expect(poolStaffCookie({ secure: true })).toBe("mt-staff=1; Max-Age=31536000; Path=/; SameSite=Lax; Secure");
-    expect(poolStaffCookie({ secure: false })).toBe("mt-staff=1; Max-Age=31536000; Path=/; SameSite=Lax");
+    expect(poolStaffCookie({ secure: true })).toBe("mt-staff=2; Max-Age=31536000; Path=/; SameSite=Lax; Secure");
+    expect(poolStaffCookie({ secure: false })).toBe("mt-staff=2; Max-Age=31536000; Path=/; SameSite=Lax");
+  });
+  it("cleared for an organiser who is not MatchTime staff: the same cookie, expired", () => {
+    expect(poolStaffCookieCleared({ secure: true })).toBe("mt-staff=; Max-Age=0; Path=/; SameSite=Lax; Secure");
+    expect(poolStaffCookieCleared({ secure: false })).toBe("mt-staff=; Max-Age=0; Path=/; SameSite=Lax");
   });
 });

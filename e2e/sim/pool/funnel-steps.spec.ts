@@ -54,6 +54,30 @@ scenarios("the sign-up funnel's server steps", () => {
     expect(await step(pool.db, "_direct", "sent")).toBe(1);
   });
 
+  // 2026-11-16: a staff browser's sign-up works as any other, but is
+  // counted as neither sent nor confirmed. The confirm is a WhatsApp
+  // message, with no cookie: the flag the sign-up stored decides.
+  scenario("a sign-up from a MatchTime staff browser works as any other, and counts as neither sent nor confirmed", async ({ pool }) => {
+    await pool.db.run(`INSERT INTO "PoolCampaign" (code, source, label) VALUES ($1, 'facebook', 'Funnel e2e') ON CONFLICT DO NOTHING`, [CODE]);
+    await pool.db.run(`DELETE FROM "PoolCampaignVisit" WHERE code IN ($1, '_direct')`, [CODE]);
+    const kemal = await pool.stranger("kemal-test", { name: "Staff Test" });
+
+    const form = await pool.signUp({ name: "Staff Test", source: { c: CODE } }, { cookie: "mt-staff=2" });
+    expect(form).toMatchObject({ status: 200, ok: true });
+    expect(await pool.pendingByCode(form.code!)).toMatchObject({ staffTest: true, source: "campaign", sourceCode: CODE });
+    expect(await step(pool.db, CODE, "sent")).toBe(0);
+
+    const ex = await kemal.dm(form.prefill!);
+    expect(ex.json).toMatchObject({ handled: "pool-confirm", result: "confirmed" });
+    expect(await pool.db.one(`SELECT status, "staffTest" FROM "PoolProfile" WHERE "sourceCode" = $1 AND "displayName" LIKE 'Staff%'`, [CODE])).toMatchObject({ status: "active", staffTest: true });
+    expect(await step(pool.db, CODE, "confirmed")).toBe(0);
+
+    // The old cookie every club organiser got until 2026-11-16 is not staff.
+    const other = await pool.signUp({ name: "Old Cookie", source: { c: CODE } }, { cookie: "mt-staff=1" });
+    expect(await pool.pendingByCode(other.code!)).toMatchObject({ staffTest: false });
+    expect(await step(pool.db, CODE, "sent")).toBe(1);
+  });
+
   scenario("the table holds nothing about the person: only the bucket, the day, the step and the count", async ({ pool }) => {
     const cols = await pool.db.all<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'PoolCampaignVisit' ORDER BY column_name`,

@@ -32,9 +32,12 @@
  * started unless it really enters something, and every beacon's user agent
  * is logged on the server (`visits.ts`) so such a scanner can be named.
  *
- * THE VISIT LOG (2026-11-13) keeps a little more per beacon for 90 days:
- * no address, no user agent, no friend's code, the time to the hour, and
- * never linked to a sign-up (`visit-log-rules.ts`).
+ * THE BREAKDOWN (2026-11-13; daily totals only since 2026-11-16) adds each
+ * page step to a daily total per coarse category, kept 90 days: nothing per
+ * visit, no time of day, no address, no user agent, no friend's code, and
+ * never linked to a sign-up (`visit-log-rules.ts`). Since 2026-11-16
+ * "opened" needs a person's tap, touch, key, wheel or scroll (or a start
+ * first); time on screen counts nothing (`app/play/funnel-open.ts`).
  */
 import { formatInTimeZone } from "date-fns-tz";
 import { isLinkPreviewFetcher } from "../link-preview-fetchers";
@@ -106,29 +109,49 @@ export function poolVisitDay(now: Date): string {
 /**
  * OUR OWN VISITS ARE NOT VISITS (2026-11-12). Kemal's tests and QA checks
  * of /play were counted as people opening and starting it. So a browser
- * that has loaded an /admin page as an owner or admin carries this cookie
+ * that has loaded an /admin page as MatchTime staff carries this cookie
  * (set by `StaffMark` in the admin layout, a year long, so a staff phone is
  * known on /play even when signed out), and the beacon counts nothing for
- * it, nor for a request that carries an owner's or admin's session.
- * Nothing about the person is stored either way.
+ * it, nor for a request that carries a staff session. A sign-up from such
+ * a browser is a staff test: it works as any other, and is not counted as
+ * sent or confirmed (`PoolProfile.staffTest`, 2026-11-16). Nothing about
+ * the person is stored either way.
+ *
+ * STAFF MEANS MATCHTIME STAFF (Kemal, 2026-11-16): `User.isSuperadmin`,
+ * the platform owner's own check, not every club's owner or admin. Until
+ * then any club organiser who opened /admin got the cookie with "1"; the
+ * value is now "2", so those year-long cookies count like none at all
+ * (they say nothing about whose browser they are in), and the admin layout
+ * clears the cookie for an organiser who is not staff.
  */
 export const POOL_STAFF_COOKIE = "mt-staff";
-const POOL_STAFF_COOKIE_VALUE = "1";
+const POOL_STAFF_COOKIE_VALUE = "2";
 const POOL_STAFF_COOKIE_MAX_AGE = 365 * 24 * 3600;
 
-/** Is this beacon from our own staff? `adminSession`: the request's session
- *  passes the admin pages' own check (`getUserOrg` + `isOrgAdmin`). */
-export function isPoolStaffVisit(a: { staffCookie: string | null | undefined; adminSession: boolean }): boolean {
-  return a.staffCookie === POOL_STAFF_COOKIE_VALUE || a.adminSession;
+/** Is this request from our own staff? `staffSession`: the request's
+ *  session is a MatchTime staff account (`User.isSuperadmin`). */
+export function isPoolStaffVisit(a: { staffCookie: string | null | undefined; staffSession: boolean }): boolean {
+  return a.staffCookie === POOL_STAFF_COOKIE_VALUE || a.staffSession;
 }
+
+/** Does the cookie alone say staff, with no session to look up? */
+export function hasPoolStaffCookie(staffCookie: string | null | undefined): boolean {
+  return staffCookie === POOL_STAFF_COOKIE_VALUE;
+}
+
+const cookieString = (value: string, maxAge: number, secure: boolean) =>
+  [`${POOL_STAFF_COOKIE}=${value}`, `Max-Age=${maxAge}`, "Path=/", "SameSite=Lax", ...(secure ? ["Secure"] : [])].join("; ");
 
 /** The staff cookie as `document.cookie` takes it. First-party, the whole
  *  site, Lax so it is sent when /play is opened from a link elsewhere, and
  *  Secure on https (every deployment; plain http is only `next dev`). */
 export function poolStaffCookie(o: { secure: boolean }): string {
-  const parts = [`${POOL_STAFF_COOKIE}=${POOL_STAFF_COOKIE_VALUE}`, `Max-Age=${POOL_STAFF_COOKIE_MAX_AGE}`, "Path=/", "SameSite=Lax"];
-  if (o.secure) parts.push("Secure");
-  return parts.join("; ");
+  return cookieString(POOL_STAFF_COOKIE_VALUE, POOL_STAFF_COOKIE_MAX_AGE, o.secure);
+}
+
+/** The staff cookie deleted, for an organiser who is not MatchTime staff. */
+export function poolStaffCookieCleared(o: { secure: boolean }): string {
+  return cookieString("", 0, o.secure);
 }
 
 // ── The owner's view ───────────────────────────────────────────────────

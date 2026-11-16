@@ -424,14 +424,19 @@ export class PoolWorld {
    * asks for one. `poolOpen` sets the pool's open/closed test seam (the
    * default, like production today, is closed: the early sign-up list).
    */
-  async signUp(body: Partial<SignUpBody> = {}, opts: { poolOpen?: boolean; ip?: string } = {}): Promise<SignUpAnswer> {
+  async signUp(body: Partial<SignUpBody> = {}, opts: { poolOpen?: boolean; ip?: string; cookie?: string } = {}): Promise<SignUpAnswer> {
     const data = { ...DEFAULT_SIGNUP, ...body };
-    this.note(`(someone fills in /play: ${data.name}, ${data.language}${opts.poolOpen ? ", pool open" : ""})`);
+    this.note(`(someone fills in /play: ${data.name}, ${data.language}${opts.poolOpen ? ", pool open" : ""}${opts.cookie ? `, cookie ${opts.cookie}` : ""})`);
     // Each visitor has his own address unless the scenario says otherwise
     // (the per-address cap is a scenario of its own).
     const ip = opts.ip ?? `198.51.100.${(this.visitors = (this.visitors % 250) + 1)}`;
     const res = await this.request.post("/api/play/signup", {
-      headers: { "x-forwarded-for": ip, ...(opts.poolOpen === undefined ? {} : { "x-mt-test-pool-open": opts.poolOpen ? "1" : "0" }) },
+      headers: {
+        "x-forwarded-for": ip,
+        ...(opts.poolOpen === undefined ? {} : { "x-mt-test-pool-open": opts.poolOpen ? "1" : "0" }),
+        // A browser's cookie, e.g. the staff cookie "mt-staff=2" (2026-11-16).
+        ...(opts.cookie ? { cookie: opts.cookie } : {}),
+      },
       data,
     });
     const json = (await res.json()) as Omit<SignUpAnswer, "status" | "sent">;

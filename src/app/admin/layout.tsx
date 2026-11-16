@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { getUserOrg, isOrgAdmin } from "@/lib/org";
+import { getUserOrg, isOrgAdmin, isSuperadmin } from "@/lib/org";
 import { AdminSubnav } from "@/components/layout/admin-subnav";
 import { loadBillingBanner } from "@/lib/club-billing";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
@@ -24,6 +24,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   const admin = await isOrgAdmin(session.user.id, membership.orgId);
   if (!admin) redirect("/");
+  // The /play staff mark (`StaffMark`): MatchTime staff only, never a club's
+  // own owner or admin (Kemal, 2026-11-16).
+  // A failed check leaves the cookie as it is (null), never clears staff's.
+  const staff = await isSuperadmin(session.user.id).catch(() => null);
 
   // "Finish connecting" mode (src/lib/connect-focus.ts): the owner of a
   // club that is a draft or pending gets the connect panel and nothing
@@ -39,7 +43,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         lang={membership.org.language}
         labels={{ back: s.cf_back, club: s.cf_edit_tab_club, game: s.cf_edit_tab_game }}
       >
-        <StaffMark />
+        <StaffMark staff={staff} />
         <OrgLangProvider lang={membership.org.language}>{children}</OrgLangProvider>
       </ConnectFocusGate>
     );
@@ -54,8 +58,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto">
-      {/* Our own staff's /play visits are not counted (2026-11-12). */}
-      <StaffMark />
+      {/* MatchTime staff's /play visits and sign-ups are not counted (2026-11-12; staff = superadmin since 2026-11-16). */}
+      <StaffMark staff={staff} />
       {banner && (
         <div
           role="status"

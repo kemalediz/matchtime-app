@@ -44,9 +44,14 @@ export async function createPoolSignup(args: {
   /** The friend link it came from (2026-10-31): source "friend", the member
    *  who sent it as referrer, and the code dies at kick-off if sooner. */
   friendLink?: { id: string; issuedByUserId: string; kickoff: Date };
+  /** 2026-11-16: made from a MatchTime staff browser (`isPoolStaffRequest`).
+   *  Stored on the profile; the funnel then counts it as neither sent nor
+   *  confirmed. Nothing else about the sign-up changes. */
+  staffTest?: boolean;
   now?: Date;
 }): Promise<PoolSignupResult> {
   const now = args.now ?? new Date();
+  const staffTest = args.staffTest === true;
   const ip = args.ip;
 
   if (ip) {
@@ -91,14 +96,15 @@ export async function createPoolSignup(args: {
           maxMiles: f.maxMiles,
           earlyList: args.earlyList,
           friendLinkId: args.friendLink?.id ?? null,
+          staffTest,
           ...source,
           sports: { create: sportRows(f) },
           availability: { create: availabilityRows(f) },
         },
         select: { id: true },
       });
-      console.log(`[pool-signup] waiting sign-up created early=${args.earlyList} source=${source.source}`);
-      await recordPoolSignupSent(source, now); // the funnel's "sent" step (visits.ts); never throws
+      console.log(`[pool-signup] waiting sign-up created early=${args.earlyList} source=${source.source}${staffTest ? " staff-test" : ""}`);
+      await recordPoolSignupSent({ ...source, staffTest }, now); // the funnel's "sent" step (visits.ts); never throws
       return { ok: true, id: row.id, code, expiresAt, earlyList: args.earlyList };
     } catch (err) {
       // Another waiting sign-up holds this code: draw again. (His user id

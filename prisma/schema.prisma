@@ -3488,6 +3488,11 @@ model PoolProfile {
   /// The friend link (FriendLink.id) this sign-up came from, when a member
   /// vouched for him for one match (2026-10-31). Source "friend".
   friendLinkId      String?
+  /// Made from a MatchTime staff browser (2026-11-16, `isPoolStaffRequest`):
+  /// a staff test, counted in the /play funnel as neither sent nor
+  /// confirmed (`visits.ts`). Otherwise an ordinary sign-up. Migration
+  /// 20261116120100_pool_profile_staff_test.
+  staffTest         Boolean   @default(false)
   /// His own share code for matchtime.ai/p/<code> (G1).
   shareCode         String?   @unique
   /// "Keep my badges and 'Brought by' private" OFF: shown. The manage page
@@ -3781,47 +3786,45 @@ model PoolCampaignVisit {
   @@id([code, day, step])
 }
 
-/// The /play visit log (2026-11-13, src/lib/pool/visit-log-rules.ts): one
-/// row per page beacon (opened, started), so drop-off can be explained
-/// after the server log has gone. Only what the funnel analysis needs: NO
-/// IP address, NO user agent (only the coarse label below), NO friend's
-/// share code (only `hasRef`), no user id, no cookie, and the time only to
-/// the hour. NEVER joined to a sign-up or a profile (the privacy policy
-/// promises it; `visit-log-unlinked.test.ts`). At most 200 rows per code
-/// and hour (POOL_VISIT_LOG_CAP_PER_HOUR). Link preview fetchers are logged
-/// with `scanner` and never counted in "PoolCampaignVisit". Migration
-/// 20261113120000_pool_visit_events.
-/// RETENTION 90 days from `at`: deleted by the daily 06:00 cron
-/// (`purgeOldPoolVisitEvents`, POOL_VISIT_RETENTION_DAYS).
-model PoolVisitEvent {
-  id        String   @id @default(cuid())
-  /// When, to the hour.
-  at        DateTime
+/// The /play visit breakdown, DAILY TOTALS ONLY (2026-11-16, Kemal;
+/// src/lib/pool/visit-log-rules.ts). Each page beacon (opened, started)
+/// adds one to the total for its bucket, London day, step and coarse
+/// category, so drop-off can be explained after the server log has gone.
+/// Nothing per visit: no hour, no time on screen (the per-visit
+/// "PoolVisitEvent" of 2026-11-13 was dropped for that: at our traffic an
+/// hour-stamped row could be matched to the one person who signed up that
+/// hour). NO IP address, NO user agent (only the coarse label below), NO
+/// friend's share code, no user id, no cookie. NEVER joined to a sign-up or
+/// a profile (the privacy policy promises it; `visit-log-unlinked.test.ts`).
+/// Link preview fetchers are added with `scanner` and never counted in
+/// "PoolCampaignVisit". Migrations 20261116120000_pool_visit_daily (the
+/// table) and 20261116120200_pool_visit_daily_backfill (the per-visit rows
+/// added up). RETENTION 90 days from `day`: deleted by the daily 06:00 cron
+/// (`purgeOldPoolVisitDaily`, POOL_VISIT_RETENTION_DAYS).
+model PoolVisitDaily {
   /// The bucket the counters use: a campaign code, "_direct" or "_referral".
-  code      String
+  code    String
+  /// The London day, as "PoolCampaignVisit".
+  day     DateTime @db.Date
   /// "opened" or "started".
-  step      String
-  /// What opened the page (opened only): pointer, touch, key, wheel,
-  /// scroll, visible-time or before-start. Null on started, or from a page
-  /// that did not say.
-  openedBy  String?
-  /// Time on screen when the beacon was sent (ms, to a tenth of a second,
-  /// at most a day).
-  visibleMs Int?
-  /// Whether a friend's share code came with the visit (never the code).
-  hasRef    Boolean  @default(false)
+  step    String
+  /// What opened the page: pointer, touch, key, wheel, scroll or
+  /// before-start; "visible-time" only for opens before 16 November 2026;
+  /// "none" on started (POOL_VISIT_TRIGGERS).
+  trigger String
   /// chrome, safari, firefox, edge, samsung or other.
-  browser   String
+  browser String
   /// An app's in-app browser: facebook, instagram, nextdoor, whatsapp,
   /// other or none.
-  inApp     String
+  inApp   String
   /// mobile, tablet, desktop or other (not a browser).
-  device    String
+  device  String
   /// A link preview fetcher or scripted browser.
-  scanner   Boolean  @default(false)
+  scanner Boolean
+  count   Int      @default(0)
 
-  @@index([at])
-  @@index([code, at])
+  @@id([code, day, step, trigger, browser, inApp, device, scanner])
+  @@index([day])
 }
 
 /// A member vouched for a friend for ONE match (friend link, 2026-10-31,
