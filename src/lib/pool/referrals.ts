@@ -46,7 +46,8 @@ const PLAYED_MATCH = { status: "COMPLETED", isHistorical: false } as const;
 
 export async function stampPlayedReferrals(now: Date = new Date()): Promise<{ counted: number }> {
   const waiting = await db.poolProfile.findMany({
-    where: { referrerUserId: { not: null }, referralCountedAt: null, userId: { not: null }, status: { not: "pending-verify" } },
+    // A MatchTime staff test (2026-11-16) is never a friend who counts.
+    where: { referrerUserId: { not: null }, referralCountedAt: null, userId: { not: null }, status: { not: "pending-verify" }, staffTest: false },
     select: { id: true, userId: true, referrerUserId: true },
     orderBy: { createdAt: "asc" },
     take: STAMP_BATCH,
@@ -80,7 +81,7 @@ export async function stampPlayedReferrals(now: Date = new Date()): Promise<{ co
 async function friendsPlayedBy(referrerIds: readonly string[]): Promise<{ counts: Map<string, number>; profiles: Map<string, { status: string; showRecognition: boolean }> }> {
   const [friends, referrers] = await Promise.all([
     db.poolProfile.findMany({
-      where: { referrerUserId: { in: [...referrerIds] }, referralCountedAt: { not: null }, userId: { not: null } },
+      where: { referrerUserId: { in: [...referrerIds] }, referralCountedAt: { not: null }, userId: { not: null }, staffTest: false },
       select: { userId: true, referrerUserId: true, referralCountedAt: true },
     }),
     db.poolProfile.findMany({ where: { userId: { in: [...referrerIds] } }, select: { userId: true, status: true, showRecognition: true, referrerUserId: true } }),
@@ -127,7 +128,7 @@ async function homeClubsOf(userIds: readonly string[]): Promise<Map<string, stri
 export async function loadClubReferralAwards(orgId: string, eligibleUserIds: ReadonlySet<string>): Promise<{ awards: ReferralAward[]; silent: ReferralAward[] }> {
   if (eligibleUserIds.size === 0) return { awards: [], silent: [] };
   const withFriends = await db.poolProfile.findMany({
-    where: { referrerUserId: { in: [...eligibleUserIds] }, referralCountedAt: { not: null } },
+    where: { referrerUserId: { in: [...eligibleUserIds] }, referralCountedAt: { not: null }, staffTest: false },
     select: { referrerUserId: true },
     distinct: ["referrerUserId"],
   });

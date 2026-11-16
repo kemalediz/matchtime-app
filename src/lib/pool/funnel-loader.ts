@@ -93,14 +93,32 @@ async function loadProfiles(): Promise<FunnelProfileFact[]> {
   }));
 }
 
+/** Staff tests' user ids, and the offer jobs that carried offers to them
+ *  (round 2 of #607): the offer health counts neither. Two small reads, the
+ *  second only when there is a staff test at all. */
+async function staffTestOfferFacts(): Promise<{ userIds: string[]; jobIds: string[] }> {
+  const userIds = (await db.poolProfile.findMany({ where: { staffTest: true, userId: { not: null } }, select: { userId: true } })).map((p) => p.userId!);
+  if (userIds.length === 0) return { userIds, jobIds: [] };
+  const offers = await db.poolOffer.findMany({ where: { userId: { in: userIds }, platformJobId: { not: null } }, select: { platformJobId: true } });
+  return { userIds, jobIds: offers.map((o) => o.platformJobId!) };
+}
+
 async function loadOfferHealthFacts(q: FunnelQuery): Promise<OfferHealthFacts> {
   const { start, end } = rangeInstants(q);
+  const staff = await staffTestOfferFacts();
   const [offerJobs, delivered, paused] = await Promise.all([
     db.platformJob.findMany({
-      where: { purpose: POOL_OFFER_PURPOSE, OR: [{ createdAt: { gte: start, lt: end } }, { failedAt: { gte: start, lt: end } }] },
+      where: {
+        purpose: POOL_OFFER_PURPOSE,
+        OR: [{ createdAt: { gte: start, lt: end } }, { failedAt: { gte: start, lt: end } }],
+        ...(staff.jobIds.length ? { id: { notIn: staff.jobIds } } : {}),
+      },
       select: { createdAt: true, sendAfter: true, failReason: true, failedAt: true },
     }),
-    db.poolOffer.findMany({ where: { sentAt: { gte: new Date(start.getTime() - CAP_LOOKBACK_MS), lt: end } }, select: { sentAt: true } }),
+    db.poolOffer.findMany({
+      where: { sentAt: { gte: new Date(start.getTime() - CAP_LOOKBACK_MS), lt: end }, ...(staff.userIds.length ? { userId: { notIn: staff.userIds } } : {}) },
+      select: { sentAt: true },
+    }),
     db.poolProfile.findMany({ where: { status: "paused", pausedReason: "ignored", staffTest: false }, select: { pausedAt: true } }),
   ]);
   return {

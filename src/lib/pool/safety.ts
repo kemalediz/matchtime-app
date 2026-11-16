@@ -250,7 +250,8 @@ export async function loadPoolSafety(now: Date = new Date()): Promise<PoolSafety
   const [reports, paused, marks] = await Promise.all([
     db.poolReport.findMany({ where: { reviewedAt: null }, orderBy: { createdAt: "desc" }, take: 200 }),
     db.poolProfile.findMany({
-      where: { pausedReason: { in: [...POOL_MATCHTIME_PAUSE_REASONS] } },
+      // A MatchTime staff test sign-up (2026-11-16) is on no owner-facing list.
+      where: { pausedReason: { in: [...POOL_MATCHTIME_PAUSE_REASONS] }, staffTest: false },
       select: { userId: true, displayName: true, status: true, pausedReason: true, pausedAt: true, reviewRequestedAt: true },
       orderBy: { pausedAt: "desc" },
       take: 200,

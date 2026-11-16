@@ -7,8 +7,8 @@
  *     re-run cleanly on a database that has them, and the CHECKs refuse a
  *     bad row;
  *   - 20261116120200 (the backfill) adds the per-visit OPENS of
- *     "PoolVisitEvent" up by London day, trigger, in-app browser and
- *     scanner flag (no browser, no device, no starts), ON TOP of the totals
+ *     "PoolVisitEvent" up by London day, in-app browser and scanner flag
+ *     (no browser, device, interaction type or starts), ON TOP of the totals
  *     the new code has already written, renames the old table, deletes
  *     nothing, and does nothing on a second run; its after-check (b) agrees
  *     on the deploy day;
@@ -66,8 +66,8 @@ async function oldRow(
 }
 
 const totals = (db: TestDb) =>
-  db.all<{ code: string; day: string; step: string; trigger: string; inApp: string; scanner: boolean; count: number }>(
-    `SELECT code, to_char(day, 'YYYY-MM-DD') AS day, step, "trigger", "inApp", scanner, count FROM "PoolVisitDaily" ORDER BY day, code, step, "trigger", "inApp", scanner`,
+  db.all<{ code: string; day: string; inApp: string; scanner: boolean; count: number }>(
+    `SELECT code, to_char(day, 'YYYY-MM-DD') AS day, "inApp", scanner, count FROM "PoolVisitDaily" ORDER BY day, code, "inApp", scanner`,
   );
 
 /** The backfill header's after-check (b), with the deploy day filled in. */
@@ -96,15 +96,12 @@ test("the table and the staff test column: both re-run cleanly, and the CHECKs r
     is_nullable: "NO",
   });
   const put = (over: Record<string, unknown>) => {
-    const row = { code: "fb", day: "2026-11-16", step: "opened", trigger: "touch", inApp: "none", scanner: false, count: 1, ...over };
+    const row = { code: "fb", day: "2026-11-16", inApp: "none", scanner: false, count: 1, ...over };
     const cols = Object.keys(row);
     return db.run(`INSERT INTO "PoolVisitDaily" (${cols.map((c) => `"${c}"`).join(", ")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})`, Object.values(row));
   };
   await put({});
   for (const [bad, constraint] of [
-    [{ trigger: "visible", day: "2026-11-15" }, "PoolVisitDaily_trigger_check"],
-    [{ step: "started", trigger: "none", day: "2026-11-14" }, "PoolVisitDaily_step_check"],
-    [{ step: "sent", day: "2026-11-13" }, "PoolVisitDaily_step_check"],
     [{ inApp: "tiktok", day: "2026-11-12" }, "PoolVisitDaily_inApp_check"],
     [{ code: "FB Sutton", day: "2026-11-11" }, "PoolVisitDaily_code_check"],
     [{ count: -1, day: "2026-11-10" }, "PoolVisitDaily_count_check"],
@@ -115,30 +112,31 @@ test("the table and the staff test column: both re-run cleanly, and the CHECKs r
   await db.run(`DELETE FROM "PoolVisitDaily"`);
 });
 
-test("the backfill adds the per-visit opens up by London day, trigger, in-app browser and scanner flag, on top of the new code's totals, then renames the old table; a second run does nothing", async ({ db }) => {
+test("the backfill adds the per-visit opens up by London day, in-app browser and scanner flag, on top of the new code's totals, then renames the old table; a second run does nothing", async ({ db }) => {
   await clean(db);
   await db.run(OLD_LOG);
-  // 14 November: three opens by the old 5-second rule on three different
-  // browsers and devices (one total: no browser, no device), one scroll in
-  // Facebook's app, one start (left out), one scanner.
+  // 14 November: three opens, by the old 5-second rule, a key press and a
+  // wheel, on three different browsers and devices (one total: no browser,
+  // device or interaction type), one scroll in Facebook's app, one start
+  // (left out), one scanner.
   await oldRow(db, { at: "2026-11-14 09:00:00" });
-  await oldRow(db, { at: "2026-11-14 09:00:00", browser: "chrome", device: "desktop" });
-  await oldRow(db, { at: "2026-11-14 21:00:00", browser: "samsung", device: "tablet" });
+  await oldRow(db, { at: "2026-11-14 09:00:00", browser: "chrome", device: "desktop", openedBy: "key" });
+  await oldRow(db, { at: "2026-11-14 21:00:00", browser: "samsung", device: "tablet", openedBy: "wheel" });
   await oldRow(db, { at: "2026-11-14 10:00:00", openedBy: "scroll", visibleMs: 1200, inApp: "facebook" });
   await oldRow(db, { at: "2026-11-14 10:00:00", step: "started", openedBy: null });
   await oldRow(db, { at: "2026-11-14 10:00:00", openedBy: null, browser: "other", device: "other", scanner: true });
   // 16 November, the deploy day: one old open before the deploy, and the
   // new code's own total for the same key after it.
   await oldRow(db, { at: "2026-11-16 08:00:00", openedBy: "touch", visibleMs: 300 });
-  await db.run(`INSERT INTO "PoolVisitDaily" (code, day, step, "trigger", "inApp", scanner, count) VALUES ('fb', '2026-11-16', 'opened', 'touch', 'none', false, 2)`);
+  await db.run(`INSERT INTO "PoolVisitDaily" (code, day, "inApp", scanner, count) VALUES ('fb', '2026-11-16', 'none', false, 2)`);
 
   await db.run(BACKFILL);
   const after = await totals(db);
   expect(after).toEqual([
-    { code: "fb", day: "2026-11-14", step: "opened", trigger: "none", inApp: "none", scanner: true, count: 1 },
-    { code: "fb", day: "2026-11-14", step: "opened", trigger: "scroll", inApp: "facebook", scanner: false, count: 1 },
-    { code: "fb", day: "2026-11-14", step: "opened", trigger: "visible-time", inApp: "none", scanner: false, count: 3 },
-    { code: "fb", day: "2026-11-16", step: "opened", trigger: "touch", inApp: "none", scanner: false, count: 3 },
+    { code: "fb", day: "2026-11-14", inApp: "facebook", scanner: false, count: 1 },
+    { code: "fb", day: "2026-11-14", inApp: "none", scanner: false, count: 3 },
+    { code: "fb", day: "2026-11-14", inApp: "none", scanner: true, count: 1 },
+    { code: "fb", day: "2026-11-16", inApp: "none", scanner: false, count: 3 },
   ]);
   // Nothing deleted: the old rows are all there, under the new name, the start among them.
   expect(await tableOf(db, "PoolVisitEvent")).toBeNull();

@@ -8,22 +8,27 @@
  * scanners. So each open also adds one to a daily total broken down by a
  * few coarse categories: "PoolVisitDaily".
  *
- * ONLY WHAT CANNOT SINGLE ANYONE OUT (Kemal, 2026-11-16). From 13 to 16
- * November each beacon left its own row, with the hour, its time on screen,
- * a browser family and a device class. At our traffic such a row can be
- * matched to the one person who signed up that day: on 13 November the
- * only fb2 sign-up was the only fb2 start, and its row said mobile Safari,
- * not in an app. So a total is now only: the bucket the counters use (a
- * campaign code, "_direct" or "_referral"), the London day, the step (opens
- * only: starts are already in the daily counters, and a start is the step
- * just before a sign-up), what opened the page, whether it was an app's
- * in-app browser, whether it was a scanner, and a count. Never a browser
- * family or device, the hour, the time on screen, the IP address, the user
- * agent itself, the friend's code, a user id or a cookie. Deleted 90 days
- * after its day; the privacy policy says so.
+ * AS LITTLE AS WILL DO (Kemal, 2026-11-16, two rounds of review). From 13
+ * to 16 November each beacon left its own row, with the hour, its time on
+ * screen, a browser family and a device class. At our traffic such a row
+ * can be matched to the one person who signed up that day: on 13 November
+ * the only fb2 sign-up was the only fb2 start, and its row said mobile
+ * Safari, not in an app. What opened the page tells as much: a wheel or a
+ * key comes first only from a computer, a phone's tap starts with
+ * pointerdown. So a total is now only OPENS (starts are already in the
+ * daily counters, and a start is the step just before a sign-up), per
+ * bucket the counters use (a campaign code, "_direct" or "_referral") and
+ * London day, split by whether it was an app's in-app browser and whether
+ * it was a scanner, and a count. Never a browser family or device, what
+ * opened the page, the hour, the time on screen, the IP address, the user
+ * agent itself, the friend's code, a user id or a cookie. At very low
+ * traffic a day's total can still coincide with a single sign-up. Deleted
+ * 90 days after its day; the privacy policy says so.
  *
  * The server log (`poolBeaconLogLine`) carries the same categories and
- * nothing more: never the raw user agent.
+ * nothing more: never the raw user agent, nor what opened the page. The
+ * beacon's trigger is read only to tell a well-formed open from one that
+ * is not (`readPoolPageBeacon`), never kept.
  *
  * Only `visits.ts` touches the table, to add and to delete
  * (`__tests__/visit-log-unlinked.test.ts`).
@@ -44,16 +49,11 @@ import { poolVisitDay, readPoolPageStep, type PoolPageStep } from "./visit-rules
 export const POOL_OPEN_TRIGGERS = ["pointer", "touch", "key", "wheel", "scroll", "before-start"] as const;
 export type PoolOpenTrigger = (typeof POOL_OPEN_TRIGGERS)[number];
 
-/** What a daily total, or a log line, may hold as its trigger: the page's
- *  own, "visible-time" for opens from before 16 November 2026 (backfilled
- *  from the per-visit rows), and "none" for an old open that did not say
- *  (and, in the log, for a start, which has no trigger). */
-export const POOL_VISIT_TRIGGERS = [...POOL_OPEN_TRIGGERS, "visible-time", "none"] as const;
-export type PoolVisitTrigger = (typeof POOL_VISIT_TRIGGERS)[number];
-
+/** A well-formed beacon. `trigger` (an open's) is for validation only:
+ *  nothing stores or logs it. */
 export interface PoolPageBeacon {
   step: PoolPageStep;
-  trigger: PoolVisitTrigger;
+  trigger: PoolOpenTrigger | null;
 }
 
 /** Why a beacon counted nothing, for the server log. "not-json" is the
@@ -71,12 +71,12 @@ export type PoolPageBeaconRead = { ok: true; beacon: PoolPageBeacon } | { ok: fa
  *            sends, a person's tap, touch, key, wheel or scroll, or a start
  *            before them; no trigger, "visible-time" or anything else is
  *            not a well-formed open;
- *   started  unchanged: counted whatever it carries, its trigger "none";
+ *   started  unchanged: counted whatever it carries, no trigger kept;
  *   "sent", "confirmed": the server's own steps; anything else: nobody's.
  */
 export function readPoolPageBeacon(body: Record<string, unknown>): PoolPageBeaconRead {
   const step = readPoolPageStep(body.step);
-  if (step === "started") return { ok: true, beacon: { step, trigger: "none" } };
+  if (step === "started") return { ok: true, beacon: { step, trigger: null } };
   if (step !== "opened") {
     const server = body.step === "sent" || body.step === "confirmed";
     return { ok: false, step: server ? (body.step as "sent" | "confirmed") : "other", reason: server ? "server-step" : "unknown-step" };
@@ -129,15 +129,13 @@ export interface PoolVisitDailyKey extends PoolVisitLabel {
   code: string;
   /** The London day, "yyyy-MM-dd", as the funnel counters use. */
   day: string;
-  step: "opened";
-  trigger: PoolVisitTrigger;
 }
 
 /** Opens only: a start is counted by the daily counters and added to no
- *  breakdown. */
-export function poolVisitDailyKey(a: { code: string; trigger: PoolVisitTrigger; now: Date; userAgent: string | null }): PoolVisitDailyKey {
+ *  breakdown. What opened the page is not part of it. */
+export function poolVisitDailyKey(a: { code: string; now: Date; userAgent: string | null }): PoolVisitDailyKey {
   const label = poolVisitLabel(a.userAgent);
-  return { code: a.code, day: poolVisitDay(a.now), step: "opened", trigger: a.trigger, inApp: label.inApp, scanner: label.scanner };
+  return { code: a.code, day: poolVisitDay(a.now), inApp: label.inApp, scanner: label.scanner };
 }
 
 // ── The server log ─────────────────────────────────────────────────────
@@ -145,19 +143,13 @@ export function poolVisitDailyKey(a: { code: string; trigger: PoolVisitTrigger; 
 /**
  * One server log line per beacon (2026-11-06, to tell scanners from
  * people), holding only what the breakdown keeps (2026-11-16): the step,
- * the bucket, the trigger, the in-app browser, the scanner flag and what
- * became of it (counted; fetcher, not counted; failed). Never the raw user
- * agent, the code as sent, a friend's code or an address.
- *   [pool-funnel] beacon step=opened code=fb trigger=touch inApp=facebook scanner=no result=counted
+ * the bucket, the in-app browser, the scanner flag and what became of it
+ * (counted; fetcher, not counted; failed). Never the raw user agent, what
+ * opened the page, the code as sent, a friend's code or an address.
+ *   [pool-funnel] beacon step=opened code=fb inApp=facebook scanner=no result=counted
  */
-export function poolBeaconLogLine(a: {
-  step: PoolPageStep;
-  bucket: string | null;
-  trigger: PoolVisitTrigger;
-  label: PoolVisitLabel;
-  result: "counted" | "fetcher" | "failed";
-}): string {
-  return `[pool-funnel] beacon step=${a.step} code=${a.bucket ?? "-"} trigger=${a.trigger} inApp=${a.label.inApp} scanner=${a.label.scanner ? "yes" : "no"} result=${a.result}`;
+export function poolBeaconLogLine(a: { step: PoolPageStep; bucket: string | null; label: PoolVisitLabel; result: "counted" | "fetcher" | "failed" }): string {
+  return `[pool-funnel] beacon step=${a.step} code=${a.bucket ?? "-"} inApp=${a.label.inApp} scanner=${a.label.scanner ? "yes" : "no"} result=${a.result}`;
 }
 
 /** A beacon that counted nothing: its step, if it is one of ours, and why.

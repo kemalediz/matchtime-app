@@ -23,16 +23,13 @@
 -- out (the daily counters already count starts). One row is one open. Its
 -- day is the London day of "at" ("at" is UTC, floored to the hour; London
 -- is a whole number of hours off UTC, so the hour never moves the day).
--- Its trigger is "openedBy" ("visible-time" included, from the old
--- 5-second rule), or "none" for an open that did not say. "inApp" and
--- "scanner" are copied. "browser", "device", "visibleMs", "hasRef" and the
--- hour are left behind.
+-- "inApp" and "scanner" are copied. What opened the page ("openedBy"),
+-- "browser", "device", "visibleMs", "hasRef" and the hour are left behind.
 --
---   INSERT INTO "PoolVisitDaily" ("code", "day", "step", "trigger", "inApp", "scanner", "count")
---   SELECT "code", (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date, 'opened',
---          COALESCE("openedBy", 'none'), "inApp", "scanner", count(*)::int
---   FROM "PoolVisitEvent" WHERE "step" = 'opened' GROUP BY 1, 2, 3, 4, 5, 6
---   ON CONFLICT (all six) DO UPDATE SET "count" = "PoolVisitDaily"."count" + EXCLUDED."count";
+--   INSERT INTO "PoolVisitDaily" ("code", "day", "inApp", "scanner", "count")
+--   SELECT "code", (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date, "inApp", "scanner", count(*)::int
+--   FROM "PoolVisitEvent" WHERE "step" = 'opened' GROUP BY 1, 2, 3, 4
+--   ON CONFLICT ("code", "day", "inApp", "scanner") DO UPDATE SET "count" = "PoolVisitDaily"."count" + EXCLUDED."count";
 --
 -- DRY RUN FIRST (read only; the opens that will be added, per day):
 --   BEGIN READ ONLY;
@@ -83,11 +80,10 @@
 -- the old table its name again, in one transaction:
 --   BEGIN;
 --   WITH old AS (SELECT "code", (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date AS "day",
---                       COALESCE("openedBy", 'none') AS "trigger", "inApp", "scanner", count(*)::int AS n
---                FROM "PoolVisitEventBackfilled" WHERE "step" = 'opened' GROUP BY 1, 2, 3, 4, 5)
+--                       "inApp", "scanner", count(*)::int AS n
+--                FROM "PoolVisitEventBackfilled" WHERE "step" = 'opened' GROUP BY 1, 2, 3, 4)
 --   UPDATE "PoolVisitDaily" d SET "count" = d."count" - old.n FROM old
---   WHERE (d."code", d."day", d."step", d."trigger", d."inApp", d."scanner")
---       = (old."code", old."day", 'opened', old."trigger", old."inApp", old."scanner");
+--   WHERE (d."code", d."day", d."inApp", d."scanner") = (old."code", old."day", old."inApp", old."scanner");
 --   DELETE FROM "PoolVisitDaily" WHERE "count" = 0;
 --   ALTER TABLE "PoolVisitEventBackfilled" RENAME TO "PoolVisitEvent";
 --   COMMIT;
@@ -104,17 +100,15 @@ BEGIN
 
   LOCK TABLE "PoolVisitEvent" IN EXCLUSIVE MODE;
 
-  INSERT INTO "PoolVisitDaily" ("code", "day", "step", "trigger", "inApp", "scanner", "count")
+  INSERT INTO "PoolVisitDaily" ("code", "day", "inApp", "scanner", "count")
   SELECT "code",
          (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date,
-         'opened',
-         COALESCE("openedBy", 'none'),
          "inApp", "scanner",
          count(*)::int
   FROM "PoolVisitEvent"
   WHERE "step" = 'opened'
-  GROUP BY 1, 2, 3, 4, 5, 6
-  ON CONFLICT ("code", "day", "step", "trigger", "inApp", "scanner")
+  GROUP BY 1, 2, 3, 4
+  ON CONFLICT ("code", "day", "inApp", "scanner")
   DO UPDATE SET "count" = "PoolVisitDaily"."count" + EXCLUDED."count";
 
   ALTER TABLE "PoolVisitEvent" RENAME TO "PoolVisitEventBackfilled";

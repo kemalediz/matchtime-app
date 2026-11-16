@@ -1,22 +1,21 @@
 /**
  * The /play visit breakdown's pure rules. 2026-11-13: one row per beacon,
- * kept 90 days. 2026-11-16 (Kemal): DAILY TOTALS ONLY, and after review
- * (two reviewers, on production data) only what cannot single out the one
- * person who signed up that day: per code and London day, OPENS only,
- * counted by what opened the page, whether it was an app's in-app browser,
- * and whether it was a scanner. No browser family, no device class (on 13
- * November the only fb2 sign-up was the only fb2 start, and its row said
- * mobile Safari), no starts (the daily counters count them), no hour, no
- * time on screen, no friend's code, no address, no user agent. Deleted
- * after 90 days. The server log keeps the same categories, never the raw
- * user agent.
+ * kept 90 days. 2026-11-16 (Kemal, after two rounds of review): DAILY
+ * TOTALS OF OPENS ONLY, per code and London day, counted by whether it was
+ * an app's in-app browser and whether it was a scanner. No browser family
+ * or device class (on 13 November the only fb2 sign-up was the only fb2
+ * start, and its row said mobile Safari), no interaction type (a wheel or
+ * key comes first only from a computer), no starts (the daily counters
+ * count them), no hour, no time on screen, no friend's code, no address,
+ * no user agent. At very low traffic a day's total can still coincide with
+ * a single sign-up. Deleted after 90 days. The server log keeps the same
+ * categories, never the raw user agent.
  */
 import { describe, expect, it } from "vitest";
 import {
   POOL_IN_APPS,
   POOL_OPEN_TRIGGERS,
   POOL_VISIT_RETENTION_DAYS,
-  POOL_VISIT_TRIGGERS,
   poolBeaconLogLine,
   poolBeaconRejectedLogLine,
   poolVisitDailyKey,
@@ -128,9 +127,9 @@ describe("readPoolPageBeacon: only a well-formed beacon counts (2026-11-16)", ()
     expect(readPoolPageBeacon({ src: "fb", trigger: "touch" })).toEqual({ ok: true, beacon: { step: "opened", trigger: "touch" } });
   });
 
-  it("started is unchanged: it counts whatever trigger it carries, as none", () => {
+  it("started is unchanged: it counts whatever trigger it carries, and keeps none", () => {
     for (const trigger of [undefined, null, "key", "visible-time", "<script>"]) {
-      expect(readPoolPageBeacon({ step: "started", trigger })).toEqual({ ok: true, beacon: { step: "started", trigger: "none" } });
+      expect(readPoolPageBeacon({ step: "started", trigger })).toEqual({ ok: true, beacon: { step: "started", trigger: null } });
     }
   });
 
@@ -142,51 +141,48 @@ describe("readPoolPageBeacon: only a well-formed beacon counts (2026-11-16)", ()
     }
   });
 
-  it("what is stored: the page's triggers, visible-time from the days before 16 November 2026, and none for an old open that did not say", () => {
-    expect([...POOL_VISIT_TRIGGERS]).toEqual(["pointer", "touch", "key", "wheel", "scroll", "before-start", "visible-time", "none"]);
-  });
 });
 
-describe("poolVisitDailyKey: the daily total an open adds one to, and nothing finer", () => {
+describe("poolVisitDailyKey: the daily total an open adds one to, and nothing finer (round 2 of #607)", () => {
   const NOW = new Date("2026-11-13T12:34:56.789Z");
 
-  it("holds exactly the bucket, the London day, the step, what opened the page, the in-app browser and the scanner flag", () => {
-    const key = poolVisitDailyKey({ code: "_referral", trigger: "touch", now: NOW, userAgent: FB_IPHONE });
-    expect(key).toEqual({ code: "_referral", day: "2026-11-13", step: "opened", trigger: "touch", inApp: "facebook", scanner: false });
+  it("holds exactly the bucket, the London day, the in-app browser and the scanner flag: not what opened the page", () => {
+    const key = poolVisitDailyKey({ code: "_referral", now: NOW, userAgent: FB_IPHONE });
+    expect(key).toEqual({ code: "_referral", day: "2026-11-13", inApp: "facebook", scanner: false });
     const stored = JSON.stringify(key);
-    for (const secret of ["iPhone", "FBAN", "safari", "mobile", "12:34", "12:00"]) expect(stored).not.toContain(secret);
+    for (const secret of ["iPhone", "FBAN", "safari", "mobile", "12:34", "12:00", "touch", "wheel", "key", "opened"]) expect(stored).not.toContain(secret);
   });
 
-  it("two people on different phones and browsers add to the same total", () => {
-    const a = poolVisitDailyKey({ code: "fb", trigger: "scroll", now: NOW, userAgent: SAFARI_IPHONE });
-    const b = poolVisitDailyKey({ code: "fb", trigger: "scroll", now: NOW, userAgent: CHROME_ANDROID });
-    const c = poolVisitDailyKey({ code: "fb", trigger: "scroll", now: NOW, userAgent: SAFARI_MAC });
-    expect(a).toEqual(b);
-    expect(b).toEqual(c);
+  // "wheel" and "key" come first only from a computer, and a phone's tap
+  // starts with pointerdown: the interaction type would tell a computer
+  // from a phone on a day with one sign-up. So it is never part of the key.
+  it("people on different phones, browsers and computers, whatever they did first, add to the same total", () => {
+    const keys = [SAFARI_IPHONE, CHROME_ANDROID, SAFARI_MAC, EDGE_WINDOWS].map((userAgent) => poolVisitDailyKey({ code: "fb", now: NOW, userAgent }));
+    for (const k of keys) expect(k).toEqual(keys[0]);
   });
 
   it("the day is London's: 00:30 in summer time is the next day", () => {
-    expect(poolVisitDailyKey({ code: "_direct", trigger: "key", now: new Date("2026-07-01T23:30:00Z"), userAgent: SAFARI_IPHONE }).day).toBe("2026-07-02");
+    expect(poolVisitDailyKey({ code: "_direct", now: new Date("2026-07-01T23:30:00Z"), userAgent: SAFARI_IPHONE }).day).toBe("2026-07-02");
   });
 
   it("no user agent: a scanner", () => {
-    expect(poolVisitDailyKey({ code: "_direct", trigger: "key", now: NOW, userAgent: null })).toMatchObject({ scanner: true, inApp: "none" });
+    expect(poolVisitDailyKey({ code: "_direct", now: NOW, userAgent: null })).toMatchObject({ scanner: true, inApp: "none" });
   });
 });
 
-describe("the server log line: the kept categories, never the user agent (2026-11-16)", () => {
-  it("a counted open: the step, the bucket, the trigger, the in-app browser, the scanner flag and the result", () => {
-    const line = poolBeaconLogLine({ step: "opened", bucket: "fb", trigger: "touch", label: poolVisitLabel(FB_IPHONE), result: "counted" });
-    expect(line).toBe("[pool-funnel] beacon step=opened code=fb trigger=touch inApp=facebook scanner=no result=counted");
-    for (const secret of ["Mozilla", "iPhone", "FBAN", "ua="]) expect(line).not.toContain(secret);
+describe("the server log line: the kept categories, never the user agent or what opened the page (2026-11-16)", () => {
+  it("a counted open: the step, the bucket, the in-app browser, the scanner flag and the result", () => {
+    const line = poolBeaconLogLine({ step: "opened", bucket: "fb", label: poolVisitLabel(FB_IPHONE), result: "counted" });
+    expect(line).toBe("[pool-funnel] beacon step=opened code=fb inApp=facebook scanner=no result=counted");
+    for (const secret of ["Mozilla", "iPhone", "FBAN", "ua=", "trigger"]) expect(line).not.toContain(secret);
   });
 
   it("a fetcher and a failed lookup", () => {
-    expect(poolBeaconLogLine({ step: "started", bucket: "_direct", trigger: "none", label: poolVisitLabel("facebookexternalhit/1.1"), result: "fetcher" })).toBe(
-      "[pool-funnel] beacon step=started code=_direct trigger=none inApp=none scanner=yes result=fetcher",
+    expect(poolBeaconLogLine({ step: "started", bucket: "_direct", label: poolVisitLabel("facebookexternalhit/1.1"), result: "fetcher" })).toBe(
+      "[pool-funnel] beacon step=started code=_direct inApp=none scanner=yes result=fetcher",
     );
-    expect(poolBeaconLogLine({ step: "opened", bucket: null, trigger: "key", label: poolVisitLabel(SAFARI_IPHONE), result: "failed" })).toBe(
-      "[pool-funnel] beacon step=opened code=- trigger=key inApp=none scanner=no result=failed",
+    expect(poolBeaconLogLine({ step: "opened", bucket: null, label: poolVisitLabel(SAFARI_IPHONE), result: "failed" })).toBe(
+      "[pool-funnel] beacon step=opened code=- inApp=none scanner=no result=failed",
     );
   });
 

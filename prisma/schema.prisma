@@ -3788,15 +3788,16 @@ model PoolCampaignVisit {
 
 /// The /play visit breakdown, DAILY TOTALS OF OPENS ONLY (2026-11-16, Kemal;
 /// src/lib/pool/visit-log-rules.ts). Each open adds one to the total for its
-/// bucket, London day, trigger, in-app browser and scanner flag, so link
+/// bucket and London day, split by in-app browser and scanner flag, so link
 /// scanners can be told from people after the server log has gone. Nothing
-/// per visit (the per-visit "PoolVisitEvent" of 2026-11-13 is dropped), and
-/// nothing that could single out the one person who signed up that day: no
-/// browser family, no device class, no starts (the daily counters count
-/// them), no hour, no time on screen, NO IP address, NO user agent, NO
-/// friend's share code, no user id, no cookie. Link preview fetchers are
-/// added with `scanner` and never counted in "PoolCampaignVisit". Only
-/// `visits.ts` touches it (`visit-log-unlinked.test.ts`). Migrations
+/// per visit (the per-visit "PoolVisitEvent" of 2026-11-13 is dropped): no
+/// browser, device, time of day or interaction type, no starts (the daily
+/// counters count them), no time on screen, NO IP address, NO user agent,
+/// NO friend's share code, no user id, no cookie. At very low traffic a
+/// day's total can still coincide with a single sign-up. Link preview
+/// fetchers are added with `scanner` and never counted in
+/// "PoolCampaignVisit". Only `visits.ts` touches it
+/// (`visit-log-unlinked.test.ts`). Migrations
 /// 20261116120000_pool_visit_daily (the table) and
 /// 20261116120200_pool_visit_daily_backfill (the per-visit opens added up).
 /// RETENTION 90 days from `day`: deleted by the daily 06:00 cron
@@ -3806,12 +3807,6 @@ model PoolVisitDaily {
   code    String
   /// The London day, as "PoolCampaignVisit".
   day     DateTime @db.Date
-  /// Always "opened" (CHECK): starts are in "PoolCampaignVisit" only.
-  step    String
-  /// What opened the page: pointer, touch, key, wheel, scroll or
-  /// before-start; "visible-time" only for opens before 16 November 2026;
-  /// "none" for an old open that did not say (POOL_VISIT_TRIGGERS).
-  trigger String
   /// An app's in-app browser: facebook, instagram, nextdoor, whatsapp,
   /// other or none.
   inApp   String
@@ -3819,7 +3814,7 @@ model PoolVisitDaily {
   scanner Boolean
   count   Int      @default(0)
 
-  @@id([code, day, step, trigger, inApp, scanner])
+  @@id([code, day, inApp, scanner])
   @@index([day])
 }
 

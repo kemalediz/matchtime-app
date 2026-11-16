@@ -93,7 +93,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
           },
           {
             kind: "p",
-            text: "When people open the page for joining the player pool, we keep daily totals for each of our links (and for a friend's link, or no link), not a record of each visit, and no browser or device details. For each day we count how many opened the page, split by what first showed a person was there (such as a tap, a scroll or a key press), by whether the page was opened inside an app such as Facebook or Nextdoor, and by whether it was an automatic link preview rather than a person. We also count, for each day and link, how many started filling in the form and how many signed up. Nothing in these totals names a person: they hold no time of day, no IP address and no friend's code. The detailed totals are deleted automatically after 90 days.",
+            text: "When people open the page for joining the player pool, we keep daily totals for each of our links (and for a friend's link, or no link), not a record of each visit, and no browser or device details. For each day we count how many opened the page after a tap, a scroll or a key press, split by whether the page was opened inside an app such as Facebook or Nextdoor and by whether it was an automatic link preview rather than a person; we do not keep whether it was a tap, a scroll or a key press. We also count, for each day and link, how many started filling in the form, sent it and confirmed on WhatsApp. Nothing in these totals names a person: they hold no time of day, no IP address and no friend's code. The detailed totals are deleted automatically after 90 days; the plain counts per link are kept as statistics. Our hosting provider keeps short-lived technical logs of requests to the website, as any website does; we do not use them to identify visitors.",
           },
         ],
       },
@@ -203,7 +203,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
               "Player pool: records of offers keep only what is needed to keep things fair and stop misuse, and are made anonymous after 24 months.",
               "When a pool profile is deleted, we keep a short record of any block or report for 24 months, so a person who was blocked cannot simply sign up again, and the record of your consent for 6 years, to show what you agreed to.",
               "When a group message tags people, we note who was tagged (their WhatsApp number and name), so an organiser can ask MatchTime to invite them. That note is deleted after 7 days.",
-              "The daily totals of visits to the page for joining the player pool are deleted automatically after 90 days.",
+              "The detailed daily totals of visits to the page for joining the player pool (whether it was opened inside an app, and whether it was an automatic link preview) are deleted automatically after 90 days. The plain daily counts per link (opened, started, sent, confirmed) are kept as statistics.",
               "Billing and payment records are kept for 6 years, as tax law requires.",
               "If you ask us to delete your details, we remove your name and phone number. A game you played as a guest stays in that club's history, as it does for any past guest.",
             ],

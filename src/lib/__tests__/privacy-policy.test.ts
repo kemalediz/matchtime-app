@@ -171,7 +171,8 @@ describe("the policy in English and Turkish", () => {
       "not a record of each visit",
       "no browser or device details",
       "friend's link",
-      "what first showed a person was there",
+      "after a tap, a scroll or a key press",
+      "we do not keep whether it was a tap, a scroll or a key press",
       "inside an app such as facebook or nextdoor",
       "automatic link preview rather than a person",
       "nothing in these totals names a person",
@@ -180,12 +181,31 @@ describe("the policy in English and Turkish", () => {
       "no friend's code",
       "deleted automatically after 90 days",
       "started filling in the form",
+      "the plain counts per link are kept as statistics",
+      // Round 2 of #607: true and plain about the hosting provider's logs.
+      "our hosting provider keeps short-lived technical logs of requests",
+      "we do not use them to identify visitors",
     ]) {
       expect(held).toContain(item);
     }
-    for (const gone of ["never link", "general browser type", "type of device", "the hour of the visit", "how long the page was on screen", "nothing that identifies"]) {
+    for (const gone of ["never link", "general browser type", "type of device", "the hour of the visit", "how long the page was on screen", "nothing that identifies", "what first showed"]) {
       expect(held).not.toContain(gone);
     }
+  });
+
+  // Round 2 of #607: only the detailed totals go after 90 days; the plain
+  // daily counts per link ("PoolCampaignVisit") are never deleted.
+  it("English says precisely what goes after 90 days and what is kept as statistics", () => {
+    const howLong = sectionText(privacyPolicy("en"), "how-long").toLowerCase();
+    expect(howLong).toContain("the detailed daily totals of visits to the page for joining the player pool (whether it was opened inside an app, and whether it was an automatic link preview) are deleted automatically after 90 days");
+    expect(howLong).toContain("the plain daily counts per link (opened, started, sent, confirmed) are kept as statistics");
+    expect(howLong).not.toContain("the daily totals of visits to the page for joining the player pool are deleted");
+  });
+
+  it("Turkish says the same about what goes after 90 days and what is kept", () => {
+    const howLong = sectionText(privacyPolicy("tr"), "how-long");
+    expect(howLong).toContain("ayrıntılı günlük toplamları (sayfanın bir uygulamanın içinde açılıp açılmadığı ve otomatik bir bağlantı önizlemesi olup olmadığı) 90 gün sonra otomatik olarak silinir");
+    expect(howLong).toContain("Bağlantı başına sade günlük sayılar (açılan, başlanan, gönderilen, onaylanan) istatistik olarak saklanır");
   });
 
   it.each(COPIES)("%s says why the join page visits are kept: our legitimate interest in improving the page", (_lang, copy) => {
@@ -205,10 +225,16 @@ describe("the policy in English and Turkish", () => {
       "IP adresi",
       "90 gün sonra otomatik olarak silinir",
       "formu doldurmaya başlayanların",
+      "dokunma mı, kaydırma mı, tuşa basma mı olduğunu saklamayız",
+      "bağlantı başına sade sayılar istatistik olarak saklanır",
+      "Barındırma sağlayıcımız",
+      "kısa süreli teknik kayıtlarını",
+      "ziyaretçileri tanımlamak için kullanmayız",
     ]) {
       expect(held).toContain(item);
     }
-    for (const gone of ["hiçbir zaman havuz başvurularıyla", "genel bir tarayıcı türü", "cihaz türüne", "hangi saatte", "ekranda ne kadar süre", "kişiyi tanımlayan hiçbir bilgi"]) {
+    // The old v3 phrases, as they really read ("cihaz türü (örneğin ..."): none is left.
+    for (const gone of ["hiçbir zaman havuz başvurularıyla", "genel bir tarayıcı türü", "cihaz türü (", "hangi saatte", "ekranda ne kadar süre", "kişiyi tanımlayan hiçbir bilgi", "ilk neyin gösterdiğine"]) {
       expect(held).not.toContain(gone);
     }
   });

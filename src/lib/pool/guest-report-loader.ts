@@ -15,6 +15,12 @@
  * anyone holding (or who held) a guest membership here. A partner guest from
  * before the pool has no `GuestPlace` row; his games are his attendance rows
  * on this club's matches (he is no member, so each one is a guest game).
+ *
+ * STAFF TESTS (round 2 of #607, 2026-11-16). The Guest players page and its
+ * CSV pass `leaveOutStaffTests`: a MatchTime staff test sign-up
+ * (`PoolProfile.staffTest`) is then in none of the club's numbers, not as a
+ * guest, not as a game, not as an offer an ask reached. The callers that
+ * ask about named people (an invitation, a match's guest card) do not.
  */
 import { GUEST_MEMBER_WHERE, guestSourceOf, isGuestMembership } from "../guest-membership";
 import { db } from "../db";
@@ -49,10 +55,17 @@ export interface GuestFacts {
 const isMemberRow = (m: { leftAt: Date | null; guestMatchId: string | null; guestFromOrgId: string | null }) =>
   m.leftAt === null && !isGuestMembership(m);
 
-export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; report?: boolean; now?: Date } = {}): Promise<GuestFacts> {
+export async function loadGuestFacts(
+  orgId: string,
+  opts: { userIds?: string[]; report?: boolean; now?: Date; leaveOutStaffTests?: boolean } = {},
+): Promise<GuestFacts> {
   const onlyUsers = opts.userIds ? { userId: { in: opts.userIds } } : {};
+  const staffIds = opts.leaveOutStaffTests
+    ? (await db.poolProfile.findMany({ where: { staffTest: true, userId: { not: null } }, select: { userId: true } })).map((p) => p.userId!)
+    : [];
+  const notStaff = <T extends { userId: string }>(rows: T[]) => (staffIds.length ? rows.filter((r) => !staffIds.includes(r.userId)) : rows);
 
-  const [guestMemberships, placesHere] = await Promise.all([
+  const [allGuestMemberships, allPlacesHere] = await Promise.all([
     db.membership.findMany({
       where: { orgId, ...onlyUsers, ...GUEST_MEMBER_WHERE },
       select: { userId: true, guestFromOrgId: true, guestVia: true },
@@ -63,13 +76,19 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
     }),
   ]);
 
+  const guestMemberships = notStaff(allGuestMemberships);
+  const placesHere = notStaff(allPlacesHere);
   const userIds = [...new Set([...guestMemberships.map((m) => m.userId), ...placesHere.map((p) => p.userId)])];
 
   const [asks, partnerAsks] = opts.report
     ? await Promise.all([
         db.poolAsk.findMany({
           where: { orgId },
-          select: { matchId: true, status: true, _count: { select: { offers: { where: { sentAt: { not: null } } } } } },
+          select: {
+            matchId: true,
+            status: true,
+            _count: { select: { offers: { where: { sentAt: { not: null }, ...(staffIds.length ? { userId: { notIn: staffIds } } : {}) } } } },
+          },
         }),
         db.partnerAsk.findMany({ where: { askerOrgId: orgId }, select: { matchId: true, status: true, volunteerUserIds: true } }),
       ])

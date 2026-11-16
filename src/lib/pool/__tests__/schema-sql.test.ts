@@ -389,9 +389,9 @@ describe("the daily breakdown migration (2026-11-16): daily totals of opens only
   const sql = code(read(DAILY));
   const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "PoolVisitDaily"'));
   const cols = table.slice(0, table.indexOf(");"));
-  const KEY = ["code", "day", "step", "trigger", "inApp", "scanner"];
+  const KEY = ["code", "day", "inApp", "scanner"];
 
-  it("holds the bucket, the London day, the step, the trigger, the in-app browser, the scanner flag and a count, and nothing else", () => {
+  it("holds the bucket, the London day, the in-app browser, the scanner flag and a count, and nothing else", () => {
     const names = [...cols.matchAll(/^\s*"([^"]+)" [A-Z]/gm)].map((m) => m[1]);
     expect(names).toEqual([...KEY, "count"]);
     expect(cols).toMatch(/"day" DATE NOT NULL/);
@@ -402,17 +402,22 @@ describe("the daily breakdown migration (2026-11-16): daily totals of opens only
     // Review of #607: a browser family or device class could single out the
     // one person who signed up that day (13 November, fb2: mobile Safari).
     expect(cols).not.toMatch(/browser|device/i);
+    // Round 2: what opened the page tells a computer from a phone (a wheel or
+    // key comes first only from a computer), so it is not kept; nor the step,
+    // since only opens are.
+    expect(cols).not.toMatch(/trigger|openedBy|"step"/i);
   });
   it("each category is one of its values, pinned to the TypeScript, in the migration and the CHECK file alike", () => {
     const checks = [
-      // Opens only: the daily counters count starts.
-      inList("step", ["opened"]),
-      inList("trigger", L.POOL_VISIT_TRIGGERS),
       inList("inApp", L.POOL_IN_APPS),
       `CHECK ("count" >= 0)`,
       `CHECK ("code" IN ('_direct', '_referral') OR ("code" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length("code") <= 32))`,
     ];
     for (const f of [DAILY, CHECKS]) for (const c of checks) expect(code(read(f)), `${f}: ${c}`).toContain(c);
+    for (const f of [DAILY, CHECKS]) expect(code(read(f)), f).not.toMatch(/PoolVisitDaily_(step|trigger|started_trigger|browser|device)_check/);
+  });
+  it("its header claims no more than is true: at very low traffic a day's total can still coincide with a single sign-up", () => {
+    expect(read(DAILY).replace(/\n--\s*/g, " ")).toMatch(/at very low traffic a day's total can still coincide with a single sign-up/i);
   });
   it("is indexed by day, for the daily deletion", () => {
     expect(sql).toContain(`CREATE INDEX IF NOT EXISTS "PoolVisitDaily_day_idx" ON "PoolVisitDaily"("day");`);
@@ -428,8 +433,9 @@ describe("the daily breakdown migration (2026-11-16): daily totals of opens only
   });
   it("the schema has the model, keyed by every category and indexed by day", () => {
     const schema = read("prisma/schema.prisma");
-    expect(schema).toMatch(/model PoolVisitDaily \{[^}]*@@id\(\[code, day, step, trigger, inApp, scanner\]\)/);
-    expect(schema).not.toMatch(/model PoolVisitDaily \{[^}]*\n\s+(browser|device)\s/);
+    expect(schema).toMatch(/model PoolVisitDaily \{[^}]*@@id\(\[code, day, inApp, scanner\]\)/);
+    expect(schema).not.toMatch(/model PoolVisitDaily \{[^}]*\n\s+(browser|device|step|trigger)\s/);
+    expect(schema.replace(/\n\/\/\/\s*/g, " ")).toMatch(/at very low traffic a day's total can still coincide with a single sign-up/i);
     expect(schema).toMatch(/model PoolVisitDaily \{[^}]*day\s+DateTime\s+@db\.Date/);
     expect(schema).toMatch(/model PoolVisitDaily \{[^}]*@@index\(\[day\]\)/);
   });
@@ -460,11 +466,11 @@ describe("the backfill migration (2026-11-16): the per-visit rows added up, noth
   it("adds to the totals, never replaces them: the new code's own counts survive", () => {
     expect(sql).toMatch(/INSERT INTO "PoolVisitDaily"[\s\S]*FROM "PoolVisitEvent"[\s\S]*DO UPDATE SET "count" = "PoolVisitDaily"\."count" \+ EXCLUDED\."count"/);
   });
-  it("opens only, by London day, the browser, the device, the hour and the time on screen left behind", () => {
+  it("opens only, by London day; what opened the page, the browser, the device, the hour and the time on screen left behind", () => {
     expect(sql).toContain(`(("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date`);
-    expect(sql).toContain(`COALESCE("openedBy", 'none')`);
     expect(sql).toMatch(/FROM "PoolVisitEvent"\s+WHERE "step" = 'opened'/);
-    expect(sql).not.toMatch(/"visibleMs"|"hasRef"|"browser"|"device"/);
+    expect(sql).toContain(`INSERT INTO "PoolVisitDaily" ("code", "day", "inApp", "scanner", "count")`);
+    expect(sql).not.toMatch(/"openedBy"|"trigger"|"visibleMs"|"hasRef"|"browser"|"device"/);
   });
   it("once only: it renames the old table in the same transaction, and does nothing when it is gone", () => {
     expect(sql).toMatch(/IF to_regclass\('"PoolVisitEvent"'\) IS NULL THEN[\s\S]*RETURN;/);

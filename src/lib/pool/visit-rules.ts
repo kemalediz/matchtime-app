@@ -27,17 +27,20 @@
  * WHAT COUNTS AS A PERSON. A link preview fetcher (Facebook, Nextdoor,
  * WhatsApp, X) reads the HTML and runs no script, so it never sends the
  * beacon; the user-agent check below is the second guard, for fetchers and
- * scripted browsers that do run script. A scanner that runs script under a
- * browser's user agent still counts as opened, but it no longer counts as
- * started unless it really enters something, and every beacon's user agent
- * is logged on the server (`visits.ts`) so such a scanner can be named.
+ * scripted browsers that do run script. Since 2026-11-16 a scanner counts
+ * as opened only if it taps, touches, presses a key, wheels or scrolls (or
+ * enters something first; time on screen counts nothing,
+ * `app/play/funnel-open.ts`), and as started only if it really enters
+ * something. Real interactions only, so most scanners are excluded, not
+ * all. The user agent is read, never stored or logged: the server log line
+ * per beacon (`visits.ts`) holds only the in-app browser and scanner flag.
  *
- * THE BREAKDOWN (2026-11-13; daily totals only since 2026-11-16) adds each
- * page step to a daily total per coarse category, kept 90 days: nothing per
- * visit, no time of day, no address, no user agent, no friend's code, and
- * never linked to a sign-up (`visit-log-rules.ts`). Since 2026-11-16
- * "opened" needs a person's tap, touch, key, wheel or scroll (or a start
- * first); time on screen counts nothing (`app/play/funnel-open.ts`).
+ * THE BREAKDOWN (2026-11-13; daily totals of opens only since 2026-11-16)
+ * adds each open to a daily total per code, split by in-app browser and
+ * scanner flag, kept 90 days: nothing per visit, no browser, device,
+ * interaction type or time of day, no address, no user agent, no friend's
+ * code (`visit-log-rules.ts`). At very low traffic a day's total can still
+ * coincide with a single sign-up.
  */
 import { formatInTimeZone } from "date-fns-tz";
 import { isLinkPreviewFetcher } from "../link-preview-fetchers";
@@ -162,6 +165,14 @@ export function poolStaffCookieOptions(o: { secure: boolean }): PoolStaffCookieO
 /** The staff cookie deleted, for an organiser who is not MatchTime staff. */
 export function poolStaffCookieClearedOptions(o: { secure: boolean }): PoolStaffCookieOptions {
   return { ...poolStaffCookieOptions(o), value: "", maxAge: 0 };
+}
+
+/** The same deletion as a Set-Cookie header, for a response built outside
+ *  `cookies()`: signing out (round 2 of #607), so a staff member who signs
+ *  in once on someone else's device does not leave it marked for a year. */
+export function poolStaffCookieClearedHeader(o: { secure: boolean }): string {
+  const c = poolStaffCookieClearedOptions(o);
+  return [`${c.name}=`, `Max-Age=${c.maxAge}`, `Path=${c.path}`, "SameSite=Lax", "HttpOnly", ...(c.secure ? ["Secure"] : [])].join("; ");
 }
 
 // ── The owner's view ───────────────────────────────────────────────────

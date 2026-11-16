@@ -37,7 +37,7 @@ export default async function GuestPlayersPage({ searchParams }: { searchParams:
   const lang = normaliseLang(membership.org.language);
   const s = t(lang);
   const now = new Date();
-  const facts = await loadGuestFacts(orgId, { report: query.tab === "report", now });
+  const facts = await loadGuestFacts(orgId, { report: query.tab === "report", now, leaveOutStaffTests: true });
   const players = buildGuestPlayers({ orgId, now, lang, games: facts.games, people: facts.people });
   // Invite to club (pool L8): the tap, and whether the club can send its link.
   // Only where the pool is on (review M4: live clubs unchanged).

@@ -54,22 +54,20 @@ describe("POST /api/play/visit", () => {
       userAgent: PERSON,
       now: expect.any(Date),
       step: "started",
-      trigger: "none",
     });
   });
 
-  it("an open with what a person did: recorded with that trigger, and no time on screen passed on", async () => {
-    for (const trigger of ["pointer", "touch", "key", "wheel", "scroll", "before-start"]) await POST(req(opened({ trigger, visibleMs: 5234 })));
+  // Round 2 of #607: the trigger only tells a well-formed open from one that
+  // is not. What opened the page is never passed on, stored or logged.
+  it("an open with what a person did counts as opened; neither the trigger nor the time on screen is passed on", async () => {
+    const triggers = ["pointer", "touch", "key", "wheel", "scroll", "before-start"];
+    for (const trigger of triggers) await POST(req(opened({ trigger, visibleMs: 5234 })));
     for (const task of later.tasks) await task();
-    expect(visits.recordPoolVisit.mock.calls.map((c) => [c[0].step, c[0].trigger])).toEqual([
-      ["opened", "pointer"],
-      ["opened", "touch"],
-      ["opened", "key"],
-      ["opened", "wheel"],
-      ["opened", "scroll"],
-      ["opened", "before-start"],
-    ]);
-    for (const c of visits.recordPoolVisit.mock.calls) expect(JSON.stringify(c[0])).not.toContain("5234");
+    expect(visits.recordPoolVisit.mock.calls.map((c) => c[0].step)).toEqual(triggers.map(() => "opened"));
+    for (const c of visits.recordPoolVisit.mock.calls) {
+      expect(c[0]).not.toHaveProperty("trigger");
+      expect(JSON.stringify(c[0])).not.toMatch(/5234|pointer|touch|wheel|scroll|before-start|"key"/);
+    }
   });
 
   // 15 November 2026: the 4 counted opens were scanners that waited 5000 ms.
@@ -98,14 +96,14 @@ describe("POST /api/play/visit", () => {
     await POST(r);
     await later.tasks[0]();
     const arg = visits.recordPoolVisit.mock.calls[0][0];
-    expect(Object.keys(arg).sort()).toEqual(["now", "source", "step", "trigger", "userAgent"]);
+    expect(Object.keys(arg).sort()).toEqual(["now", "source", "step", "userAgent"]);
     expect(JSON.stringify(arg)).not.toMatch(/203\.0\.113\.9|1\.2\.3\.4|session=abc|u1/);
   });
 
   it("no step is opened, as ever: with what a person did, it counts", async () => {
     await POST(req(JSON.stringify({ src: "fb-sutton", trigger: "scroll" })));
     await later.tasks[0]();
-    expect(visits.recordPoolVisit).toHaveBeenCalledWith(expect.objectContaining({ step: "opened", trigger: "scroll" }));
+    expect(visits.recordPoolVisit).toHaveBeenCalledWith(expect.objectContaining({ step: "opened" }));
   });
 
   it("a page claiming sent or confirmed, or any other step, gets 204 and counts nothing; the log names only our own steps", async () => {
@@ -146,7 +144,7 @@ describe("POST /api/play/visit", () => {
       await later.tasks[0]();
       expect(visits.recordPoolVisit).not.toHaveBeenCalled();
       expect(session.auth).not.toHaveBeenCalled();
-      expect(log).toHaveBeenCalledWith("[pool-funnel] skipped staff visit step=started trigger=none");
+      expect(log).toHaveBeenCalledWith("[pool-funnel] skipped staff visit step=started");
       log.mockRestore();
     });
 

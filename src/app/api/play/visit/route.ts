@@ -10,7 +10,9 @@
  * "opened" (or no step) with what a person did, a tap, touch, key, wheel or
  * scroll, or a start first; "started" as ever. An open by time on screen,
  * or with no trigger, counts nothing: on 15 November 2026 the 4 counted
- * opens were scanners that waited 5 seconds. "sent" and "confirmed" are
+ * opens were scanners that waited 5 seconds. The trigger is read only to
+ * tell the two apart: it is never passed on, stored or logged (round 2 of
+ * #607: a wheel or key comes first only from a computer). "sent" and "confirmed" are
  * counted by the server where they happen, so a body naming them counts
  * nothing. Anything else in the body (a time on screen from a page cached
  * before 2026-11-16) is ignored. The user agent decides whether this is a
@@ -59,10 +61,10 @@ export async function POST(request: Request) {
   const staffCookie = (await cookies()).get(POOL_STAFF_COOKIE)?.value ?? null;
   after(async () => {
     if (await isPoolStaffRequest(staffCookie)) {
-      console.info(`[pool-funnel] skipped staff visit step=${beacon.step} trigger=${beacon.trigger}`);
+      console.info(`[pool-funnel] skipped staff visit step=${beacon.step}`);
       return;
     }
-    await recordPoolVisit({ source, userAgent, now, step: beacon.step, trigger: beacon.trigger });
+    await recordPoolVisit({ source, userAgent, now, step: beacon.step });
   });
   return new Response(null, { status: 204 });
 }
