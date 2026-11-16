@@ -252,10 +252,14 @@ export const isSelfRef = (ref: string): boolean => {
  * `isSelfRef`, unless the word is also the name of one of these members
  * (2026-11-16, review of #604): "Bana" is Turkish for "to me" and a given
  * name, so in a club with a Bana it may be her, and is never read as the
- * sender. Compared with the member's whole name or first name, case-folded
+ * sender. Compared with the member's whole name, first name and the club's
+ * aliases for them (`UserAlias`, as `resolvePerson` reads them), case-folded
  * both ways, as `isSelfRef` is.
  */
-export const isSelfRefAmong = (ref: string, roster: ReadonlyArray<{ name: string | null }>): boolean => {
+export const isSelfRefAmong = (
+  ref: string,
+  roster: ReadonlyArray<{ name: string | null; aliases?: readonly string[] }>,
+): boolean => {
   if (!isSelfRef(ref)) return false;
   // Both ways, as `isSelfRef` folds (review round 3): the Turkish lowercase
   // alone turns a plain capital I into a dotless one ("BENI" never met
@@ -267,9 +271,9 @@ export const isSelfRefAmong = (ref: string, roster: ReadonlyArray<{ name: string
   const refs = new Set(folds(ref));
   return !roster.some((m) => {
     const name = (m.name ?? "").trim();
-    if (!name) return false;
-    const first = name.split(/\s+/)[0];
-    return [...folds(name), ...folds(first)].some((n) => refs.has(n));
+    const words = name ? [name, name.split(/\s+/)[0]] : [];
+    for (const alias of m.aliases ?? []) if (alias.trim()) words.push(alias);
+    return words.some((w) => folds(w).some((n) => refs.has(n)));
   });
 };
 

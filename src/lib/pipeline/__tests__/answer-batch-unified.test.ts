@@ -504,6 +504,16 @@ describe("isSelfRefAmong (engine.ts): a self word, unless it is a member's name"
     expect(isSelfRefAmong(ref, [{ name }])).toBe(false);
   });
 
+  // Review round 4: a member's alias (`UserAlias`, set by the club) is a
+  // name too, as `resolvePerson` reads it.
+  it.each([
+    ["Beni", ["Beni"]],
+    ["BENI", ["beni"]],
+    ["bana", ["Bana"]],
+  ])("'%s' beside a member whose alias is %j is that member, not the sender", (ref, aliases) => {
+    expect(isSelfRefAmong(ref, [{ name: "Ahmet Kaya", aliases }])).toBe(false);
+  });
+
   it("'BENI' and 'KENDIM' with no such member are the sender", () => {
     expect(isSelfRefAmong("BENI", [{ name: "Ben Hale" }])).toBe(true);
     expect(isSelfRefAmong("KENDIM", [{ name: "Ben Hale" }])).toBe(true);

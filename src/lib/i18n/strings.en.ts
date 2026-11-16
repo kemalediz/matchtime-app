@@ -242,6 +242,18 @@ export const en = {
   },
   teams_post_footer_after_replacement:
     "Objections? An admin can ask me to regenerate the teams.",
+  // A replacement whose slot move did not land (#604, 2026-11-16): only
+  // what is still true, who is out; never the sheet the database refused.
+  replacement_out_only: (p: { outNames: string[] }): string =>
+    `🔁 *${joinList("en", p.outNames)} ${p.outNames.length === 1 ? "is" : "are"} out*.`,
+  // A confirmed player the team sheet does not hold yet (#604, 2026-11-16):
+  // under the composed sheet, so the group can see they are in.
+  teams_post_unslotted: (p: { names: string[] }): string =>
+    `In the squad, not on a team yet: ${joinList("en", p.names.map((n) => `*${n}*`))}.`,
+  // The lead of the batch's one team sheet when an earlier team change in
+  // the same batch was folded into it (#604, 2026-11-16): neutral, so it
+  // cannot contradict that change ("same teams", "nobody dropped").
+  teams_updated_lead: "Updated teams:",
 
   // ── row 43: buildSquadCompletePost (group-copy.ts) ───────────────
 

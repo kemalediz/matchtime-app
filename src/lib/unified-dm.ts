@@ -18,7 +18,8 @@ import { renderReplyContext } from "./reply-context";
 import { formatOwnStatsLines } from "./dm-qa";
 import { formatMyPaymentsBlock } from "./my-payments-rules";
 import type { Lang } from "./i18n/lang";
-import type { StatsChemistry, StatsPeriod, StatsSnapshot } from "./pipeline/types";
+import type { StatsPeriod, StatsSnapshot } from "./pipeline/types";
+import type { PlayerSeasonStats } from "./player-stats";
 import { GROUP_RATINGS_MIN_GAMES } from "./pipeline/stats-answer";
 
 const DM_PERIODS: ReadonlyArray<readonly [string, StatsPeriod]> = [
@@ -37,12 +38,17 @@ const DM_PERIODS: ReadonlyArray<readonly [string, StatsPeriod]> = [
  * question and cannot know who a question names, so it never says so
  * (review of #595, 2026-11-15: "what is Bruno's rating?" had the asker's
  * stats headed "they asked about themselves").
+ *
+ * `pairings` (a DM, review of #604 rounds 3-4): the asker's best team-mates
+ * and nemesis WITH the numbers behind them, in place of the bare names,
+ * from the same season stats the player's own stats page shows, so the DM
+ * can never contradict that page.
  */
-export async function loadAskerOwnStats(orgId: string, userId: string, aboutThemselves = true): Promise<string | null> {
+export async function loadAskerOwnStats(orgId: string, userId: string, aboutThemselves = true, opts: { pairings?: boolean } = {}): Promise<string | null> {
   const { loadPlayerSeasonStats } = await import("./player-stats");
   const mine = await loadPlayerSeasonStats(orgId, userId);
   if (!mine) return null;
-  const lines = formatOwnStatsLines({
+  let lines = formatOwnStatsLines({
     gamesPlayed: mine.gamesPlayed,
     totalOrgMatches: mine.totalOrgMatches,
     attendanceRate: mine.attendanceRate,
@@ -54,6 +60,12 @@ export async function loadAskerOwnStats(orgId: string, userId: string, aboutThem
     bestPartner: mine.chemistry.bestByWinRate?.name ?? null,
     nemesis: mine.rivalry.nemesis?.name ?? null,
   });
+  if (opts.pairings) {
+    lines = [
+      ...lines.filter((l) => !l.startsWith("- Best partnership:") && !l.startsWith("- Nemesis:")),
+      ...askerPairingLines({ chemistry: mine.chemistry, rivalry: mine.rivalry }),
+    ];
+  }
   return [aboutThemselves ? "THE ASKER'S OWN STATS (they asked about themselves):" : "THE ASKER'S OWN STATS:", ...lines.slice(1)].join("\n");
 }
 
@@ -81,19 +93,18 @@ export function askerRatingLine(ratings: StatsSnapshot["ratings"], userId: strin
 
 /**
  * PURE. The asker's own pairings, for THE ASKER'S OWN STATS in a DM (review
- * of #604, round 3): their best team-mates and their nemesis, with the
- * numbers behind them, labelled as theirs. Read for the asker alone; nobody
- * else's pairings are in a DM.
+ * of #604, rounds 3-4): their best team-mates and their nemesis, with the
+ * numbers behind them, labelled as theirs. From the season stats the
+ * player's stats page shows (`loadPlayerSeasonStats`), its one source.
  */
-export function askerChemistryLines(c: StatsChemistry | null | undefined): string[] {
-  if (!c) return [];
+export function askerPairingLines(s: Pick<PlayerSeasonStats, "chemistry" | "rivalry">): string[] {
   const L: string[] = [];
-  if (c.bestByWinRate) {
-    const b = c.bestByWinRate;
-    L.push(`- Their best team-mate by win rate: ${b.name}, ${b.wins} wins in ${b.gamesTogether} matches together (${Math.round(b.winRate * 100)}%)`);
-  }
-  if (c.bestByRating) L.push(`- Their best team-mate by rating: ${c.bestByRating.name}, ${c.bestByRating.myAvgWith.toFixed(1)} average alongside them`);
-  if (c.nemesis) L.push(`- Their nemesis: ${c.nemesis.name}, they won ${c.nemesis.wins} of ${c.nemesis.gamesAgainst} against them`);
+  const b = s.chemistry.bestByWinRate;
+  if (b) L.push(`- Their best team-mate by win rate: ${b.name}, ${b.wins} wins in ${b.gamesTogether} matches together (${Math.round(b.winRate * 100)}%)`);
+  const r = s.chemistry.bestByRating;
+  if (r && r.myAvgWith !== null) L.push(`- Their best team-mate by rating: ${r.name}, ${r.myAvgWith.toFixed(1)} average alongside them`);
+  const n = s.rivalry.nemesis;
+  if (n) L.push(`- Their nemesis: ${n.name}, they won ${n.wins} of ${n.gamesAgainst} against them`);
   return L;
 }
 
@@ -130,7 +141,7 @@ export async function loadUnifiedDmInput(args: {
     }
   };
   const { loadSquadState, loadClubSnapshot, loadRatingProgressSnapshot } = await import("./pipeline/load-state");
-  const { loadStatsTables, loadStatsPeriod, loadStatsChemistry } = await import("./pipeline/load-stats");
+  const { loadStatsTables, loadStatsPeriod } = await import("./pipeline/load-stats");
   const { loadRecentResults } = await import("./pipeline/load-results");
   const { loadHelpClubFacts } = await import("./help-club-facts");
   const { periodSince } = await import("./pipeline/stats-period");
@@ -164,7 +175,7 @@ export async function loadUnifiedDmInput(args: {
   const own: string[] = [];
   // Headed as the asker's, not "YOUR": in the answer's context "you" is
   // MatchTime (ABOUT YOU, 2026-11-11).
-  const mine = await soft("own stats", () => loadAskerOwnStats(orgId, userId, false));
+  const mine = await soft("own stats", () => loadAskerOwnStats(orgId, userId, false, { pairings: true }));
   // Their club rating and rank, in their own block (the table stops at 10);
   // a guest is told why they are not ranked.
   let rating: string | null = null;
@@ -174,16 +185,8 @@ export async function loadUnifiedDmInput(args: {
     const guests = await soft("guests", () => loadGuestUserIds(db, orgId));
     rating = askerRatingLine(stats.ratings, userId, { guest: guests?.has(userId) ?? false });
   }
-  // Their own pairings, with the numbers (review of #604, round 3).
-  const chemistry = stats ? await soft("own chemistry", () => loadStatsChemistry(orgId, userId)) : null;
-  const pairings = askerChemistryLines(chemistry);
-  let mineLines = mine ? mine.replace(/^- Average rating:/m, OWN_AVERAGE_LABEL).split("\n") : null;
-  // The detailed pairing lines replace the bare names the stats page lines carry.
-  if (mineLines && chemistry?.bestByWinRate) mineLines = mineLines.filter((l) => !l.startsWith("- Best partnership:"));
-  if (mineLines && chemistry?.nemesis) mineLines = mineLines.filter((l) => !l.startsWith("- Nemesis:"));
-  if (mineLines || rating || pairings.length) {
-    own.push([...(mineLines ?? ["THE ASKER'S OWN STATS:"]), ...(rating ? [rating] : []), ...pairings].join("\n"));
-  }
+  const mineLines = mine ? mine.replace(/^- Average rating:/m, OWN_AVERAGE_LABEL).split("\n") : null;
+  if (mineLines || rating) own.push([...(mineLines ?? ["THE ASKER'S OWN STATS:"]), ...(rating ? [rating] : [])].join("\n"));
   const fee = state.club?.feePerPlayer ?? null;
   const pay = await soft("own payments", () => loadMyPayments({ orgId, userId, upcomingFee: state.matchId ? fee : null }));
   if (pay) own.push(formatMyPaymentsBlock(pay.payments, args.lang, pay.payLinks).replace(/^YOUR PAYMENTS/, "THE ASKER'S OWN PAYMENTS"));

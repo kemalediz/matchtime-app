@@ -259,6 +259,9 @@ export const tr: Strings = {
   },
   teams_post_footer_after_replacement:
     "İtirazınız mı var? Admin benden takımları yeniden kurmamı isteyebilir.",
+  replacement_out_only: (p) => `🔁 *${joinList("tr", p.outNames)}* yok.`,
+  teams_post_unslotted: (p) => `Kadroda, henüz bir takımda değil: ${joinList("tr", p.names.map((n) => `*${n}*`))}.`,
+  teams_updated_lead: "Güncel takımlar:",
 
   // ── row 43: buildSquadCompletePost ───────────────────────────────
 

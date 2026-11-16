@@ -43,7 +43,17 @@ import { skipsSquadComposition } from "./group-copy";
  *  a team write in this batch left them ("write"), with `seq` the order the
  *  written sheets were rendered in (a replacement's first, then the team
  *  path's in its own order, `TeamOpsMessageOutcome.sheetSeq`). */
-export type Sheet = { kind: "read" } | { kind: "write"; seq: number };
+export type Sheet =
+  | { kind: "read" }
+  | {
+      kind: "write";
+      seq: number;
+      /** The sheet inside the reply and its claim-making line (null: none,
+       *  e.g. the teams made, whose words are notes), so a stale one keeps
+       *  its news and the final one can be given a neutral lead (#604
+       *  round 4). Absent: the reply is the sheet alone. */
+      parts?: { lead: string | null; sheet: string };
+    };
 
 /** The fields of a route result the choice reads. */
 export interface CarrierResult {
@@ -115,4 +125,30 @@ export function withoutRepeatedTeamSheet(text: string, sheet: string): string | 
   if (text === sheet) return null;
   if (text.endsWith(`\n\n${sheet}`)) return text.slice(0, -(sheet.length + 2)).trim() || null;
   return text;
+}
+
+/**
+ * PURE. `text` without `sheet` (#604 round 4): a stale written sheet loses
+ * its sheet and keeps its news, the replacement's "Pat is out, Ian takes his
+ * place", the generated sheet's "couldn't find Zork". Null when nothing
+ * else was said; unchanged when the sheet is not in it.
+ */
+export function withoutSheet(text: string | null, sheet: string): string | null {
+  if (!text) return null;
+  const at = sheet ? text.indexOf(sheet) : -1;
+  if (at < 0) return text;
+  const rest = `${text.slice(0, at)}${text.slice(at + sheet.length)}`.replace(/\n{3,}/g, "\n\n").trim();
+  return rest || null;
+}
+
+/**
+ * PURE. Is the batch's final sheet standing in for an earlier team write
+ * that went stale (#604 round 4)? Then its own lead ("Same teams, sides
+ * flipped", "nobody dropped") may contradict that change, and a neutral one
+ * is used instead. A shown sheet going stale does not count: it changed
+ * nothing.
+ */
+export function finalSheetFoldsEarlierWrite(sheets: ReadonlyMap<string, Sheet>): boolean {
+  const stale = new Set(staleSheetIds(sheets));
+  return [...sheets].some(([id, sh]) => stale.has(id) && sh.kind === "write");
 }

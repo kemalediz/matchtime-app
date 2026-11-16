@@ -30,7 +30,7 @@
  * The results of one batch, in the route's order. Pure. Made-up ids.
  */
 import { describe, expect, it } from "vitest";
-import { composesSquadPost, squadPostCarrierId, staleSheetIds, withoutRepeatedTeamSheet, type CarrierResult, type Sheet } from "../squad-post-carrier";
+import { composesSquadPost, finalSheetFoldsEarlierWrite, squadPostCarrierId, staleSheetIds, withoutRepeatedTeamSheet, withoutSheet, type CarrierResult, type Sheet } from "../squad-post-carrier";
 
 const IN: CarrierResult = { waMessageId: "wa-in", handledBy: "llm", intent: "in", reply: null };
 const ask = (intent: string, handledBy = "llm"): CarrierResult => ({ waMessageId: "wa-q", handledBy, intent, reply: "an answer" });
@@ -184,5 +184,42 @@ describe("composesSquadPost: the composition's own filter, one definition for bo
     expect(composesSquadPost(ask("unified_answer"), new Set())).toBe(false);
     expect(composesSquadPost(ask("help", "fast-path"), new Set())).toBe(false);
     expect(composesSquadPost(ask("in"), new Set(["wa-q"]))).toBe(false);
+  });
+});
+
+// ── ROUND 4 (2026-11-16): a stale write keeps its news ──────────────────
+
+describe("withoutSheet: a stale written sheet loses its sheet, never its news", () => {
+  const SHEET = "⚽ *Teams for tonight*: 22:00\n\n*Red*:\n1. Ian Innes\n\n*Yellow*:\n1. Tom Third\n\nObjections? An admin can ask me to regenerate the teams.";
+
+  it("a replacement: the lead stays", () => {
+    expect(withoutSheet(`🔁 *Pat is out*. *Ian* takes his place and his spot in *Red*.\n\n${SHEET}`, SHEET)).toBe("🔁 *Pat is out*. *Ian* takes his place and his spot in *Red*.");
+  });
+
+  it("the teams made with a note after the sheet: the note stays", () => {
+    expect(withoutSheet(`${SHEET}\n\nI couldn't find *Zork*, so I ignored that name.`, SHEET)).toBe("I couldn't find *Zork*, so I ignored that name.");
+  });
+
+  it("a note before and after: both stay, one blank line between", () => {
+    expect(withoutSheet(`Including *Ian*.\n\n${SHEET}\n\nCouldn't find *Zork*.`, SHEET)).toBe("Including *Ian*.\n\nCouldn't find *Zork*.");
+  });
+
+  it("only the sheet: nothing", () => {
+    expect(withoutSheet(SHEET, SHEET)).toBeNull();
+  });
+
+  it("the sheet not in the text: unchanged", () => {
+    expect(withoutSheet("Pat, you're out.", SHEET)).toBe("Pat, you're out.");
+  });
+});
+
+describe("finalSheetFoldsEarlierWrite: the last sheet's lead must not contradict an earlier change", () => {
+  it("an earlier written sheet went stale: yes (the final sheet gets a neutral lead)", () => {
+    expect(finalSheetFoldsEarlierWrite(new Map<string, Sheet>([["repl", { kind: "write", seq: -1 }], ["swap", { kind: "write", seq: 0 }]]))).toBe(true);
+  });
+
+  it("only a shown sheet went stale, or one write alone: no", () => {
+    expect(finalSheetFoldsEarlierWrite(new Map<string, Sheet>([["show", { kind: "read" }], ["swap", { kind: "write", seq: 0 }]]))).toBe(false);
+    expect(finalSheetFoldsEarlierWrite(new Map<string, Sheet>([["swap", { kind: "write", seq: 0 }]]))).toBe(false);
   });
 });

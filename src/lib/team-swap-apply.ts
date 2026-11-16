@@ -62,10 +62,11 @@ export function playersSwapShape(facts: PlayersSwapFacts): PlayersSwapShape {
 }
 
 export type PlayersSwapResult =
-  /** `sheet`: the reply renders the team sheet (a colour swap, a team swap,
-   *  a slot transfer). False for a swap deferred because no teams exist,
-   *  whose reply is the deferral line alone (review of #604, 2026-11-16). */
-  | { kind: "applied"; reply: string; sheet: boolean; logReason: string }
+  /** `parts`: the reply's line and its team sheet, apart (a colour swap, a
+   *  team swap, a slot transfer: `reply` is `lead`, a blank line, `sheet`).
+   *  Null for a swap deferred because no teams exist, whose reply is the
+   *  deferral line alone and holds no sheet (review of #604, 2026-11-16). */
+  | { kind: "applied"; reply: string; parts: { lead: string; sheet: string } | null; logReason: string }
   | { kind: "refused"; reply: string; logReason: string }
   | { kind: "unsupported"; logReason: string };
 
@@ -147,7 +148,13 @@ export async function applyPlayersGroupSwap(args: {
         db.teamAssignment.update({ where: { id: t.id }, data: { team: t.team === "RED" ? "YELLOW" : "RED" } }),
       ),
     );
-    return { kind: "applied", reply: buildColourSwapReply({ sheet: await sheet(), lang }), sheet: true, logReason: "the teams swapped over (every slot flipped, same players)" };
+    const flipped = await sheet();
+    return {
+      kind: "applied",
+      reply: buildColourSwapReply({ sheet: flipped, lang }),
+      parts: { lead: t(lang).colour_swap_done, sheet: flipped },
+      logReason: "the teams swapped over (every slot flipped, same players)",
+    };
   }
 
   const m = match!;
@@ -180,7 +187,7 @@ export async function applyPlayersGroupSwap(args: {
     return {
       kind: "applied",
       reply: buildSwapDeferredReply({ a: decision.a.name, b: decision.b.name, lang }),
-      sheet: false,
+      parts: null,
       logReason: `team-swap deferred (no teams yet): ${decision.a.name} <-> ${decision.b.name}`,
     };
   }
@@ -197,10 +204,11 @@ export async function applyPlayersGroupSwap(args: {
         update: { team: decision.teamForB },
       }),
     ]);
+    const swapped = await sheet();
     return {
       kind: "applied",
-      reply: buildTeamSwapReply({ a: decision.a.name, b: decision.b.name, sheet: await sheet(), lang }),
-      sheet: true,
+      reply: buildTeamSwapReply({ a: decision.a.name, b: decision.b.name, sheet: swapped, lang }),
+      parts: { lead: t(lang).team_swap_done({ a: decision.a.name, b: decision.b.name }), sheet: swapped },
       logReason: `team-swap applied: ${decision.a.name} <-> ${decision.b.name}`,
     };
   }
@@ -215,16 +223,12 @@ export async function applyPlayersGroupSwap(args: {
       update: { team: decision.team },
     }),
   ]);
+  const moved = await sheet();
+  const teamLabel = decision.team === "RED" ? labels[0] : labels[1];
   return {
     kind: "applied",
-    reply: buildSlotTransferReply({
-      to: decision.to.name,
-      from: decision.from.name,
-      teamLabel: decision.team === "RED" ? labels[0] : labels[1],
-      sheet: await sheet(),
-      lang,
-    }),
-    sheet: true,
+    reply: buildSlotTransferReply({ to: decision.to.name, from: decision.from.name, teamLabel, sheet: moved, lang }),
+    parts: { lead: t(lang).slot_transfer_done({ to: decision.to.name, from: decision.from.name, teamLabel }), sheet: moved },
     logReason: `team-slot-transfer applied: ${decision.from.name} (${decision.from.status}) -> ${decision.to.name} on ${decision.team}`,
   };
 }

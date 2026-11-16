@@ -263,6 +263,9 @@ export interface SquadTruth {
     labels: [string, string];
     kickoff: string;
     venue: string;
+    /** Confirmed players the sheet does not hold yet (#604, 2026-11-16):
+     *  named in one line under it. Absent or empty: no line. */
+    unslotted?: string[];
   } | null;
   /** The match the squad is for, "Fri 30 Oct, 20:30" (2026-10-23, FNF).
    *  Absent: the post reads as it always has. */
@@ -566,16 +569,18 @@ function composeSquadTruthPost(truth: SquadTruth, lang?: Lang | string | null): 
   // English for a Turkish group.
   const sheet = truth.teams;
   if (sheet && sheet.red.length + sheet.yellow.length > 0) {
+    const post = formatTeamsPost({
+      redLabel: sheet.labels[0],
+      yellowLabel: sheet.labels[1],
+      red: sheet.red.map((name) => ({ name })),
+      yellow: sheet.yellow.map((name) => ({ name })),
+      kickoff: sheet.kickoff,
+      venue: sheet.venue,
+      lang,
+    });
+    const unslotted = sheet.unslotted ?? [];
     return withCancelledLine(
-      formatTeamsPost({
-        redLabel: sheet.labels[0],
-        yellowLabel: sheet.labels[1],
-        red: sheet.red.map((name) => ({ name })),
-        yellow: sheet.yellow.map((name) => ({ name })),
-        kickoff: sheet.kickoff,
-        venue: sheet.venue,
-        lang,
-      }),
+      unslotted.length > 0 ? `${post}\n\n${t(lang).teams_post_unslotted({ names: unslotted })}` : post,
       truth.cancelledDayLabel,
       lang,
     );

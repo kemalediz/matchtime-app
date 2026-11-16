@@ -60,14 +60,14 @@ const STATE: SquadState = {
   guestAskedUserIds: [],
 };
 
-async function replace(moveTeamSlot: () => Promise<void>) {
+async function replace(moveTeamSlot: () => Promise<void>, cancelAttendance: () => Promise<unknown> = async () => ({ status: "DROPPED" as const })) {
   const deps = {
     model,
     loadState: async () => STATE,
     openBenchPromptUserIds: async () => [],
     claimGuestNameAsk: async () => true,
     registerAttendance: async () => ({ status: "CONFIRMED" as const, position: 2, slot: 2, confirmedCount: 2, maxPlayers: 2 }),
-    cancelAttendance: async () => ({ status: "DROPPED" as const }),
+    cancelAttendance,
     resolveOrProvision: async (n: string) => ({ userId: n }),
     moveTeamSlot,
   } as unknown as EngineBatchDeps;
@@ -86,19 +86,40 @@ async function replace(moveTeamSlot: () => Promise<void>) {
 }
 
 describe("the replacement post and its slot move", () => {
-  it("the move landed: the post is a written team sheet", async () => {
+  it("the move landed: the post is a written team sheet, its lead and its sheet handed over apart", async () => {
     const { out } = await replace(async () => {});
     expect(out.reply).toMatch(/takes his place/);
     expect(out.deterministicTeamPost).toBe(true);
     expect(out.teamSheetWritten).toBe(true);
+    // Round 4: the route can drop the sheet and keep the news.
+    expect(out.sheetParts?.lead).toBe("🔁 *Pete is out*. *Dan* takes his place and his spot in *Red*.");
+    expect(out.sheetParts?.sheet).toMatch(/^⚽ \*Teams for tonight\*/);
+    expect(out.reply).toBe(`${out.sheetParts!.lead}\n\n${out.sheetParts!.sheet}`);
   });
 
-  it("the move threw: still a composed sheet (never recomposed), but NOT the batch's written sheet", async () => {
+  // Round 4 (rows 13a, 13b): the post must not show a sheet the database
+  // rejected. Only what is still true is said.
+  it("13a: the move threw, Pete's OUT landed: only 'Pete is out', no sheet, not a team post", async () => {
     const { out, degradations } = await replace(async () => {
       throw new Error("db said no");
     });
-    expect(out.deterministicTeamPost).toBe(true);
+    expect(out.reply).toBe("🔁 *Pete is out*.");
+    expect(out.deterministicTeamPost).toBe(false);
     expect(out.teamSheetWritten).toBe(false);
+    expect(out.sheetParts).toBeUndefined();
     expect(degradations.join(" ")).toMatch(/did not move/);
+  });
+
+  it("13b: the move threw and Pete's OUT did not land either: nothing of the replacement is said", async () => {
+    const { out } = await replace(
+      async () => {
+        throw new Error("db said no");
+      },
+      async () => {
+        throw new Error("cancel failed");
+      },
+    );
+    expect(out?.reply ?? "").not.toMatch(/is out|takes his place|Teams for/);
+    expect(out?.deterministicTeamPost ?? false).toBe(false);
   });
 });

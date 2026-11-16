@@ -28,6 +28,8 @@ const h = vi.hoisted(() => ({
   ratings: null as null | Array<{ userId: string; name: string; avg: number; games: number; rank: number; delta: number }>,
   chemistry: vi.fn(async (_o: string, userId: string) => ({ userId, name: "Alfie Brook", bestByWinRate: null, bestByRating: null, nemesis: null }) as unknown),
   guests: new Set<string>(),
+  // The season stats (the stats page's own source): its pairings.
+  pairings: { chemistry: { bestByWinRate: null, bestByRating: null } as unknown, rivalry: { nemesis: null } as unknown },
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -86,8 +88,7 @@ vi.mock("@/lib/player-stats", () => ({
     momCount: 0,
     record: { w: 3, d: 1, l: 1 },
     form: { last5Avg: 6.5, trend: "steady" },
-    chemistry: { bestByWinRate: null },
-    rivalry: { nemesis: null },
+    ...(h.pairings as object),
   }),
 }));
 
@@ -141,6 +142,7 @@ beforeEach(() => {
   h.ratings = null;
   h.guests = new Set();
   h.chemistry.mockClear();
+  h.pairings = { chemistry: { bestByWinRate: null, bestByRating: null }, rivalry: { nemesis: null } };
   h.loadHelpClubFacts.mockClear();
   h.loadRatingProgressSnapshot.mockClear();
   process.env.ANTHROPIC_API_KEY = "sk-test";
@@ -299,6 +301,9 @@ describe("admin gating", () => {
 // pairings were gone ("best team-mate by rating", and the numbers behind the
 // best partner and the nemesis). They are read again, for the asker only,
 // and go in THE ASKER'S OWN STATS. Still no subject block.
+// Round 4: ONE source, the season stats the player's own stats page shows
+// (`loadPlayerSeasonStats`), so the DM can never contradict that page; the
+// tables' chemistry read is not used for the asker.
 describe("the asker's own pairings", () => {
   const context = async (question: string) => {
     process.env.MT_TEST_DM_QA_STUB = "1";
@@ -306,21 +311,25 @@ describe("the asker's own pairings", () => {
   };
   const ownBlock = (text: string) => text.slice(text.indexOf("THE ASKER'S OWN STATS:")).split("\n\n")[0];
 
-  it("'who do I play best with?': the asker's own chemistry, read for them alone, in their own block", async () => {
-    h.chemistry.mockImplementationOnce(async (_o: string, userId: string) => ({
-      userId,
-      name: "Alfie Brook",
-      bestByWinRate: { name: "Bruno Carr", gamesTogether: 6, wins: 5, winRate: 5 / 6 },
-      bestByRating: { name: "Cosmo Dale", myAvgWith: 7.1, sameAsWinRate: false },
-      nemesis: { name: "Dario Ewing", gamesAgainst: 4, wins: 1 },
-    }));
+  it("'who do I play best with?': the asker's own pairings, from the stats page's source, in their own block", async () => {
+    h.pairings = {
+      chemistry: {
+        bestByWinRate: { userId: "u-bruno", name: "Bruno Carr", gamesTogether: 6, wins: 5, winRate: 5 / 6, myAvgWith: 6.8 },
+        bestByRating: { userId: "u-cosmo", name: "Cosmo Dale", gamesTogether: 5, wins: 3, winRate: 0.6, myAvgWith: 7.1 },
+      },
+      rivalry: { nemesis: { userId: "u-dario", name: "Dario Ewing", gamesAgainst: 4, wins: 1, losses: 3, winRate: 0.25 } },
+    };
     const text = await context("who do I play best with?");
-    expect(h.chemistry).toHaveBeenCalledWith("org-1", "u-alfie");
+    // One source: the tables' chemistry is never read for the asker.
+    expect(h.chemistry).not.toHaveBeenCalled();
     const block = ownBlock(text);
     expect(block).toContain("- Their best team-mate by win rate: Bruno Carr, 5 wins in 6 matches together (83%)");
     expect(block).toContain("- Their best team-mate by rating: Cosmo Dale, 7.1 average alongside them");
     expect(block).toContain("- Their nemesis: Dario Ewing, they won 1 of 4 against them");
     expect(text).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
+    // The bare names are not said twice.
+    expect(block).not.toContain("- Best partnership:");
+    expect(block).not.toContain("- Nemesis:");
   });
 
   it("no pairings yet: nothing invented", async () => {

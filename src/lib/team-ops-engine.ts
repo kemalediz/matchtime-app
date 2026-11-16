@@ -276,6 +276,9 @@ export interface GenerateTeamsApplyResult {
   error?: string;
   /** What to say to the group. `null` only when `failed`. */
   reply: string | null;
+  /** When `generated`: the team sheet inside `reply` (the balancer's post);
+   *  the rest of the reply is its notes (#604, 2026-11-16). */
+  sheet?: string;
   /** The shipped reacts: ⚽ on a real post, 🤔 on either refusal. */
   react: string | null;
   /** For the audit trail; the reply already contains them. */
@@ -382,6 +385,7 @@ export async function applyGenerateTeams(args: {
       ...base,
       generated: true,
       failed: false,
+      sheet: result.groupPost,
       reply: composeGenerateTeamsReply({
         groupPost: result.groupPost,
         includedNames,

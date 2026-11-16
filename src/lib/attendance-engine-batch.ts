@@ -253,6 +253,10 @@ export interface EngineMessageOutcome {
    * batch's written team sheet.
    */
   teamSheetWritten: boolean;
+  /** The replacement post's lead and sheet apart, when its sheet is the
+   *  database's (`teamSheetWritten`): the route drops the sheet and keeps
+   *  the lead when a later team write in the batch shows the final teams. */
+  sheetParts?: { lead: string; sheet: string };
   /** An admin asked for a replacement in this same message (PR #33). */
   recruitRequest: boolean;
   /** Personal-uncertainty conditional: record a MAYBE and chase later
@@ -1412,30 +1416,47 @@ export async function runAttendanceEngineBatch(args: {
   const composed = compose(result);
   const utteranceByMessageId = new Map<string, string[]>();
   let squadPost: string | null = null;
+  // A message's team-slot moves all landed, and there was at least one.
+  const slotMovesLanded = (id: string): boolean => {
+    const moves = applied.filter((a) => a.write.kind === "team_slot_inherit" && a.write.sourceMessageId === id);
+    return moves.length > 0 && moves.every((a) => a.ok);
+  };
+  // Every OUT this message proposed landed, and there was at least one.
+  const dropsLanded = (id: string): boolean => {
+    const drops = applied.filter((a) => a.write.kind === "attendance" && a.write.sourceMessageId === id && a.write.status === "DROPPED");
+    return drops.length > 0 && drops.every((a) => a.ok);
+  };
+  // The replacement posts whose sheet is the database's (#604 round 4).
+  const sheetPartsByMessage = new Map<string, { lead: string; sheet: string }>();
   for (const u of composed.utterances) {
     if (u.messageId === null) {
       squadPost = u.text;
       continue;
     }
     if (!ownedIds.has(u.messageId)) continue;
+    let text: string | null = u.text;
+    if (u.sheetParts) {
+      if (slotMovesLanded(u.messageId)) {
+        sheetPartsByMessage.set(u.messageId, { lead: u.sheetParts.lead, sheet: u.sheetParts.sheet });
+      } else {
+        // The post was composed from the projection; the slot move did not
+        // land, so its sheet is one the database refused (rows 13a, 13b).
+        // Say only what is still true: who is out, when their OUT landed.
+        text = u.sheetParts.outOnly && dropsLanded(u.messageId) ? u.sheetParts.outOnly : null;
+      }
+    }
+    if (text === null) continue;
     const list = utteranceByMessageId.get(u.messageId) ?? [];
-    list.push(u.text);
+    list.push(text);
     utteranceByMessageId.set(u.messageId, list);
   }
   const reactByMessageId = new Map(composed.reacts.map((r) => [r.messageId, r.emoji]));
   // Which replies are already-composed TEAM SHEETS. See
   // `EngineMessageOutcome.deterministicTeamPost` for why the analyze
   // route has to be told.
-  const teamPostMessageIds = new Set(
-    result.speech
-      .filter((s) => s.kind === "replacement_teams_post")
-      .map((s) => s.messageId),
-  );
-  // A message's team-slot moves all landed, and there was at least one.
-  const slotMovesLanded = (id: string): boolean => {
-    const moves = applied.filter((a) => a.write.kind === "team_slot_inherit" && a.write.sourceMessageId === id);
-    return moves.length > 0 && moves.every((a) => a.ok);
-  };
+  // Only those whose sheet still goes out: a replacement whose slot move
+  // did not land says no sheet, and is no team post (#604 round 4).
+  const teamPostMessageIds = new Set(sheetPartsByMessage.keys());
   for (const n of composed.operatorNotes) degradations.push(n);
 
   // ── Per-message outcomes ───────────────────────────────────────────
@@ -1533,7 +1554,8 @@ export async function runAttendanceEngineBatch(args: {
       failures,
       senderOwnRowMoved,
       deterministicTeamPost: teamPostMessageIds.has(m.waMessageId),
-      teamSheetWritten: teamPostMessageIds.has(m.waMessageId) && slotMovesLanded(m.waMessageId),
+      teamSheetWritten: sheetPartsByMessage.has(m.waMessageId),
+      ...(sheetPartsByMessage.has(m.waMessageId) ? { sheetParts: sheetPartsByMessage.get(m.waMessageId)! } : {}),
       // PR #33: a recruit ask alongside a drop must do BOTH, and the
       // blast has to run after the drop lands, so the route defers it to
       // the batch-final pass. It used to share that pass with the
