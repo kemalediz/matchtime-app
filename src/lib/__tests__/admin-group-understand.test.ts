@@ -63,7 +63,7 @@ const sheetHistory = vi.hoisted(() => ({ quotedTeamSheet: vi.fn() }));
 vi.mock("@/lib/team-sheet-history", () => sheetHistory);
 // The HQ squad reader (2026-10-30), HQ's one model door for who plays: by
 // default it reads a change (Tom out), as the engine's facts.
-const paste = vi.hoisted(() => ({ answerSquadPasteYes: vi.fn(), readHqSquad: vi.fn(), proposeSquadPaste: vi.fn() }));
+const paste = vi.hoisted(() => ({ answerSquadPasteYes: vi.fn(), readHqSquad: vi.fn(), proposeSquadPaste: vi.fn(), changedListNotice: vi.fn(async () => null) }));
 const CHANGE = { kind: "change", changes: [{ name: "Tom", userId: "u-tom", to: "out", replaces: "" }], alsoAsks: false };
 const read = (reading: unknown) => ({ reading, ctx: { orgId: "org-fnf", game: null, members: [], squad: { playing: [], bench: [] }, teams: null }, match: null });
 vi.mock("@/lib/admin-group-paste", () => paste);

@@ -501,4 +501,30 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     expect(r).toMatchObject({ ok: true, analyzed: 0 });
     expect(await db.count(`SELECT count(*)::int AS c FROM "DeletedMessage" WHERE "chatId" = $1`, ["120363999999999990@g.us"])).toBe(0);
   });
+
+  // ── Round 5: one rule for an author's edit ──────────────────────────
+
+  test("a reply quoting an EDITED message: no model call sees the original words", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = await storeTwoLines(g);
+    await change(request, editBy(g, "dan", bare));
+    const Q = "@Match Time did he change it?";
+    await g.postBatch([{ player: "pete", body: Q, tag: true, ...Q_OPEN, quote: { id: bare, text: SECRET, authorJid: `${digits(g.player("dan").phone)}@c.us` } }]);
+    expect(calls().some((c) => c.user.includes(Q))).toBe(true);
+    expect(JSON.stringify(calls())).not.toContain("4321");
+  });
+
+  test("a message already analysed, re-queued by a catch-up after its edit: never analysed again, and its stored text stays purged", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = bareId();
+    const id = storedId(g.groupId, bare, g.player("dan").phone);
+    await g.postBatch([{ player: "dan", body: "inn", route: "self_att", facts: selfIn(), waMessageId: id }]);
+    expect((await g.attendanceOf("dan"))?.status).toBe("CONFIRMED");
+    await change(request, editBy(g, "dan", bare));
+    const res = await g.postBatch([{ player: "dan", body: "in", route: "self_att", facts: selfIn(), waMessageId: id }]);
+    expect(res.results.find((r) => r.waMessageId === id)?.handledBy).toBe("deduped");
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [id])).toBe(1);
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "waMessageId" = $1 AND body IS NOT NULL`, [id])).toBe(0);
+    expect((await g.attendanceOf("dan"))?.status).toBe("CONFIRMED");
+  });
 });

@@ -141,7 +141,7 @@ describe("onMessageChange", () => {
     expect(t.logs.some((l) => /an edit of 3EB0AAAABBBBCCCC0001/.test(l))).toBe(true);
   });
 
-  it("after a reconnect Baileys merges the edit into the original: the original is handed up ONCE with the new words, and the edit notice behind it is not handed up as a change", async () => {
+  it("after a reconnect Baileys merges the edit into the original: the original is handed up ONCE with the new words, AND the notice behind it is handed up as an edit (recorded, posted)", async () => {
     const t = await started();
     const original = wa({ editedMessage: { message: { conversation: "In" } } }, { id: TARGET });
     const notice = wa(edit("In"), { id: "3EB0NOTICE000077" });
@@ -149,8 +149,14 @@ describe("onMessageChange", () => {
     for (let i = 0; i < 10; i++) await tick();
     expect(t.messages).toHaveLength(1);
     expect((t.messages[0] as unknown as { body: string }).body).toBe("In");
-    expect(t.changes).toEqual([]);
-    expect(t.logs.some((l) => /already in the message/.test(l))).toBe(true);
+    expect(t.changes).toEqual([expect.objectContaining({ kind: "edit", messageId: TARGET })]);
+  });
+
+  it("an edit carries its own time", async () => {
+    const t = await started();
+    const at = 1_763_200_123_000;
+    await t.upsert(wa({ protocolMessage: { key: { id: TARGET, remoteJid: GROUP, fromMe: true }, type: P.MESSAGE_EDIT, editedMessage: { conversation: "x" }, timestampMs: at } }));
+    expect(t.changes[0].editedAtMs).toBe(at);
   });
 
   it("a delete from MatchTime's own phone (an admin on the bot's number) is handed up, as an admin's", async () => {

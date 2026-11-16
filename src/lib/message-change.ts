@@ -62,8 +62,9 @@
  *       message: an open one cancelled (outcome "source-deleted", so a later
  *       YES applies nothing); its copied names, month seed and fee text
  *       cleared.
- *   BotJob            an unsent reminder DM the message asked for
- *       (`aboutKey` "asked-reminder:<id>"): cancelled.
+ *   BotJob            an unsent DM made from the message: a reminder it
+ *       asked for (`aboutKey` "asked-reminder:<id>") or a month-seed draft
+ *       read from it ("month-seed-of:<id>"): cancelled.
  *
  * MATCHED BY WHATSAPP ID AND GROUP, NEVER BY TEXT (`isStoredIdOf`). Every
  * lookup is narrowed by an index: the group (AnalyzedMessage.groupId,
@@ -225,6 +226,10 @@ type Tx = Pick<
 
 /** The prefix of a reminder DM's `BotJob.aboutKey`: the message that asked for it (`owner-deps.ts`). */
 export const REMINDER_ABOUT_PREFIX = "asked-reminder:";
+/** The prefix of a month-seed draft DM's `BotJob.aboutKey`: the pasted message it was read from (`month-seed-group.ts`). */
+export const MONTH_SEED_ABOUT_PREFIX = "month-seed-of:";
+/** Unsent DMs made from a message, cancelled with it. */
+const SOURCE_ABOUT_PREFIXES = [REMINDER_ABOUT_PREFIX, MONTH_SEED_ABOUT_PREFIX];
 
 function idWhere(chatId: string, messageId: string, opts: { prefix?: string; bare?: boolean; field?: string } = {}) {
   const f = storedIdForms(chatId, messageId, opts.prefix ?? "");
@@ -301,11 +306,15 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
   );
   const reminders = (
     await tx.botJob.findMany({
-      where: { orgId: { in: orgIds }, kind: "dm", sentAt: null, OR: idWhere(chatId, messageId, { prefix: REMINDER_ABOUT_PREFIX, field: "aboutKey" }) },
+      where: { orgId: { in: orgIds }, kind: "dm", sentAt: null, OR: SOURCE_ABOUT_PREFIXES.flatMap((prefix) => idWhere(chatId, messageId, { prefix, field: "aboutKey" })) },
       select: { id: true, aboutKey: true },
     })
   )
-    .map((r) => ({ id: r.id, storedId: (r.aboutKey ?? "").slice(REMINDER_ABOUT_PREFIX.length) }))
+    .map((r) => {
+      const key = r.aboutKey ?? "";
+      const prefix = SOURCE_ABOUT_PREFIXES.find((x) => key.startsWith(x)) ?? "";
+      return { id: r.id, storedId: key.slice(prefix.length) };
+    })
     .filter((r) => isStoredIdOf(r.storedId, chatId, messageId));
   return { analyzed, archived, hq, mentions, squadProposals, feeProposals, reminders };
 }
@@ -333,20 +342,26 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   // An HQ proposal made from the message (a pasted list, a fee): an open one
   // is cancelled, so a later YES applies nothing, and its copied names,
   // month seed and fee text go with every one.
+  // Guarded like every other copy: a change from somebody who may not make
+  // it leaves someone else's proposal open and their DM queued.
   const squadOk = c.squadProposals.filter((r) => applies(r.waMessageId));
+  out.refused += c.squadProposals.length - squadOk.length;
   if (squadOk.length) {
     const open = squadOk.filter((r) => r.resolvedAt === null).map((r) => r.id);
     if (open.length) await tx.adminSquadProposal.updateMany({ where: { id: { in: open }, resolvedAt: null }, data: { resolvedAt: now, outcome: "source-deleted" } });
     await tx.adminSquadProposal.updateMany({ where: { id: { in: squadOk.map((r) => r.id) } }, data: { playingNewNames: [], reserveNewNames: [], monthSeed: Prisma.DbNull } });
   }
   const feeOk = c.feeProposals.filter((r) => applies(r.waMessageId));
+  out.refused += c.feeProposals.length - feeOk.length;
   if (feeOk.length) {
     const open = feeOk.filter((r) => r.resolvedAt === null).map((r) => r.id);
     if (open.length) await tx.adminFeeProposal.updateMany({ where: { id: { in: open }, resolvedAt: null }, data: { resolvedAt: now, outcome: "source-deleted" } });
     await tx.adminFeeProposal.updateMany({ where: { id: { in: feeOk.map((r) => r.id) } }, data: { text: "" } });
   }
-  // A reminder DM it asked for, not sent yet: cancelled (its note quotes the message).
+  // A DM made from it, not sent yet (a reminder it asked for, a month-seed
+  // draft read from it): cancelled, since it quotes the message.
   const remindersOk = c.reminders.filter((r) => applies(r.storedId));
+  out.refused += c.reminders.length - remindersOk.length;
   if (remindersOk.length) await tx.botJob.deleteMany({ where: { id: { in: remindersOk.map((r) => r.id) }, sentAt: null } });
 }
 
@@ -502,14 +517,17 @@ export async function withoutDeletedQuotes<T extends { quotedMessageId?: string 
   if (quoted.length === 0) return messages;
   const t = await tombstonesFor(chatId, quoted.map((m) => bareIdOf(m.quotedMessageId as string) ?? ""));
   if (t.size === 0) return messages;
+  const orgIds = await clubsOf(db, chatId).catch(() => [] as string[]);
   const out: T[] = [];
   for (const m of messages) {
     const bare = typeof m.quotedMessageId === "string" ? bareIdOf(m.quotedMessageId) : null;
-    const ts = bare ? t.get(bare) : undefined;
-    if (!ts || !bare) {
+    const raw = bare ? t.get(bare) : undefined;
+    if (!raw || !bare) {
       out.push(m);
       continue;
     }
+    // The deleter widened through the club's LID map, as the clear does.
+    const ts = await withKnownPhones(raw, orgIds);
     const jid = typeof m.quotedAuthorJid === "string" && LEGACY_JID.test(m.quotedAuthorJid) ? m.quotedAuthorJid : null;
     const phone = digits(m.quotedAuthorPhone) || (jid?.endsWith("@c.us") ? digits(jid.split("@")[0]) : "");
     const author = jid || phone ? { jids: jid ? [jid] : [], phones: phone ? [phone] : [] } : await storedAuthorOf(chatId, bare);
@@ -582,10 +600,16 @@ export async function sweepRecentTombstones(now: Date = new Date()): Promise<{ c
     const rows = [...never, ...recent];
     let cleared = 0;
     for (const r of rows) {
-      const out = empty();
-      await clearMessage(r.chatId, r.waMessageId, r, r.deletedAt, out, now);
-      if (out.analyzed + out.archived + out.hq + out.mentions > 0) cleared++;
-      await markEnforced(r.chatId, [r.waMessageId], now);
+      // Per row: one tombstone that cannot be cleared (it is retried next
+      // run, still unenforced) never stalls the ones behind it.
+      try {
+        const out = empty();
+        await clearMessage(r.chatId, r.waMessageId, r, r.deletedAt, out, now);
+        if (out.analyzed + out.archived + out.hq + out.mentions > 0) cleared++;
+        await markEnforced(r.chatId, [r.waMessageId], now);
+      } catch (err) {
+        console.error(`[message-change] sweep: ${r.chatId} ${r.waMessageId} not cleared this run:`, err instanceof Error ? err.message : "failed");
+      }
     }
     if (cleared > 0) console.log(`[message-change] sweep: ${cleared} of ${rows.length} deleted or edited message(s) had copies cleared`);
     return { checked: rows.length, cleared, pruned };

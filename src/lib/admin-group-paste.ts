@@ -63,7 +63,7 @@ import {
 import type { PersonPicker } from "./pipeline/who-is-who";
 
 export interface PasteReply {
-  outcome: "paste-proposed" | "paste-same" | "paste-held" | "paste-applied" | "paste-expired" | "paste-no-match" | "month-seed-applied" | "month-seed-failed";
+  outcome: "paste-proposed" | "paste-same" | "paste-held" | "paste-applied" | "paste-expired" | "paste-no-match" | "month-seed-applied" | "month-seed-failed" | "paste-source-changed";
   replyText: string;
 }
 
@@ -302,6 +302,31 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
  * list that member pasted (a member who is not an organiser confirms their
  * own list only, 2026-10-20).
  */
+/**
+ * A YES to a pasted list that was CANCELLED because its message was edited
+ * or deleted (`message-change.ts`, outcome "source-deleted"), within a day:
+ * said ONCE ("That list was changed, so I've dropped it..."), so the
+ * organiser is not left wondering why nothing happened. The claim on the
+ * row (outcome "source-deleted-told") makes two YES messages say it once.
+ * `proposedBy`: a member's own list only. Null when there is none.
+ */
+export async function changedListNotice(args: { orgId: string; lang: string | null | undefined; now: Date; proposedBy?: string }): Promise<PasteReply | null> {
+  const p = await db.adminSquadProposal.findFirst({
+    where: {
+      orgId: args.orgId,
+      outcome: "source-deleted",
+      resolvedAt: { gte: new Date(args.now.getTime() - EXPIRED_ANSWER_WINDOW_MS) },
+      ...(args.proposedBy ? { proposedByUserId: args.proposedBy } : {}),
+    },
+    orderBy: { resolvedAt: "desc" },
+    select: { id: true },
+  });
+  if (!p) return null;
+  const claimed = await db.adminSquadProposal.updateMany({ where: { id: p.id, outcome: "source-deleted" }, data: { outcome: "source-deleted-told" } });
+  if (claimed.count === 0) return null;
+  return { outcome: "paste-source-changed", replyText: t(args.lang).ag_paste_source_changed };
+}
+
 export async function answerSquadPasteYes(args: {
   orgId: string;
   lang: string | null | undefined;

@@ -21,18 +21,29 @@
  *   4. one post to `/api/whatsapp/message-change`; a failure is left to the
  *      outbox's retries with backoff, across restarts.
  *
- * AN EDIT (round 4):
+ * AN EDIT, ONE RULE (round 5), whatever order things arrive in, and never
+ * judging whether the message was "already analysed":
  *
- *   - by its author, of a message STILL WAITING in the batch (not sent for
- *     analysis yet): it REPLACES the original there. The new content is
- *     read exactly as an inbound message is (`readGroupMessageForServer`:
- *     body, mentions, mention names, the bot's tag), then analysed once,
- *     normally. The original words never leave the Pi, and nothing is
- *     recorded or posted for the edit. The original's own inbound handler
- *     is allowed to finish first (`waitForInbound`), so a fast edit never
- *     races its own message into the batch;
- *   - of a message already sent (or not seen at all): a PURGE through the
- *     delete path, recorded and posted with no words, old or new.
+ *   (a) it is ALWAYS recorded here and posted as an "edited" tombstone (no
+ *       words): the server purges every stored copy of the message's text,
+ *       including after any later write, and strips quotes of it;
+ *   (b) its new content (read exactly as an inbound message is,
+ *       `readGroupMessageForServer`: body, mentions, mention names, the
+ *       bot's tag) REPLACES any copy waiting in the batch, a requeued one
+ *       after a failed post included, so the message is analysed once, with
+ *       its edited words; an edit that adds the tag is flushed at once, as
+ *       a tagged message is;
+ *   (c) the content is kept IN MEMORY ONLY for 30 minutes, keyed by id, so
+ *       an original that arrives after its edit (a held picture, content
+ *       that failed to decrypt first) is queued with the edited content;
+ *   (d) a merged edit (Baileys folds it into the original after a
+ *       reconnect) is the same: the original carries it, the notice behind
+ *       it is (a) plus (b), and applying the same content twice changes
+ *       nothing;
+ *   (f) of two edits, the later by the edit's OWN time wins, never by
+ *       arrival or by when its reading finished.
+ *
+ * The outbox and the tombstone never hold a word of any message.
  *
  * WHO: a delete from a group admin (`byAdmin`, from the group's metadata)
  * or the message's own author; an edit from its author only. Anything else
@@ -129,12 +140,16 @@ export interface ReadEdit {
 }
 
 export interface MessageChangeDeps {
-  /** The original's own inbound handler, if it is still running, allowed to finish. Bounded. */
-  waitForInbound(groupId: string, messageId: string): Promise<void>;
   /** An edit's new content read exactly as an inbound message is. */
   readEdit(view: InboundMessage): Promise<ReadEdit | null>;
-  /** Put an author's edit in place of the original still waiting in the batch. False when none is waiting (or not the author's). */
-  replacePending(change: LocalMessageChange, read: ReadEdit): boolean;
+  /**
+   * Keep an author's edit (in memory, the latest by `editedAtMs`) and put it
+   * in place of any copy waiting in the batch. `tagAdded`: the edit tags
+   * MatchTime where the waiting copy did not.
+   */
+  replacePending(change: LocalMessageChange, read: ReadEdit, editedAtMs: number): { replaced: boolean; tagAdded: boolean };
+  /** The immediate flush a tagged message gets. */
+  flushNow(groupId: string): Promise<void>;
   applyLocally(change: LocalMessageChange): { buffered: number; history: number; quotes: number };
   /** Into the durable outbox; returns its key. */
   record(change: LocalMessageChange): string;
@@ -146,7 +161,7 @@ export interface MessageChangeDeps {
   error(line: string): void;
 }
 
-export type MessageChangeOutcome = "posted" | "queued" | "dm" | "replaced";
+export type MessageChangeOutcome = "posted" | "queued" | "dm";
 
 /** Never throws. */
 export async function handleMessageChange(change: MessageChangeEvent, deps: MessageChangeDeps): Promise<MessageChangeOutcome> {
@@ -166,22 +181,23 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     byAdmin: isDelete && change.byAdmin === true,
     ...(isDelete && change.adminUnknown ? { adminUnknown: true } : {}),
   };
-  // An author's edit of a message still waiting to be analysed: it replaces it there.
-  if (!isDelete && change.edited) {
-    try {
-      await deps.waitForInbound(change.chatId, change.messageId);
-      const read = await deps.readEdit(change.edited);
-      if (read && deps.replacePending(local, read)) {
-        deps.log(`${tag}: the message was still waiting; the edit replaced it there (analysed once, nothing posted)`);
-        return "replaced";
-      }
-    } catch (err) {
-      deps.error(`${tag}: could not be read as the waiting message (${err instanceof Error ? err.message : "failed"}); purged instead`);
-    }
-  }
   try {
+    // (a) recorded here and in the outbox first, whatever happens next.
     const counts = deps.applyLocally(local);
     const key = deps.record(local);
+    // (b)/(c) an author's edit: its content, in memory, in place of any waiting copy.
+    if (!isDelete && change.edited) {
+      try {
+        const read = await deps.readEdit(change.edited);
+        if (read) {
+          const r = deps.replacePending(local, read, change.editedAtMs ?? 0);
+          if (r.replaced) deps.log(`${tag}: a waiting copy now carries the edited content`);
+          if (r.tagAdded) await deps.flushNow(change.chatId);
+        }
+      } catch (err) {
+        deps.error(`${tag}: its new content could not be read (${err instanceof Error ? err.message : "failed"}); the original stays queued and is purged on the server`);
+      }
+    }
     const idle = await deps.whenFlushIdle(change.chatId);
     if (!idle) deps.log(`${tag}: an analysis of this group is still running; posting anyway`);
     let taken = false;

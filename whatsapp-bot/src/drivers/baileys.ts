@@ -198,7 +198,7 @@ import {
 import { createRetryCounterCache } from "../baileys/retry-cache.js";
 import { createReplayBuffer, type ReplayBuffer } from "../baileys/replay.js";
 import { mapInboundMessage, skipReason, toNumber } from "../baileys/inbound.js";
-import { isMergedEdit, readMessageChange } from "../baileys/message-change.js";
+import { readMessageChange } from "../baileys/message-change.js";
 import {
   JOIN_WATCH_MS,
   createJoinWatch,
@@ -860,13 +860,6 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
    * read here is. NULL when it cannot be read: the delete is then kept and
    * checked again on its retry, never taken as "not an admin" for good.
    */
-  /** Originals Baileys merged an edit into, by chat and id (bounded). */
-  const mergedEdits = new Set<string>();
-  function rememberMergedEdit(k: string): void {
-    mergedEdits.add(k);
-    if (mergedEdits.size > 500) mergedEdits.delete(mergedEdits.values().next().value as string);
-  }
-
   /** An edit's new content as the edited message itself (its id, its author, the new words), or null. In memory only. */
   function editedView(notice: WAMessage, targetId: string, content: proto.IMessage, upsertType: string, senderPhone: string | null): BaileysInboundView | null {
     const k = notice.key ?? {};
@@ -1271,18 +1264,12 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     // chat message, so an edit is not analysed again. Our own edits are not
     // a member's words; our own deletes may be (an admin on the bot's
     // phone), so they go up. The log line carries ids, never the text.
-    // An original Baileys merged its edit into (after a reconnect): handed
-    // up below as the message, in its edited form; the edit notice that
-    // follows it on this same chain is then not handed up as a change.
-    if (isMergedEdit(m) && key.remoteJid && key.id) rememberMergedEdit(`${key.remoteJid}|${key.id}`);
+    // An original Baileys merged its edit into (after a reconnect) is not a
+    // change: it is handed up below as the message, in its edited form, and
+    // the edit notice behind it is handed up as an edit, like any other.
     const change = readMessageChange(m);
     if (change) {
       const what = change.kind === "revoke" ? "a delete for everyone" : "an edit";
-      if (change.kind === "edit" && mergedEdits.has(`${change.chatJid}|${change.targetId}`)) {
-        log(`${line} ${what} of ${change.targetId} is already in the message (merged into it by Baileys), not handed up`);
-        tally(`${what} (merged)`);
-        return;
-      }
       if (change.kind === "edit" && key.fromMe) {
         log(`${line} ${what} of ${change.targetId} by MatchTime itself, not handed up`);
         tally(`${what} (ours)`);
@@ -1321,8 +1308,9 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         if (admin === null) event.adminUnknown = true;
         else event.byAdmin = admin;
       }
-      if (change.kind === "edit" && change.content) {
-        const view = editedView(m, change.targetId, change.content, upsertType, senderPhone);
+      if (change.kind === "edit") {
+        if (change.editedAtMs) event.editedAtMs = change.editedAtMs;
+        const view = change.content ? editedView(m, change.targetId, change.content, upsertType, senderPhone) : null;
         if (view) event.edited = view as InboundMessage;
       }
       log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} byAdmin=${event.byAdmin} handed up as a change`);

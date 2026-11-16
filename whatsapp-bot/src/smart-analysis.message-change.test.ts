@@ -37,7 +37,7 @@ vi.mock("./api.js", () => ({
 }));
 
 const sa = await import("./smart-analysis.js");
-const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, replacePendingWithEdit, restoreMessageChanges, adjustForServer, isDeletedLocally, isRevokedLocally, whenFlushIdle, _test_flushNow, _test_reset } = sa;
+const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, replacePendingWithEdit, restoreMessageChanges, adjustForServer, isDeletedLocally, isRevokedLocally, isChangedLocally, whenFlushIdle, _test_flushNow, _test_reset } = sa;
 
 const GROUP = "120363000000009300@g.us";
 const SAM = "447700900123";
@@ -191,12 +191,17 @@ describe("a quote of a deleted message: stripped only when the quoted message's 
   });
 });
 
-describe("an author's edit of a message STILL WAITING in the batch replaces it (round 4)", () => {
+describe("an author's edit, ONE RULE (round 5): always recorded; its content replaces any waiting copy, now or later", () => {
   const read = (text: string, extra: Record<string, unknown> = {}) => ({ text, botMentioned: false, ...extra });
+  /** As the orchestrator does: (a) the record, then (b)/(c) the content. */
+  const authorEdit = (id: string, text: string, at: number, extra: Record<string, unknown> = {}) => {
+    applyMessageChangeLocally(edit(id));
+    return replacePendingWithEdit(edit(id), read(text, extra), at);
+  };
 
-  it("'Inn' fixed to 'In': the batch and the recent chat carry 'In', read once; the original words never leave the Pi", async () => {
+  it("edit while waiting: 'Inn' fixed to 'In' is analysed once as 'In'; the recent chat says 'In'", async () => {
     await arrive(message("SAMMSG000020", "Inn"));
-    expect(replacePendingWithEdit(edit("SAMMSG000020"), read("In"))).toBe(true);
+    expect(authorEdit("SAMMSG000020", "In", 1000)).toEqual({ replaced: true, tagAdded: false });
     await _test_flushNow(GROUP);
     expect(postAnalyzeFull).toHaveBeenCalledTimes(1);
     expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
@@ -204,59 +209,111 @@ describe("an author's edit of a message STILL WAITING in the batch replaces it (
     expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("Inn");
   });
 
-  it("the mentions, names and tag are the edited content's", async () => {
-    await arrive(message("SAMMSG000021", "out"));
-    replacePendingWithEdit(edit("SAMMSG000021"), read("@Match Time out, ask @447700900456", { botMentioned: true, mentions: [BOT_WID, `${ALI}@c.us`], mentionNames: [{ jid: `${ALI}@c.us`, name: "Ali" }] }));
+  it("edit during a SUCCESSFUL flush: the original was analysed once (the server purges its text); a later copy (a catch-up) carries the edit", async () => {
+    await arrive(message("SAMMSG000021", "Inn"));
+    let answer!: (v: unknown) => void;
+    postAnalyzeFull.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    const running = _test_flushNow(GROUP);
+    await vi.waitFor(() => expect(postAnalyzeFull).toHaveBeenCalledTimes(1));
+    expect(authorEdit("SAMMSG000021", "In", 1000)).toEqual({ replaced: false, tagAdded: false });
+    answer({ results: [], nextKickoffMs: null });
+    await running;
+    // The reconnect catch-up re-queues the message it already analysed.
+    await arrive(message("SAMMSG000021", "Inn"));
     await _test_flushNow(GROUP);
-    expect(posted().messages[0]).toMatchObject({ body: "@Match Time out, ask @447700900456", botMentioned: true, mentions: [BOT_WID, `${ALI}@c.us`], mentionNames: [{ jid: `${ALI}@c.us`, name: "Ali" }] });
+    expect(posted(1).messages.map((m) => m.body)).toEqual(["In"]);
   });
 
-  it("a later copy of the original (a replay) carries the edited content too, and is never shown with the original words", async () => {
+  it("edit during a flush that FAILS: the requeued copy carries the edit, so the IN is analysed once, as 'In'", async () => {
     await arrive(message("SAMMSG000022", "Inn"));
-    replacePendingWithEdit(edit("SAMMSG000022"), read("In"));
-    await arrive(message("SAMMSG000022", "Inn")); // the replay
-    await _test_flushNow(GROUP);
-    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("Inn");
-  });
-
-  it("by anyone else, a group admin included: nothing replaced, nothing purged", async () => {
-    await arrive(message("SAMMSG000023", SECRET));
-    expect(replacePendingWithEdit(edit("SAMMSG000023", by(ALI)), read("I owe everyone £50"))).toBe(false);
-    expect(applyMessageChangeLocally(edit("SAMMSG000023", by(ADMIN, true)))).toEqual({ buffered: 0, history: 0, quotes: 0 });
-    await _test_flushNow(GROUP);
-    expect(posted().messages.map((m) => m.body)).toEqual([SECRET]);
-  });
-
-  it("nothing waiting (already sent): no replacement; the edit is then a purge of every later copy", async () => {
-    expect(replacePendingWithEdit(edit("SAMMSG000024"), read("In"))).toBe(false);
-    applyMessageChangeLocally(edit("SAMMSG000024"));
-    await arrive(message("SAMMSG000024", SECRET));
-    await _test_flushNow(GROUP);
-    expect(postAnalyzeFull).not.toHaveBeenCalled();
-  });
-
-  it("an edit during a flush that then fails is a purge: the requeued batch has lost it", async () => {
-    await arrive(message("SAMMSG000025", SECRET));
-    await arrive(message("ALIMSG000025", "see you at 8", ALI, "Ali"));
     let fail!: (e: Error) => void;
     postAnalyzeFull.mockImplementationOnce(() => new Promise((_r, rej) => (fail = rej)));
     const running = _test_flushNow(GROUP);
     await vi.waitFor(() => expect(postAnalyzeFull).toHaveBeenCalledTimes(1));
-    expect(replacePendingWithEdit(edit("SAMMSG000025"), read("new"))).toBe(false); // in flight, not waiting
-    applyMessageChangeLocally(edit("SAMMSG000025"));
+    authorEdit("SAMMSG000022", "In", 1000);
     fail(new Error("504"));
     await running;
     await _test_flushNow(GROUP);
-    expect(posted(1).messages.map((m) => m.body)).toEqual(["see you at 8"]);
+    expect(postAnalyzeFull).toHaveBeenCalledTimes(2);
+    expect(posted(1).messages.map((m) => m.body)).toEqual(["In"]);
+  });
+
+  it("edit BEFORE its original (content that failed to decrypt first, a held picture): the original is queued with the edited content", async () => {
+    expect(authorEdit("SAMMSG000023", "In", 1000)).toEqual({ replaced: false, tagAdded: false });
+    await arrive(message("SAMMSG000023", "Inn"));
+    const pic = message("SAMMSG000024", "Out tonight", SAM, "Sam") as unknown as Record<string, unknown>;
+    Object.assign(pic, { type: "image", hasMedia: true });
+    authorEdit("SAMMSG000024", "In tonight after all", 1000);
+    await arrive(pic as unknown as InboundMessage);
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual(["In", "In tonight after all"]);
+    expect(posted().history.map((h) => h.body)).toEqual(["In", "In tonight after all"]);
+  });
+
+  it("the edited content is kept 30 minutes in memory, then let go", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-11-15T18:00:00.000Z"));
+      authorEdit("SAMMSG000025", "In", 1000);
+      vi.setSystemTime(new Date("2026-11-15T18:31:00.000Z"));
+      await arrive(message("SAMMSG000025", "Inn"));
+    } finally {
+      vi.useRealTimers();
+    }
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual(["Inn"]);
+  });
+
+  it("two edits out of order: the later by the edit's own time wins, whatever order they arrive in", async () => {
+    await arrive(message("SAMMSG000026", "Inn"));
+    authorEdit("SAMMSG000026", "In", 2000);
+    expect(authorEdit("SAMMSG000026", "Out", 1000).replaced).toBe(false);
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
+  });
+
+  it("the same content twice (a merged edit, then its notice) changes nothing the second time; a NEW edit still does", async () => {
+    await arrive(message("SAMMSG000027", "In")); // the merged original already carries the edit
+    expect(authorEdit("SAMMSG000027", "In", 1000)).toEqual({ replaced: false, tagAdded: false });
+    expect(authorEdit("SAMMSG000027", "Out", 2000)).toEqual({ replaced: true, tagAdded: false });
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual(["Out"]);
+  });
+
+  it("an edit that ADDS the tag says so (the orchestrator flushes at once); the batch carries the edited tag", async () => {
+    await arrive(message("SAMMSG000028", "what time is kickoff?"));
+    expect(authorEdit("SAMMSG000028", "@Match Time what time is kickoff?", 1000, { botMentioned: true, mentions: [BOT_WID] })).toEqual({ replaced: true, tagAdded: true });
+    await _test_flushNow(GROUP);
+    expect(posted().messages[0]).toMatchObject({ body: "@Match Time what time is kickoff?", botMentioned: true, mentions: [BOT_WID] });
+  });
+
+  it("a quote of an edited message is stripped (its author made the change)", async () => {
+    await arrive(message("SAMMSG000029", SECRET));
+    await arrive(message("ALIMSG000029", "@Match Time right?", ALI, "Ali", { id: "SAMMSG000029", text: SECRET, participant: `${SAM}@c.us` }));
+    authorEdit("SAMMSG000029", "never mind", 1000);
+    await _test_flushNow(GROUP);
+    expect(posted().messages.find((m) => m.quotedMessageId)?.quotedBody).toBeUndefined();
+    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("4321");
+  });
+
+  it("an edit by anyone else, a group admin included: nothing replaced, no quote stripped", async () => {
+    await arrive(message("SAMMSG000030", SECRET));
+    await arrive(message("ALIMSG000030", "@Match Time right?", ALI, "Ali", { id: "SAMMSG000030", text: SECRET, participant: `${SAM}@c.us` }));
+    applyMessageChangeLocally(edit("SAMMSG000030", by(ALI)));
+    expect(replacePendingWithEdit(edit("SAMMSG000030", by(ALI)), read("I owe everyone £50"), 1000)).toEqual({ replaced: false, tagAdded: false });
+    expect(replacePendingWithEdit(edit("SAMMSG000030", by(ADMIN, true)), read("x"), 1000)).toEqual({ replaced: false, tagAdded: false });
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual([SECRET, "@Match Time right?"]);
+    expect(posted().messages[1].quotedBody).toBe(SECRET);
   });
 
   it("an edit, then a delete, or the other way round: gone either way", async () => {
-    applyMessageChangeLocally(del("SAMMSG000026"));
-    applyMessageChangeLocally(edit("SAMMSG000026"));
-    applyMessageChangeLocally(edit("SAMMSG000027"));
-    applyMessageChangeLocally(del("SAMMSG000027"));
-    await arrive(message("SAMMSG000026", SECRET));
-    await arrive(message("SAMMSG000027", SECRET));
+    applyMessageChangeLocally(del("SAMMSG000031"));
+    authorEdit("SAMMSG000031", "x", 1000);
+    authorEdit("SAMMSG000032", "x", 1000);
+    applyMessageChangeLocally(del("SAMMSG000032"));
+    await arrive(message("SAMMSG000031", SECRET));
+    await arrive(message("SAMMSG000032", SECRET));
     await _test_flushNow(GROUP);
     expect(postAnalyzeFull).not.toHaveBeenCalled();
   });
@@ -330,7 +387,8 @@ describe("an EDIT while the batch is being analysed keeps the tick", () => {
       answer({ results: [{ waMessageId: samId, handledBy: "engine", intent: "in", react: "✅", reply: null }], nextKickoffMs: null });
       await running;
       expect(react).toHaveBeenCalledTimes(1);
-      expect(isDeletedLocally(GROUP, samId, SAM)).toBe(true);
+      expect(isChangedLocally(GROUP, samId, SAM)).toBe(true);
+      expect(isDeletedLocally(GROUP, samId, SAM)).toBe(false);
       expect(isRevokedLocally(GROUP, samId, SAM)).toBe(false);
     } finally {
       react.mockRestore();
@@ -350,11 +408,15 @@ describe("an admin-group (HQ) forward is held to the record (adjustForServer)", 
     ...over,
   });
 
-  it("a deleted or author-edited message is not forwarded; another's edit changes nothing", () => {
+  it("a deleted message is not forwarded; an author-edited one goes with the edited content; another's edit changes nothing", () => {
     expect(adjustForServer(hq())).toEqual(hq());
     applyMessageChangeLocally(edit("SAMHQ0000001", by(ALI)));
+    replacePendingWithEdit(edit("SAMHQ0000001", by(ALI)), { text: "forged", botMentioned: false }, 1000);
     expect(adjustForServer(hq())).toEqual(hq());
     applyMessageChangeLocally(edit("SAMHQ0000001"));
+    replacePendingWithEdit(edit("SAMHQ0000001"), { text: "running late", botMentioned: false }, 1000);
+    expect(adjustForServer(hq())).toMatchObject({ text: "running late" });
+    applyMessageChangeLocally(del("SAMHQ0000001"));
     expect(adjustForServer(hq())).toBeNull();
   });
 

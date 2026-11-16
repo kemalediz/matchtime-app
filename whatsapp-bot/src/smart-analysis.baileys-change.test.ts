@@ -25,7 +25,7 @@ vi.mock("./api.js", () => ({
   ackInstruction: async () => {},
 }));
 
-const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, replacePendingWithEdit, readGroupMessageForServer, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
+const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, replacePendingWithEdit, readGroupMessageForServer, flushGroupNow, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
 const { handleMessageChange } = await import("./message-change.js");
 
 const GROUP = "120363000000007700@g.us";
@@ -66,28 +66,26 @@ async function wired() {
   await driver.start();
   sockets[sockets.length - 1].open();
   const outbox: unknown[] = [];
-  // As index.ts wires it, the inbound-running map included.
-  const running = new Map<string, Promise<void>>();
-  driver.onMessage(async (msg: InboundMessage) => {
+  // As index.ts wires it.
+  const delivered: InboundMessage[] = [];
+  /** What `recoverGroupMessages` does with a message the replay buffer still holds. */
+  const catchUp = async (msg: InboundMessage) => {
     const head = readInboundHeadline(msg);
-    let done!: () => void;
-    const key = `${head.from}|${resolveWaMessageId(msg).waMessageId.split("_")[2]}`;
-    running.set(key, new Promise<void>((r) => (done = r)));
-    try {
-      if (head.fromMe || !head.from.endsWith("@g.us")) return;
-      // The real handler awaits a contact lookup here; the edit must still wait for it.
-      await new Promise((r) => setTimeout(r, 20));
-      recordHistory(head.from, { authorName: head.notifyName ?? null, body: head.body, timestamp: new Date(head.timestampSec * 1000).toISOString() }, resolveWaMessageId(msg).waMessageId);
-      await enqueueForAnalysis(driver, msg);
-    } finally {
-      done();
-    }
+    recordHistory(head.from, { authorName: head.notifyName ?? null, body: head.body, timestamp: new Date(head.timestampSec * 1000).toISOString() }, resolveWaMessageId(msg).waMessageId);
+    await enqueueForAnalysis(driver, msg);
+  };
+  driver.onMessage(async (msg: InboundMessage) => {
+    delivered.push(msg);
+    const head = readInboundHeadline(msg);
+    if (head.fromMe || !head.from.endsWith("@g.us")) return;
+    // The real handler awaits a contact lookup here: an edit can land meanwhile.
+    await new Promise((r) => setTimeout(r, 20));
+    recordHistory(head.from, { authorName: head.notifyName ?? null, body: head.body, timestamp: new Date(head.timestampSec * 1000).toISOString() }, resolveWaMessageId(msg).waMessageId);
+    await enqueueForAnalysis(driver, msg);
   });
   driver.onMessageChange!(async (change) => {
     await handleMessageChange(change, {
-      waitForInbound: async (groupId, messageId) => {
-        await running.get(`${groupId}|${messageId}`);
-      },
+      flushNow: (groupId) => flushGroupNow(groupId),
       readEdit: async (view) => {
         const r = await readGroupMessageForServer(driver, view);
         return r ? { text: r.text, botMentioned: r.botMentioned, mentions: r.mentions, mentionNames: r.mentionNames } : null;
@@ -110,7 +108,7 @@ async function wired() {
     await new Promise((r) => setTimeout(r, 60));
     for (let i = 0; i < 10; i++) await tick();
   };
-  return { driver, upsert, outbox };
+  return { driver, upsert, outbox, delivered, catchUp };
 }
 
 function wa(id: string, message: Record<string, unknown>, from: { lid: string; pn: string } = { lid: SAM_LID, pn: SAM_PN }): WAMessage {
@@ -122,8 +120,8 @@ function wa(id: string, message: Record<string, unknown>, from: { lid: string; p
   } as WAMessage;
 }
 const revokeOf = (id: string) => ({ protocolMessage: { key: { id, remoteJid: GROUP, fromMe: true }, type: P.REVOKE } });
-const editOf = (id: string, edited: Record<string, unknown>) => ({
-  editedMessage: { message: { protocolMessage: { key: { id, remoteJid: GROUP, fromMe: true }, type: P.MESSAGE_EDIT, editedMessage: edited } } },
+const editOf = (id: string, edited: Record<string, unknown>, timestampMs = Date.now()) => ({
+  editedMessage: { message: { protocolMessage: { key: { id, remoteJid: GROUP, fromMe: true }, type: P.MESSAGE_EDIT, editedMessage: edited, timestampMs } } },
 });
 const posted = () => postAnalyzeFull.mock.calls[0][0] as { messages: Array<Record<string, unknown>>; history: Array<Record<string, unknown>> };
 
@@ -159,11 +157,12 @@ describe("the Baileys driver, the local record and the batch together", () => {
     expect(posted().messages.map((m) => m.body)).toEqual([SECRET]);
   });
 
-  it("'Inn' fixed to 'In' while it waits: the batch carries 'In' (with the NEW content's mentions), analysed once; nothing recorded or posted", async () => {
+  it("edit while waiting: 'Inn' fixed to 'In' is analysed once as 'In' (with the NEW content's mentions); the edit is recorded and posted", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00021", { conversation: "Inn" }));
     await t.upsert(wa("3EB0NOTICE000021", editOf("3EB0BAILEYS00021", { extendedTextMessage: { text: "In, ask @158055467598022", contextInfo: { mentionedJid: [ALI_LID] } } })));
-    expect(t.outbox).toEqual([]);
+    expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00021", byAdmin: false })]);
+    expect(JSON.stringify(t.outbox)).not.toMatch(/Inn|ask @/);
     await _test_flushNow(GROUP);
     expect(postAnalyzeFull).toHaveBeenCalledTimes(1);
     expect(posted().messages).toHaveLength(1);
@@ -171,33 +170,63 @@ describe("the Baileys driver, the local record and the batch together", () => {
     expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("Inn");
   });
 
-  it("an edit arriving in the SAME upsert as its original (no wait between): still a replacement, never a race that loses the IN", async () => {
+  it("the edit in the SAME upsert as its original (while the original is still being read): the IN is analysed once, as 'In'", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00023", { conversation: "Inn" }), wa("3EB0NOTICE000023", editOf("3EB0BAILEYS00023", { conversation: "In" })));
     await _test_flushNow(GROUP);
     expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
-    expect(t.outbox).toEqual([]);
+    expect(t.outbox).toHaveLength(1);
   });
 
-  it("after a reconnect Baileys merged the edit into the original: 'In' is analysed once, and no purge races it", async () => {
+  it("the edit BEFORE its original's content (it first failed to decrypt): the content, when it comes, is queued as 'In'", async () => {
     const t = await wired();
-    await t.upsert(wa("3EB0BAILEYS00024", { editedMessage: { message: { conversation: "In" } } }), wa("3EB0NOTICE000024", editOf("3EB0BAILEYS00024", { conversation: "In" })));
-    expect(t.outbox).toEqual([]);
+    const stub = {
+      key: { remoteJid: GROUP, fromMe: false, id: "3EB0BAILEYS00026", participant: SAM_LID, participantAlt: SAM_PN },
+      messageStubType: proto.WebMessageInfo.StubType.CIPHERTEXT,
+      messageStubParameters: ["No session found to decrypt message"],
+      messageTimestamp: Math.floor(Date.now() / 1000),
+      pushName: "Sam",
+    } as WAMessage;
+    await t.upsert(stub);
+    await t.upsert(wa("3EB0NOTICE000026", editOf("3EB0BAILEYS00026", { conversation: "In" })));
+    await t.upsert(wa("3EB0BAILEYS00026", { conversation: "Inn" }));
     await _test_flushNow(GROUP);
     expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
   });
 
-  it("an edit of a message ALREADY SENT for analysis is a purge: recorded with no words, and every later copy kept out", async () => {
+  it("a merged edit after a reconnect, then a SECOND edit: analysed once as the first, both recorded and posted; a later copy carries the second", async () => {
+    const t = await wired();
+    await t.upsert(wa("3EB0BAILEYS00024", { editedMessage: { message: { conversation: "In" } } }), wa("3EB0NOTICE000024", editOf("3EB0BAILEYS00024", { conversation: "In" }, 1000)));
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
+    postAnalyzeFull.mockClear();
+    await t.upsert(wa("3EB0NOTICE000025", editOf("3EB0BAILEYS00024", { conversation: "Out" }, 2000)));
+    expect(t.outbox).toHaveLength(2);
+    await t.catchUp(t.delivered[0]); // the reconnect catch-up re-queues it
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual(["Out"]);
+  });
+
+  it("the catch-up re-queues a message already analysed, then it is edited: the edit is posted (the server purges the stored original), and the copy carries the edit", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00025", { conversation: SECRET }));
     await _test_flushNow(GROUP);
     postAnalyzeFull.mockClear();
-    await t.upsert(wa("3EB0NOTICE000025", editOf("3EB0BAILEYS00025", { conversation: "my new words" })));
+    await t.catchUp(t.delivered[0]); // re-queued by the reconnect catch-up
+    await t.upsert(wa("3EB0NOTICE000027", editOf("3EB0BAILEYS00025", { conversation: "my new words" })));
     expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00025", byAdmin: false })]);
-    expect(JSON.stringify(t.outbox)).not.toMatch(/my new words|4321/);
-    await t.upsert(wa("3EB0BAILEYS00025", { conversation: SECRET })); // a replay of the original
     await _test_flushNow(GROUP);
-    expect(postAnalyzeFull).not.toHaveBeenCalled();
+    expect(posted().messages.map((m) => m.body)).toEqual(["my new words"]);
+    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("4321");
+  });
+
+  it("two edits out of order: the later by the edit's own time wins", async () => {
+    const t = await wired();
+    await t.upsert(wa("3EB0BAILEYS00028", { conversation: "Inn" }));
+    await t.upsert(wa("3EB0NOTICE000028", editOf("3EB0BAILEYS00028", { conversation: "In" }, 2000)));
+    await t.upsert(wa("3EB0NOTICE000029", editOf("3EB0BAILEYS00028", { conversation: "Out" }, 1000)));
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
   });
 
   it("an edit by somebody else is ignored", async () => {

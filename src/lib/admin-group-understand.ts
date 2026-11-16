@@ -130,7 +130,7 @@ import { quotedTeamSheet } from "./team-sheet-history";
 import { membersNamedIn } from "./pipeline/identity";
 import { teamCommandFromFacts } from "./team-proposal-rules";
 import { formNoteReplyFor } from "./form-note";
-import { answerSquadPasteYes, proposeSquadPaste, readHqSquad, type HqSquadRead } from "./admin-group-paste";
+import { answerSquadPasteYes, changedListNotice, proposeSquadPaste, readHqSquad, type HqSquadRead } from "./admin-group-paste";
 import { answerGraphicRequest } from "./admin-group-graphics";
 import { hqHelpGates, hqHelpMenu } from "./admin-group-help";
 import { NOT_HERE_ID_PREFIX, hqLogSince, listAskRef, recordMatchTimeLine, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
@@ -1060,6 +1060,12 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             const r = await answerTeamsYes(base(actor));
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
+        }
+        // A YES to a pasted list that was dropped because its message was
+        // edited or deleted (2026-11-15): said once, never silence.
+        if (pending.length === 0 && (actor || squadActor)) {
+          const changed = await changedListNotice({ orgId: org.id, lang, now, ...(actor ? {} : { proposedBy: squadActor as string }) });
+          if (changed) return said(changed.outcome, changed.replyText);
         }
         const decision = decideApproval({ pending, quoted, log, now });
         console.log(`[admin-group] ${messageId}: approval ${decision.kind}${"why" in decision ? ` (${decision.why})` : ""}`);

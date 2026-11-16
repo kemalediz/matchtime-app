@@ -76,9 +76,11 @@ import {
   restoreMessageChanges,
   replacePendingWithEdit,
   isRevokedLocally,
+  isChangedLocally,
+  flushGroupNow,
   whenFlushIdle,
 } from "./smart-analysis.js";
-import { bareOf, bodyForServer, handleMessageChange } from "./message-change.js";
+import { bodyForServer, handleMessageChange } from "./message-change.js";
 import { createMessageChangeOutbox, outboxPath } from "./message-change-outbox.js";
 import { jsonFileIO } from "./baileys/json-file.js";
 import { config } from "./config.js";
@@ -577,32 +579,11 @@ async function main() {
   messageChanges.start();
   console.log(`[message-change] outbox read back: ${messageChanges.pending()} change(s) waiting for the server`);
 
-  // Each inbound message's own handler, while it runs, by group and bare id:
-  // an author's edit waits for its original's handler to finish, so the
-  // original is in the batch before the edit looks for it there. The driver
-  // hands the original up before its edit, on one chain, so the original's
-  // entry is always here first (2026-11-15).
-  const inboundRunning = new Map<string, Promise<void>>();
-  const inboundKey = (groupId: string, bare: string) => `${groupId}|${bare}`;
+  // An edit never races its original here (2026-11-15, round 5): its
+  // content is kept by id (`replacePendingWithEdit`), so the original is
+  // queued with it whether it is enqueued before or after the edit.
   driver.onMessage(async (msg) => {
-    let finished!: () => void;
-    const running = new Promise<void>((r) => (finished = r));
-    const runningKey = (() => {
-      try {
-        const from = asString(safeRead(msg, "from")) ?? "";
-        const bare = bareOf(resolveWaMessageId(msg).waMessageId);
-        return from.endsWith("@g.us") && bare ? inboundKey(from, bare) : null;
-      } catch {
-        return null;
-      }
-    })();
-    if (runningKey) inboundRunning.set(runningKey, running);
-    try {
-      await handleInbound(msg);
-    } finally {
-      finished();
-      if (runningKey && inboundRunning.get(runningKey) === running) inboundRunning.delete(runningKey);
-    }
+    await handleInbound(msg);
   });
   async function handleInbound(msg: Parameters<Parameters<typeof driver.onMessage>[0]>[0]): Promise<void> {
     try {
@@ -869,16 +850,13 @@ async function main() {
   // reacted to here (message-change.ts).
   driver.onMessageChange?.(async (change) => {
     await handleMessageChange(change, {
-      waitForInbound: async (groupId, messageId) => {
-        const running = inboundRunning.get(inboundKey(groupId, messageId));
-        if (running) await Promise.race([running, new Promise<void>((r) => setTimeout(r, 30_000))]);
-      },
       // An edit's new content, read exactly as an inbound message is.
       readEdit: async (view) => {
         const r = await readGroupMessageForServer(driver, view);
         return r ? { text: r.text, botMentioned: r.botMentioned, mentions: r.mentions, mentionNames: r.mentionNames } : null;
       },
       replacePending: replacePendingWithEdit,
+      flushNow: (groupId) => flushGroupNow(groupId),
       applyLocally: applyMessageChangeLocally,
       record: (c) => messageChanges.record(c),
       attempt: (key) => messageChanges.attempt(key),
@@ -1009,7 +987,7 @@ async function main() {
     isDeleted: (groupId, m) => {
       const author = asString(safeRead(m, "author")) ?? "";
       const phone = author.endsWith("@c.us") ? author.replace("@c.us", "") : null;
-      return isDeletedLocally(groupId, resolveWaMessageId(m).waMessageId, phone);
+      return isChangedLocally(groupId, resolveWaMessageId(m).waMessageId, phone);
     },
   });
   // A club's own group never has shared history read, even on a re-add:

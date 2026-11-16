@@ -114,6 +114,7 @@ export function makeTable(rows: Row[], uniqueKeys: string[][] = []) {
       return { ...r };
     },
     updateMany: async (args: { where?: Record<string, unknown>; data: Record<string, unknown> }) => {
+      failures.beforeWrite?.();
       let count = 0;
       for (const r of rows) {
         if (!matches(r, args.where)) continue;

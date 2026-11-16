@@ -2593,6 +2593,7 @@ export const tr: Strings = {
   ag_paste_confirm: "Uygulamak için *@Match Time EVET* yazın.",
   ag_paste_same: "Bu liste kadroyla aynı, değişecek bir şey yok.",
   ag_paste_expired: "O liste 30 dakikadan eski, bu yüzden uygulamadım. Hâlâ geçerliyse yeniden yapıştırın.",
+  ag_paste_source_changed: "O liste değiştirildi, bu yüzden bıraktım. Yeniden yapıştırın, okuyayım.",
   ag_paste_no_game: (p) =>
     `Bu listeyi koyacağım yaklaşan bir maç henüz yok. MatchTime bir sonraki maçı her gece ekler (Londra saatiyle ${p.time}). Ondan sonra listeyi yeniden yapıştırın.`,
   ag_paste_no_weekly_game:

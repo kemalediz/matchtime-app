@@ -21,7 +21,10 @@
  * A MERGED EDIT: after a reconnect Baileys can merge an edit into the
  * original's own upsert (`Utils/event-buffer.js`), so the original arrives
  * as `editedMessage` holding the NEW content itself. That is not a change
- * but the message, in its edited form (`isMergedEdit`).
+ * but the message, in its edited form (`isMergedEdit`); the edit notice
+ * behind it is still handed up as an edit. KNOWN LIMIT: Baileys merges it
+ * with no author check, so a forged edit merged this way (a modified
+ * client; official clients do not send one) cannot be told apart.
  *
  * `mapInboundMessage` still returns null for both: neither is ever handed
  * up as a chat message, so an edit is never analysed. The driver reads this
@@ -30,6 +33,7 @@
  * Pure and total: a malformed notice is null, never a throw.
  */
 import { normalizeMessageContent, proto } from "baileys";
+import { toNumber } from "./inbound.js";
 import type { WAMessage } from "baileys";
 
 export interface ReadMessageChange {
@@ -38,6 +42,8 @@ export interface ReadMessageChange {
   targetId: string;
   /** An edit's new content. In memory only; never logged. */
   content?: proto.IMessage;
+  /** An edit's own time, ms: the protocol message's `timestampMs`, else the notice's. */
+  editedAtMs?: number;
 }
 
 /** PURE. An original Baileys merged its edit into: `editedMessage` around the new content, not around an edit notice. */
@@ -62,7 +68,8 @@ export function readMessageChange(msg: WAMessage): ReadMessageChange | null {
     const type = protocol.type ?? proto.Message.ProtocolMessage.Type.REVOKE;
     if (type === proto.Message.ProtocolMessage.Type.REVOKE) return { kind: "revoke", chatJid, targetId };
     if (type === proto.Message.ProtocolMessage.Type.MESSAGE_EDIT) {
-      return { kind: "edit", chatJid, targetId, ...(protocol.editedMessage ? { content: protocol.editedMessage } : {}) };
+      const editedAtMs = toNumber(protocol.timestampMs) || toNumber(msg.messageTimestamp) * 1000;
+      return { kind: "edit", chatJid, targetId, editedAtMs, ...(protocol.editedMessage ? { content: protocol.editedMessage } : {}) };
     }
     return null;
   } catch {

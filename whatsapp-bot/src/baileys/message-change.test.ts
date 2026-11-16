@@ -64,6 +64,10 @@ describe("readMessageChange: an edit", () => {
     expect(readMessageChange(wa(edit({ stickerMessage: { mimetype: "image/webp" } })))).toMatchObject({ kind: "edit", targetId: TARGET });
   });
 
+  it("carries the edit's OWN time (the protocol message's timestampMs), so the later edit wins", () => {
+    expect(readMessageChange(wa(edit({ conversation: "x" })))?.editedAtMs).toBe(1763200001000);
+  });
+
   it("an ORIGINAL that Baileys merged its edit into (`editedMessage` holding the new content itself) is a message, not a change", () => {
     expect(readMessageChange(wa({ editedMessage: { message: { conversation: "In" } } }))).toBeNull();
   });

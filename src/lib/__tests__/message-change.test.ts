@@ -396,6 +396,66 @@ describe("the other stores a message's words reach", () => {
   });
 });
 
+describe("round 5: the guards on proposals and DMs, the LID map for quotes, a sweep that never stalls", () => {
+  const HQ_ID = `false_${HQ}_${ID}_${SAM_PN}@c.us`;
+  const openProposals = () => {
+    T.adminSquadProposal.push(
+      row({ orgId: "org-a", matchId: "m1", waMessageId: HQ_ID, proposedByUserId: "u-sam", playingUserIds: ["u1"], playingNewNames: ["Door Code Dave"], reserveUserIds: [], reserveNewNames: [], monthSeed: null, resolvedAt: null, outcome: null, createdAt: ago(5), expiresAt: ago(-60) }),
+    );
+    T.adminFeeProposal.push(row({ orgId: "org-a", matchId: "m1", waMessageId: HQ_ID, proposedByUserId: "u-sam", userIds: ["u1"], text: "£10 each", resolvedAt: null, createdAt: ago(5), expiresAt: ago(-60) }));
+    T.botJob.push(row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "Your month draft: Dave, Sid", aboutKey: `month-seed-of:${HQ_ID}`, sentAt: null, createdAt: ago(5) }));
+  };
+
+  it("a FORGED delete or edit (neither the author nor an admin) leaves someone else's proposals open and their DMs queued, and counts them refused", async () => {
+    openProposals();
+    const forgedDelete = await applyMessageChange({ ...byAuthor, ...ALI, chatId: HQ }, NOW);
+    const forgedEdit = await applyMessageChange({ ...editBy(ALI), chatId: HQ }, NOW);
+    expect(T.adminSquadProposal[0]).toMatchObject({ resolvedAt: null, playingNewNames: ["Door Code Dave"] });
+    expect(T.adminFeeProposal[0]).toMatchObject({ resolvedAt: null, text: "£10 each" });
+    expect(T.botJob).toHaveLength(1);
+    expect(forgedDelete.refused).toBe(3);
+    expect(forgedEdit.refused).toBe(3);
+  });
+
+  it("the author's edit cancels them, and the month-seed draft DM made from the message is cancelled too", async () => {
+    openProposals();
+    await applyMessageChange({ ...editBy(SAM), chatId: HQ }, NOW);
+    expect(T.adminSquadProposal[0]).toMatchObject({ resolvedAt: NOW, outcome: "source-deleted", playingNewNames: [] });
+    expect(T.adminFeeProposal[0]).toMatchObject({ resolvedAt: NOW, outcome: "source-deleted", text: "" });
+    expect(T.botJob).toEqual([]);
+  });
+
+  it("withoutDeletedQuotes widens the deleter through the club's LID map, as the clear does", async () => {
+    T.clubConnect.push(row({ orgId: "org-a", userId: "u-sam", dmLid: null, participants: [{ phone: `+${SAM_PN}`, lidId: SAM_LID, pushname: "Sam" }] }));
+    await applyMessageChange({ ...byAuthor, senderJids: [`${SAM_LID}@lid`], senderPhone: null }, NOW);
+    const [out] = await withoutDeletedQuotes(G, [{ quotedMessageId: ID, quotedAuthorPhone: SAM_PN, quotedBody: "w" }], "quotedBody");
+    expect(out.quotedBody).toBeUndefined();
+  });
+
+  it("an EDITED tombstone strips quotes of the message too (the author's)", async () => {
+    await applyMessageChange(editBy(SAM), NOW);
+    const [out] = await withoutDeletedQuotes(G, [{ quotedMessageId: ID, quotedAuthorJid: `${SAM_PN}@c.us`, quotedBody: "w" }], "quotedBody");
+    expect(out.quotedBody).toBeUndefined();
+  });
+
+  it("the sweep catches per row: one tombstone whose clear fails does not stop the rest", async () => {
+    T.deletedMessage.push(
+      row({ chatId: G, waMessageId: "BROKEN000001", byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: ago(20 * 60), enforcedAt: null }),
+      row({ chatId: G, waMessageId: ID, byAdmin: false, reason: "deleted", senderJids: [`${SAM_PN}@c.us`], senderPhones: [SAM_PN], deletedAt: ago(19 * 60), enforcedAt: null }),
+    );
+    seed(ago(18 * 60));
+    T.analyzedMessage.push(row({ waMessageId: `false_${G}_BROKEN000001_${SAM_PN}@c.us`, orgId: "org-a", groupId: G, authorPhone: SAM_PN, body: "x", handledBy: "none", createdAt: ago(18 * 60) }));
+    // Write 1 is the prune; write 2 is the first row's clear, which fails.
+    let writes = 0;
+    failures.beforeWrite = () => {
+      if (++writes === 2) throw new Error("one bad row");
+    };
+    const r = await sweepRecentTombstones(NOW);
+    expect(r.checked).toBe(2);
+    expect(analyzed().body).toBeNull();
+  });
+});
+
 describe("a quote whose author the Pi did not name", () => {
   it("is tied to its author through the stored copy: the author's delete strips it, a forged one does not", async () => {
     seed();

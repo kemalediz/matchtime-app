@@ -100,6 +100,8 @@ export interface MessageChangeEvent {
    * logged, stored on disk or posted as a change.
    */
   edited?: InboundMessage;
+  /** An edit's OWN time (the protocol message's `timestampMs`, else the notice's): the later edit wins. */
+  editedAtMs?: number;
   fromMe: boolean;
 }
 
