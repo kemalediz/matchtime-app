@@ -959,7 +959,7 @@ describe("a swap the teams extractor read is applied from its facts, never by th
 
   it("the two teams swap over: applied, ✅, the sheet is the reply and is not recomposed", async () => {
     const { model } = stubModel({ [SIDES]: teamsFacts({ action: "swap", swapSides: true, moves: [] }) });
-    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "🎨 Swapped.\n\n*Red*:\n1. A", logReason: "flipped" }));
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "🎨 Swapped.\n\n*Red*:\n1. A", sheet: true, logReason: "flipped" }));
     const r = recorder(model, squadWorld(), { applySwap });
     const res = await run({ messages: [msg({ body: SIDES })], deps: r.deps });
     expect(applySwap).toHaveBeenCalledTimes(1);
@@ -971,12 +971,24 @@ describe("a swap the teams extractor read is applied from its facts, never by th
 
   it("two players: applied as a team swap", async () => {
     const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }) });
-    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "slot moved" }));
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", sheet: true, logReason: "slot moved" }));
     const r = recorder(model, squadWorld(), { applySwap });
     const res = await run({ messages: [msg({ body: TWO })], deps: r.deps });
     const out = [...res.outcomes.values()][0];
-    expect(out).toMatchObject({ reply: "done", react: "✅", intent: "team_swap", action: "team-swap" });
+    expect(out).toMatchObject({ reply: "done", react: "✅", intent: "team_swap", action: "team-swap", teamSheetPost: true });
     expect(r.generated).toEqual([]);
+  });
+
+  // Review of #604, round 3 (2026-11-16): a swap deferred because no teams
+  // exist is applied (✅) but says only the deferral line, with no sheet.
+  // It must not be counted as a team sheet.
+  it("a swap DEFERRED (no teams yet): applied, ✅, but not a team sheet", async () => {
+    const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }) });
+    const deferral = "👍 Noted: *Elvin* and *Raihan* go on different teams. Teams aren't generated yet, so I'll keep it in mind when they are.";
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: deferral, sheet: false, logReason: "team-swap deferred (no teams yet)" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: TWO })], deps: r.deps });
+    expect([...res.outcomes.values()][0]).toMatchObject({ reply: deferral, react: "✅", intent: "team_swap", teamSheetPost: false });
   });
 
   it("a refusal is said with its reason, no ✅, and is not a team post", async () => {
@@ -1013,7 +1025,7 @@ describe("a swap the teams extractor read is applied from its facts, never by th
       [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }),
       [GEN]: teamsFacts(),
     });
-    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "x" }));
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", sheet: true, logReason: "x" }));
     const r = recorder(model, squadWorld(), { applySwap });
     const res = await run({ messages: [msg({ body: GEN }), msg({ body: TWO })], deps: r.deps });
     expect(r.generated).toHaveLength(1);
@@ -1023,7 +1035,7 @@ describe("a swap the teams extractor read is applied from its facts, never by th
 
   it("a WhatsApp reply to MatchTime's own post addresses it (the quoted id, a fact): the swap is made", async () => {
     const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }) });
-    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "x" }));
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", sheet: true, logReason: "x" }));
     const r = recorder(model, squadWorld(), { applySwap });
     const res = await run({ messages: [msg({ body: TWO, tagged: true, taggedExplicitly: false, repliesToMatchTime: true })], deps: r.deps });
     expect(applySwap).toHaveBeenCalledTimes(1);
@@ -1061,7 +1073,7 @@ describe("a message the attendance engine owns that also asks for a team change"
 
   it("the swap is made and reported apart, never owned here (one owner, one reply)", async () => {
     const { model } = stubModel({ [BODY]: teamsFacts({ action: "swap", moves: ["Elvin", "Idris"] }) });
-    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "swapped", logReason: "x" }));
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "swapped", sheet: true, logReason: "x" }));
     const r = recorder(model, squadWorld(), { applySwap });
     const res = await runTeamOpsBatch({
       orgId: "org-1",
@@ -1164,7 +1176,7 @@ describe("who-is-who in a team batch", () => {
   it("a generate and a swap in one window ask who-is-who ONCE", async () => {
     const { model } = stubModel({ [GEN2]: teamsFacts({ includeRefs: ["Elvin"] }), [SWAP2]: teamsFacts({ action: "swap", moves: ["Elvin", "Gus"] }) });
     const p = spyPicker();
-    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "x" }));
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", sheet: true, logReason: "x" }));
     const r = recorder(model, withGuest(), { applySwap, identify: p.fn });
     await run({ messages: [msg({ waMessageId: "wa-gen", body: GEN2 }), msg({ waMessageId: "wa-swap", body: SWAP2 })], deps: r.deps });
     expect(p.calls).toHaveLength(1);
@@ -1175,7 +1187,7 @@ describe("who-is-who in a team batch", () => {
   it("a guest on the team sheet who is no club member is shown, and can be swapped", async () => {
     const { model } = stubModel({ [SWAP2]: teamsFacts({ action: "swap", moves: ["Elvin", "Gus"] }) });
     const p = spyPicker();
-    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "x" }));
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", sheet: true, logReason: "x" }));
     const r = recorder(model, withGuest(), { applySwap, identify: p.fn });
     await run({ messages: [msg({ waMessageId: "wa-swap", body: SWAP2 })], deps: r.deps });
     expect(p.calls[0].roster.find((m) => m.userId === "u-gus")).toMatchObject({ name: "Gus Guest" });
@@ -1342,5 +1354,36 @@ describe("a form note's amount, stored and said", () => {
     expect([...res.outcomes.values()][0].reply).toBe(
       'Not aldım: Salı maçında Sait Demir için -0,5 (yorgun). Takımlar zaten kuruldu; yeniden kurulursa geçerli olur. Farklı bir miktar mı istersiniz? Beni etiketleyip yazın, örneğin "-1 yap".',
     );
+  });
+});
+
+// ── 11. WHICH TEAM SHEET IS THE BATCH'S LAST (review of #604, round 3) ──
+//
+// Two team writes in one batch each render a sheet, the first already stale
+// when the second lands. `sheetSeq` says the order they were rendered in, so
+// the route sends only the last.
+describe("the order team sheets are rendered in", () => {
+  it("the teams made, then a swap in the same batch: the swap's sheet is rendered last", async () => {
+    const GEN = "@Match Time generate the teams";
+    const SIDES = "@Match Time swap the colours";
+    const { model } = stubModel({ [GEN]: teamsFacts(), [SIDES]: teamsFacts({ action: "swap", swapSides: true, moves: [] }) });
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "🎨 Swapped.\n\n*Red*:\n1. A", sheet: true, logReason: "flipped" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: GEN, waMessageId: "wa-gen" }), msg({ body: SIDES, waMessageId: "wa-swap" })], deps: r.deps });
+    const gen = res.outcomes.get("wa-gen")!;
+    const swap = res.outcomes.get("wa-swap")!;
+    expect(gen.teamsGenerated).toBe(true);
+    expect(swap.teamSheetPost).toBe(true);
+    expect(typeof gen.sheetSeq).toBe("number");
+    expect(swap.sheetSeq!).toBeGreaterThan(gen.sheetSeq!);
+  });
+
+  it("no sheet rendered: no order", async () => {
+    const TWO = "@Match Time swap Elvin with Raihan";
+    const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }) });
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "deferred", sheet: false, logReason: "deferred" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: TWO })], deps: r.deps });
+    expect([...res.outcomes.values()][0].sheetSeq).toBeUndefined();
   });
 });

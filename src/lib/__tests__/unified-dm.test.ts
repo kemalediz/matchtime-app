@@ -26,6 +26,8 @@ const h = vi.hoisted(() => ({
   loadRatingProgressSnapshot: vi.fn(async () => ({ ok: true, matchName: "Tuesday", matchWhen: "3 Nov", confirmed: 4, ratedCount: 2, momCount: 1, notRated: ["Cosmo Dale"], ratedNoMom: [] })),
   state: null as unknown,
   ratings: null as null | Array<{ userId: string; name: string; avg: number; games: number; rank: number; delta: number }>,
+  chemistry: vi.fn(async (_o: string, userId: string) => ({ userId, name: "Alfie Brook", bestByWinRate: null, bestByRating: null, nemesis: null }) as unknown),
+  guests: new Set<string>(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -63,11 +65,15 @@ vi.mock("@/lib/pipeline/load-stats", () => ({
     appearances: [],
     recordsStart: { matches: null, mom: null },
   }),
-  loadStatsChemistry: async (_o: string, userId: string) => ({ userId, name: "Alfie Brook", bestByWinRate: null, bestByRating: null, nemesis: null }),
+  loadStatsChemistry: h.chemistry,
   loadStatsPeriod: async () => ({ appearances: [], ratings: [], mom: [] }),
 }));
 vi.mock("@/lib/pipeline/load-results", () => ({ loadRecentResults: async () => ({ since: null, more: false, rows: [] }) }));
 vi.mock("@/lib/help-club-facts", () => ({ loadHelpClubFacts: h.loadHelpClubFacts }));
+vi.mock("@/lib/ranked-table-activity", async (orig) => ({
+  ...(await orig<typeof import("@/lib/ranked-table-activity")>()),
+  loadGuestUserIds: async () => h.guests,
+}));
 vi.mock("@/lib/my-payments", () => ({ loadMyPayments: async () => null }));
 vi.mock("@/lib/org-features", () => ({ getOrgFeatures: async () => ({ squadMode: "weekly" }) }));
 vi.mock("@/lib/player-stats", () => ({
@@ -133,6 +139,8 @@ const ask = (over: Partial<Parameters<typeof answerScopedQuestion>[0]> = {}) =>
 beforeEach(() => {
   h.state = squad();
   h.ratings = null;
+  h.guests = new Set();
+  h.chemistry.mockClear();
   h.loadHelpClubFacts.mockClear();
   h.loadRatingProgressSnapshot.mockClear();
   process.env.ANTHROPIC_API_KEY = "sk-test";
@@ -284,5 +292,58 @@ describe("admin gating", () => {
   it("never anyone else's payments", async () => {
     const text = await context(true);
     expect(text).toMatch(/PAYMENTS: only the asker's own payments are known here/);
+  });
+});
+
+// Review of #604, round 3 (2026-11-16): with no subject block the asker's
+// pairings were gone ("best team-mate by rating", and the numbers behind the
+// best partner and the nemesis). They are read again, for the asker only,
+// and go in THE ASKER'S OWN STATS. Still no subject block.
+describe("the asker's own pairings", () => {
+  const context = async (question: string) => {
+    process.env.MT_TEST_DM_QA_STUB = "1";
+    return (await ask({ question }))!.answer;
+  };
+  const ownBlock = (text: string) => text.slice(text.indexOf("THE ASKER'S OWN STATS:")).split("\n\n")[0];
+
+  it("'who do I play best with?': the asker's own chemistry, read for them alone, in their own block", async () => {
+    h.chemistry.mockImplementationOnce(async (_o: string, userId: string) => ({
+      userId,
+      name: "Alfie Brook",
+      bestByWinRate: { name: "Bruno Carr", gamesTogether: 6, wins: 5, winRate: 5 / 6 },
+      bestByRating: { name: "Cosmo Dale", myAvgWith: 7.1, sameAsWinRate: false },
+      nemesis: { name: "Dario Ewing", gamesAgainst: 4, wins: 1 },
+    }));
+    const text = await context("who do I play best with?");
+    expect(h.chemistry).toHaveBeenCalledWith("org-1", "u-alfie");
+    const block = ownBlock(text);
+    expect(block).toContain("- Their best team-mate by win rate: Bruno Carr, 5 wins in 6 matches together (83%)");
+    expect(block).toContain("- Their best team-mate by rating: Cosmo Dale, 7.1 average alongside them");
+    expect(block).toContain("- Their nemesis: Dario Ewing, they won 1 of 4 against them");
+    expect(text).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
+  });
+
+  it("no pairings yet: nothing invented", async () => {
+    const block = ownBlock(await context("who do I play best with?"));
+    expect(block).not.toMatch(/best team-mate|nemesis/i);
+  });
+});
+
+// Review round 3: the ratings table also leaves out a club's guests
+// (partner clubs, the player pool). A guest asking is told why, not "the rule".
+describe("the asker's club rating when they play as a guest", () => {
+  it("a guest: not ranked because they play for the club as a guest", async () => {
+    process.env.MT_TEST_DM_QA_STUB = "1";
+    h.guests = new Set(["u-alfie"]);
+    h.ratings = [{ userId: "u-bruno", name: "Bruno Carr", avg: 7.6, games: 6, rank: 1, delta: 0 }];
+    const text = (await ask({ question: "what's my rank?" }))!.answer;
+    expect(text).toContain("- Club rating (their row in the club ratings table): not ranked, because they play for this club as a guest, and guests are not in the club ratings table");
+  });
+
+  it("a member left out: the table's own rule, as before", async () => {
+    process.env.MT_TEST_DM_QA_STUB = "1";
+    h.ratings = [{ userId: "u-bruno", name: "Bruno Carr", avg: 7.6, games: 6, rank: 1, delta: 0 }];
+    const text = (await ask({ question: "what's my rank?" }))!.answer;
+    expect(text).toContain("not in the current table, which ranks players with 3 or more rated matches who have played in the last three months");
   });
 });

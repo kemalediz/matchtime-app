@@ -62,7 +62,10 @@ export function playersSwapShape(facts: PlayersSwapFacts): PlayersSwapShape {
 }
 
 export type PlayersSwapResult =
-  | { kind: "applied"; reply: string; logReason: string }
+  /** `sheet`: the reply renders the team sheet (a colour swap, a team swap,
+   *  a slot transfer). False for a swap deferred because no teams exist,
+   *  whose reply is the deferral line alone (review of #604, 2026-11-16). */
+  | { kind: "applied"; reply: string; sheet: boolean; logReason: string }
   | { kind: "refused"; reply: string; logReason: string }
   | { kind: "unsupported"; logReason: string };
 
@@ -144,7 +147,7 @@ export async function applyPlayersGroupSwap(args: {
         db.teamAssignment.update({ where: { id: t.id }, data: { team: t.team === "RED" ? "YELLOW" : "RED" } }),
       ),
     );
-    return { kind: "applied", reply: buildColourSwapReply({ sheet: await sheet(), lang }), logReason: "the teams swapped over (every slot flipped, same players)" };
+    return { kind: "applied", reply: buildColourSwapReply({ sheet: await sheet(), lang }), sheet: true, logReason: "the teams swapped over (every slot flipped, same players)" };
   }
 
   const m = match!;
@@ -177,6 +180,7 @@ export async function applyPlayersGroupSwap(args: {
     return {
       kind: "applied",
       reply: buildSwapDeferredReply({ a: decision.a.name, b: decision.b.name, lang }),
+      sheet: false,
       logReason: `team-swap deferred (no teams yet): ${decision.a.name} <-> ${decision.b.name}`,
     };
   }
@@ -196,6 +200,7 @@ export async function applyPlayersGroupSwap(args: {
     return {
       kind: "applied",
       reply: buildTeamSwapReply({ a: decision.a.name, b: decision.b.name, sheet: await sheet(), lang }),
+      sheet: true,
       logReason: `team-swap applied: ${decision.a.name} <-> ${decision.b.name}`,
     };
   }
@@ -219,6 +224,7 @@ export async function applyPlayersGroupSwap(args: {
       sheet: await sheet(),
       lang,
     }),
+    sheet: true,
     logReason: `team-slot-transfer applied: ${decision.from.name} (${decision.from.status}) -> ${decision.to.name} on ${decision.team}`,
   };
 }

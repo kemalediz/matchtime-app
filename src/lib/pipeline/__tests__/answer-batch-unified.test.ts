@@ -491,4 +491,21 @@ describe("isSelfRefAmong (engine.ts): a self word, unless it is a member's name"
   it("'bana' with no Bana in the club is the sender", () => {
     expect(isSelfRefAmong("bana", [{ name: "Ben Hale" }])).toBe(true);
   });
+
+  // Review round 3: the Turkish lowercase alone turns a plain capital I into
+  // a dotless one, so "BENI" never met a member "Beni". Folded both ways.
+  it.each([
+    ["BENI", "Beni Aslan"],
+    ["BENİ", "Beni Aslan"],
+    ["beni", "Beni Aslan"],
+    ["KENDIM", "Kendim Yurt"],
+    ["Kendim", "KENDİM YURT"],
+  ])("'%s' beside a member called %s is that member, not the sender", (ref, name) => {
+    expect(isSelfRefAmong(ref, [{ name }])).toBe(false);
+  });
+
+  it("'BENI' and 'KENDIM' with no such member are the sender", () => {
+    expect(isSelfRefAmong("BENI", [{ name: "Ben Hale" }])).toBe(true);
+    expect(isSelfRefAmong("KENDIM", [{ name: "Ben Hale" }])).toBe(true);
+  });
 });

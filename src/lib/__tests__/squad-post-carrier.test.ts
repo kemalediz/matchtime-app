@@ -23,16 +23,20 @@
  * also carry "No teams generated yet", "I'll build the teams on match day"
  * and "Can't build teams right now", which hold no sheet. And a sheet
  * rendered before a team write in the same batch ("show the teams" beside a
- * swap) is stale: only the written one goes out (`staleReadSheetIds`).
+ * swap) is stale: only the written one goes out. And of two team writes in
+ * one batch (regenerate + swap, replacement + swap), only the LAST write's
+ * sheet shows the batch's final teams (`staleSheetIds`, review round 3).
  *
  * The results of one batch, in the route's order. Pure. Made-up ids.
  */
 import { describe, expect, it } from "vitest";
-import { composesSquadPost, squadPostCarrierId, staleReadSheetIds, withoutRepeatedTeamSheet, type CarrierResult, type SheetKind } from "../squad-post-carrier";
+import { composesSquadPost, squadPostCarrierId, staleSheetIds, withoutRepeatedTeamSheet, type CarrierResult, type Sheet } from "../squad-post-carrier";
 
 const IN: CarrierResult = { waMessageId: "wa-in", handledBy: "llm", intent: "in", reply: null };
 const ask = (intent: string, handledBy = "llm"): CarrierResult => ({ waMessageId: "wa-q", handledBy, intent, reply: "an answer" });
-const carrier = (results: CarrierResult[], opts: { late?: string[]; teamPosts?: string[]; sheets?: Record<string, SheetKind> } = {}) =>
+const READ: Sheet = { kind: "read" };
+const write = (seq: number): Sheet => ({ kind: "write", seq });
+const carrier = (results: CarrierResult[], opts: { late?: string[]; teamPosts?: string[]; sheets?: Record<string, Sheet> } = {}) =>
   squadPostCarrierId(results, {
     squadPostId: "wa-in",
     late: new Set(opts.late ?? []),
@@ -78,15 +82,15 @@ describe("a batch that really sends a team sheet: NOBODY carries the squad post 
     ["the teams shown", "show_teams_request", "read"],
     ["a swap's or a replacement's sheet", "team_swap", "write"],
   ] as const)("%s beside the IN: no carrier, so the sheet is not sent twice", (_what, intent, kind) => {
-    expect(carrier([IN, ask(intent)], { sheets: { "wa-q": kind } })).toBeNull();
+    expect(carrier([IN, ask(intent)], { sheets: { "wa-q": kind === "read" ? READ : write(0) } })).toBeNull();
   });
 
   it("the team half of an attendance message, appended after the composition: no carrier", () => {
-    expect(carrier([IN, ask("count")], { sheets: { "wa-in": "write" } })).toBeNull();
+    expect(carrier([IN, ask("count")], { sheets: { "wa-in": write(0) } })).toBeNull();
   });
 
   it("the sheet first and a composable reply last: still no carrier", () => {
-    expect(carrier([ask("show_teams_request"), IN, { waMessageId: "wa-out", handledBy: "llm", intent: "out", reply: "Pat, you're out." }], { sheets: { "wa-q": "read" } })).toBeNull();
+    expect(carrier([ask("show_teams_request"), IN, { waMessageId: "wa-out", handledBy: "llm", intent: "out", reply: "Pat, you're out." }], { sheets: { "wa-q": READ } })).toBeNull();
   });
 });
 
@@ -100,14 +104,28 @@ describe("a team intent whose reply holds NO sheet does not stop the squad post 
   });
 });
 
-describe("staleReadSheetIds: a sheet shown before a team write in the same batch is stale", () => {
+describe("staleSheetIds: only the sheet that shows the batch's final teams goes out", () => {
+  const ids = (m: Array<[string, Sheet]>) => staleSheetIds(new Map(m)).sort();
+
   it("'show the teams' beside a swap: the shown sheet goes, the swap's stays", () => {
-    expect(staleReadSheetIds(new Map<string, SheetKind>([["wa-show", "read"], ["wa-swap", "write"]]))).toEqual(["wa-show"]);
+    expect(ids([["wa-show", READ], ["wa-swap", write(0)]])).toEqual(["wa-show"]);
   });
 
-  it("a shown sheet alone, or written sheets alone: nothing is stale", () => {
-    expect(staleReadSheetIds(new Map<string, SheetKind>([["wa-show", "read"]]))).toEqual([]);
-    expect(staleReadSheetIds(new Map<string, SheetKind>([["wa-gen", "write"]]))).toEqual([]);
+  it("regenerate + swap: the regenerated sheet is stale, the swap's (rendered last) stays", () => {
+    expect(ids([["wa-gen", write(0)], ["wa-swap", write(1)]])).toEqual(["wa-gen"]);
+  });
+
+  it("replacement + swap: the replacement's sheet (rendered first) is stale", () => {
+    expect(ids([["wa-repl", write(-1)], ["wa-swap", write(0)]])).toEqual(["wa-repl"]);
+  });
+
+  it("order is the render order, not the batch order", () => {
+    expect(ids([["wa-swap", write(1)], ["wa-gen", write(0)], ["wa-show", READ]])).toEqual(["wa-gen", "wa-show"]);
+  });
+
+  it("a shown sheet alone, or one written sheet alone: nothing is stale", () => {
+    expect(ids([["wa-show", READ]])).toEqual([]);
+    expect(ids([["wa-gen", write(0)]])).toEqual([]);
   });
 });
 

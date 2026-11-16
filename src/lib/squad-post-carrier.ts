@@ -31,15 +31,19 @@
  *            a swap's sheet, a replacement's, or the team half of an
  *            attendance message, appended after the composition.
  * A "read" sheet beside a "write" one was rendered before the write and is
- * stale (`staleReadSheetIds`): only the written sheet goes out.
+ * stale, and of two written sheets (regenerate + swap, replacement + swap)
+ * the earlier is stale too: only the LAST written sheet, which shows the
+ * batch's final teams, goes out (`staleSheetIds`, review round 3).
  *
  * PURE: no database, no I/O. `route.ts` is the only caller.
  */
 import { skipsSquadComposition } from "./group-copy";
 
-/** A team sheet a reply really renders: as the teams stand, or as a team
- *  write in this batch left them. */
-export type SheetKind = "read" | "write";
+/** A team sheet a reply really renders: as the teams stand ("read"), or as
+ *  a team write in this batch left them ("write"), with `seq` the order the
+ *  written sheets were rendered in (a replacement's first, then the team
+ *  path's in its own order, `TeamOpsMessageOutcome.sheetSeq`). */
+export type Sheet = { kind: "read" } | { kind: "write"; seq: number };
 
 /** The fields of a route result the choice reads. */
 export interface CarrierResult {
@@ -66,14 +70,22 @@ export function composesSquadPost(r: CarrierResult, teamPostIds: ReadonlySet<str
 }
 
 /**
- * PURE. The shown ("read") sheets that are stale because a team write in the
- * same batch rendered its own sheet: those replies are not sent, the written
- * sheet answers them.
+ * PURE. The sheets that are stale: with any written sheet in the batch,
+ * every shown one and every written one but the last rendered (the highest
+ * `seq`; on a tie, the later in the batch). Those replies are not sent; the
+ * one sheet left answers them.
  */
-export function staleReadSheetIds(sheets: ReadonlyMap<string, SheetKind>): string[] {
-  const kinds = [...sheets.values()];
-  if (!kinds.includes("write")) return [];
-  return [...sheets].filter(([, k]) => k === "read").map(([id]) => id);
+export function staleSheetIds(sheets: ReadonlyMap<string, Sheet>): string[] {
+  let last: string | null = null;
+  let lastSeq = Number.NEGATIVE_INFINITY;
+  for (const [id, sh] of sheets) {
+    if (sh.kind === "write" && sh.seq >= lastSeq) {
+      last = id;
+      lastSeq = sh.seq;
+    }
+  }
+  if (last === null) return [];
+  return [...sheets.keys()].filter((id) => id !== last);
 }
 
 /**
@@ -86,7 +98,7 @@ export function staleReadSheetIds(sheets: ReadonlyMap<string, SheetKind>): strin
  */
 export function squadPostCarrierId(
   results: ReadonlyArray<CarrierResult>,
-  opts: { squadPostId: string; late: ReadonlySet<string>; teamPostIds: ReadonlySet<string>; sheets: ReadonlyMap<string, SheetKind> },
+  opts: { squadPostId: string; late: ReadonlySet<string>; teamPostIds: ReadonlySet<string>; sheets: ReadonlyMap<string, Sheet> },
 ): string | null {
   if (opts.sheets.size > 0) return null;
   const speaks = results.filter((r) => !opts.late.has(r.waMessageId) && composesSquadPost(r, opts.teamPostIds));

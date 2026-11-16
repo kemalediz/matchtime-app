@@ -28,6 +28,10 @@
  * sheet: those must neither stop the squad post nor strip the batch's only
  * sheet. And "show the teams" beside a swap sends only the swap's sheet.
  *
+ * ROUND 3: a swap DEFERRED because no teams exist says only the deferral (no
+ * sheet); a replacement's sheet counts only when its slot move landed; and of
+ * two team writes in one batch only the last write's sheet goes out.
+ *
  * The router, the extractors and the answers are STUBBED by message body
  * (`engineOn`); the engine, the batch, the composer and the analyze route are
  * the real code against a real Postgres. No model call, $0. The seed's
@@ -42,7 +46,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, SPORT_ID, U, londonAt } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs, helpFacts, otherFacts, selfIn } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, facts, helpFacts, otherClaim, otherFacts, selfIn } from "../helpers/stub";
 
 test.describe.configure({ mode: "default" });
 
@@ -64,6 +68,12 @@ const COUNT_Q = "@Match Time how many are we?";
 const WHO_Q = "@Match Time who's playing?";
 const LIST_Q = "@Match Time send the list";
 const SWAP = "@Match Time swap Pat with Ian";
+const SWAP_PT = "@Match Time swap Pat with Tom";
+const SWAP_IZ = "@Match Time swap Ian with Zara";
+const SIDES = "@Match Time swap the colours";
+const IAN_AND_SWAP = "@Match Time Ian Innes is in, and swap Pat with Tom";
+const REPLACE = "Ian Innes is replacing Pat";
+const SWAP_READ = (moves: string[]) => ({ action: "swap", includeRefs: [], teamNames: [], swaps: [], moves, pairings: [], swapSides: false });
 
 type Result = { waMessageId: string; reply?: string | null; react?: string | null; intent?: string | null };
 
@@ -120,7 +130,14 @@ const arm = () =>
       route: "question",
       facts: { topic: "squad", kind: "list", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none", badge: "none" },
     },
-    [SWAP]: { route: "balancer", facts: { action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: ["Pat", "Ian"], pairings: [], swapSides: false } },
+    [SWAP]: { route: "balancer", facts: SWAP_READ(["Pat", "Ian"]) },
+    [SWAP_PT]: { route: "balancer", facts: SWAP_READ(["Pat", "Tom"]) },
+    [SWAP_IZ]: { route: "balancer", facts: SWAP_READ(["Ian", "Zara"]) },
+    [SIDES]: { route: "balancer", facts: { ...SWAP_READ([]), swapSides: true } },
+    // One message, two halves: Ian in (attendance) and a swap (the teams).
+    [IAN_AND_SWAP]: { route: "other_att", facts: { ...otherFacts("Ian Innes", "in"), sideRequests: ["teams"], ...SWAP_READ(["Pat", "Tom"]) } },
+    // A replacement: Ian takes Pat's place, and his slot.
+    [REPLACE]: { route: "other_att", facts: facts([otherClaim("Ian Innes", "in", { replaces: "Pat Player" }), otherClaim("Pat Player", "out")]) },
     [SHOW]: { route: "balancer", facts: { action: "show", includeRefs: [], teamNames: null, swaps: [], pairings: [] } },
     [GEN]: { route: "balancer", facts: { action: "generate", includeRefs: [], teamNames: null, swaps: [], pairings: [] } },
   });
@@ -161,6 +178,36 @@ async function patOutIanIn(db: { run: (q: string, p: unknown[]) => Promise<unkno
     [`e2e-att-uab-${U.fresh}`, MATCH.upcoming, U.fresh],
   );
 }
+
+/** Ian and Zara are in the squad with no team slot (the teams are made). */
+async function inWithNoSlot(db: { run: (q: string, p: unknown[]) => Promise<unknown> }, userIds: string[]) {
+  let pos = 10;
+  for (const userId of userIds) {
+    await db.run(
+      `INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "respondedAt", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, 'CONFIRMED', $4, now(), now(), now())
+       ON CONFLICT ("matchId", "userId") DO UPDATE SET status = 'CONFIRMED'`,
+      [`e2e-att-uab-noslot-${userId}`, MATCH.upcoming, userId, ++pos],
+    );
+  }
+}
+
+/** Any number of messages, in this order; `tagged` per message. */
+async function many(request: APIRequestContext, unified: boolean, msgs: Array<{ body: string; from: typeof ALEX; tagged?: boolean }>) {
+  const ids = msgs.map(() => msgId());
+  const res = await request.post("/api/whatsapp/analyze", {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY, [FLAG]: unified ? "1" : "0" },
+    data: {
+      groupId: E2E.GROUP_ID,
+      messages: msgs.map((m, i) => ({ waMessageId: ids[i], body: m.body, ...m.from, botMentioned: m.tagged ?? true, timestamp: new Date().toISOString() })),
+    },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  const results = (await res.json()).results as Result[];
+  return { results, spoke: results.filter((r) => (r.reply ?? "").length > 0), of: (i: number) => results.find((r) => r.waMessageId === ids[i])! };
+}
+
+const DEFERRED = /Teams aren't generated yet/;
 
 /** Two tagged messages from two people, in this order. */
 async function pair(request: APIRequestContext, unified: boolean, a: { body: string; from: typeof ALEX }, b: { body: string; from: typeof ALEX }) {
@@ -343,5 +390,97 @@ for (const unified of [true, false]) {
     // The show is answered by it: no reply of its own, never "I didn't catch that".
     expect(bR.reply ?? null).toBeNull();
     expect(bR.intent).not.toBe("not_understood");
+  });
+}
+
+// ── ROUND 3 (2026-11-16): the deferred swap, the replacement, two writes ──
+
+for (const unified of [true, false]) {
+  const flag = unified ? "ON" : "OFF";
+
+  test(`teams out: a DEFERRED swap (neither holds a slot) + 'show the teams': the shown sheet AND the deferral (flag ${flag})`, async ({ request, db }) => {
+    await teamsOut(db);
+    await inWithNoSlot(db, [U.fresh, U.extra]);
+    arm();
+    const { spoke, of } = await many(request, unified, [{ body: SWAP_IZ, from: ALEX }, { body: SHOW, from: PAT }]);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 2 });
+    expect(of(0).reply).toMatch(DEFERRED);
+    expect(sheetsIn([of(1)])).toBe(1);
+  });
+
+  test(`no teams: 'Ian Innes is in, and swap Pat with Tom' (deferred): ONE send, the squad post and the deferral (flag ${flag})`, async ({ request }) => {
+    arm();
+    const { spoke, of } = await many(request, unified, [{ body: IAN_AND_SWAP, from: ALEX }]);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 1, teamSheets: 0, sends: 1 });
+    expect(of(0).reply).toContain(BENCH_POST);
+    expect(of(0).reply).toMatch(DEFERRED);
+  });
+
+  test(`teams out: 'Ian Innes is in, and swap Pat with Tom': ONE send, the swap's sheet, no squad post (flag ${flag})`, async ({ request, db }) => {
+    await teamsOut(db);
+    arm();
+    const { spoke, of } = await many(request, unified, [{ body: IAN_AND_SWAP, from: ALEX }]);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 1 });
+    expect(of(0).reply).not.toMatch(DEFERRED);
+  });
+
+  test(`no teams: 'Ian Innes is in' + a separate deferred swap: ONE send, the deferral with the squad post after it (flag ${flag})`, async ({ request }) => {
+    arm();
+    const { spoke, of } = await many(request, unified, [{ body: ADD_IAN, from: ALEX, tagged: false }, { body: SWAP_PT, from: ALEX }]);
+    // The deferral is the last reply that speaks and is no sheet, so it
+    // carries the squad post (the batch's one send), as any reply does.
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 1, teamSheets: 0, sends: 1 });
+    expect(of(1).reply).toMatch(DEFERRED);
+    expect(of(1).reply).toContain(BENCH_POST);
+  });
+
+  test(`teams out: a replacement + 'show the teams': ONE sheet, the replacement's (flag ${flag})`, async ({ request, db }) => {
+    await teamsOut(db);
+    arm();
+    const { spoke, of } = await many(request, unified, [{ body: REPLACE, from: ALEX, tagged: false }, { body: SHOW, from: PAT }]);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 1 });
+    expect(of(0).reply).toMatch(/takes (his|her|their) place/);
+    expect(of(1).reply ?? null).toBeNull();
+    expect(of(1).intent).not.toBe("not_understood");
+  });
+
+  test(`match day, teams out: regenerate + swap the colours: ONE sheet, the swap's (the batch's last write) (flag ${flag})`, async ({ request, db }) => {
+    await teamsOut(db);
+    await matchDay(db);
+    arm();
+    const { spoke, of } = await many(request, unified, [{ body: GEN, from: ALEX }, { body: SIDES, from: ALEX }]);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 1 });
+    expect(of(0).reply ?? null).toBeNull();
+    expect(sheetsIn([of(1)])).toBe(1);
+  });
+
+  test(`teams out: a replacement + swap the colours: ONE sheet, the swap's (the batch's last write) (flag ${flag})`, async ({ request, db }) => {
+    await teamsOut(db);
+    arm();
+    const { spoke, of } = await many(request, unified, [{ body: REPLACE, from: ALEX, tagged: false }, { body: SIDES, from: ALEX }]);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 1 });
+    expect(sheetsIn([of(1)])).toBe(1);
+    // The swap ran after the replacement: Ian is on the final sheet.
+    expect(of(1).reply).toContain("Ian Innes");
+  });
+}
+
+test(`no teams, flag OFF: 'Ian Innes is in' + a deferred swap + "who's on the bench?": the squad post answers the bench question`, async ({ request }) => {
+  arm();
+  const { spoke, of } = await many(request, false, [{ body: ADD_IAN, from: ALEX, tagged: false }, { body: SWAP_PT, from: ALEX }, { body: BENCH_Q, from: PAT }]);
+  expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 1, teamSheets: 0, sends: 1 });
+  expect(of(1).reply).toContain(BENCH_POST);
+  expect(of(2).reply ?? null).toBeNull();
+  expect(of(2).intent).not.toBe("not_understood");
+});
+
+for (const [what, body] of [["who's playing?", WHO_Q], ["how many are we?", COUNT_Q]] as const) {
+  test(`teams out, flag OFF: a replacement + '${what}': ONE sheet, the replacement's`, async ({ request, db }) => {
+    await teamsOut(db);
+    arm();
+    const { spoke, of } = await many(request, false, [{ body: REPLACE, from: ALEX, tagged: false }, { body, from: PAT }]);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 1 });
+    expect(of(0).reply).toMatch(/takes (his|her|their) place/);
+    expect(of(1).intent).not.toBe("not_understood");
   });
 }

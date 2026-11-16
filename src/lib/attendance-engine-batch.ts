@@ -244,6 +244,15 @@ export interface EngineMessageOutcome {
    * caused it.
    */
   deterministicTeamPost: boolean;
+  /**
+   * The replacement post's sheet is the database's (review of #604,
+   * 2026-11-16): `deterministicTeamPost`, AND every team-slot move this
+   * message proposed landed. The post is composed from the engine's
+   * projection before the move runs; when the move fails it declares a sheet
+   * the database did not accept, and the route must not count it as the
+   * batch's written team sheet.
+   */
+  teamSheetWritten: boolean;
   /** An admin asked for a replacement in this same message (PR #33). */
   recruitRequest: boolean;
   /** Personal-uncertainty conditional: record a MAYBE and chase later
@@ -1422,6 +1431,11 @@ export async function runAttendanceEngineBatch(args: {
       .filter((s) => s.kind === "replacement_teams_post")
       .map((s) => s.messageId),
   );
+  // A message's team-slot moves all landed, and there was at least one.
+  const slotMovesLanded = (id: string): boolean => {
+    const moves = applied.filter((a) => a.write.kind === "team_slot_inherit" && a.write.sourceMessageId === id);
+    return moves.length > 0 && moves.every((a) => a.ok);
+  };
   for (const n of composed.operatorNotes) degradations.push(n);
 
   // ── Per-message outcomes ───────────────────────────────────────────
@@ -1519,6 +1533,7 @@ export async function runAttendanceEngineBatch(args: {
       failures,
       senderOwnRowMoved,
       deterministicTeamPost: teamPostMessageIds.has(m.waMessageId),
+      teamSheetWritten: teamPostMessageIds.has(m.waMessageId) && slotMovesLanded(m.waMessageId),
       // PR #33: a recruit ask alongside a drop must do BOTH, and the
       // blast has to run after the drop lands, so the route defers it to
       // the batch-final pass. It used to share that pass with the

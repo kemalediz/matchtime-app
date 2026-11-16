@@ -257,11 +257,19 @@ export const isSelfRef = (ref: string): boolean => {
  */
 export const isSelfRefAmong = (ref: string, roster: ReadonlyArray<{ name: string | null }>): boolean => {
   if (!isSelfRef(ref)) return false;
-  const fold = (x: string) => x.trim().toLocaleLowerCase("tr");
-  const r = fold(ref);
+  // Both ways, as `isSelfRef` folds (review round 3): the Turkish lowercase
+  // alone turns a plain capital I into a dotless one ("BENI" never met
+  // "Beni"); the default alone turns İ into i plus a dot.
+  const folds = (x: string): string[] => {
+    const t = x.trim();
+    return [...new Set([t.toLowerCase(), t.toLocaleLowerCase("tr")])];
+  };
+  const refs = new Set(folds(ref));
   return !roster.some((m) => {
-    const name = fold(m.name ?? "");
-    return !!name && (name === r || name.split(/\s+/)[0] === r);
+    const name = (m.name ?? "").trim();
+    if (!name) return false;
+    const first = name.split(/\s+/)[0];
+    return [...folds(name), ...folds(first)].some((n) => refs.has(n));
   });
 };
 

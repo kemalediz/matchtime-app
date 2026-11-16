@@ -114,9 +114,9 @@ import {
 import {
   composesSquadPost,
   squadPostCarrierId as squadPostCarrierFor,
-  staleReadSheetIds,
+  staleSheetIds,
   withoutRepeatedTeamSheet,
-  type SheetKind,
+  type Sheet,
 } from "@/lib/squad-post-carrier";
 import {
   composeSquadStateReply,
@@ -2652,7 +2652,7 @@ async function handleAnalyzeRequest(request: Request) {
    *  "write" a sheet a team write in this batch rendered (the teams made, a
    *  swap's, a replacement's). Never decided from the intent, which also
    *  carries "No teams generated yet" and the refusals. */
-  const sheetKindById = new Map<string, SheetKind>();
+  const sheetKindById = new Map<string, Sheet>();
 
   /** Replies that are ALREADY a team sheet composed from the database —
    *  the 2026-09-15 replacement post. Excluded from the §10 step 4
@@ -2951,7 +2951,10 @@ async function handleAnalyzeRequest(request: Request) {
       // `EngineMessageOutcome.deterministicTeamPost`.
       if (engineOutcome.deterministicTeamPost && !late) {
         deterministicTeamPostIds.add(msg.waMessageId);
-        sheetKindById.set(msg.waMessageId, "write");
+        // A written sheet only when its slot move landed (#604 round 3):
+        // otherwise the post shows a sheet the database did not accept. The
+        // attendance engine runs before the team path, so it is the first.
+        if (engineOutcome.teamSheetWritten) sheetKindById.set(msg.waMessageId, { kind: "write", seq: -1 });
       }
       const engineResult: ActionForBot = {
         waMessageId: msg.waMessageId,
@@ -3090,9 +3093,9 @@ async function handleAnalyzeRequest(request: Request) {
       {
         const shown = answerBatch?.outcomes.get(msg.waMessageId);
         const teamOps = teamOpsBatch?.outcomes.get(msg.waMessageId);
-        if (shown?.teamSheet) sheetKindById.set(msg.waMessageId, "read");
+        if (shown?.teamSheet) sheetKindById.set(msg.waMessageId, { kind: "read" });
         else if (teamOps && !teamOps.writeFailed && (teamOps.teamsGenerated || teamOps.teamSheetPost === true)) {
-          sheetKindById.set(msg.waMessageId, "write");
+          sheetKindById.set(msg.waMessageId, { kind: "write", seq: teamOps.sheetSeq ?? 0 });
         }
       }
       let reply = stepSeven.reply;
@@ -3525,24 +3528,37 @@ async function handleAnalyzeRequest(request: Request) {
   // a batch that sends one has no carrier for it, and a reply the
   // composition turns into that sheet keeps only its own words (below): one
   // sheet, never two. A sheet SHOWN beside a team write ("show the teams"
-  // beside a swap) was rendered before the write and is stale: it is not
-  // sent, the written sheet answers it.
-  const sheets = new Map<string, SheetKind>();
-  for (const [id, kind] of sheetKindById) {
-    if (results.find((r) => r.waMessageId === id)?.reply) sheets.set(id, kind);
+  // beside a swap) was rendered before the write, and of two team writes
+  // (regenerate + swap, replacement + swap) the earlier sheet was rendered
+  // before the later write: both are stale, not sent, and the one sheet
+  // that shows the batch's final teams answers them (#604 round 3).
+  const sheets = new Map<string, Sheet>();
+  for (const [id, sheet] of sheetKindById) {
+    if (results.find((r) => r.waMessageId === id)?.reply) sheets.set(id, sheet);
   }
+  // The team half of an attendance message, added to its reply after the
+  // composition: a stale one is simply not added (`staleAppendedSheetIds`).
+  const appendedSheetIds = new Set<string>();
   for (const [id, o] of teamOpsBatch?.alsoOutcomes ?? []) {
-    if (o.teamSheetPost === true && !!o.reply) sheets.set(id, "write");
+    if (o.teamSheetPost === true && !o.writeFailed && !!o.reply) {
+      sheets.set(id, { kind: "write", seq: o.sheetSeq ?? 0 });
+      appendedSheetIds.add(id);
+    }
   }
   // A message answered by the batch's team sheet: never met with the
   // not-understood line (the "never met with silence" pass, below).
   const answeredByTeamSheet = new Set<string>();
-  for (const id of staleReadSheetIds(sheets)) {
-    const r = results.find((x) => x.waMessageId === id);
-    if (r) r.reply = null;
-    answeredByTeamSheet.add(id);
+  const staleAppendedSheetIds = new Set<string>();
+  for (const id of staleSheetIds(sheets)) {
+    if (appendedSheetIds.has(id)) {
+      staleAppendedSheetIds.add(id);
+    } else {
+      const r = results.find((x) => x.waMessageId === id);
+      if (r) r.reply = null;
+      answeredByTeamSheet.add(id);
+    }
     sheets.delete(id);
-    console.log(`[analyze] ${id}: the teams shown beside a team write are stale; the written sheet answers it`);
+    console.log(`[analyze] ${id}: a team sheet rendered before the batch's last team write is stale; the last one answers it`);
   }
   const batchPostsTeamSheet = sheets.size > 0;
   // The organisers announce the list (2026-10-14): no batch squad post.
@@ -3841,7 +3857,7 @@ async function handleAnalyzeRequest(request: Request) {
   for (const [id, o] of teamOpsBatch?.alsoOutcomes ?? []) {
     const r = results.find((x) => x.waMessageId === id);
     if (!r) continue;
-    if (o.reply) r.reply = appendAfterComposition(r.reply ?? null, o.reply);
+    if (o.reply && !staleAppendedSheetIds.has(id)) r.reply = appendAfterComposition(r.reply ?? null, o.reply);
     r.react = r.react ?? o.react;
     await augmentAnalysis({ waMessageId: id, action: o.action, reasoningSuffix: o.reasoning });
   }
