@@ -106,6 +106,17 @@ export function makeTable(rows: Row[], uniqueKeys: string[][] = []) {
       rows.push(r);
       return { ...r };
     },
+    upsert: async (args: { where: Record<string, unknown>; create: Record<string, unknown>; update: Record<string, unknown> }) => {
+      failures.beforeWrite?.();
+      const r = rows.find((x) => matches(x, unique(args.where)));
+      if (r) {
+        for (const [k, v] of Object.entries(args.update)) r[k] = stored(v);
+        return { ...r };
+      }
+      const made = { id: `row-${++seq}`, ...Object.fromEntries(Object.entries(args.create).map(([k, v]) => [k, stored(v)])) } as Row;
+      rows.push(made);
+      return { ...made };
+    },
     update: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
       failures.beforeWrite?.();
       const r = rows.find((x) => matches(x, unique(args.where)));
@@ -189,10 +200,19 @@ export function makeDb(T: Record<string, Row[]>, names: string[], uniqueKeys: Re
             r.reason = r.reason === "deleted" || reason === "deleted" ? "deleted" : "edited";
             r.senderJids = [...new Set([...((r.senderJids as string[]) ?? []), ...senderJids])];
             r.senderPhones = [...new Set([...((r.senderPhones as string[]) ?? []), ...senderPhones])];
+            const withoutAt = (e: unknown) => {
+              const { at: _at, ...rest } = e as Record<string, unknown>;
+              void _at;
+              return JSON.stringify(Object.keys(rest).sort().map((x) => [x, rest[x]]));
+            };
+            // As the SQL does: the same change again changes nothing of the record's timing.
+            const seen = ((r.changes as unknown[]) ?? []).some((e) => withoutAt(e) === withoutAt(added[0]));
             r.changes = merged([...((r.changes as unknown[]) ?? []), ...added]);
-            const last = r.lastChangeAt instanceof Date ? r.lastChangeAt : (r.deletedAt as Date);
-            r.lastChangeAt = last && last > deletedAt ? last : deletedAt;
-            r.enforcedAt = null;
+            if (!seen) {
+              const last = r.lastChangeAt instanceof Date ? r.lastChangeAt : (r.deletedAt as Date);
+              r.lastChangeAt = last && last > deletedAt ? last : deletedAt;
+              r.enforcedAt = null;
+            }
           }
           return [{ byAdmin: r.byAdmin, reason: r.reason, senderJids: r.senderJids, senderPhones: r.senderPhones, changes: r.changes, deletedAt: r.deletedAt, lastChangeAt: r.lastChangeAt }];
         },

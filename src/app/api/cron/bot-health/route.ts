@@ -201,10 +201,13 @@ export async function GET(request: Request) {
     console.error("[bot-health] could not close alerts for unmonitored clubs:", err);
   }
 
-  // THE DELETE AND EDIT SAFETY SWEEP (2026-11-15): every message deleted
-  // or edited in the last 14 days is enforced against the stores again, for
-  // an analyze request that died before its own clear. Idempotent, bounded,
-  // indexed; never throws (`message-change.ts`).
+  // THE DELETE AND EDIT SAFETY SWEEP (2026-11-15): every tombstone not
+  // enforced yet (a request that died before its own clear, or a
+  // clarification's held question still waiting for its hour to end) is
+  // enforced against the stores, and each is re-checked for six hours after
+  // its latest change, for late writers; rows 14 days past their latest
+  // change are pruned. Idempotent, bounded (500 a run), indexed; never
+  // throws (`message-change.ts`).
   const deletes = await sweepRecentTombstones(now);
 
   return NextResponse.json({ ok: true, checked: orgs.length, report, deletes });

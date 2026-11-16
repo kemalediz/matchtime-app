@@ -10,6 +10,10 @@
 -- Also one index on "GroupMessage" ("waChatId", "createdAt"): the purge and
 -- the sweep find a message's archived copy by its group, not by a scan.
 --
+-- And one nullable column on "FormNote", "reasonSourceMessageId": the
+-- message that WROTE a note's reason, kept when a later message only changes
+-- the amount, so a delete or an edit of it still clears the reason.
+--
 --   npx tsx scripts/apply-deleted-message-migration.ts            # DRY RUN
 --   npx tsx scripts/apply-deleted-message-migration.ts --apply    # do it
 -- or
@@ -39,8 +43,9 @@
 -- Additive. One NEW table "DeletedMessage" (no foreign key), its unique
 -- index and two indexes; one NEW index on the existing "GroupMessage" (a
 -- plain CREATE INDEX: it holds a write lock on "GroupMessage" while it
--- builds, which on the archive's size is well under a second). No column
--- or row changes.
+-- builds, which on the archive's size is well under a second); one NEW
+-- nullable column on "FormNote" (no default, no rewrite: instant). No row
+-- changes.
 --
 -- IDEMPOTENT: IF NOT EXISTS everywhere. ONE transaction; SET LOCAL only.
 --
@@ -51,6 +56,7 @@
 -- Pi retries them until the table is back):
 --   DROP TABLE IF EXISTS "DeletedMessage";
 --   DROP INDEX IF EXISTS "GroupMessage_waChatId_createdAt_idx";
+--   ALTER TABLE "FormNote" DROP COLUMN IF EXISTS "reasonSourceMessageId";
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -75,5 +81,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS "DeletedMessage_chatId_waMessageId_key" ON "De
 CREATE INDEX IF NOT EXISTS "DeletedMessage_lastChangeAt_idx" ON "DeletedMessage"("lastChangeAt");
 CREATE INDEX IF NOT EXISTS "DeletedMessage_enforcedAt_lastChangeAt_idx" ON "DeletedMessage"("enforcedAt", "lastChangeAt");
 CREATE INDEX IF NOT EXISTS "GroupMessage_waChatId_createdAt_idx" ON "GroupMessage"("waChatId", "createdAt");
+ALTER TABLE "FormNote" ADD COLUMN IF NOT EXISTS "reasonSourceMessageId" TEXT;
 
 COMMIT;

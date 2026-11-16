@@ -347,7 +347,7 @@ import { askPoolFromWords } from "@/lib/pool-ask-words";
 import { recruitPlacesFromWords } from "@/lib/recruit-source";
 import { dmNamedPeople } from "@/lib/named-invite";
 import { rememberMentions } from "@/lib/group-mentions";
-import { deletedAmong, enforceDeletes, withoutChangedHistory, withoutDeletedQuotes } from "@/lib/message-change";
+import { deletedAmong, dropExpiredHeldQuestions, enforceDeletes, withoutChangedHistory, withoutDeletedQuotes } from "@/lib/message-change";
 import { groupSourceAnswers } from "@/lib/ask-source-group";
 import { groupAdminFollowups } from "@/lib/group-admin-followups";
 import { setVenueFromWords } from "@/lib/venue-from-words";
@@ -1856,6 +1856,9 @@ async function handleAnalyzeRequest(request: Request) {
           return [];
         })
       : [];
+  // An edited question's words, held for its clarification, are dropped
+  // once its hour is up, as it is read (`message-change.ts`). Never throws.
+  if (fresh.length > 0) await dropExpiredHeldQuestions(org.id);
   // THE ANSWERS TO MATCHTIME'S OPEN "WHICH TEAM WON?" AND A TAGGED
   // CORRECTION OF A RECORDED RESULT (2026-10-07). Decided HERE,
   // deterministically, before any model is asked and whether or not one

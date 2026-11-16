@@ -592,6 +592,11 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     expect(kept.filter((x) => x === "deleted")).toHaveLength(2);
     const t = await db.one<{ first: Date; last: Date }>(`SELECT "deletedAt" AS first, "lastChangeAt" AS last FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare]);
     expect(new Date(t!.last).getTime()).toBeGreaterThan(new Date(t!.first).getTime());
+    // The same change again is a no-op for the record: its latest change does not move on.
+    await change(request, revokeBy(g, "pete", bare, g.groupId, true));
+    const again = await db.one<{ last: Date; done: boolean }>(`SELECT "lastChangeAt" AS last, "enforcedAt" IS NOT NULL AS done FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare]);
+    expect(new Date(again!.last).getTime()).toBe(new Date(t!.last).getTime());
+    expect(again!.done).toBe(true);
   });
 
   test("the server's safety net: a Pi recent-chat line carrying an EDITED message's original words never reaches the model", async ({ request, db }) => {

@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { failures, makeDb, row, type Row } from "./fake-message-db";
 
-const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "organisation", "adminSquadProposal", "adminFeeProposal", "botJob", "formNote", "sentNotification", "onboardingSession", "clubConnect"];
+const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "organisation", "adminSquadProposal", "adminFeeProposal", "botJob", "formNote", "ratingAdjustment", "sentNotification", "onboardingSession", "clubConnect"];
 const T: Record<string, Row[]> = {};
 const fake = makeDb(T, NAMES, { deletedMessage: [["chatId", "waMessageId"]] });
 vi.mock("@/lib/db", () => ({
@@ -219,6 +219,26 @@ describe("an edit purges the TEXT and keeps the FACTS (round 8)", () => {
     expect(await applyMessageChange(editBy(SAM), NOW)).toEqual({ analyzed: 0, archived: 0, hq: 0, mentions: 0, notes: 0, refused: 0 });
   });
 
+  it("a form note's reason goes when the message that WROTE it is changed, though a later message moved the note on; and its copy in the rating adjustment goes with it", async () => {
+    const LATER = `false_${G}_LATERID00001_${SAM_PN}@c.us`;
+    T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -2, reason: "door code 4321", sourceMessageId: LATER, reasonSourceMessageId: SAM_ID, createdAt: ago(9), updatedAt: ago(2) }));
+    T.ratingAdjustment.push(
+      row({ matchId: "m2", userId: "u-sam", delta: -2, reason: "door code 4321", confidence: 1 }),
+      row({ matchId: "m2", userId: "u-ali", delta: 1, reason: "the adjuster's own words", confidence: 0.6 }),
+    );
+    expect(await applyMessageChange(editBy(SAM), NOW)).toMatchObject({ notes: 1 });
+    expect(T.formNote[0]).toMatchObject({ reason: "", delta: -2 });
+    expect(T.ratingAdjustment.map((r) => r.reason)).toEqual(["", "the adjuster's own words"]);
+    expect(JSON.stringify([T.formNote, T.ratingAdjustment])).not.toContain("4321");
+  });
+
+  it("and when the LATER message (the note's last source) is deleted, the reason goes too", async () => {
+    const LATER_BARE = "LATERID00002";
+    T.formNote.push(row({ orgId: "org-a", matchId: "m3", userId: "u-sam", delta: -2, reason: "tired", sourceMessageId: `false_${G}_${LATER_BARE}_${SAM_PN}@c.us`, reasonSourceMessageId: `false_${G}_EARLIER00002_${SAM_PN}@c.us`, createdAt: ago(9), updatedAt: ago(2) }));
+    await applyMessageChange({ ...byAuthor, messageId: LATER_BARE }, NOW);
+    expect(T.formNote[0]).toMatchObject({ reason: "" });
+  });
+
   it("a DELETE after the edit still removes what a delete removes", async () => {
     seed();
     await applyMessageChange(editBy(SAM), NOW);
@@ -356,6 +376,13 @@ describe("the safety sweep (hourly, on /api/cron/bot-health)", () => {
     seed(ago(20));
     expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 1, cleared: 1 });
     expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 1, cleared: 0 });
+  });
+
+  it("the SAME change posted again (an outbox retry, an admin re-check): a no-op for the record, so its re-check window is not moved on", async () => {
+    await applyMessageChange(byAuthor, ago(7 * 60));
+    await applyMessageChange(byAuthor, NOW);
+    expect(T.deletedMessage[0]).toMatchObject({ lastChangeAt: ago(7 * 60) });
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 0 });
   });
 
   it("late writers are re-checked for six hours after EACH change, not only the first", async () => {

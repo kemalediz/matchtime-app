@@ -18,7 +18,8 @@
  * foreign key), one unique index ("chatId", "waMessageId"), one index
  * ("lastChangeAt", for the pruning), one ("enforcedAt", "lastChangeAt", for
  * the sweep), and CREATE INDEX on the existing
- * "GroupMessage" ("waChatId", "createdAt"). It rewrites, backfills, drops
+ * "GroupMessage" ("waChatId", "createdAt"), and a nullable
+ * "FormNote"."reasonSourceMessageId". It rewrites, backfills, drops
  * or renames nothing. The dry run prints the state; the apply checks every
  * object is in place.
  */
@@ -55,7 +56,10 @@ async function main() {
       `SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_name = 'DeletedMessage' AND column_name IN ('enforcedAt', 'lastChangeAt', 'changes');`,
     );
     const analyzed: any = await db.$queryRawUnsafe(`SELECT COUNT(*)::int AS n FROM "AnalyzedMessage";`);
-    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", enforcedAt: enforced[0].n === 3, analyzedRows: analyzed[0].n };
+    const noteCol: any = await db.$queryRawUnsafe(
+      `SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_name = 'FormNote' AND column_name = 'reasonSourceMessageId';`,
+    );
+    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", enforcedAt: enforced[0].n === 3 && noteCol[0].n === 1, analyzedRows: analyzed[0].n };
   };
 
   const todo = statements(readFileSync(FILE, "utf8"));

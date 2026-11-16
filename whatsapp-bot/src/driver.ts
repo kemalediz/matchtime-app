@@ -83,14 +83,18 @@ export interface MessageChangeEvent {
   senderJids: string[];
   senderPhone: string | null;
   /**
-   * The sender is an admin of the group, as its metadata says. A delete
-   * applies to somebody else's message only then: WhatsApp's own clients
-   * let a group admin delete anyone's message, and anyone else only their
-   * own. Always false for an edit (only its author may edit).
+   * The sender is an admin of the group. A delete applies to somebody else's
+   * message only then: WhatsApp's own clients let a group admin delete
+   * anyone's message, and anyone else only their own. Always false from the
+   * Baileys driver, which never reads the roster on its message queue
+   * (round 8): a group delete comes with `adminUnknown`, and the change
+   * handler asks `isGroupAdmin`. Always false for an edit (only its author
+   * may edit).
    */
   byAdmin: boolean;
-  /** The group's metadata could not be read: whether the sender is an admin
-   *  is checked again later (`isGroupAdmin`), never taken as "no" for good. */
+  /** Whether the sender is an admin is not known yet: the change handler
+   *  reads it (`isGroupAdmin`), and the outbox checks again on its retries
+   *  while it cannot be read. Never taken as "no" for good. */
   adminUnknown?: boolean;
   fromMe: boolean;
 }

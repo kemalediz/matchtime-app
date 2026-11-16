@@ -38,7 +38,7 @@ async function post(body: unknown, key = KEY) {
 beforeEach(() => {
   process.env.WHATSAPP_API_KEY = KEY;
   apply.mockReset();
-  apply.mockResolvedValue({ analyzed: 1, archived: 0, hq: 0, mentions: 0, refused: 0 });
+  apply.mockResolvedValue({ analyzed: 1, archived: 0, hq: 0, mentions: 0, notes: 0, refused: 0 });
   touched.length = 0;
 });
 afterAll(() => {
@@ -62,7 +62,7 @@ describe("POST /api/whatsapp/message-change", () => {
     const r = await post({ kind: "revoke", chatId: G, messageId: "3EB0AAAA" });
     expect(r.status).toBe(200);
     expect(apply).toHaveBeenCalledWith({ kind: "revoke", chatId: G, messageId: "3EB0AAAA", byAdmin: false, senderJids: [], senderPhone: null });
-    expect(r.json).toEqual({ ok: true, kind: "revoke", analyzed: 1, archived: 0, hq: 0, mentions: 0, refused: 0 });
+    expect(r.json).toEqual({ ok: true, kind: "revoke", analyzed: 1, archived: 0, hq: 0, mentions: 0, notes: 0, refused: 0 });
     expect(touched).toEqual([]);
   });
 

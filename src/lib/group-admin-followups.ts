@@ -113,7 +113,7 @@ export async function groupAdminFollowups(args: {
         authorName: m.authorName,
         tagged: m.tagged,
         history: [],
-        lastBotPost: list?.text ?? null,
+        lastBotPost: list?.text || null,
         ...(m.reply ? { reply: m.reply } : {}),
         now,
       }).catch(() => null);

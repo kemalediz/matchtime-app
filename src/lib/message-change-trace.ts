@@ -16,13 +16,17 @@
  *   extractions[].owner, route,  which reading it was.
  *     extractor, model, client,
  *     sharedWith
- *   extractions[].facts          THE FACTS, as the extractor returned them:
- *                                intent and action, the refused-ask facts
- *                                (`refused-ask-retry.ts` reads kind, action,
- *                                partnerClubs, clubRef, pool), person and
- *                                club refs, mentioned ids, decisions,
- *                                counts and times. Free-text keys inside
- *                                them are blanked (below).
+ *   extractions[].facts          THE FACTS, by an allowlist (round 9):
+ *                                every number, boolean and null; strings
+ *                                only under an ENUM key (kind, action,
+ *                                topic, polarity, ...: an identifier, never
+ *                                a space), a checked FORMAT (a London time
+ *                                "HH:MM", "YYYY-MM-DD HH:MM", a month
+ *                                "YYYY-MM"), and `clubRef` in a recruit
+ *                                from partner clubs only (below). Every
+ *                                other string, names and refs included, is
+ *                                blanked to "": a name the message wrote
+ *                                is its words.
  *   extractions[].calls[] ms,    cost and timing: the AI budget's history.
  *     stopReason, inputTokens,
  *     cacheReadTokens,
@@ -31,9 +35,12 @@
  *
  * DROPPED: calls[].raw (the model's raw output) and calls[].error (it can
  * quote it); every degradations list (diagnostic lines that can carry
- * words); hqSquadReader and any other key; and, inside facts, the string
- * values of `note` (a reminder in the sender's own words), `phrase` (a time
- * "as written") and `reason` (a form note's few words), blanked to "".
+ * words); hqSquadReader and any other key.
+ *
+ * `clubRef` IS FREE TEXT (the club's name as the message wrote it). It is
+ * kept only in an admin recruit from partner clubs, because "try again"
+ * (`refused-ask-retry.ts`) repeats exactly that ask, to that club; it reads
+ * nothing else that is a string beyond kind and action.
  *
  * `heldQuestion`: the one exception, for an open "who do you mean?" (an
  * edited stats question whose clarification window is still open): its
@@ -41,7 +48,37 @@
  * it (`pipeline/load-awaiting-answer.ts`), then dropped by the next clear.
  */
 
-const FREE_TEXT_FACT_KEYS = new Set(["note", "phrase", "reason"]);
+/** Keys whose string values are enums (identifiers): kept when they look like one. */
+const ENUM_KEYS = new Set([
+  "kind",
+  "action",
+  "subject",
+  "personKind",
+  "polarity",
+  "conditionOn",
+  "tense",
+  "affirmation",
+  "sideRequests",
+  "topic",
+  "feature",
+  "badge",
+  "table",
+  "listEnd",
+  "unit",
+  "team",
+]);
+const ENUM_VALUE = /^[A-Za-z][A-Za-z0-9_-]{0,47}$/;
+const HHMM = /^\d{2}:\d{2}$/;
+const YYYY_MM = /^\d{4}-\d{2}$/;
+/** Keys whose string values are checked formats, never words. */
+const FORMAT_KEYS: Record<string, RegExp> = {
+  remindAt: /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+  quietFrom: HHMM,
+  quietTo: HHMM,
+  newTime: HHMM,
+  breakMonths: YYYY_MM,
+  playMonths: YYYY_MM,
+};
 const CALL_KEYS = ["ms", "stopReason", "inputTokens", "cacheReadTokens", "cacheWriteTokens", "outputTokens", "costUsd"] as const;
 const ROUTER_KEYS = ["route", "source", "overrodeRoute", "model", "floor"] as const;
 const EXTRACTION_KEYS = ["owner", "route", "extractor", "model", "client"] as const;
@@ -55,12 +92,22 @@ function pick(o: Obj, keys: readonly string[]): Obj {
   return out;
 }
 
-/** PURE. Facts with their free-text values blanked, everything else as it was. */
-function factsWithoutText(v: unknown): unknown {
-  if (Array.isArray(v)) return v.map(factsWithoutText);
+/** PURE. A string under `key`, kept only when it is an enum or a checked format. */
+function keptString(key: string | null, x: string): string {
+  if (key && ENUM_KEYS.has(key)) return ENUM_VALUE.test(x) ? x : "";
+  if (key && FORMAT_KEYS[key]) return FORMAT_KEYS[key].test(x) ? x : "";
+  return "";
+}
+
+/** PURE. Facts by the allowlist (see the header). `key`: the key the value sits under (an array's elements share it). */
+function factsWithoutText(v: unknown, key: string | null = null): unknown {
+  if (typeof v === "string") return keptString(key, v);
+  if (Array.isArray(v)) return v.map((x) => factsWithoutText(x, key));
   if (!isObj(v)) return v;
   const out: Obj = {};
-  for (const [k, x] of Object.entries(v)) out[k] = FREE_TEXT_FACT_KEYS.has(k) && typeof x === "string" ? "" : factsWithoutText(x);
+  for (const [k, x] of Object.entries(v)) out[k] = factsWithoutText(x, k);
+  // The one free-text exception: the club a partner-club recruit names, for "try again".
+  if (v.kind === "admin" && v.action === "recruit" && v.partnerClubs === true && typeof v.clubRef === "string") out.clubRef = v.clubRef;
   return out;
 }
 

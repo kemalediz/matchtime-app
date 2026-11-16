@@ -484,7 +484,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // newest here (looked up only when a list is out).
         answering: async () =>
           input.quoted?.text ??
-          (await db.adminGroupMessage.findFirst({ where: { orgId: org.id, fromMatchTime: true }, orderBy: { createdAt: "desc" }, select: { text: true } }))?.text ??
+          (await db.adminGroupMessage.findFirst({ where: { orgId: org.id, fromMatchTime: true, text: { not: "" } }, orderBy: { createdAt: "desc" }, select: { text: true } }))?.text ??
           null,
         text: input.text,
         waMessageId: messageId,

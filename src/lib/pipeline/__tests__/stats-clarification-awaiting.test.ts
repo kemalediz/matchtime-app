@@ -51,6 +51,16 @@ const row = (over: Partial<StatsClarificationRow>): StatsClarificationRow => ({
 });
 
 describe("which clarifications are open", () => {
+  it("a DELETED newest question still supersedes an older one from the same asker: nothing is re-opened (2026-11-16)", () => {
+    const older = row({ id: "am-old", body: "@Match Time Zork's goals", createdAt: ago(20) });
+    const deleted = row({ id: "am-new", body: null, createdAt: ago(5) });
+    expect(openStatsClarifications([older, deleted], "org-1", NOW)).toEqual([]);
+    expect(openStatsClarifications([deleted, older], "org-1", NOW)).toEqual([]);
+    // Another asker's own question is untouched.
+    const ali = row({ id: "am-ali", authorUserId: "u-ali", authorName: "Ali", createdAt: ago(10) });
+    expect(openStatsClarifications([older, deleted, ali], "org-1", NOW).map((c) => c.id)).toEqual(["am-ali"]);
+  });
+
   it("one asked five minutes ago is open", () => {
     const open = openStatsClarifications([row({})], "org-1", NOW);
     expect(open).toHaveLength(1);

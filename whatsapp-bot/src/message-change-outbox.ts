@@ -63,19 +63,27 @@ interface Entry {
   nextAt: number;
 }
 
+export type AttemptResult = "taken" | "accepted" | "queued";
+
 export interface MessageChangeOutbox {
   /** Read the file: every change in it, oldest first (for the Pi's own record). */
   load(): LocalMessageChange[];
   /** Keep a change (written at once) and return its key. Not posted yet. */
   record(change: LocalMessageChange): string;
   /**
-   * A delete recorded with its admin status unknown, now known from the
-   * change handler's own read (round 8): settled in the file. No-op for a
-   * key it does not hold or a change already known.
+   * The change as the change handler's own reads now have it (the sender's
+   * admin status, the phone behind a LID; round 8), settled in the file. A
+   * change already posted in another form is due to be posted again: an
+   * entry is never left taken by a post of a different change. No-op for a
+   * key it does not hold, or the same change again.
    */
-  settleAdmin(key: string, admin: boolean): void;
-  /** Post it now. True when the server took it; otherwise it waits for its backoff. */
-  attempt(key: string): Promise<boolean>;
+  update(key: string, change: LocalMessageChange): void;
+  /**
+   * Post it now. "taken": the server took it. "accepted": the server took
+   * it, and only the sender's admin status is still being checked (kept,
+   * re-checked on its retries). "queued": not taken; it waits for its backoff.
+   */
+  attempt(key: string): Promise<AttemptResult>;
   /** Post every change whose retry is due. Returns how many were taken. */
   drainDue(): Promise<number>;
   /** Changes the server has not taken yet. */
@@ -183,12 +191,22 @@ export function createMessageChangeOutbox(deps: {
       }
     }
     let ok = false;
+    // The change as posted: if the handler updates the entry while the post
+    // is in flight (its admin read answered), this post does not count for
+    // the updated change (round 8, the reviewers' interleaving).
+    const sent = e.change;
     try {
-      const { adminUnknown: _u, ...body } = e.change;
+      const { adminUnknown: _u, ...body } = sent;
       void _u;
       ok = await deps.post(body);
     } catch {
       ok = false;
+    }
+    if (e.change !== sent) {
+      if (e.takenAt === null) e.nextAt = deps.now();
+      deps.log(`[message-change] ${tag(e)}: changed while being posted; posted again as it is now`);
+      save();
+      return false;
     }
     if (ok && e.change.adminUnknown) {
       // Applied to the sender's own messages; kept until we know whether they are an admin.
@@ -223,19 +241,21 @@ export function createMessageChangeOutbox(deps: {
       save();
       return key;
     },
-    settleAdmin(key, admin) {
+    update(key, change) {
       const e = entries.find((x) => x.key === key);
-      if (!e || !e.change.adminUnknown) return;
-      const { adminUnknown: _u, ...settled } = e.change;
-      void _u;
-      e.change = { ...settled, byAdmin: admin };
+      if (!e || JSON.stringify(e.change) === JSON.stringify(change)) return;
+      e.change = change;
+      // Whatever was posted before was another change: post this one.
+      e.takenAt = null;
+      e.nextAt = deps.now();
       save();
     },
     async attempt(key) {
       const e = entries.find((x) => x.key === key);
-      if (!e) return false;
-      if (e.takenAt !== null) return true;
-      return send(e);
+      if (!e) return "queued";
+      if (e.takenAt !== null) return "taken";
+      if (await send(e)) return "taken";
+      return e.takenAt === null && e.acceptedAt && e.change.adminUnknown ? "accepted" : "queued";
     },
     async drainDue() {
       if (draining) return 0;

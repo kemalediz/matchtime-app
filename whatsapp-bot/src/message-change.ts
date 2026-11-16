@@ -127,10 +127,10 @@ export interface MessageChangeDeps {
   applyLocally(change: LocalMessageChange): { buffered: number; history: number; quotes: number };
   /** Into the durable outbox; returns its key. */
   record(change: LocalMessageChange): string;
-  /** The outbox entry of a delete recorded as "admin unknown", settled once the read answers. */
-  settleAdmin?(key: string, admin: boolean): void;
-  /** One post; true when the server took it. */
-  attempt(key: string): Promise<boolean>;
+  /** The outbox entry, as the handler's own reads (the phone behind a LID, the admin status) now have it. */
+  update?(key: string, change: LocalMessageChange): void;
+  /** One post: "taken", "accepted" (taken; only the admin check is open) or "queued" (true/false: taken or not). */
+  attempt(key: string): Promise<boolean | "taken" | "accepted" | "queued">;
   /** True when no analysis of the group is running; false on its timeout. */
   whenFlushIdle(groupId: string): Promise<boolean>;
   log(line: string): void;
@@ -157,28 +157,37 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     byAdmin: isDelete && change.byAdmin === true,
     ...(isDelete && change.adminUnknown ? { adminUnknown: true } : {}),
   };
-  // A sender known only by a LID, widened through the Pi's own LID map, so
-  // it matches an original stored under the phone (round 6).
-  if (!local.senderPhone && deps.phoneForLid) {
-    for (const jid of local.senderJids.filter((j) => j.endsWith("@lid"))) {
-      try {
-        const phone = await deps.phoneForLid(jid);
-        if (phone) {
-          local = { ...local, senderPhone: phone, senderJids: [...new Set([...local.senderJids, `${phone}@c.us`])] };
-          break;
-        }
-      } catch {
-        /* the change goes on as the sender it named */
-      }
-    }
-  }
   try {
-    // The Pi's own record and the durable outbox first, whatever happens
-    // next: the author's own delete applies to their message at once, and a
-    // crash or a restart during the roster read below loses nothing (the
-    // outbox re-checks an unknown admin status on its retries).
+    // The Pi's own record and the durable outbox FIRST, before any lookup:
+    // the author's own delete applies to their message at once, and a crash
+    // or a restart during a read below loses nothing (the outbox re-checks
+    // an unknown admin status on its retries).
     const counts = deps.applyLocally(local);
     const key = deps.record(local);
+    const add = (more: { buffered: number; history: number; quotes: number }) => {
+      counts.buffered += more.buffered;
+      counts.history += more.history;
+      counts.quotes += more.quotes;
+    };
+    // A sender known only by a LID, widened through the Pi's own LID map, so
+    // it matches an original stored under the phone (round 6); then the
+    // record and the outbox entry are updated.
+    if (!local.senderPhone && deps.phoneForLid) {
+      for (const jid of local.senderJids.filter((j) => j.endsWith("@lid"))) {
+        let phone: string | null = null;
+        try {
+          phone = await deps.phoneForLid(jid);
+        } catch {
+          phone = null;
+        }
+        if (phone) {
+          local = { ...local, senderPhone: phone, senderJids: [...new Set([...local.senderJids, `${phone}@c.us`])] };
+          add(deps.applyLocally(local));
+          deps.update?.(key, local);
+          break;
+        }
+      }
+    }
     // A delete's admin status, read HERE, on this change's own path, never on
     // the driver's message queue (round 8), then settled in the outbox.
     // Unreadable: kept "unknown" for the outbox to check again.
@@ -193,25 +202,24 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
         const { adminUnknown: _u, ...known } = local;
         void _u;
         local = { ...known, byAdmin: admin };
-        if (admin) {
-          const more = deps.applyLocally(local);
-          counts.buffered += more.buffered;
-          counts.history += more.history;
-          counts.quotes += more.quotes;
-        }
-        deps.settleAdmin?.(key, admin);
+        if (admin) add(deps.applyLocally(local));
+        deps.update?.(key, local);
       }
     }
     const idle = await deps.whenFlushIdle(change.chatId);
     if (!idle) deps.log(`${tag}: an analysis of this group is still running; posting anyway`);
-    let taken = false;
+    let result: boolean | "taken" | "accepted" | "queued" = "queued";
     try {
-      taken = await deps.attempt(key);
+      result = await deps.attempt(key);
     } catch {
-      taken = false;
+      result = "queued";
     }
     const where = `batch=${counts.buffered} recent=${counts.history} quotes=${counts.quotes}`;
-    if (!taken) {
+    if (result === "accepted") {
+      deps.log(`${tag}: ${where}; taken by the server; whether the sender is a group admin is checked again on the outbox's retries`);
+      return "posted";
+    }
+    if (result !== true && result !== "taken") {
       deps.error(`${tag}: not taken by the server yet (${where}); queued, retried with backoff`);
       return "queued";
     }

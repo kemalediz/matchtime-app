@@ -977,7 +977,8 @@ async function findByIds(
             take: left.length * PER_ID,
             select: { waMessageId: true, waStanzaId: true, fromMatchTime: true, senderUserId: true, text: true, createdAt: true },
           })
-        ).map((r) => ({ id: r.waMessageId, stanza: r.waStanzaId, userId: r.senderUserId, text: r.text as string | null, at: r.createdAt, matchTime: r.fromMatchTime }));
+          // A line with no words (edited, or a cleared question: `message-change.ts`) has no text to show.
+        ).map((r) => ({ id: r.waMessageId, stanza: r.waStanzaId, userId: r.senderUserId, text: (r.text || null) as string | null, at: r.createdAt, matchTime: r.fromMatchTime }));
   const userIds = [...new Set(said.map((r) => r.userId).filter((x): x is string => !!x))];
   const users = userIds.length ? await db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
   const nameOf = new Map(users.map((u) => [u.id, u.name]));

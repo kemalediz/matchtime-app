@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { makeDb, row, type Row } from "./fake-message-db";
 
-const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias", "organisation", "adminSquadProposal", "adminFeeProposal", "formNote", "onboardingSession", "clubConnect"];
+const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias", "organisation", "adminSquadProposal", "adminFeeProposal", "formNote", "ratingAdjustment", "onboardingSession", "clubConnect"];
 const T: Record<string, Row[]> = {};
 const fake = makeDb(T, NAMES, { deletedMessage: [["chatId", "waMessageId"]] });
 vi.mock("@/lib/db", () => ({
@@ -27,10 +27,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { applyMessageChange, sweepRecentTombstones } from "../message-change";
+import { applyMessageChange, dropExpiredHeldQuestions, enforceDeletes, sweepRecentTombstones } from "../message-change";
 import { mentionsAbove } from "../group-mentions";
 import { decideApproval } from "../admin-group-confirm-rules";
 import { sourceQuestionAnswered } from "../ask-source-rules";
+import { loadHqRecentMessages } from "../hq-squad-reader";
+import { recentHqMessages } from "../organiser-pick";
 import { hqWeekChat, loadWeekChat, playersWeekChat } from "../week-chat";
 import { loadStoredGroupLines } from "../group-chat-history";
 import { groupLogSince, hqLogSince } from "../admin-group-log";
@@ -200,6 +202,29 @@ describe("an author's edit: MatchTime forgets the words and otherwise behaves as
     expect(await loadOpenStatsClarifications(ORG, later)).toEqual([]);
   });
 
+  it("a clarification row written LONG after its edit's tombstone was enforced: kept due, so the sweep still drops the held question after its hour", async () => {
+    const Q = "@Match Time how many goals has Idirs scored?";
+    const id = gid("SAMQ00000003", SAM);
+    await applyMessageChange({ ...EDIT_BY_SAM, chatId: G, messageId: "SAMQ00000003" }, new Date(Date.now() - 8 * 60 * 60 * 1000));
+    // The question is written now (a catch-up), and its own clear-after-write runs.
+    T.analyzedMessage.push(row({ waMessageId: id, orgId: ORG, groupId: G, authorUserId: "u-sam", authorPhone: SAM, authorName: "Sam", body: Q, intent: STATS_CLARIFICATION_INTENT, handledBy: "engine", createdAt: new Date() }));
+    await enforceDeletes(G, [id]);
+    expect(T.deletedMessage.find((t) => t.waMessageId === "SAMQ00000003")!.enforcedAt).toBeNull();
+    await sweepRecentTombstones(new Date(Date.now() + 61 * 60 * 1000));
+    expect(JSON.stringify(T.analyzedMessage)).not.toContain("Idirs");
+  });
+
+  it("a held question read after its hour is up is dropped then and there", async () => {
+    const id = gid("SAMQ00000004", SAM);
+    T.analyzedMessage.push(
+      row({ waMessageId: id, orgId: ORG, groupId: G, authorUserId: "u-sam", authorName: "Sam", body: null, intent: STATS_CLARIFICATION_INTENT, handledBy: "engine", createdAt: new Date(Date.now() - 50 * 60 * 1000), pipelineTrace: { v: 1, extractions: [], heldQuestion: { text: "Idirs?", until: new Date(Date.now() - 60 * 1000).toISOString() } } }),
+    );
+    expect(await loadOpenStatsClarifications(ORG)).toEqual([]);
+    // Where the analyze route reads them: dropped there and then.
+    expect(await dropExpiredHeldQuestions(ORG)).toBe(1);
+    expect(JSON.stringify(T.analyzedMessage)).not.toContain("Idirs");
+  });
+
   it("'DM the people above' still picks the person the EDITED message tagged, never an older message's", async () => {
     T.messageMentions.push(
       row({ waMessageId: gid("ALITAG000001", ALI), orgId: ORG, chatId: G, senderUserId: "u-ali", mentions: [{ phone: "447700900777", name: "Wrong Person" }], unidentified: 0, sentAt: ago(10), createdAt: ago(10) }),
@@ -222,6 +247,21 @@ describe("an author's edit: MatchTime forgets the words and otherwise behaves as
     expect(decideApproval({ pending, quoted: null, log, now: NOW }).kind).not.toBe("approve");
     // No blank line is shown to a model where the words were.
     expect((await hqWeekChat({ orgId: ORG, now: NOW, messageId: "none" })).map((l) => l.body)).not.toContain("");
+  });
+
+  it("no model reader of HQ is shown a blank line: the HQ squad reader and the pick reader leave out an edited line and MatchTime's cleared question", async () => {
+    T.adminGroupMessage.push(
+      row({ waMessageId: "mt:list:cleared", orgId: ORG, fromMatchTime: true, askRef: "list:x", text: "Adding: Zara. Say YES", createdAt: ago(4) }),
+      row({ waMessageId: gid("SAMHQ0000009", SAM, HQ), orgId: ORG, fromMatchTime: false, senderUserId: "u-sam", text: "hold on", createdAt: ago(3) }),
+    );
+    await applyMessageChange({ ...EDIT_BY_SAM, chatId: HQ, messageId: "SAMHQ0000009" });
+    T.adminGroupMessage.find((r) => r.waMessageId === "mt:list:cleared")!.text = ""; // a delete cleared MatchTime's question
+    const squad = await loadHqRecentMessages(ORG, "none", NOW);
+    const pick = await recentHqMessages(ORG, "u-ali", "1", NOW, []);
+    for (const lines of [squad, pick]) {
+      expect(lines.length).toBeGreaterThan(0);
+      expect(lines.map((l) => l.body.trim()).filter((b) => b === "")).toEqual([]);
+    }
   });
 
   it("the players' group: an organiser line EDITED after 'who shall I ask?' still counts, so the next line is not read as the answer", async () => {

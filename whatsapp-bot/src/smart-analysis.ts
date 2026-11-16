@@ -542,11 +542,6 @@ export function restoreMessageChanges(changes: LocalMessageChange[]): void {
   for (const c of changes) recordChange(c);
 }
 
-/** Has this copy of a message been DELETED for everyone, by somebody who may? */
-export function isDeletedLocally(groupId: string, waMessageId: string, authorPhone: string | null | undefined): boolean {
-  return isGone(groupId, waMessageId, authorPhone || null);
-}
-
 /** Deleted, or edited by its author: the bot-added history capture leaves either out. */
 export function isChangedLocally(groupId: string, waMessageId: string, authorPhone: string | null | undefined): boolean {
   const bare = bareOf(waMessageId);

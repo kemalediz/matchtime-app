@@ -55,9 +55,13 @@ export const prismaFormNoteStore: FormNoteStore = {
     const { db } = await import("./db");
     const before = await db.formNote.findUnique({
       where: { matchId_userId: { matchId: note.matchId, userId: note.userId } },
-      select: { reason: true },
+      select: { reason: true, sourceMessageId: true, reasonSourceMessageId: true },
     });
     const reason = note.reason || before?.reason || "";
+    // The message that WROTE the reason (PR #606): a message that only
+    // changes the amount keeps the earlier one, so a delete or an edit of
+    // it still clears the reason (`message-change.ts`).
+    const reasonSourceMessageId = note.reason ? note.sourceMessageId : reason ? (before?.reasonSourceMessageId ?? before?.sourceMessageId ?? null) : null;
     await db.formNote.upsert({
       where: { matchId_userId: { matchId: note.matchId, userId: note.userId } },
       create: {
@@ -68,8 +72,9 @@ export const prismaFormNoteStore: FormNoteStore = {
         reason,
         setByUserId: note.setByUserId,
         sourceMessageId: note.sourceMessageId,
+        reasonSourceMessageId,
       },
-      update: { delta: note.delta, reason, setByUserId: note.setByUserId, sourceMessageId: note.sourceMessageId },
+      update: { delta: note.delta, reason, setByUserId: note.setByUserId, sourceMessageId: note.sourceMessageId, reasonSourceMessageId },
     });
     return { existed: before !== null, reason };
   },

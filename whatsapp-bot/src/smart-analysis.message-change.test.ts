@@ -38,7 +38,7 @@ vi.mock("./api.js", () => ({
 }));
 
 const sa = await import("./smart-analysis.js");
-const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, restoreMessageChanges, adjustForServer, isDeletedLocally, isRevokedLocally, isChangedLocally, whenFlushIdle, _test_flushNow, _test_reset } = sa;
+const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, restoreMessageChanges, adjustForServer, isRevokedLocally, isChangedLocally, whenFlushIdle, _test_flushNow, _test_reset } = sa;
 
 const GROUP = "120363000000009300@g.us";
 const SAM = "447700900123";
@@ -206,7 +206,7 @@ describe("an author's edit never changes what is analysed (the rule after six re
     // The line goes as the Pi has it, with its id: the server leaves it out.
     expect(posted().history).toEqual([expect.objectContaining({ body: "Inn", waMessageId: ID("SAMMSG000020") })]);
     expect(isChangedLocally(GROUP, ID("SAMMSG000020"), SAM)).toBe(true);
-    expect(isDeletedLocally(GROUP, ID("SAMMSG000020"), SAM)).toBe(false);
+    expect(isRevokedLocally(GROUP, ID("SAMMSG000020"), SAM)).toBe(false);
   });
 
   it("an edit during a flush that FAILS: the requeued copy is the same message, analysed on the retry", async () => {
@@ -280,7 +280,7 @@ describe("an author's edit never changes what is analysed (the rule after six re
     applyMessageChangeLocally(del("SAMMSG000034", by(ALI)));
     applyMessageChangeLocally(edit("SAMMSG000034"));
     for (const bare of ["SAMMSG000033", "SAMMSG000034"]) {
-      expect(isDeletedLocally(GROUP, ID(bare), SAM)).toBe(false);
+      expect(isRevokedLocally(GROUP, ID(bare), SAM)).toBe(false);
       expect(isRevokedLocally(GROUP, ID(bare), SAM)).toBe(false);
     }
     await arrive(message("SAMMSG000033", "In"));
@@ -319,8 +319,8 @@ describe("the Pi's change record: its lifetime and its order", () => {
       vi.setSystemTime(new Date("2026-11-15T14:30:00.000Z"));
       applyMessageChangeLocally(del("SAMMSG000062"));
       // 061 is 3.5 hours old: gone. 060's latest change is 2 hours old: kept.
-      expect(isDeletedLocally(GROUP, ID("SAMMSG000061"), SAM)).toBe(false);
-      expect(isDeletedLocally(GROUP, ID("SAMMSG000060"), SAM)).toBe(true);
+      expect(isRevokedLocally(GROUP, ID("SAMMSG000061"), SAM)).toBe(false);
+      expect(isRevokedLocally(GROUP, ID("SAMMSG000060"), SAM)).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -372,8 +372,8 @@ describe("a delete while the batch is being analysed (the reviewers' case)", () 
       expect(send).toHaveBeenCalledWith(GROUP, SQUAD);
       expect(releaseInstruction).not.toHaveBeenCalled();
       expect(ackInstruction).toHaveBeenCalledWith(expect.objectContaining({ key: "greply:org:1" }));
-      expect(isDeletedLocally(GROUP, samId, SAM)).toBe(true);
-      expect(isDeletedLocally(GROUP, aliId, ALI)).toBe(false);
+      expect(isRevokedLocally(GROUP, samId, SAM)).toBe(true);
+      expect(isRevokedLocally(GROUP, aliId, ALI)).toBe(false);
     } finally {
       react.mockRestore();
       send.mockRestore();
@@ -396,7 +396,7 @@ describe("an EDIT while the batch is being analysed keeps the tick", () => {
       await running;
       expect(react).toHaveBeenCalledTimes(1);
       expect(isChangedLocally(GROUP, samId, SAM)).toBe(true);
-      expect(isDeletedLocally(GROUP, samId, SAM)).toBe(false);
+      expect(isRevokedLocally(GROUP, samId, SAM)).toBe(false);
       expect(isRevokedLocally(GROUP, samId, SAM)).toBe(false);
     } finally {
       react.mockRestore();

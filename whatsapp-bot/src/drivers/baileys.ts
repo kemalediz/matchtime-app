@@ -1294,7 +1294,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       // handler (`isGroupAdmin`), never here: a roster read on this serial
       // queue would hold up every club's messages behind it (round 8).
       if (isGroup && change.kind === "revoke") event.adminUnknown = true;
-      log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} byAdmin=${event.byAdmin} handed up as a change`);
+      log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} adminUnknown=${event.adminUnknown === true} handed up as a change`);
       tally(what);
       hand(changeHandlers, event, "onMessageChange");
       return;

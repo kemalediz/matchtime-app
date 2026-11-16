@@ -58,7 +58,7 @@ describe("the outbox", () => {
     const key = t.box.record(change("MSG000000001"));
     expect(JSON.stringify(t.file.saved)).toContain("MSG000000001");
     expect(t.post).not.toHaveBeenCalled();
-    expect(await t.box.attempt(key)).toBe(true);
+    expect(await t.box.attempt(key)).toBe("taken");
     expect(t.box.pending()).toBe(0);
   });
 
@@ -66,7 +66,7 @@ describe("the outbox", () => {
     let up = false;
     const t = setup({ ok: () => up });
     const key = t.box.record(change("MSG000000002"));
-    expect(await t.box.attempt(key)).toBe(false);
+    expect(await t.box.attempt(key)).toBe("queued");
     expect(t.box.pending()).toBe(1);
     // Not yet due: nothing is posted.
     t.advance(backoffMs(1) - 1);
@@ -145,7 +145,7 @@ describe("the outbox", () => {
     const t = setup({ recheck: async () => answers.shift() ?? null });
     const key = t.box.record(change("MSG000000021", "revoke", { adminUnknown: true }));
     // First attempt: still unknown. Posted (it applies to the sender's own message meanwhile) but kept.
-    expect(await t.box.attempt(key)).toBe(false);
+    expect(await t.box.attempt(key)).toBe("accepted");
     expect(t.post).toHaveBeenLastCalledWith(expect.objectContaining({ messageId: "MSG000000021", byAdmin: false }));
     expect(t.box.pending()).toBe(1);
     t.advance(backoffMs(1));
@@ -156,23 +156,59 @@ describe("the outbox", () => {
     expect(t.box.pending()).toBe(0);
   });
 
-  it("settleAdmin: the change handler's own admin read settles an unknown entry in the file; a known one or an unknown key is left alone", async () => {
+  it("update: the change handler's own reads (admin status, the sender's phone) settle the entry in the file; the same change again, or an unknown key, changes nothing", async () => {
     const t = setup({ recheck: async () => null });
     const key = t.box.record(change("MSG000000060", "revoke", { adminUnknown: true }));
-    t.box.settleAdmin(key, true);
+    t.box.update(key, change("MSG000000060", "revoke", { byAdmin: true }));
     expect(JSON.stringify(t.file.saved)).not.toContain("adminUnknown");
     expect(JSON.stringify(t.file.saved)).toContain('"byAdmin":true');
-    t.box.settleAdmin(key, false);
-    expect(JSON.stringify(t.file.saved)).toContain('"byAdmin":true');
-    t.box.settleAdmin("no-such-key", true);
-    expect(await t.box.attempt(key)).toBe(true);
+    t.box.update("no-such-key", change("MSG000000060"));
+    expect(await t.box.attempt(key)).toBe("taken");
     expect(t.post).toHaveBeenCalledWith(expect.objectContaining({ messageId: "MSG000000060", byAdmin: true }));
+    t.box.update(key, change("MSG000000060", "revoke", { byAdmin: true }));
+    expect(t.box.pending()).toBe(0);
+  });
+
+  it("the reviewers' interleaving: the timer posts it as a NON-admin's (re-check still unknown) while the handler's read answers 'admin': it is posted again as the admin's, never left taken as the other", async () => {
+    let release!: (v: boolean) => void;
+    const held = new Promise<boolean>((r) => (release = r));
+    let first = true;
+    const t = setup({ recheck: async () => null, ok: () => true });
+    t.post.mockImplementation(async () => {
+      if (first) {
+        first = false;
+        return held;
+      }
+      return true;
+    });
+    const key = t.box.record(change("MSG000000061", "revoke", { adminUnknown: true }));
+    const draining = t.box.drainDue();
+    await vi.waitFor(() => expect(t.post).toHaveBeenCalledTimes(1));
+    t.box.update(key, change("MSG000000061", "revoke", { byAdmin: true }));
+    release(true);
+    await draining;
+    expect(t.box.pending()).toBe(1);
+    expect(await t.box.attempt(key)).toBe("taken");
+    expect(t.post.mock.calls.map((c) => (c[0] as LocalMessageChange).byAdmin)).toEqual([false, true]);
+    expect(t.box.pending()).toBe(0);
+  });
+
+  it("settled as an admin's AFTER the server accepted it as unknown: posted again as the admin's; a change already taken and then updated is posted again", async () => {
+    const t = setup({ recheck: async () => null });
+    const key = t.box.record(change("MSG000000062", "revoke", { adminUnknown: true }));
+    expect(await t.box.attempt(key)).toBe("accepted");
+    t.box.update(key, change("MSG000000062", "revoke", { byAdmin: true }));
+    expect(await t.box.attempt(key)).toBe("taken");
+    t.box.update(key, change("MSG000000062", "revoke", { byAdmin: true, senderJids: ["447700900123@c.us", "158055467598020@lid"] }));
+    expect(t.box.pending()).toBe(1);
+    expect(await t.box.attempt(key)).toBe("taken");
+    expect(t.post.mock.calls.map((c) => (c[0] as LocalMessageChange).byAdmin)).toEqual([false, true, true]);
   });
 
   it("a re-check that finds the sender is NOT an admin settles it as the sender's own delete", async () => {
     const t = setup({ recheck: async () => false });
     const key = t.box.record(change("MSG000000022", "revoke", { adminUnknown: true }));
-    expect(await t.box.attempt(key)).toBe(true);
+    expect(await t.box.attempt(key)).toBe("taken");
     expect(t.post).toHaveBeenLastCalledWith(expect.objectContaining({ byAdmin: false }));
     expect(t.resolved).not.toHaveBeenCalled();
     expect(t.box.pending()).toBe(0);

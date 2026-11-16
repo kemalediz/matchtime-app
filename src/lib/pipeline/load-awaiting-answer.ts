@@ -137,14 +137,13 @@ export async function loadOpenStatsClarifications(
   });
   // A question its author EDITED keeps no body; its words are held for this
   // clarification alone, until its hour is up (`message-change.ts`, round 8).
-  return openStatsClarifications(
-    rows.map(({ pipelineTrace, ...r }) => {
-      const held = r.body === null ? heldQuestionOf(pipelineTrace) : null;
-      return held && held.until.getTime() > now.getTime() ? { ...r, body: held.text } : r;
-    }),
-    orgId,
-    now,
-  );
+  // Read after that, they are not used; the analyze route drops them as it
+  // reads (`dropExpiredHeldQuestions`: this pipeline file writes nothing).
+  const out = rows.map(({ pipelineTrace, ...r }) => {
+    const held = r.body === null ? heldQuestionOf(pipelineTrace) : null;
+    return held && held.until.getTime() > now.getTime() ? { ...r, body: held.text } : r;
+  });
+  return openStatsClarifications(out, orgId, now);
 }
 
 /**

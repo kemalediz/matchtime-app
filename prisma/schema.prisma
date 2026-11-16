@@ -2628,6 +2628,10 @@ model FormNote {
   setByUserId     String?
   /// The WhatsApp message that set it last.
   sourceMessageId String?
+  /// The WhatsApp message that wrote `reason` (2026-11-16, PR #606): a later
+  /// message that only changes the amount moves `sourceMessageId` on, not
+  /// this. A delete or an edit of either message clears the reason.
+  reasonSourceMessageId String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 

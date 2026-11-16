@@ -58,8 +58,8 @@ function deps(over: Partial<MessageChangeDeps> = {}) {
       recorded.push(c);
       return "key-1";
     }),
-    settleAdmin: vi.fn((key: string, admin: boolean) => {
-      order.push(`settle:${key}:${admin}`);
+    update: vi.fn((key: string, c: LocalMessageChange) => {
+      order.push(`update:${key}:${c.byAdmin}${c.adminUnknown ? ":unknown" : ""}`);
     }),
     attempt: vi.fn(async () => {
       order.push("post");
@@ -144,16 +144,32 @@ describe("handleMessageChange", () => {
     expect(await handleMessageChange(revoke({ kind: "edit", byAdmin: true }), d)).toBe("posted");
     expect(order).toEqual(["local:edit", "record", "idle", "post"]);
     expect(recorded[0]).toEqual({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
-    expect(Object.keys(d).sort()).toEqual(["applyLocally", "attempt", "error", "log", "phoneForLid", "record", "settleAdmin", "whenFlushIdle"]);
-    expect(d.settleAdmin).not.toHaveBeenCalled();
+    expect(Object.keys(d).sort()).toEqual(["applyLocally", "attempt", "error", "log", "phoneForLid", "record", "update", "whenFlushIdle"]);
+    expect(d.update).not.toHaveBeenCalled();
   });
 
-  it("an edit notice with only a LID is widened through the Pi's LID map, so it matches an original stored under the phone", async () => {
-    const { d, recorded } = deps({ phoneForLid: vi.fn(async () => SAM) });
-    await handleMessageChange(revoke({ kind: "edit", senderJids: [SAM_LID], senderPhone: null }), d);
-    expect(d.phoneForLid).toHaveBeenCalledWith(SAM_LID);
-    expect(recorded[0]).toMatchObject({ senderPhone: SAM, senderJids: [SAM_LID, `${SAM}@c.us`] });
-    expect(isByAuthor(SAM_ID, null, recorded[0])).toBe(true);
+  it("an edit notice with only a LID: recorded and in the outbox BEFORE the LID lookup, then widened through the Pi's LID map and the entry updated", async () => {
+    let answer!: (v: string | null) => void;
+    const phoneForLid = vi.fn(() => new Promise<string | null>((r) => (answer = r)));
+    const { d, order, recorded } = deps({ phoneForLid });
+    const running = handleMessageChange(revoke({ kind: "edit", senderJids: [SAM_LID], senderPhone: null }), d);
+    await vi.waitFor(() => expect(phoneForLid).toHaveBeenCalledWith(SAM_LID));
+    // A crash now loses nothing: both written as the notice named the sender.
+    expect(order).toEqual(["local:edit", "record"]);
+    expect(recorded[0]).toMatchObject({ senderPhone: null, senderJids: [SAM_LID] });
+    answer(SAM);
+    expect(await running).toBe("posted");
+    expect(order).toEqual(["local:edit", "record", "local:edit", "update:key-1:false", "idle", "post"]);
+    const widened = (d.update as ReturnType<typeof vi.fn>).mock.calls[0][1] as LocalMessageChange;
+    expect(widened).toMatchObject({ senderPhone: SAM, senderJids: [SAM_LID, `${SAM}@c.us`] });
+    expect(isByAuthor(SAM_ID, null, widened)).toBe(true);
+  });
+
+  it("the server ACCEPTED it and only the admin check is open: said at info level, never as 'not taken'", async () => {
+    const { d, logs } = deps({ attempt: vi.fn(async () => "accepted" as const) });
+    expect(await handleMessageChange(revoke({ adminUnknown: true }), d)).toBe("posted");
+    expect(logs.some((l) => l.startsWith("ERR"))).toBe(false);
+    expect(logs.join("\n")).toMatch(/taken by the server; whether the sender is a group admin is checked again/);
   });
 
   it("a delete whose admin status could not be read is recorded as such, for the outbox to check again", async () => {
@@ -176,15 +192,15 @@ describe("handleMessageChange", () => {
     expect(recorded[0]).toMatchObject({ kind: "revoke", byAdmin: false, adminUnknown: true });
     answer(true);
     expect(await running).toBe("posted");
-    expect(order).toEqual(["local:revoke", "record", "local:revoke", "settle:key-1:true", "idle", "post"]);
+    expect(order).toEqual(["local:revoke", "record", "local:revoke", "update:key-1:true", "idle", "post"]);
     // Not an admin: settled as known; a read that throws leaves it unknown, for the outbox's re-check.
     const no = deps({ isGroupAdmin: vi.fn(async () => false) });
     await handleMessageChange(revoke({ adminUnknown: true }), no.d);
-    expect(no.order).toEqual(["local:revoke", "record", "settle:key-1:false", "idle", "post"]);
+    expect(no.order).toEqual(["local:revoke", "record", "update:key-1:false", "idle", "post"]);
     const boom = deps({ isGroupAdmin: vi.fn(async () => Promise.reject(new Error("rate-overlimit"))) });
     await handleMessageChange(revoke({ adminUnknown: true }), boom.d);
     expect(boom.recorded[0]).toMatchObject({ byAdmin: false, adminUnknown: true });
-    expect(boom.d.settleAdmin).not.toHaveBeenCalled();
+    expect(boom.d.update).not.toHaveBeenCalled();
     // An edit never asks: only its author may edit.
     const ed = deps({ isGroupAdmin: vi.fn(async () => true) });
     await handleMessageChange(revoke({ kind: "edit" }), ed.d);
@@ -199,7 +215,7 @@ describe("handleMessageChange", () => {
     const dying = handleMessageChange(revoke({ adminUnknown: true }), {
       applyLocally: () => ({ buffered: 0, history: 0, quotes: 0 }),
       record: (c) => before.record(c),
-      settleAdmin: (k, a) => before.settleAdmin(k, a),
+      update: (k, c) => before.update(k, c),
       isGroupAdmin: () => new Promise<boolean | null>(() => {}),
       attempt: (k) => before.attempt(k),
       whenFlushIdle: async () => true,

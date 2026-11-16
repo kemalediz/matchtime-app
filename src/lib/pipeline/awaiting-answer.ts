@@ -256,11 +256,6 @@ export function openStatsClarifications(
   const answeredAt = new Map<string, number>();
   for (const r of rows) {
     if (r.orgId !== orgId) continue;
-    // A question DELETED for everyone keeps its row with no words
-    // (`message-change.ts`): nothing is open, and nothing is asked again.
-    // Only a delete closes it: one its author EDITED comes here with its
-    // question held for it (`load-awaiting-answer.ts`) and stays open.
-    if (r.intent === STATS_CLARIFICATION_INTENT && !(r.body ?? "").trim()) continue;
     const key = askerKey(r.authorUserId, r.authorName);
     if (!key) continue;
     if (r.intent === STATS_CLARIFIED_INTENT) {
@@ -272,6 +267,12 @@ export function openStatsClarifications(
   }
   const out: StatsClarification[] = [];
   for (const [key, r] of latest) {
+    // A question DELETED for everyone keeps its row with no words
+    // (`message-change.ts`): it is still the asker's newest, so an older one
+    // it superseded stays closed, and it has nothing to answer itself. Only
+    // a delete closes it: one its author EDITED comes here with its question
+    // held for it (`load-awaiting-answer.ts`) and stays open.
+    if (!(r.body ?? "").trim()) continue;
     const q = { id: r.id, orgId, kind: "tentative-followup" as const, askedAt: r.createdAt, closesAt: null };
     if (!isAnswerWindowOpen(q, now)) continue;
     if ((answeredAt.get(key) ?? 0) > r.createdAt.getTime()) continue;
