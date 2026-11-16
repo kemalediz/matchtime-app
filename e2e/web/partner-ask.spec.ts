@@ -103,10 +103,13 @@ test("the partner's owner approves once: posted in their group; a second answer 
   expect(after?.status).toBe("posted");
   const post = await db.one<{ text: string; kind: string }>(`SELECT text, kind FROM "BotJob" WHERE id = $1`, [after!.postJobId]);
   expect(post?.kind).toBe("group");
-  // 2026-10-21: volunteers answer MatchTime privately, through the post's
-  // tap-to-DM link; the post never asks for replies in the group.
-  expect(post?.text).toContain("Tap here to tell MatchTime privately: https://wa.me/");
-  expect(post?.text).not.toContain("Reply to this message");
+  // 2026-11-16: the short post. Volunteers reply IN to it in the group or
+  // tap its tap-to-DM link; either way MatchTime answers them privately.
+  expect(post?.text).toMatch(/^⚽ \*.+\* need \*1 player\* for /);
+  expect(post?.text).toContain("🙋 Fancy it? Reply *IN* to this message, or tap 👉 https://wa.me/");
+  expect(post?.text).toContain("🔒 MatchTime confirms with you by DM. Your number stays private.");
+  // The guest fee, when the game has one, is its own line under the venue.
+  expect(post?.text).toMatch(/\n📍 [^\n]+\n(💷 £\d+(\.\d{2})? a game\n)?🙋 /);
   const posts = await db.one<{ n: number }>(`SELECT count(*)::int AS n FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group'`, [PARTNER]);
   expect(posts?.n).toBe(1);
 

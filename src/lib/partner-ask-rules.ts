@@ -20,6 +20,9 @@
  */
 import type { ClubRole } from "./club-partnership-rules";
 import { t } from "./i18n/t";
+import { dayLabel, weekdayLabel } from "./i18n/dates";
+import { computeProximity, londonDateKey } from "./proximity";
+import { formatLondon } from "./london-time";
 
 /** D12: at most this many asks a London day into one partner group. */
 export const PARTNER_ASKS_PER_DAY = 2;
@@ -287,4 +290,42 @@ export function gamesOverlap(a: { kickoff: Date; durationMins: number }, b: { ki
 export function withPartnerOffer(text: string, partners: string[] | null, link: string, lang: string | null): string {
   if (!partners || partners.length === 0) return text;
   return `${text}\n\n${t(lang).xask_offer_line({ partners: partners.join(", "), link })}`;
+}
+
+/**
+ * WHEN THE GAME IS, AS THE POST'S HEADLINE SAYS IT (Kemal, 2026-11-16):
+ * "need *6 players* for tomorrow!". The calendar-day distance is the shared
+ * proximity helper's (`computeProximity`, London days), never worked out
+ * here: the same London day is tonight, or today for a kickoff before
+ * 17:00 London (a morning or daytime game, review of #612); the next day is
+ * tomorrow, a day later in the week is its weekday ("Tuesday" / "Salı"),
+ * and a week or more away the date ("Tue 24 Nov"), so a bare weekday can
+ * never mean this week's. The full date and time are on the post's own
+ * line below it.
+ */
+export type AskPostDay = { kind: "tonight" } | { kind: "today" } | { kind: "tomorrow" } | { kind: "day"; label: string };
+
+/** A kickoff from this London hour on is "tonight"; before it, "today". */
+export const ASK_POST_EVENING_HOUR = 17;
+
+export function askPostDay(lang: string | null | undefined, kickoff: Date, now: Date): AskPostDay {
+  const { daysOut } = computeProximity(kickoff, "en", now);
+  if (daysOut <= 0) return Number(formatLondon(kickoff, "H")) >= ASK_POST_EVENING_HOUR ? { kind: "tonight" } : { kind: "today" };
+  if (daysOut === 1) return { kind: "tomorrow" };
+  return { kind: "day", label: daysOut < 7 ? weekdayLabel(lang, kickoff) : dayLabel(lang, kickoff) };
+}
+
+/** A post built this long before it goes out is rendered again. */
+export const ASK_POST_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * IS THE POST'S DAY WORD STALE BY THE TIME IT GOES OUT? (review of #612)
+ * The post is queued with "tonight" / "tomorrow" fixed in its text, and a
+ * held post (a Pi without quoted ids, a midnight in between) can go out
+ * later. Going out on another London day, or more than 6 hours after it
+ * was built: true, and the dispatcher renders it again (`freshAskPostText`).
+ */
+export function askPostStale(builtAt: Date, sendAt: Date): boolean {
+  if (londonDateKey(builtAt) !== londonDateKey(sendAt)) return true;
+  return sendAt.getTime() - builtAt.getTime() > ASK_POST_STALE_AFTER_MS;
 }

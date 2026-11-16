@@ -451,7 +451,7 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    *  `recordCapSkips` in `ai-budget.ts`. */
   recordCapSkips?: (orgId: string, count: number) => Promise<void>;
   /** Injected so tests can load a state without a database. */
-  loadState?: (orgId: string, now: Date) => Promise<SquadState>;
+  loadState?: (orgId: string, now: Date, opts?: { quotedIds?: readonly string[] }) => Promise<SquadState>;
   /** Brings a former member back into the club (who-is-who was sure of
    *  him in an IN or bench claim; review of #574, round 3). Injected by
    *  tests; defaults to `restoreFormerMember` in `resolve-sender.ts`. */
@@ -590,7 +590,10 @@ export async function runAttendanceEngineBatch(args: {
 
   let state: SquadState;
   try {
-    state = await (deps.loadState ?? loadSquadState)(orgId, now);
+    // The posts this batch's replies quote (review of #612): a partner ask
+    // posted under one of them is loaded whatever its age.
+    const quotedIds = [...new Set(candidates.flatMap((m) => (m.quoted?.id ? [m.quoted.id] : [])))];
+    state = await (deps.loadState ?? loadSquadState)(orgId, now, { quotedIds });
   } catch (err) {
     // Owning nothing. Until 2026-09-06 that was a fail-OPEN — "the
     // analyzer decides, which is what happens today" — and since §10

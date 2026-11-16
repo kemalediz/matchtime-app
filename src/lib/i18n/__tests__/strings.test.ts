@@ -1920,7 +1920,7 @@ const SAMPLES: SampleArgs = {
   // `link` null so the sample shows `prefill` (one or the other is shown);
   // the link branch is pinned in partner-ask.test.ts and
   // partner-guest-dm-volunteer.test.ts.
-  xask_post: { asker: "FNFCLUB", places: 7, day: "DAYLABEL", venue: "VENUEX", format: "FORMATX", fee: "£9", link: null, prefill: "PREFILLX" },
+  xask_post: { asker: "FNFCLUB", places: 7, when: { kind: "day", label: "WEEKDAYX" }, day: "DAYLABEL", venue: "VENUEX", format: "FORMATX", fee: "£9", link: null, prefill: "PREFILLX" },
   xask_dm_prefill: { ref: "REFX" },
   xask_approval_notice: {
     asker: "FNFCLUB",

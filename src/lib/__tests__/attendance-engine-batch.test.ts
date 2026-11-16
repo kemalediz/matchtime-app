@@ -1571,6 +1571,44 @@ describe("a recruit side request on a reply to a partner club's ask (2026-10-22)
   });
 });
 
+// 2026-11-16 (review of #612): a reply IN to an OLD ask post (closed more
+// than a day ago) fell through to an own-club IN with a ✅. The state load is
+// told which posts the batch quotes, so it also finds an ask of any age
+// posted in this group, and the reply goes to the ask's writer (which says
+// the place has gone), never to the club's own game.
+describe("a reply to an old partner ask post (2026-11-16)", () => {
+  const OLD_POST = "true_120363000000009200@g.us_3EB0OLDASK";
+  const inReply = () =>
+    msg({ body: "IN", authorName: "Pete Player", senderUserId: "u-pete", senderName: "Pete Player", route: "self_att", quoted: { id: "3EB0OLDASK", fromMatchTime: true } });
+
+  it("the state load is asked for the quoted post ids", async () => {
+    const seen: Array<readonly string[] | undefined> = [];
+    const d = deps({
+      loadState: async (_o, _n, opts) => {
+        seen.push(opts?.quotedIds);
+        return state();
+      },
+    });
+    await run([inReply(), msg({ waMessageId: "wa-2", body: "IN", senderUserId: "u-sam", route: "self_att" })], d);
+    expect(seen).toEqual([["3EB0OLDASK"]]);
+  });
+
+  it("an old, closed ask found that way: a partner volunteer write (refused by its writer), nothing on the own match", async () => {
+    const volunteers: string[] = [];
+    const d = deps({
+      loadState: async () => state({ partnerAsks: [{ askId: "ask-old", postWaMessageId: OLD_POST, askerName: "FNF", open: false }] }),
+      partnerVolunteer: async (w) => {
+        volunteers.push(w.askId);
+        return { ok: true, outcome: "closed", dmText: "*FNF*'s place has gone now, thanks for offering.", dmQueued: true };
+      },
+    });
+    const r = await run([inReply()], d);
+    expect(volunteers).toEqual(["ask-old"]);
+    expect(d.registered).toEqual([]);
+    expect(r.outcomes.get("wa-1")).toMatchObject({ intent: "partner_volunteer", react: null, reply: null });
+  });
+});
+
 // ── 2026-10-22 (Kemal): A RECRUIT NEEDS AN @ TAG OR AN ATTENDANCE CHANGE ──
 //
 // An admin's message with the `recruit` side request DMs players from up to

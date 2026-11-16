@@ -107,7 +107,7 @@ test("asking 2 partners for 1 player: two asks in ONE round, each for 1; nothing
   expect(asks[1].roundId).toBe(asks[0].roundId);
   // The post in Sutton's group asks for ONE player, whatever is open.
   const post = await db.one<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group'`, [SUTTON]);
-  expect(post?.text).toContain("need 1 player");
+  expect(post?.text).toContain("need *1 player*");
   // The paused club: no ask, no notice, no post.
   const paused = await db.one<{ n: number }>(
     `SELECT (SELECT count(*) FROM "PartnerAsk" WHERE "partnerOrgId" = $1)::int + (SELECT count(*) FROM "BotJob" WHERE "orgId" = $1)::int AS n`,
@@ -135,7 +135,7 @@ test("cancel: the whole round closes; the group that saw the ask hears 'no longe
   ]);
   const lines = await db.all<{ orgId: string; text: string }>(`SELECT "orgId", text FROM "BotJob" WHERE kind = 'group' ORDER BY "createdAt"`);
   expect(lines.filter((l) => l.orgId === SUTTON).map((l) => l.text)).toEqual([
-    expect.stringContaining("need 1 player"),
+    expect.stringContaining("need *1 player*"),
     expect.stringMatching(/no longer need a player, thanks all\.$/),
   ]);
   expect(lines.filter((l) => l.orgId === CHEAM)).toEqual([]);

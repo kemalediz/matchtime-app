@@ -1191,7 +1191,7 @@ export const tr: Strings = {
           : `✅ Açık: kulübünün ${p.active} partner kulübü var. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time perşembe için partner kulüplerden oyuncu bul*) ya da maç sayfasında onları işaretle. Partner kulüplerin burada:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
-    const body = `Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen bağlantıya dokun. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir. Bir partner kulüpte oynadıktan sonra MatchTime sana bir kez, daha çok maç istersen oyuncu havuzuna katılman için bir bağlantı gönderir.`;
+    const body = `Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen o mesajı yanıtlayıp VARIM yaz ya da bağlantısına dokun, MatchTime sana özelden döner. İsteğe yanıt olmayan bir VARIM bizim kendi maçımız içindir. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir. Bir partner kulüpte oynadıktan sonra MatchTime sana bir kez, daha çok maç istersen oyuncu havuzuna katılman için bir bağlantı gönderir.`;
     const status =
       p.active === 0
         ? `❌ Bu kulübün henüz partner kulübü yok.` + (p.audience === "group" ? ` Bir yönetici yakındaki kulüpleri ayarlar sayfasında bulabilir:\n${p.url}` : ``)
@@ -4295,13 +4295,23 @@ export const tr: Strings = {
   fc_not_live: "Yakındaki kulüpleri bulma, kulübünüz onaylandığında ve MatchTime oyuncu grubunuza eklendiğinde açılır.",
   // ─── Partner kulüpten oyuncu isteme (slice S2, 2026-10-16) ──────────
   xask_post: (p) => {
-    const extras = [p.format, p.fee].filter(Boolean).join(", ");
-    const how = p.link ? `MatchTime'a özelden haber vermek için dokun: ${p.link}` : `MatchTime'a özelden yaz: *${p.prefill}*`;
-    return (
-      `⚽ *${p.asker}* ${p.places} oyuncu arıyor: ${p.day}, ${p.venue}${extras ? ` (${extras})` : ""}.\n` +
-      `Oynamak ister misin? ${how}\n` +
-      `MatchTime sana özel mesajla dönecek. Numaran ${p.asker} ile paylaşılmaz.`
-    );
+    const when =
+      p.when.kind === "tonight"
+        ? "bu akşamki maç"
+        : p.when.kind === "today"
+          ? "bugünkü maç"
+          : p.when.kind === "tomorrow"
+            ? "yarın"
+            : `${p.when.label} günü`;
+    const how = p.link ? `dokun 👉 ${p.link}` : `MatchTime'a özelden yaz: *${p.prefill}*`;
+    return [
+      `⚽ *${p.asker}* ${when} için *${p.places} oyuncu* arıyor!`,
+      `🗓 ${p.day}`,
+      `📍 ${p.venue}${p.format ? `, ${p.format}` : ""}`,
+      ...(p.fee ? [`💷 Maç başı ${p.fee}`] : []),
+      `🙋 Oynamak ister misin? Bu mesajı yanıtlayıp *VARIM* yaz ya da ${how}`,
+      `🔒 MatchTime sana özelden dönecek. Numaran gizli kalır.`,
+    ].join("\n");
   },
   xask_dm_prefill: (p) => `VARIM (ref ${p.ref})`,
   xask_approval_notice: (p) => {
@@ -4323,7 +4333,7 @@ export const tr: Strings = {
   xask_no_post_id_notice_asker: (p) =>
     `⚠️ İsteğinizin *${p.partner}* grubuna ulaştığını doğrulayamıyorum, bu yüzden yanıtlar size ulaşmayabilir. Hâlâ oyuncuya ihtiyacınız varsa onların organizatörlerine sorun.`,
   xask_filled_line: (p) => `✅ *${p.asker}* için yer doldu, herkese teşekkürler 🙌`,
-  xask_off_line: (p) => `*${p.asker}* kulübünün ${p.day} isteği artık kapandı, herkese teşekkürler.`,
+  xask_off_line: (p) => `👋 *${p.asker}* kulübünün ${p.day} isteği artık kapandı, herkese teşekkürler.`,
   hq_confirm_pairing: (p) =>
     `Bu, *${p.club}* ile *${p.other}* eşleştirmesi için mi? Kulüp sahibi: kabul etmek için eşleştirme mesajını yanıtlayıp *1*, reddetmek için *2* yazın.`,
   hq_confirm_partner_ask: (p) => `Bu EVET, *${p.asker}* kulübünün ${p.day} isteğini oyuncu grubunuzda paylaşmak için mi?`,
@@ -4348,7 +4358,7 @@ export const tr: Strings = {
     return `${p.asker}, ${p.places === 1 ? "oyuncularınızdan birinin" : `oyuncularınızdan ${p.places} kişinin`} onlar için oynayıp oynayamayacağını soruyor: ${p.day}, ${p.venue}${extras ? ` (${extras})` : ""}.`;
   },
   xask_page_own: (p) => `O gün kendi maçınızda ${p.max} kişilik kadroda ${p.confirmed} kişi var.`,
-  xask_page_how: "Evet derseniz MatchTime isteği oyuncu grubunuzda paylaşır. Oyuncular MatchTime'a özel mesajla cevap verir, böylece grubunuz sessiz kalır; grubunuzda düz bir VARIM yine kendi maçınız anlamına gelir.",
+  xask_page_how: "Evet derseniz MatchTime isteği oyuncu grubunuzda paylaşır. Oyuncular o mesajı yanıtlayıp VARIM yazar ya da bağlantısına dokunur; MatchTime onlara özel mesajla döner, böylece grubunuz sessiz kalır. İsteğe yanıt olmayan bir VARIM yine kendi maçınız anlamına gelir.",
   xask_page_approve: "Evet, grubumuzda paylaş",
   xask_page_decline: "Hayır, teşekkürler",
   xask_page_posted: "Oyuncu grubunuzda paylaşıldı.",
@@ -4411,7 +4421,7 @@ export const tr: Strings = {
   xask_partner_paused: (p) => `${p.partner}: MatchTime'da duraklatıldı, şu an sorulamaz`,
   xask_refused_paused: (p) => `${p.partner} MatchTime'da duraklatıldı, bu yüzden şu an soramıyorum.`,
   xask_refused_bad_number: (p) => (p.max === 1 ? "Yalnızca 1 yer açık, 1 oyuncu isteyebilirsiniz." : `1 ile ${p.max} arasında bir oyuncu sayısı seçin.`),
-  xask_not_needed_line: (p) => `*${p.asker}* için artık oyuncuya gerek yok, herkese teşekkürler.`,
+  xask_not_needed_line: (p) => `👍 *${p.asker}* için artık oyuncuya gerek yok, herkese teşekkürler.`,
   xask_not_needed_dm: (p) => `*${p.asker}* için artık oyuncuya gerek kalmadı. Teklifin için teşekkürler 🙏`,
   xask_closed_hq_filled: (p) => `✅ Artık gerek yok: *${p.asker}* ${p.day} için yerlerini doldurdu. Teşekkürler, yapmanız gereken bir şey yok.`,
   xask_closed_hq_cancelled: (p) => `Artık gerek yok: *${p.asker}* ${p.day} için isteğini iptal etti. Yapmanız gereken bir şey yok.`,

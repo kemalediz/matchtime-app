@@ -49,6 +49,7 @@ import { firstMonthsFree } from "./free-period";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey, BadgeNumbers } from "../badge-rules";
 import type { OrganisersOnlyKind } from "../organisers-only-kind";
+import type { AskPostDay } from "../partner-ask-rules";
 import { HELP_MENU_ICON, HQ_MENU_ICON, type HelpMenuTopic, type HqMenuTopic, type MenuTopic } from "./help-menu-topics";
 
 /** The tables whose answer says it cannot be cut to a period. */
@@ -1394,7 +1395,7 @@ export const en = {
           : `✅ It's on: your club has ${n}. Ask me in your club's WhatsApp group (for example *@Match Time find players from partner clubs for Thursday*), or tick them on the match page. Your partner clubs are here:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
-    const body = `Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: tap the link if you fancy a game. When we're short, their players may join our bench as guests. After you play for a partner club, MatchTime DMs you once with a link to join the player pool, if you'd like more games.`;
+    const body = `Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: if you fancy a game, reply IN to that post or tap its link, and MatchTime confirms with you by DM. An IN that isn't a reply to the ask is for our own game. When we're short, their players may join our bench as guests. After you play for a partner club, MatchTime DMs you once with a link to join the player pool, if you'd like more games.`;
     const status =
       p.active === 0
         ? `❌ This club has no partner clubs yet.` + (p.audience === "group" ? ` An admin can find clubs nearby on the settings page:\n${p.url}` : ``)
@@ -5886,14 +5887,24 @@ export const en = {
   // Read by src/lib/partner-ask.ts, the match page's partner panel and
   // the approve page. The post and the partner's notices are in the
   // PARTNER club's language; the asking club's notices in its own.
-  // Volunteering is by DM (Kemal, 2026-10-21): the post is the only thing
-  // the partner group sees. `link` is the tap-to-DM link to MatchTime
-  // (partner-ask-ref.ts), null when MatchTime's number is not configured;
-  // `prefill` is what to send then. His number never goes to the asking
-  // club (D7).
+  // Volunteering (Kemal, 2026-10-21 and 2026-11-16): a player REPLIES *IN*
+  // to the post in his group (the reply is routed to the ask by the post it
+  // quotes, `pipeline/engine.ts` `quotedPartnerAsk`) or taps the link;
+  // either way MatchTime answers him by DM and the group hears nothing
+  // more. `link` is the tap-to-DM link to MatchTime (partner-ask-ref.ts),
+  // null when MatchTime's number is not configured; `prefill` is what to
+  // send then. `when` is the game's day relative to the post
+  // (`askPostDay`), `day` its full date and time. Short and catchy
+  // (2026-11-16): four asks in the old three-sentence form drew nobody.
+  // "need N players", never "N short": `places` is the organiser's number
+  // capped at the open places, so it can be less than the whole gap.
+  // `fee` is what a guest pays (`feeLabel`, "£5"), shown as its own line
+  // whenever the old post showed it, so nobody is surprised after saying
+  // IN; null, no line. His number never goes to the asking club (D7).
   xask_post: (p: {
     asker: string;
     places: number;
+    when: AskPostDay;
     day: string;
     venue: string;
     format: string | null;
@@ -5901,13 +5912,16 @@ export const en = {
     link: string | null;
     prefill: string;
   }) => {
-    const extras = [p.format, p.fee].filter(Boolean).join(", ");
-    const how = p.link ? `Tap here to tell MatchTime privately: ${p.link}` : `Send MatchTime a private message: *${p.prefill}*`;
-    return (
-      `⚽ *${p.asker}* need ${p.places === 1 ? "1 player" : `${p.places} players`}: ${p.day} at ${p.venue}${extras ? ` (${extras})` : ""}.\n` +
-      `Fancy a game? ${how}\n` +
-      `MatchTime will confirm with you by private message. Your number is not shared with ${p.asker}.`
-    );
+    const when = p.when.kind === "day" ? p.when.label : p.when.kind;
+    const how = p.link ? `tap 👉 ${p.link}` : `send MatchTime a private message: *${p.prefill}*`;
+    return [
+      `⚽ *${p.asker}* need *${p.places === 1 ? "1 player" : `${p.places} players`}* for ${when}!`,
+      `🗓 ${p.day}`,
+      `📍 ${p.venue}${p.format ? `, ${p.format}` : ""}`,
+      ...(p.fee ? [`💷 ${p.fee} a game`] : []),
+      `🙋 Fancy it? Reply *IN* to this message, or ${how}`,
+      `🔒 MatchTime confirms with you by DM. Your number stays private.`,
+    ].join("\n");
   },
   /** The DM the post's link opens with: the IN word and the ask's code. */
   xask_dm_prefill: (p: { ref: string }) => `IN (ref ${p.ref})`,
@@ -5942,7 +5956,7 @@ export const en = {
   xask_no_post_id_notice_asker: (p: { partner: string }) =>
     `⚠️ I can't confirm your ask reached *${p.partner}*'s group, so replies to it may not reach you. Check with their organisers if you still need a player.`,
   xask_filled_line: (p: { asker: string }) => `✅ *${p.asker}*'s place is filled, thanks all 🙌`,
-  xask_off_line: (p: { asker: string; day: string }) => `*${p.asker}*'s ask for ${p.day} is closed now, thanks all.`,
+  xask_off_line: (p: { asker: string; day: string }) => `👋 *${p.asker}*'s ask for ${p.day} is closed now, thanks all.`,
   hq_confirm_pairing: (p: { club: string; other: string }) =>
     `Is that about pairing *${p.club}* with *${p.other}*? Club owner: reply to the pairing message with *1* to accept or *2* to decline.`,
   hq_confirm_partner_ask: (p: { asker: string; day: string }) =>
@@ -5971,7 +5985,7 @@ export const en = {
     return `${p.asker} ask if ${p.places === 1 ? "one of your players" : `${p.places} of your players`} can play for them: ${p.day} at ${p.venue}${extras ? ` (${extras})` : ""}.`;
   },
   xask_page_own: (p: { confirmed: number; max: number }) => `Your own game that day is ${p.confirmed} of ${p.max}.`,
-  xask_page_how: "If you say yes, MatchTime posts the ask in your players' group. Players answer MatchTime by private message, so your group stays quiet, and a plain IN in your group still means your own game.",
+  xask_page_how: "If you say yes, MatchTime posts the ask in your players' group. Players reply IN to that post or tap its link, and MatchTime answers them by private message, so your group stays quiet. An IN that isn't a reply to the ask still means your own game.",
   xask_page_approve: "Yes, post it in our group",
   xask_page_decline: "No thanks",
   xask_page_posted: "Posted in your players' group.",
@@ -6060,7 +6074,7 @@ export const en = {
   xask_refused_paused: (p: { partner: string }) => `${p.partner} is paused on MatchTime, so I can't ask them now.`,
   xask_refused_bad_number: (p: { max: number }) =>
     p.max === 1 ? "Only 1 place is open, so ask for 1 player." : `Choose between 1 and ${p.max} players.`,
-  xask_not_needed_line: (p: { asker: string }) => `*${p.asker}* no longer need a player, thanks all.`,
+  xask_not_needed_line: (p: { asker: string }) => `👍 *${p.asker}* no longer need a player, thanks all.`,
   xask_not_needed_dm: (p: { asker: string }) => `*${p.asker}* no longer need a player, so you're not needed after all. Thanks for offering 🙏`,
   // An ask the partner's admins were asked to approve has closed (2026-11-09):
   // one line to them, on the channel they were asked on, never their players' group.

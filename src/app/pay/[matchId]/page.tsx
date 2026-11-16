@@ -68,7 +68,7 @@ export default async function PayPage({
           <div className="text-5xl mb-3">📋</div>
           <h1 className="text-xl font-bold text-slate-900">Nothing to pay for this match</h1>
           <p className="text-sm text-slate-500 mt-2">
-            {first}, your place for {match.activity.name} is paid for by the month. If that&apos;s not right, speak to the
+            {first}, your place for {match.activity.name}{" "}is paid for by the month. If that&apos;s not right, speak to the
             organiser.
           </p>
         </div>
@@ -119,7 +119,7 @@ export default async function PayPage({
           <div className="text-5xl mb-3">🤝</div>
           <h1 className="text-xl font-bold text-slate-900">Paying {collectorLabel} directly</h1>
           <p className="text-sm text-slate-500 mt-2">
-            Noted, {first}. {collector ?? "The organiser"} will confirm once they&apos;ve received it.
+            Noted, {first}. {collector ?? "The organiser"}{" "}will confirm once they&apos;ve received it.
             {availablePayMethods(org).length > 1 ? " Changed your mind? Pick another method below." : ""}
           </p>
         </div>

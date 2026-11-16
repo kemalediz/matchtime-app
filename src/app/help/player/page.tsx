@@ -14,11 +14,11 @@ export default function PlayerGuidePage() {
 
       <h3>The one rule: tag it for anything but In or Out</h3>
       <p>
-        MatchTime picks up <code>IN</code> and <code>OUT</code> on its own,
+        MatchTime picks up <code>IN</code> and <code>OUT</code>{" "}on its own,
         yours or a teammate&apos;s.
         For anything else (questions, teams, stats) tag it: type @ and pick
         Match Time from the list, so it shows as{" "}
-        <strong>@Match Time</strong> in your message. Typing the name or
+        <strong>@Match Time</strong>{" "}in your message. Typing the name or
         replying to MatchTime is not enough: without the tag it stays quiet.
         Everything else in the group, like the
         jokes and the arguments about last week&apos;s penalty, it leaves
@@ -38,7 +38,7 @@ export default function PlayerGuidePage() {
       </ul>
 
       <p>
-        MatchTime reacts to your message with <strong>✅</strong> when
+        MatchTime reacts to your message with <strong>✅</strong>{" "}when
         you&apos;re in the squad. If the squad is already full you get{" "}
         <strong>🪑</strong>: you&apos;re on the bench (see below).
       </p>
@@ -215,7 +215,7 @@ export default function PlayerGuidePage() {
       <h2 id="match-day">7. Before the match</h2>
       <ul>
         <li>
-          <strong>Daily update at 17:00.</strong> The squad so far, and a call
+          <strong>Daily update at 17:00.</strong>{" "}The squad so far, and a call
           for players if you&apos;re short. Once the squad is full it asks
           for people to go on the bench, and it stops once there are 3 on
           the bench.
@@ -269,6 +269,16 @@ export default function PlayerGuidePage() {
         directly. If you haven&apos;t paid, you&apos;ll get a reminder.
       </p>
 
+      <h3 id="partner-asks">A partner club is a player short</h3>
+      <p>
+        Your club may be paired with nearby clubs. When one of them is short,
+        MatchTime can post its ask in your group. Fancy a game? Reply{" "}
+        <code>IN</code>{" "}to that post, or tap its link, and MatchTime confirms
+        with you by DM. Your number isn&apos;t shared with the other club. An{" "}
+        <code>IN</code>{" "}that isn&apos;t a reply to the ask is for your own
+        club&apos;s game, as always.
+      </p>
+
       <h3>Played for a partner club?</h3>
       <p>
         If you played for another club through a partner club ask, MatchTime
@@ -283,7 +293,7 @@ export default function PlayerGuidePage() {
         Want to play more than your own club&apos;s games? Join the MatchTime
         player pool at{" "}
         <a href="https://matchtime.ai/play" className="text-blue-600 underline">matchtime.ai/play</a>,
-        or turn on <strong>Play elsewhere too</strong> on your profile. When a
+        or turn on <strong>Play elsewhere too</strong>{" "}on your profile. When a
         game near you is a player short, MatchTime sends you a WhatsApp
         message and you decide each time. The offer stays open until kickoff,
         or until the places are filled. It&apos;s optional: your own
@@ -353,11 +363,11 @@ export default function PlayerGuidePage() {
           commit, so first in means first on the pitch.
         </li>
         <li>
-          <strong>One message is enough.</strong> No need to say &quot;count
+          <strong>One message is enough.</strong>{" "}No need to say &quot;count
           me in&quot; and then &quot;IN&quot;.
         </li>
         <li>
-          <strong>Use real words.</strong> &quot;I&apos;ll play&quot; and
+          <strong>Use real words.</strong>{" "}&quot;I&apos;ll play&quot; and
           &quot;can&apos;t make it&quot; both work.
         </li>
         <li>
@@ -365,7 +375,7 @@ export default function PlayerGuidePage() {
           and nicknames to players it already knows.
         </li>
         <li>
-          <strong>Rate when the link lands.</strong> It takes a minute and
+          <strong>Rate when the link lands.</strong>{" "}It takes a minute and
           keeps next week&apos;s teams fair.
         </li>
       </ul>

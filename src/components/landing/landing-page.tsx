@@ -283,7 +283,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             title="Your group's match-day brain, on call."
             lead={
               <>
-                Players tag <strong>@Match Time</strong> in the group and ask about the next match, who&apos;s
+                Players tag <strong>@Match Time</strong>{" "}in the group and ask about the next match, who&apos;s
                 playing, the leaderboard or anyone&apos;s record this season. Tagged questions are answered
                 straight away.
               </>

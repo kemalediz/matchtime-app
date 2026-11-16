@@ -161,7 +161,7 @@ export function TokenCheckView({ check }: { check: TokenCheck }) {
       <div className="space-y-2">
         <h4 className="font-medium text-slate-900">Probes, read with the token (GET only)</h4>
         <p className="max-w-2xl text-sm text-slate-600">
-          Each asked on Graph {check.graphVersion} and, where it can differ, on v27.0. An error shows Meta&apos;s own fields as it gave them.
+          Each asked on Graph {check.graphVersion}{" "}and, where it can differ, on v27.0. An error shows Meta&apos;s own fields as it gave them.
         </p>
         <Probes probes={check.probes ?? []} />
       </div>

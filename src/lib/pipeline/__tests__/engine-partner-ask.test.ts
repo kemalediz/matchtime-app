@@ -57,6 +57,32 @@ describe("a quoted reply to a partner club's ask", () => {
     expect(r.writes).toEqual([expect.objectContaining({ kind: "partner_volunteer", askId: "ask-1" })]);
   });
 
+  // 2026-11-16: the post now says "Reply IN to this message". The target is
+  // the post the reply quotes, in whichever form the id arrives.
+  it("the quote matched on the post's serialised key as acknowledged: a volunteer", () => {
+    const r = decide({ now: NOW, state: withAsk(world()), messages: [inMsg({ quoted: { id: ASK_POST, fromMatchTime: true } })] });
+    expect(r.writes).toEqual([expect.objectContaining({ kind: "partner_volunteer", askId: "ask-1", polarity: "in" })]);
+  });
+
+  it("a reply to a DIFFERENT MatchTime post is the club's own IN, exactly as before", () => {
+    const r = decide({ now: NOW, state: withAsk(world()), messages: [inMsg({ quoted: { id: "3EB0SQUAD", fromMatchTime: true } })] });
+    expect(r.writes.some((w) => w.kind === "partner_volunteer")).toBe(false);
+    expect(r.writes).toEqual([expect.objectContaining({ kind: "attendance", userId: "u-sait" })]);
+  });
+
+  it("no quote at all: the club's own IN, exactly as before", () => {
+    const r = decide({ now: NOW, state: withAsk(world()), messages: [inMsg()] });
+    expect(r.writes.some((w) => w.kind === "partner_volunteer")).toBe(false);
+    expect(r.writes).toEqual([expect.objectContaining({ kind: "attendance", userId: "u-sait" })]);
+  });
+
+  it("a sender MatchTime could not identify: handed to the volunteer writer with no user (it refuses him), never an own-match write", () => {
+    const m = { ...inMsg({ quoted: { id: "3EB0ASK1", fromMatchTime: true } }), senderUserId: null, senderName: null };
+    const r = decide({ now: NOW, state: withAsk(world()), messages: [m] });
+    expect(r.writes.some((w) => w.kind === "attendance")).toBe(false);
+    for (const w of r.writes) expect(w).toMatchObject({ kind: "partner_volunteer", userId: null });
+  });
+
   it("a claim about somebody else is never a volunteer, and never an own-match write", () => {
     const m = inMsg({
       body: "Ali can play",
