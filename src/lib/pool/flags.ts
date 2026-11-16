@@ -104,6 +104,22 @@ export function isPoolSignupPaused(env: Env = process.env): boolean {
   return /^(1|true|on|yes)$/i.test((env[POOL_SIGNUP_PAUSED_ENV] ?? "").trim());
 }
 
+/** The /play page's test override of the brake ("1" paused, "0" open), a
+ *  cookie read by `flags-page.ts`, so the browser suite can show the paused
+ *  page from one dev server (2026-11-15). Honoured only when the server was
+ *  booted with MT_TEST_MODE exactly "1" (only `e2e/helpers/env.ts` sets
+ *  it); otherwise ignored both ways. It drives what /play shows, nothing
+ *  else: the sign-up route and the confirm DM read the env alone. */
+export const POOL_SIGNUP_PAUSED_TEST_COOKIE = "mt-test-signup-paused";
+
+export function poolSignupPausedFrom(override: string | undefined, env: Env = process.env): boolean {
+  if (env.MT_TEST_MODE === "1") {
+    if (override === "1") return true;
+    if (override === "0") return false;
+  }
+  return isPoolSignupPaused(env);
+}
+
 /** A sign-up made now goes on the early sign-up list: the pool is not open. */
 export function signupGoesOnEarlyList(env: Env = process.env): boolean {
   return !isPoolOffersEnabled(env);

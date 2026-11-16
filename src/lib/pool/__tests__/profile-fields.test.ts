@@ -182,6 +182,28 @@ describe("readSignupSource: where the visitor came from, off the URL", () => {
     expect(readSignupSource({ fb1: "" })).toEqual({ campaignCode: null, referralCode: null });
     expect(readSignupSource({ nd: undefined })).toEqual({ campaignCode: null, referralCode: null });
   });
+  it("an empty `src` or `c` beside `nd` (`?nd&src=`) is no code, so `nd` still counts", () => {
+    expect(readSignupSource({ nd: "", src: "" })).toEqual({ campaignCode: "nd", referralCode: null });
+    expect(readSignupSource({ nd: "", c: "" })).toEqual({ campaignCode: "nd", referralCode: null });
+    expect(readSignupSource({ nd: "", src: "", c: "" })).toEqual({ campaignCode: "nd", referralCode: null });
+    expect(readSignupSource({ nd: "", src: "  " })).toEqual({ campaignCode: "nd", referralCode: null });
+    expect(readSignupSource({ nd: "", src: "", ref: "Ab12Cd" })).toEqual({ campaignCode: "nd", referralCode: "Ab12Cd" });
+  });
+  it("without `nd`, an empty `src` or `c` alone is no code", () => {
+    expect(readSignupSource({ src: "" })).toEqual({ campaignCode: null, referralCode: null });
+    expect(readSignupSource({ c: "" })).toEqual({ campaignCode: null, referralCode: null });
+    expect(readSignupSource({ src: " ", c: "" })).toEqual({ campaignCode: null, referralCode: null });
+  });
+  it("a blank `src` does not hide a good `c` (`?src=&c=os`, `?src=%20&c=os`)", () => {
+    expect(readSignupSource({ src: "", c: "os" })).toEqual({ campaignCode: "os", referralCode: null });
+    expect(readSignupSource({ src: " ", c: "os" })).toEqual({ campaignCode: "os", referralCode: null });
+    expect(readSignupSource({ src: "", c: "os", nd: "" })).toEqual({ campaignCode: "os", referralCode: null });
+    expect(readSignupSource({ src: "fb1", c: "os" })).toEqual({ campaignCode: "fb1", referralCode: null });
+  });
+  it("repeated keys stay as they were: an array `src` falls to `c`, and blocks a bare `nd`", () => {
+    expect(readSignupSource({ src: ["a", "b"], c: "os" })).toEqual({ campaignCode: "os", referralCode: null });
+    expect(readSignupSource({ src: ["a", "b"] })).toEqual({ campaignCode: null, referralCode: null });
+  });
 });
 
 describe("validatePublicPoolSignup: the public sign-up pages are English only (2026-11-02)", () => {

@@ -89,8 +89,11 @@ export async function offersFollowMovedKickoff(tx: MoveTx, p: { matchId: string;
 }
 
 /** The club's cut-off for this match: nothing new is asked or sent past
- *  it. Offers already sent stay open until kickoff (`offerEndsAt`). */
-async function cutoffOf(orgId: string, kickoff: Date): Promise<Date> {
+ *  it (`poolAskRefusal` refuses from this instant on). Offers already sent
+ *  stay open until kickoff (`offerEndsAt`). Also /play's game line: past
+ *  it nobody new can be asked, so the game is not named
+ *  (`campaign-game-line-loader.ts`). */
+export async function poolAskCutoffOf(orgId: string, kickoff: Date): Promise<Date> {
   const settings = await loadPartnerAskSettings(orgId);
   return askWindows(kickoff, settings?.cutoffHours ?? 4).postBy;
 }
@@ -145,7 +148,7 @@ export async function requestPoolAsk(args: {
   const [found, organiser, cutoff, placesOpen, clubAsks] = await Promise.all([
     findPoolCandidates(args.matchId, { now, env: args.env }),
     isOrganiser(args.approvedByUserId, args.orgId),
-    cutoffOf(args.orgId, match.date),
+    poolAskCutoffOf(args.orgId, match.date),
     placesOpenOf(args.matchId),
     db.poolAsk.findMany({ where: { orgId: args.orgId, OR: [{ status: "open" }, { createdAt: { gte: new Date(now.getTime() - 7 * DAY_MS) } }] }, select: { matchId: true, status: true, createdAt: true } }),
   ]);
@@ -404,7 +407,7 @@ export async function sweepPool(now: Date = new Date(), env?: Env): Promise<{ cl
           if (!poolSwitchUnread(env) && (await closePoolAsk(ask.id, "switched-off", now))) closed++;
           continue;
         }
-        const cutoff = await cutoffOf(ask.orgId, ask.match.date);
+        const cutoff = await poolAskCutoffOf(ask.orgId, ask.match.date);
         const [fill, placesOpen] = await Promise.all([poolAskFill(ask), placesOpenOf(ask.matchId)]);
         // Open until kickoff (Kemal, 2026-11-09): the cut-off ends nothing.
         // A round that filled, a game called off or the switch going off

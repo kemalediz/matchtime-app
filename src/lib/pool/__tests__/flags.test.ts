@@ -19,6 +19,7 @@ import {
   poolPlatformOpen,
   poolSwitchEnv,
   poolSwitchUnread,
+  poolSignupPausedFrom,
   signupGoesOnEarlyList,
   signupGoesOnEarlyListFrom,
 } from "../flags";
@@ -83,6 +84,18 @@ describe("sign-up (slice L2)", () => {
     expect(isPoolSignupPaused({})).toBe(false);
     expect(isPoolSignupPaused({ POOL_SIGNUP_PAUSED: "0" })).toBe(false);
     for (const on of ["1", "true", "on", "YES"]) expect(isPoolSignupPaused({ POOL_SIGNUP_PAUSED: on }), on).toBe(true);
+  });
+
+  it("the /play page's test override (2026-11-15) counts only under MT_TEST_MODE=1", () => {
+    const test = { MT_TEST_MODE: "1" };
+    expect(poolSignupPausedFrom("1", test)).toBe(true);
+    expect(poolSignupPausedFrom("0", { ...test, POOL_SIGNUP_PAUSED: "1" })).toBe(false);
+    expect(poolSignupPausedFrom(undefined, { ...test, POOL_SIGNUP_PAUSED: "1" })).toBe(true);
+    expect(poolSignupPausedFrom("yes", test)).toBe(false);
+    // Outside test mode the override is ignored, both ways.
+    expect(poolSignupPausedFrom("1", {})).toBe(false);
+    expect(poolSignupPausedFrom("0", { POOL_SIGNUP_PAUSED: "1" })).toBe(true);
+    expect(poolSignupPausedFrom("1", { MT_TEST_MODE: "true" })).toBe(false);
   });
 
   it("goes on the early sign-up list while the pool is not open", () => {
