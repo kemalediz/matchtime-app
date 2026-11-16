@@ -18,6 +18,12 @@
  *   node --env-file=.env ./node_modules/.bin/tsx scripts/set-match-result.ts \
  *     --match <matchId> --score "Yellow 7 Red 4" --mom Naim [--by <organiser>] [--apply]
  *
+ *   --mom and --by need ANTHROPIC_API_KEY_DEV (the repo-root .env, which
+ *   --env-file loads): who-is-who is one model call (Haiku) on the
+ *   DEVELOPER's key, as for every script here (MDs/dev-vs-production-api-
+ *   keys.md). Never ANTHROPIC_API_KEY, the product's. Without the key the
+ *   script refuses at once. With --score alone it calls no model at all.
+ *
  *   --score  "<team> <n> <team> <n>", the club's own team names (or red,
  *            yellow, kırmızı, sarı), in either order.
  *   --mom    the player's name as the organisers said it; placed among the
@@ -33,11 +39,19 @@
  *   Either --score or --mom may be left out to record only the other.
  *
  * Refuses, and writes nothing, when the match is not found, has not been
- * played, a team or the name cannot be placed, or --by is not an organiser.
+ * played, a team or the name cannot be placed, --by is not an organiser,
+ * or who-is-who could not answer (its call failed: the refusal says so).
  * Every check runs before the first write.
  *
- * Who-is-who is one model call (Haiku) when --mom or --by is given. In the
- * stubbed e2e suite it is the suite's stand-in (`personPickerFor`).
+ * The two writes are NOT one transaction: `setMatchMom` opens its own and
+ * takes no client, and the score goes through the shared score writer and
+ * its Elo reconcile. When the Man of the Match write fails after the score
+ * was written, the script says PARTLY WRITTEN, what is recorded, and the
+ * re-run that finishes it.
+ *
+ * In the stubbed e2e suite who-is-who is the suite's stand-in
+ * (`personPickerFor`, chosen by a test seam that production ignores): no
+ * key, no call.
  */
 import { db } from "../src/lib/db";
 import { resolveTeamLabels } from "../src/lib/team-labels";
@@ -48,8 +62,11 @@ import { loadClubWhoRoster } from "../src/lib/club-who-roster";
 import { applyScoreWrites } from "../src/lib/score-engine";
 import { buildScoreApplyDeps } from "../src/lib/owner-deps";
 import { currentMom, matchPlayers, resolveMomRef, setMatchMom } from "../src/lib/mom-pick";
+import { anthropicModel } from "../src/lib/pipeline/llm";
+import { extractorStubFromEnv } from "../src/lib/pipeline/extractor-stub";
 import type { Member } from "../src/lib/pipeline/types";
-import type { PersonPicks } from "../src/lib/pipeline/who-is-who";
+import { modelPersonPicker, PERSON_PICKER_STUB_ENV, refKey, stubSeamAllowed, type PersonPicker, type PersonPicks } from "../src/lib/pipeline/who-is-who";
+import { DEV_KEY_ENV, DevApiKeyMissingError, requireDevApiKey } from "../e2e/helpers/dev-api-key";
 
 function arg(name: string): string | null {
   const i = process.argv.indexOf(`--${name}`);
@@ -74,11 +91,43 @@ function parseScoreArg(text: string, labels: readonly [string, string]): { red: 
   return a === "RED" ? { red: first, yellow: second } : { red: second, yellow: first };
 }
 
+/**
+ * Who-is-who's picker. A real call goes on the DEVELOPER's key, handed to
+ * the client directly (`requireDevApiKey`): this script never reads
+ * ANTHROPIC_API_KEY (`e2e/helpers/no-production-key-in-harnesses.test.ts`).
+ * With a test seam set (the stubbed e2e suite; never in production,
+ * `stubSeamAllowed`) it is the stand-in `personPickerFor` would choose,
+ * and needs no key. Throws `DevApiKeyMissingError` when a real call would
+ * be needed and there is no key.
+ */
+function whoIsWhoPicker(): PersonPicker {
+  const seam = stubSeamAllowed() && (process.env[PERSON_PICKER_STUB_ENV] === "1" || extractorStubFromEnv() !== null);
+  if (seam) return personPickerFor();
+  return modelPersonPicker(anthropicModel({ apiKey: requireDevApiKey("scripts/set-match-result.ts (who-is-who, for --mom and --by)") }));
+}
+
 async function main() {
   const matchId = arg("match");
   const scoreText = arg("score");
   const momText = arg("mom");
+  const byText = arg("by");
   if (!matchId || (!scoreText && !momText)) fail('usage: --match <id> --score "<team> <n> <team> <n>" --mom <name> [--by <organiser>] [--apply]');
+
+  // FAIL FAST: a name to look up and no key to look it up with is refused
+  // before anything is read. No name, no picker and no call.
+  let picker: PersonPicker | null = null;
+  if (momText || byText) {
+    try {
+      picker = whoIsWhoPicker();
+    } catch (err) {
+      if (!(err instanceof DevApiKeyMissingError)) throw err;
+      fail(
+        `--mom and --by are looked up by who-is-who, a model call on ${DEV_KEY_ENV}, and it is not set. ` +
+          `Add ${DEV_KEY_ENV}="sk-ant-..." to the repo-root .env and run with node --env-file=.env (MDs/dev-vs-production-api-keys.md), ` +
+          `or record the score alone`,
+      );
+    }
+  }
 
   const match = await db.match.findUnique({
     where: { id: matchId },
@@ -118,7 +167,6 @@ async function main() {
     orderBy: [{ role: "asc" }, { id: "asc" }],
   });
   const roster: Member[] = organisers.map((o) => ({ userId: o.userId, name: o.user?.name ?? "", isAdmin: true, hasPhone: false }));
-  const byText = arg("by");
 
   // WHO THE NAMES ARE, as hqMom asks it: who-is-who is shown the WHOLE
   // club with the match's players marked, so a namesake who did not play
@@ -127,15 +175,16 @@ async function main() {
   const players = momText ? await matchPlayers(match.id) : [];
   let people: PersonPicks = new Map();
   let clubNameOf = new Map<string, string>();
-  if (momText || byText) {
+  if (picker) {
+    const refs = [momText, byText].filter((r): r is string => !!r);
     const organiserIds = new Set(roster.map((o) => o.userId));
     const club = (await loadClubWhoRoster(match.activity.orgId, players, "played this game")).map((m) =>
       organiserIds.has(m.userId) ? { ...m, note: m.note ? `${m.note}; an organiser` : "an organiser" } : m,
     );
     const said = [momText ? `Man of the Match: ${momText}` : null, byText ? `Recorded by: ${byText}` : null].filter(Boolean).join("\n");
     ({ people } = await identifyRefs({
-      picker: personPickerFor(),
-      refs: [momText, byText].filter((r): r is string => !!r),
+      picker,
+      refs,
       body: said,
       author: null,
       senderUserId: null,
@@ -143,6 +192,13 @@ async function main() {
       where: "a match result the club's organisers gave, recorded by hand",
     }));
     clubNameOf = new Map(club.map((m) => [m.userId, m.name || (m.aliases ?? [])[0] || "?"]));
+    // No answer to be had (the call failed, the daily cap refused it, the
+    // answer could not be read): say THAT, not "ambiguous" or "not one
+    // organiser", which would send the operator after the wrong problem.
+    for (const ref of refs) {
+      const pick = people.get(refKey(ref));
+      if (pick?.kind === "unidentified") fail(`who-is-who could not answer for "${ref}" (${pick.why}); try again`);
+    }
   }
 
   let mom: { userId: string; name: string } | null = null;
@@ -171,16 +227,32 @@ async function main() {
     console.log("DRY RUN. Pass --apply to write.");
     return;
   }
+  let scoreWritten: string | null = null;
   if (score && !(previous && previous.red === score.red && previous.yellow === score.yellow)) {
     const [res] = await applyScoreWrites({
       writes: [{ kind: "score", matchId: match.id, red: score.red, yellow: score.yellow, ...(previous ? { previous } : {}), sourceMessageId: "script:set-match-result", reason: "set by hand" }],
       deps: buildScoreApplyDeps(),
     });
     if (!res.ok) fail(`the score write failed (${res.error})`);
+    scoreWritten = `${labels[0]} ${score.red}, ${labels[1]} ${score.yellow}`;
     console.log(`  score written; ${res.eloApplied} rating(s) moved${res.eloError ? `; Elo: ${res.eloError}` : ""}`);
   }
   if (mom) {
-    await setMatchMom({ matchId: match.id, playerId: mom.userId, byUserId: by!.userId });
+    try {
+      await setMatchMom({ matchId: match.id, playerId: mom.userId, byUserId: by!.userId });
+    } catch (err) {
+      // Not one transaction with the score (see the header): say exactly
+      // what is in the database now, and how to finish.
+      const again = `--mom "${momText}"${byText ? ` --by "${byText}"` : ""} --apply`;
+      console.error(
+        scoreWritten
+          ? `PARTLY WRITTEN: the score IS recorded (${scoreWritten}; the match is COMPLETED), but the Man of the Match (${mom.name}) was NOT written. ` +
+              `Re-run with ${again} (and no --score) to record him. The error follows.`
+          : `FAILED: the Man of the Match (${mom.name}) was not written, and nothing else was either. The error follows.`,
+      );
+      console.error(err);
+      process.exit(1);
+    }
     console.log("  Man of the Match written.");
   }
 }

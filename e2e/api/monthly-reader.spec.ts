@@ -252,12 +252,21 @@ test("B3: somebody not on the running month adds himself to the MONTH's list: he
 
 test("B4: 'in for <month> except the last week' joins the month with the games committed", async ({ request, db }) => {
   // Tom joins a month under way, so he covers the games still to play
-  // (the calendar's, `loadLiveMonths`), and "except the last week" is one
-  // fewer: what the reader answers (its prompt: "the games committed when
-  // fewer than all"). A fixed 2 was all of them once only two were left
-  // (Mon 16 Nov 2026), which is recorded as no commitment (null), rightly.
+  // (the calendar's, `loadLiveMonths`). The stub commits him to one fewer,
+  // the server's side of "except the last week": what this test pins is
+  // that a number below the games he covers is recorded. (What the MODEL
+  // answers for a late joiner is not settled here: its prompt counts
+  // against the month's total, "except the last week of five is 4".) A
+  // fixed 2 was all of them once only two were left (Mon 16 Nov 2026),
+  // which is recorded as no commitment (null), rightly.
+  //
+  // The analyze route has no test clock (the rehearsal clock shim is for a
+  // whole rehearsal run, not one spec), so this reads the real date. KICKOFF
+  // is three days out; with it in the last week of its month only one game
+  // is left, and there is nothing below "all" to commit to. That is London
+  // days lastDay-9 to lastDay-3 of each month, 7 days a month, when B4 skips.
   const gamesLeft = monthKickoffs(MONTH_START, WEEKDAY, "20:00").filter((k) => k.getTime() > Date.now()).length;
-  test.skip(gamesLeft < 2, `one game left in ${MONTH_NAME}: there is no "all but the last" to commit to`);
+  test.skip(gamesLeft < 2, `one game left in ${MONTH_NAME} (London days lastDay-9 to lastDay-3): nothing below "all" to commit to`);
   const games = gamesLeft - 1;
   const body = `I'm in for ${MONTH_NAME} except the last week`;
   setMonthlyReaderStub({ bodies: { [body]: { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER, signupFor: "sender", games } } });

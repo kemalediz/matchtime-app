@@ -116,6 +116,8 @@ const LIVE_HARNESSES: Array<[file: string, owes: RegExp]> = [
   ["scripts/live-check-picture-reading.ts", RESOLVER_CALL],
   ["scripts/live-check-reply-to-matchtime.ts", RESOLVER_CALL],
   ["scripts/measure-claimless.ts", RESOLVER_CALL],
+  // An ops tool, but its --mom and --by make a who-is-who call (2026-11-16).
+  ["scripts/set-match-result.ts", RESOLVER_CALL],
 ];
 
 const rel = (f: string) => path.relative(REPO_ROOT, f);
