@@ -63,13 +63,24 @@ export async function loadAskerOwnStats(orgId: string, userId: string, aboutThem
  * block (`loadUnifiedDmInput`), and the table it is shown stops at the top
  * 10, so without this line "what's my rank?" from the 12th had nothing to be
  * answered from. Their own, so given wherever they rank.
+ *
+ * Not in the table is said as the rule the table keeps (review round 2):
+ * it leaves out players with fewer than the minimum of rated matches AND
+ * players who have not played in three months (`loadRatingLeaderboard`), and
+ * these rows do not say which, so neither does the line.
  */
 export function askerRatingLine(ratings: StatsSnapshot["ratings"], userId: string): string {
   const r = ratings.find((x) => x.userId === userId);
+  const label = "- Club rating (their row in the club ratings table):";
   return r
-    ? `- Club rating: ${r.avg.toFixed(1)} from ${r.games} rated matches, no. ${r.rank} in the club ratings table`
-    : `- Club rating: none yet (fewer than ${GROUP_RATINGS_MIN_GAMES} rated matches)`;
+    ? `${label} ${r.avg.toFixed(1)} from ${r.games} rated matches, no. ${r.rank}`
+    : `${label} not in the current table, which ranks players with ${GROUP_RATINGS_MIN_GAMES} or more rated matches who have played in the last three months`;
 }
+
+/** The DM's own-stats line "- Average rating:" says what it is, so the
+ *  model can tell it from the club rating beside it (review round 2): the
+ *  average of every rating the asker received, as their stats page shows. */
+const OWN_AVERAGE_LABEL = "- Average of all the ratings they received (their stats page):";
 
 /**
  * Everything the DM's unified answer is shown, read from the database.
@@ -136,7 +147,8 @@ export async function loadUnifiedDmInput(args: {
   const mine = await soft("own stats", () => loadAskerOwnStats(orgId, userId, false));
   // Their club rating and rank, in their own block (the table stops at 10).
   const rating = stats ? askerRatingLine(stats.ratings, userId) : null;
-  if (mine || rating) own.push([mine ?? "THE ASKER'S OWN STATS:", ...(rating ? [rating] : [])].join("\n"));
+  const mineLabelled = mine ? mine.replace(/^- Average rating:/m, OWN_AVERAGE_LABEL) : null;
+  if (mineLabelled || rating) own.push([mineLabelled ?? "THE ASKER'S OWN STATS:", ...(rating ? [rating] : [])].join("\n"));
   const fee = state.club?.feePerPlayer ?? null;
   const pay = await soft("own payments", () => loadMyPayments({ orgId, userId, upcomingFee: state.matchId ? fee : null }));
   if (pay) own.push(formatMyPaymentsBlock(pay.payments, args.lang, pay.payLinks).replace(/^YOUR PAYMENTS/, "THE ASKER'S OWN PAYMENTS"));

@@ -17,6 +17,7 @@ import type { ClubSnapshot, Route, SquadState, StatsSnapshot } from "../types";
 import { NOW, fullName, world } from "./helpers";
 import { answerHqQuestion } from "../../admin-group-question";
 import { AiBudgetExceededError } from "../../ai-budget-context";
+import { isSelfRefAmong } from "../engine";
 
 const FEATURES = {
   botEnabled: true,
@@ -405,6 +406,53 @@ describe("UNIFIED_ANSWERS on: the person a question names", () => {
 });
 
 /**
+ * A SELF WORD THAT IS ALSO A MEMBER'S NAME (review round 2, 2026-11-16).
+ * "Bana" is Turkish for "to me" and also a given name: in a club with a Bana,
+ * "what is Bana's rating?" is not about the asker. Ben is a name too (never a
+ * self word). Made-up people.
+ */
+describe("UNIFIED_ANSWERS on: a member called Bana, a member called Ben", () => {
+  const state = (): SquadState => {
+    const base = world({ players: [] });
+    const people: Array<[string, string]> = [
+      ["u-bruno", "Bruno Carr"],
+      ["u-bana", "Bana Kaya"],
+      ["u-ben", "Ben Hale"],
+    ];
+    return {
+      ...base,
+      roster: people.map(([userId, name]) => ({ userId, name, isAdmin: false, hasPhone: true })),
+      rows: [{ userId: "u-bruno", status: "CONFIRMED", position: 1 }],
+    };
+  };
+  const contextFor = async (personRef: string, audience?: "organisers") => {
+    const { reqs, loads } = await ask({ unified: true, kind: "other", personRef, state: state(), senderUserId: "u-bruno", answer: "I can't tell that.", ...(audience ? { audience } : {}) });
+    return { user: reqs.find((r) => r.label === "unified-answer")!.user, loads };
+  };
+
+  it("'Bana' in a club with a Bana: never the asker's numbers as the subject", async () => {
+    const { user } = await contextFor("Bana");
+    expect(user).not.toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  it("HQ, 'Bana' in a club with a Bana: not the asker's own stats either", async () => {
+    const { loads } = await contextFor("Bana", "organisers");
+    expect(loads).not.toContain("own:u-bruno");
+  });
+
+  it("'Ben' in a club with a Ben: that member", async () => {
+    expect((await contextFor("Ben")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Ben Hale");
+  });
+
+  it("UNCHANGED: 'bana' meaning 'me' in a club with no Bana, and 'beni' beside a Bana, are the asker", async () => {
+    const noBana = (): SquadState => ({ ...state(), roster: state().roster.filter((m) => m.userId !== "u-bana") });
+    const { reqs } = await ask({ unified: true, kind: "other", personRef: "bana", state: noBana(), senderUserId: "u-bruno", answer: "I can't tell that." });
+    expect(reqs.find((r) => r.label === "unified-answer")!.user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+    expect((await contextFor("beni")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+});
+
+/**
  * THE DAILY AI CAP IN THE GROUPS (review of #595, 2026-11-15). Unchanged by
  * the fix, on purpose: a group at its cap is told so once by the route
  * before any model is asked (`route.ts`, the capped router), and a cap that
@@ -422,5 +470,25 @@ describe("UNIFIED_ANSWERS on: the daily AI cap trips at the answer", () => {
   it("HQ: the same", async () => {
     const { outcome } = await ask({ unified: true, kind: "other", audience: "organisers", capAnswer: true });
     expect(outcome).toBeUndefined();
+  });
+});
+
+describe("isSelfRefAmong (engine.ts): a self word, unless it is a member's name", () => {
+  const roster = [{ name: "Bana Kaya" }, { name: "Ben Hale" }, { name: null }];
+  it.each([
+    ["me", true],
+    ["I", true],
+    ["beni", true],
+    ["BENİ", true],
+    ["Bana", false],
+    ["bana", false],
+    ["Ben", false],
+    ["Bruno", false],
+  ] as const)("'%s' -> %s", (ref, self) => {
+    expect(isSelfRefAmong(ref, roster)).toBe(self);
+  });
+
+  it("'bana' with no Bana in the club is the sender", () => {
+    expect(isSelfRefAmong("bana", [{ name: "Ben Hale" }])).toBe(true);
   });
 });

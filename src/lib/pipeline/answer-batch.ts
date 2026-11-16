@@ -173,7 +173,7 @@ import type { QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
 import { OPEN_ANSWER_INTENT, ORGANISERS_SPACE_INTENT, UNIFIED_ANSWER_INTENT } from "../group-copy";
-import { decide as decideDefault, isSelfRef } from "./engine";
+import { decide as decideDefault, isSelfRefAmong } from "./engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
 import { extractForRouteTraced } from "./trace";
@@ -690,6 +690,13 @@ export interface AnswerMessageOutcome {
    * recipient, so nothing extracted can point it anywhere.
    */
   statsLinkRequest: boolean;
+  /**
+   * This reply really renders the team sheet (`Utterance.teamSheet`): "show
+   * the teams" with teams made. False for every other reply, "No teams
+   * generated yet" included, whatever its intent (review of #604,
+   * 2026-11-16: the route's one-sheet rule reads this, not the intent).
+   */
+  teamSheet: boolean;
 }
 
 export interface AnswerBatchResult {
@@ -1777,9 +1784,10 @@ export async function runAnswerBatch(args: {
       // Alex's rating?" got the asker's (review of #595, 2026-11-15). The
       // tables still carry everyone's under their own names. The asker's
       // own words for themselves ("me", "I", "myself", "beni", "bana") are
-      // `isSelfRef`'s, never a literal (review of #604, 2026-11-16).
+      // `isSelfRef`'s, never a literal (review of #604, 2026-11-16), and
+      // not when the word is also a member's name ("Bana", `isSelfRefAmong`).
       let person: { userId: string; self: boolean } | null = m?.senderUserId ? { userId: m.senderUserId, self: true } : null;
-      if (f?.kind === "question" && f.personRef && !isSelfRef(f.personRef)) {
+      if (f?.kind === "question" && f.personRef && !isSelfRefAmong(f.personRef, state.roster)) {
         const r = resolvePerson(f.personRef, state.roster, peopleById.get(id));
         person = r.kind === "resolved" ? { userId: r.member.userId, self: r.member.userId === m?.senderUserId } : null;
       }
@@ -1795,7 +1803,7 @@ export async function runAnswerBatch(args: {
       const asker = m?.senderUserId ? state.roster.find((r) => r.userId === m.senderUserId) : undefined;
       // The asker's own stats, in HQ only, when the question is about them.
       const own: string[] = [];
-      if (organisers && m?.senderUserId && f?.kind === "question" && isSelfRef(f.personRef ?? "")) {
+      if (organisers && m?.senderUserId && f?.kind === "question" && isSelfRefAmong(f.personRef ?? "", state.roster)) {
         const loadOwn = deps.loadOwnStats ?? (async (o: string, uid: string) => (await import("../unified-dm")).loadAskerOwnStats(o, uid));
         try {
           const block = await loadOwn(orgId, m.senderUserId);
@@ -2051,6 +2059,8 @@ export async function runAnswerBatch(args: {
   // the analyze route's organisers-mode net.
   const organisersSafeIds = new Set<string>();
   const notOrganisersSafeIds = new Set<string>();
+  // The messages whose reply really renders a team sheet (#604).
+  const teamSheetIds = new Set<string>();
   for (const u of composed.utterances) {
     // A batch-level post (`messageId: null`) is the squad post, which
     // only a squad CHANGE produces — and this path makes none. If one
@@ -2071,6 +2081,7 @@ export async function runAnswerBatch(args: {
     utteranceByMessageId.set(u.messageId, list);
     if (u.organisersSafe) organisersSafeIds.add(u.messageId);
     else notOrganisersSafeIds.add(u.messageId);
+    if (u.teamSheet) teamSheetIds.add(u.messageId);
   }
   const reactByMessageId = new Map(composed.reacts.map((r) => [r.messageId, r.emoji]));
   // De-duplicated: `compose()` re-emits `result.degradations` verbatim
@@ -2213,6 +2224,7 @@ export async function runAnswerBatch(args: {
       action: statsLink ? "dm-stats-link" : react ? "react" : reply ? "reply" : "none",
       reasoning: `${ANSWER_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}`,
       statsLinkRequest: statsLink,
+      teamSheet: teamSheetIds.has(m.waMessageId),
     });
   }
 

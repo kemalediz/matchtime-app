@@ -17,15 +17,29 @@
  *
  * NEVER THE TEAM SHEET TWICE (review of #604, 2026-11-16). Once the match
  * has teams, the squad post the composition renders IS the team sheet. So a
- * batch whose replies already post a team sheet (making or showing the
- * teams, a swap's or a replacement's sheet, the team half of an attendance
- * message appended after the composition) has NO carrier: that sheet is the
+ * batch that really sends a team sheet has NO carrier: that sheet is the
  * batch's squad post. And a reply the composition renders into the same
  * sheet keeps only its own words (`withoutRepeatedTeamSheet`).
  *
+ * WHAT "REALLY SENDS A SHEET" MEANS (review round 2). Decided from what a
+ * reply RENDERS, flagged where the sheet is rendered and handed in as
+ * `sheets`, never from its intent: the team intents also carry "No teams
+ * generated yet", "I'll build the teams on match day" and "Can't build teams
+ * right now", which hold no sheet and must not stop the squad post.
+ *   "read"   the teams shown as they stand (the show-teams answer);
+ *   "write"  a sheet a team write in this batch rendered: the teams made,
+ *            a swap's sheet, a replacement's, or the team half of an
+ *            attendance message, appended after the composition.
+ * A "read" sheet beside a "write" one was rendered before the write and is
+ * stale (`staleReadSheetIds`): only the written sheet goes out.
+ *
  * PURE: no database, no I/O. `route.ts` is the only caller.
  */
-import { isTeamPostIntent, skipsSquadComposition } from "./group-copy";
+import { skipsSquadComposition } from "./group-copy";
+
+/** A team sheet a reply really renders: as the teams stand, or as a team
+ *  write in this batch left them. */
+export type SheetKind = "read" | "write";
 
 /** The fields of a route result the choice reads. */
 export interface CarrierResult {
@@ -52,14 +66,14 @@ export function composesSquadPost(r: CarrierResult, teamPostIds: ReadonlySet<str
 }
 
 /**
- * PURE. Does this reply post a team sheet? Making or showing the teams with
- * words (showing them when none are made says nothing, and posts none), or
- * a deterministic team post (`teamPostIds`: a swap's sheet, the 2026-09-15
- * replacement sheet).
+ * PURE. The shown ("read") sheets that are stale because a team write in the
+ * same batch rendered its own sheet: those replies are not sent, the written
+ * sheet answers them.
  */
-export function postsTeamSheet(r: CarrierResult, teamPostIds: ReadonlySet<string>): boolean {
-  if (!r.reply) return false;
-  return isTeamPostIntent(r.intent) || teamPostIds.has(r.waMessageId);
+export function staleReadSheetIds(sheets: ReadonlyMap<string, SheetKind>): string[] {
+  const kinds = [...sheets.values()];
+  if (!kinds.includes("write")) return [];
+  return [...sheets].filter(([, k]) => k === "read").map(([id]) => id);
 }
 
 /**
@@ -67,15 +81,14 @@ export function postsTeamSheet(r: CarrierResult, teamPostIds: ReadonlySet<string
  * reply that already speaks, is not late and is rendered by the composition;
  * with none, the message that changed the squad (`squadPostId`, already
  * moved off a late message by the caller). Null when that message is not in
- * the results, and null when the batch already posts a team sheet
- * (`postsTeamSheet`, or `appendedSheetIds`: a team sheet the route adds to a
- * reply after the composition).
+ * the results, and null when the batch really sends a team sheet (`sheets`,
+ * by message id).
  */
 export function squadPostCarrierId(
   results: ReadonlyArray<CarrierResult>,
-  opts: { squadPostId: string; late: ReadonlySet<string>; teamPostIds: ReadonlySet<string>; appendedSheetIds: ReadonlySet<string> },
+  opts: { squadPostId: string; late: ReadonlySet<string>; teamPostIds: ReadonlySet<string>; sheets: ReadonlyMap<string, SheetKind> },
 ): string | null {
-  if (opts.appendedSheetIds.size > 0 || results.some((r) => postsTeamSheet(r, opts.teamPostIds))) return null;
+  if (opts.sheets.size > 0) return null;
   const speaks = results.filter((r) => !opts.late.has(r.waMessageId) && composesSquadPost(r, opts.teamPostIds));
   if (speaks.length > 0) return speaks[speaks.length - 1].waMessageId;
   return results.some((r) => r.waMessageId === opts.squadPostId) ? opts.squadPostId : null;

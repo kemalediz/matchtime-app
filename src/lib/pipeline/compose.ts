@@ -79,6 +79,11 @@ export interface Utterance {
    * into `ORGANISERS_SPACE_INTENT`, which the analyze route's nets skip.
    */
   organisersSafe?: true;
+  /** Set only where a team sheet is really rendered (the show-teams post,
+   *  the replacement sheet). The route decides "this reply sends the team
+   *  sheet" from this, never from the intent, which also carries "No teams
+   *  generated yet" (review of #604, 2026-11-16). */
+  teamSheet?: true;
 }
 
 export interface ComposedOutput {
@@ -754,6 +759,7 @@ export function compose(result: EngineResult): ComposedOutput {
             venue: state.venue,
             lang,
           }),
+          teamSheet: true,
         });
         break;
       }

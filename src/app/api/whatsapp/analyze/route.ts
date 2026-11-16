@@ -113,9 +113,10 @@ import {
 } from "@/lib/roster-shown";
 import {
   composesSquadPost,
-  postsTeamSheet,
   squadPostCarrierId as squadPostCarrierFor,
+  staleReadSheetIds,
   withoutRepeatedTeamSheet,
+  type SheetKind,
 } from "@/lib/squad-post-carrier";
 import {
   composeSquadStateReply,
@@ -2646,6 +2647,13 @@ async function handleAnalyzeRequest(request: Request) {
   const REGISTRATION_STATUS_REACTS = new Set(["✅", "🪑", "👋"]);
   const senderReactAudit: Array<{ idx: number; userId: string }> = [];
 
+  /** The replies that really render a team sheet, flagged where the sheet
+   *  is rendered (review of #604, 2026-11-16): "read" the show-teams post,
+   *  "write" a sheet a team write in this batch rendered (the teams made, a
+   *  swap's, a replacement's). Never decided from the intent, which also
+   *  carries "No teams generated yet" and the refusals. */
+  const sheetKindById = new Map<string, SheetKind>();
+
   /** Replies that are ALREADY a team sheet composed from the database —
    *  the 2026-09-15 replacement post. Excluded from the §10 step 4
    *  composition pass below; see `EngineMessageOutcome.deterministicTeamPost`. */
@@ -2943,6 +2951,7 @@ async function handleAnalyzeRequest(request: Request) {
       // `EngineMessageOutcome.deterministicTeamPost`.
       if (engineOutcome.deterministicTeamPost && !late) {
         deterministicTeamPostIds.add(msg.waMessageId);
+        sheetKindById.set(msg.waMessageId, "write");
       }
       const engineResult: ActionForBot = {
         waMessageId: msg.waMessageId,
@@ -3076,6 +3085,16 @@ async function handleAnalyzeRequest(request: Request) {
       // A swap's reply IS the team sheet it wrote (2026-10-30): never
       // recomposed into the squad post below.
       if (teamOpsBatch?.outcomes.get(msg.waMessageId)?.teamSheetPost) deterministicTeamPostIds.add(msg.waMessageId);
+      // A team sheet this reply really renders (#604): the show-teams post,
+      // the teams just made, a swap's sheet. Not a refusal or "none yet".
+      {
+        const shown = answerBatch?.outcomes.get(msg.waMessageId);
+        const teamOps = teamOpsBatch?.outcomes.get(msg.waMessageId);
+        if (shown?.teamSheet) sheetKindById.set(msg.waMessageId, "read");
+        else if (teamOps && !teamOps.writeFailed && (teamOps.teamsGenerated || teamOps.teamSheetPost === true)) {
+          sheetKindById.set(msg.waMessageId, "write");
+        }
+      }
       let reply = stepSeven.reply;
       if (reply && nextMatchForReply) {
         reply = enforceProximity(reply, nextMatchForReply.date, org.language);
@@ -3499,23 +3518,40 @@ async function handleAnalyzeRequest(request: Request) {
     engineBatch?.squadPostForMessageId && lateById.has(engineBatch.squadPostForMessageId)
       ? lastFreshActedId
       : (engineBatch?.squadPostForMessageId ?? null);
-  // A batch that already posts a team sheet (review of #604, 2026-11-16):
-  // making or showing the teams, a swap's or a replacement's sheet, or the
-  // team half of an attendance message, which is added to its reply after
+  // THE TEAM SHEETS THIS BATCH REALLY SENDS (review of #604, 2026-11-16):
+  // every reply flagged where its sheet was rendered and still speaking,
+  // plus the team half of an attendance message, added to its reply after
   // the composition. Once teams exist the squad post IS the team sheet, so
-  // such a batch has no carrier for it, and a reply the composition turns
-  // into that sheet keeps only its own words (below): one sheet, never two.
-  const appendedSheetIds = new Set(
-    [...(teamOpsBatch?.alsoOutcomes ?? [])].filter(([, o]) => o.teamSheetPost === true && !!o.reply).map(([id]) => id),
-  );
-  const batchPostsTeamSheet = appendedSheetIds.size > 0 || results.some((r) => postsTeamSheet(r, deterministicTeamPostIds));
+  // a batch that sends one has no carrier for it, and a reply the
+  // composition turns into that sheet keeps only its own words (below): one
+  // sheet, never two. A sheet SHOWN beside a team write ("show the teams"
+  // beside a swap) was rendered before the write and is stale: it is not
+  // sent, the written sheet answers it.
+  const sheets = new Map<string, SheetKind>();
+  for (const [id, kind] of sheetKindById) {
+    if (results.find((r) => r.waMessageId === id)?.reply) sheets.set(id, kind);
+  }
+  for (const [id, o] of teamOpsBatch?.alsoOutcomes ?? []) {
+    if (o.teamSheetPost === true && !!o.reply) sheets.set(id, "write");
+  }
+  // A message answered by the batch's team sheet: never met with the
+  // not-understood line (the "never met with silence" pass, below).
+  const answeredByTeamSheet = new Set<string>();
+  for (const id of staleReadSheetIds(sheets)) {
+    const r = results.find((x) => x.waMessageId === id);
+    if (r) r.reply = null;
+    answeredByTeamSheet.add(id);
+    sheets.delete(id);
+    console.log(`[analyze] ${id}: the teams shown beside a team write are stale; the written sheet answers it`);
+  }
+  const batchPostsTeamSheet = sheets.size > 0;
   // The organisers announce the list (2026-10-14): no batch squad post.
   if (squadPostId && !organisersMode) {
     const carrierId = squadPostCarrierFor(results, {
       squadPostId,
       late: new Set(lateById.keys()),
       teamPostIds: deterministicTeamPostIds,
-      appendedSheetIds,
+      sheets,
     });
     const target = carrierId ? results.find((r) => r.waMessageId === carrierId) : undefined;
     if (target) {
@@ -3551,9 +3587,6 @@ async function handleAnalyzeRequest(request: Request) {
   // The message the batch's ONE composed squad post rides on, when there
   // is one (2026-10-30, read by the "never met with silence" pass).
   let squadPostCarrierId: string | null = null;
-  // A message whose composed reply was the team sheet the batch already
-  // posts: answered by that sheet, so never met with the not-understood line.
-  const answeredByTeamSheet = new Set<string>();
   if (nextMatchForReply) {
     try {
       const candidates: number[] = [];
@@ -3735,8 +3768,9 @@ async function handleAnalyzeRequest(request: Request) {
         }
         // NEVER THE TEAM SHEET TWICE (review of #604, 2026-11-16). With
         // teams made, every composed reply above is that team sheet; when the
-        // batch already posts it, each keeps only its own words (or says
-        // nothing, its question answered by the sheet beside it).
+        // batch really sends it already (`sheets`, never a team intent's
+        // refusal), each keeps only its own words (or says nothing, its
+        // question answered by the sheet beside it).
         if (truth.teams && batchPostsTeamSheet && composedIdx.length > 0) {
           const sheet = composeSquadStateReply(SQUAD_POST_MARKER, truth, org.language).text;
           for (const i of composedIdx.splice(0)) {

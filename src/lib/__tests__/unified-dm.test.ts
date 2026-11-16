@@ -215,7 +215,10 @@ describe("the subject: a DM never presents the asker as the person asked about",
   it("'what is my rating?' still has the asker's own numbers", async () => {
     const text = await context("what is my rating?");
     expect(text).toContain("THE ASKER'S OWN STATS:");
-    expect(text).toContain("- Average rating: 6.4");
+    // Labelled apart from the club rating (review round 2): this is every
+    // rating they received, as their stats page shows it.
+    expect(text).toContain("- Average of all the ratings they received (their stats page): 6.4 (squad avg 6.5)");
+    expect(text).not.toContain("- Average rating:");
   });
 
   // Review of #604 (2026-11-16): with no subject block the asker's rank was
@@ -233,7 +236,7 @@ describe("the subject: a DM never presents the asker as the person asked about",
   it("'what's my rank?' outside the top 10: the asker's own block has their club rating and rank", async () => {
     h.ratings = table(12);
     const text = await context("what's my rank?");
-    expect(ownBlock(text)).toContain("- Club rating: 6.4 from 5 rated matches, no. 12 in the club ratings table");
+    expect(ownBlock(text)).toContain("- Club rating (their row in the club ratings table): 6.4 from 5 rated matches, no. 12");
     expect(text).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
     // The group-sized table still stops at 10: only the asker's own rank is added.
     expect(text).not.toContain("12. Alfie Brook");
@@ -241,12 +244,19 @@ describe("the subject: a DM never presents the asker as the person asked about",
 
   it("inside the top 10 too", async () => {
     h.ratings = table(3);
-    expect(ownBlock(await context("what's my rank?"))).toContain("no. 3 in the club ratings table");
+    expect(ownBlock(await context("what's my rank?"))).toContain("6.4 from 5 rated matches, no. 3");
   });
 
-  it("not in the table yet: said so, in the asker's own block", async () => {
+  // Review round 2: the table leaves out players with fewer than 3 rated
+  // matches AND players who have not played in three months, so "none yet
+  // (fewer than 3)" was a guess. Said as the rule the table keeps.
+  it("not in the table: said truthfully, whichever rule left them out", async () => {
     h.ratings = table(99).filter((r) => r.userId !== "u-alfie");
-    expect(ownBlock(await context("what's my rank?"))).toMatch(/- Club rating: none yet \(fewer than 3 rated matches\)/);
+    const block = ownBlock(await context("what's my rank?"));
+    expect(block).toContain(
+      "- Club rating (their row in the club ratings table): not in the current table, which ranks players with 3 or more rated matches who have played in the last three months",
+    );
+    expect(block).not.toMatch(/none yet|fewer than/);
   });
 });
 

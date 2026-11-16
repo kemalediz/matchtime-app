@@ -651,6 +651,9 @@ describe("a shape the composer cannot answer well is answered by nobody", () => 
     );
     expect(out.react).toBe("\u{1F914}");
     expect(out.intent).toBe("show_teams_request");
+    // No sheet was rendered (review of #604, 2026-11-16): the route must not
+    // treat this team-intent reply as the batch's team sheet.
+    expect(out.teamSheet).toBe(false);
     expect(res.writes).toEqual([]);
   });
 
@@ -842,6 +845,8 @@ describe("the answers are composed from state, never authored", () => {
     const out = [...res.outcomes.values()][0];
     expect(out.intent).toBe("show_teams_request");
     expect(displaysSquadState(out.reply!)).toBe(true);
+    // The sheet really rendered, flagged where it was rendered (#604).
+    expect(out.teamSheet).toBe(true);
   });
 
   it("says the same thing once when two people ask the same question", async () => {

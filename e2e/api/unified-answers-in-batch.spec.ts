@@ -22,6 +22,12 @@
  * squad post carrier. Every case below counts what the group receives: squad
  * posts AND team sheets.
  *
+ * ROUND 2 (2026-11-16): "posts a sheet" is what a reply RENDERS, never its
+ * intent. The team intents also carry "No teams generated yet", "I'll build
+ * the teams on match day" and "Can't build teams right now", which hold no
+ * sheet: those must neither stop the squad post nor strip the batch's only
+ * sheet. And "show the teams" beside a swap sends only the swap's sheet.
+ *
  * The router, the extractors and the answers are STUBBED by message body
  * (`engineOn`); the engine, the batch, the composer and the analyze route are
  * the real code against a real Postgres. No model call, $0. The seed's
@@ -38,7 +44,7 @@ import { MATCH, SPORT_ID, U, londonAt } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import { engineOn, clearPipelineStubs, helpFacts, otherFacts, selfIn } from "../helpers/stub";
 
-test.describe.configure({ mode: "serial" });
+test.describe.configure({ mode: "default" });
 
 const FLAG = "x-mt-test-unified-answers";
 const IN = "IN";
@@ -55,6 +61,9 @@ const BENCH_POST = "*Bench (1):*\n1. Ben Bench";
 const SHOW = "@Match Time show the teams";
 const GEN = "@Match Time generate the teams";
 const COUNT_Q = "@Match Time how many are we?";
+const WHO_Q = "@Match Time who's playing?";
+const LIST_Q = "@Match Time send the list";
+const SWAP = "@Match Time swap Pat with Ian";
 
 type Result = { waMessageId: string; reply?: string | null; react?: string | null; intent?: string | null };
 
@@ -103,6 +112,15 @@ const arm = () =>
       route: "question",
       facts: { topic: "count", kind: "other", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none", badge: "none", answer: "4 of 5." },
     },
+    [WHO_Q]: {
+      route: "question",
+      facts: { topic: "squad", kind: "list", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none", badge: "none" },
+    },
+    [LIST_Q]: {
+      route: "question",
+      facts: { topic: "squad", kind: "list", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none", badge: "none" },
+    },
+    [SWAP]: { route: "balancer", facts: { action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: ["Pat", "Ian"], pairings: [], swapSides: false } },
     [SHOW]: { route: "balancer", facts: { action: "show", includeRefs: [], teamNames: null, swaps: [], pairings: [] } },
     [GEN]: { route: "balancer", facts: { action: "generate", includeRefs: [], teamNames: null, swaps: [], pairings: [] } },
   });
@@ -110,7 +128,12 @@ const arm = () =>
 /** What the group receives: every squad post and every team sheet, counted
  *  across all the replies (one reply could carry both). */
 const count = (spoke: Result[], marker: string) => spoke.reduce((n, r) => n + ((r.reply ?? "").split(marker).length - 1), 0);
-const received = (spoke: Result[]) => ({ squadPosts: count(spoke, "*Playing:*"), teamSheets: count(spoke, "*Teams for") });
+/** A team sheet, whatever its heading ("*Teams for ...*", or a swap's
+ *  "Updated teams:"): the first team's heading on a line of its own,
+ *  "*Red*:" or a swap sheet's "*Red*". */
+const SHEET_HEADING = /^\*Red\*:?\s*$/gm;
+const sheetsIn = (spoke: Result[]) => spoke.reduce((n, r) => n + ((r.reply ?? "").match(SHEET_HEADING) ?? []).length, 0);
+const received = (spoke: Result[]) => ({ squadPosts: count(spoke, "*Playing:*"), teamSheets: sheetsIn(spoke), sends: spoke.length });
 
 /** The match's teams are made and published (two a side, Ian not in them). */
 async function teamsOut(db: { run: (q: string, p: unknown[]) => Promise<unknown> }) {
@@ -120,12 +143,45 @@ async function teamsOut(db: { run: (q: string, p: unknown[]) => Promise<unknown>
   await db.run(`UPDATE "Match" SET status = 'TEAMS_PUBLISHED' WHERE id = $1`, [MATCH.upcoming]);
 }
 
-/** The match is tonight, two a side, so the teams can be made now. */
-async function matchDay(db: { run: (q: string, p: unknown[]) => Promise<unknown> }) {
+/** The match is tonight, so the teams can be made now: two a side, or more
+ *  a side than the squad holds (the balancer refuses: not enough players). */
+async function matchDay(db: { run: (q: string, p: unknown[]) => Promise<unknown> }, playersPerTeam = 2) {
   const k = londonAt(0, 22, 0);
   await db.run(`UPDATE "Match" SET date = $2, "attendanceDeadline" = $3 WHERE id = $1`, [MATCH.upcoming, k.toISOString(), new Date(k.getTime() - 5 * 3600e3).toISOString()]);
-  await db.run(`UPDATE "Sport" SET "playersPerTeam" = 2 WHERE id = $1`, [SPORT_ID]);
+  await db.run(`UPDATE "Sport" SET "playersPerTeam" = $2 WHERE id = $1`, [SPORT_ID, playersPerTeam]);
 }
+
+/** Pat pulled out after the teams were made; Ian is in with no slot. */
+async function patOutIanIn(db: { run: (q: string, p: unknown[]) => Promise<unknown> }) {
+  await db.run(`UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.player]);
+  await db.run(
+    `INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "respondedAt", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, 'CONFIRMED', 6, now(), now(), now())
+     ON CONFLICT ("matchId", "userId") DO UPDATE SET status = 'CONFIRMED'`,
+    [`e2e-att-uab-${U.fresh}`, MATCH.upcoming, U.fresh],
+  );
+}
+
+/** Two tagged messages from two people, in this order. */
+async function pair(request: APIRequestContext, unified: boolean, a: { body: string; from: typeof ALEX }, b: { body: string; from: typeof ALEX }) {
+  const aId = msgId();
+  const bId = msgId();
+  const res = await request.post("/api/whatsapp/analyze", {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY, [FLAG]: unified ? "1" : "0" },
+    data: {
+      groupId: E2E.GROUP_ID,
+      messages: [
+        { waMessageId: aId, body: a.body, ...a.from, botMentioned: true, timestamp: new Date().toISOString() },
+        { waMessageId: bId, body: b.body, ...b.from, botMentioned: true, timestamp: new Date().toISOString() },
+      ],
+    },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  const results = (await res.json()).results as Result[];
+  return { results, spoke: results.filter((r) => (r.reply ?? "").length > 0), aR: results.find((r) => r.waMessageId === aId)!, bR: results.find((r) => r.waMessageId === bId)! };
+}
+
+const NOT_MATCH_DAY = "I'll build the teams on match day, just ask me then.";
 
 async function statusOf(db: { all: <T>(q: string, p: unknown[]) => Promise<T[]> }, userId: string) {
   const rows = await db.all<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, userId]);
@@ -152,7 +208,7 @@ test("flag ON: ONE squad post (on the IN, naming the bench) and the unified answ
   arm();
   const { spoke, askR, inR } = await batch(request, true, { body: ADD_IAN, ...ALEX });
   expect(await statusOf(db, U.fresh)).toBe("CONFIRMED");
-  expect(received(spoke)).toEqual({ squadPosts: 1, teamSheets: 0 });
+  expect(received(spoke)).toEqual({ squadPosts: 1, teamSheets: 0, sends: 2 });
   expect(inR.reply).toContain(BENCH_POST);
   expect(inR.reply).toContain("5/5");
   expect(askR.intent).toBe("unified_answer");
@@ -173,7 +229,7 @@ test("flag ON, a plain IN beside the question (no squad post in this batch eithe
 test("flag OFF, the open answer beside the squad change: ONE squad post on the IN, and the open answer", async ({ request }) => {
   arm();
   const { spoke, askR, inR } = await batch(request, false, { body: ADD_IAN, ...ALEX }, OPEN_Q);
-  expect(received(spoke)).toEqual({ squadPosts: 1, teamSheets: 0 });
+  expect(received(spoke)).toEqual({ squadPosts: 1, teamSheets: 0, sends: 2 });
   expect(inR.reply).toContain(BENCH_POST);
   expect(askR.intent).toBe("open_answer");
   expect(askR.reply).toBe(OPEN_ANSWER);
@@ -182,7 +238,7 @@ test("flag OFF, the open answer beside the squad change: ONE squad post on the I
 test("help beside the squad change: ONE squad post on the IN, and the help untouched", async ({ request }) => {
   arm();
   const { spoke, askR, inR } = await batch(request, false, { body: ADD_IAN, ...ALEX }, HELP_Q);
-  expect(received(spoke)).toEqual({ squadPosts: 1, teamSheets: 0 });
+  expect(received(spoke)).toEqual({ squadPosts: 1, teamSheets: 0, sends: 2 });
   expect(inR.reply).toContain(BENCH_POST);
   expect(askR.intent).toBe("help");
   expect(askR.reply ?? "").not.toContain("*Playing:*");
@@ -195,7 +251,7 @@ for (const unified of [true, false]) {
     arm();
     const { spoke, askR, inR } = await batch(request, unified, { body: ADD_IAN, ...ALEX }, SHOW);
     expect(await statusOf(db, U.fresh)).toBe("CONFIRMED");
-    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1 });
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 1 });
     expect(askR.intent).toBe("show_teams_request");
     expect(inR.reply ?? null).toBeNull();
   });
@@ -204,7 +260,7 @@ for (const unified of [true, false]) {
     await matchDay(db);
     arm();
     const { spoke, askR, inR } = await batch(request, unified, { body: ADD_IAN, ...ALEX }, GEN);
-    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1 });
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 1 });
     expect(askR.intent).toBe("generate_teams_request");
     expect(inR.reply ?? null).toBeNull();
   });
@@ -216,8 +272,76 @@ test("teams out, flag OFF: 'show the teams' + 'how many are we?' (a squad answer
   arm();
   const { spoke, inR: showR, askR } = await batch(request, false, { body: SHOW, ...ALEX, botMentioned: true }, COUNT_Q);
   expect(showR.intent).toBe("show_teams_request");
-  expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1 });
+  expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 1 });
   expect(showR.reply).toContain("*Teams for");
   // The question is answered by the sheet beside it, never "I didn't catch that".
   expect(askR.intent).not.toBe("not_understood");
 });
+
+// ── ROUND 2 (2026-11-16): a team intent that renders NO sheet ──────────
+
+test("REGRESSION, flag ON: teams out, 'send the list' + a refused 'make teams' (not match day): the list's sheet still goes out", async ({ request, db }) => {
+  await teamsOut(db);
+  arm();
+  const { spoke, aR, bR } = await pair(request, true, { body: LIST_Q, from: PAT }, { body: GEN, from: ALEX });
+  expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 2 });
+  expect(sheetsIn([aR])).toBe(1);
+  expect(bR.reply).toBe(NOT_MATCH_DAY);
+  expect(aR.intent).not.toBe("not_understood");
+});
+
+for (const [what, body] of [["how many are we?", COUNT_Q], ["who's playing?", WHO_Q]] as const) {
+  test(`REGRESSION, flag OFF: teams out, '${what}' + a refused 'make teams': the answer's sheet still goes out`, async ({ request, db }) => {
+    await teamsOut(db);
+    arm();
+    const { spoke, aR, bR } = await pair(request, false, { body, from: PAT }, { body: GEN, from: ALEX });
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 2 });
+    expect(sheetsIn([aR])).toBe(1);
+    expect(bR.reply).toBe(NOT_MATCH_DAY);
+    expect(aR.intent).not.toBe("not_understood");
+  });
+}
+
+for (const unified of [true, false]) {
+  const flag = unified ? "ON" : "OFF";
+
+  test(`no teams made: 'Ian Innes is in' + 'show the teams' ("No teams generated yet"): ONE squad post, no sheet (flag ${flag})`, async ({ request }) => {
+    arm();
+    const { spoke, askR, inR } = await batch(request, unified, { body: ADD_IAN, ...ALEX }, SHOW);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 1, teamSheets: 0, sends: 2 });
+    expect(inR.reply).toContain(BENCH_POST);
+    expect(askR.reply).toMatch(/^No teams generated yet\./);
+  });
+
+  test(`before match day: 'Ian Innes is in' + 'make the teams' ("I'll build the teams on match day"): ONE squad post, no sheet (flag ${flag})`, async ({ request }) => {
+    arm();
+    const { spoke, askR, inR } = await batch(request, unified, { body: ADD_IAN, ...ALEX }, GEN);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 1, teamSheets: 0, sends: 2 });
+    expect(inR.reply).toContain(BENCH_POST);
+    expect(askR.reply).toBe(NOT_MATCH_DAY);
+  });
+
+  test(`match day, too few players: 'Ian Innes is in' + 'make the teams' ("Can't build teams right now"): ONE squad post, no sheet (flag ${flag})`, async ({ request, db }) => {
+    await matchDay(db, 6);
+    arm();
+    const { spoke, askR, inR } = await batch(request, unified, { body: ADD_IAN, ...ALEX }, GEN);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 1, teamSheets: 0, sends: 2 });
+    expect(inR.reply).toContain("*Playing:*");
+    expect(askR.reply).toMatch(/^Can't build teams right now: not enough confirmed players/);
+  });
+
+  test(`a swap + 'show the teams': ONE sheet, the one after the swap (flag ${flag})`, async ({ request, db }) => {
+    await teamsOut(db);
+    await patOutIanIn(db);
+    arm();
+    const { spoke, aR, bR } = await pair(request, unified, { body: SWAP, from: ALEX }, { body: SHOW, from: PAT });
+    expect(aR.intent, JSON.stringify(spoke)).toBe("team_swap");
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1, sends: 1 });
+    // The sheet that goes out is the swap's: Ian holds Pat's place.
+    expect(aR.reply).toContain("Ian Innes");
+    expect(aR.reply).not.toMatch(/^\d+\. Pat Player$/m);
+    // The show is answered by it: no reply of its own, never "I didn't catch that".
+    expect(bR.reply ?? null).toBeNull();
+    expect(bR.intent).not.toBe("not_understood");
+  });
+}

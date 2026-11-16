@@ -248,6 +248,23 @@ export const isSelfRef = (ref: string): boolean => {
   return SELF_REFS.has(t.toLowerCase()) || SELF_REFS.has(t.toLocaleLowerCase("tr"));
 };
 
+/**
+ * `isSelfRef`, unless the word is also the name of one of these members
+ * (2026-11-16, review of #604): "Bana" is Turkish for "to me" and a given
+ * name, so in a club with a Bana it may be her, and is never read as the
+ * sender. Compared with the member's whole name or first name, case-folded
+ * both ways, as `isSelfRef` is.
+ */
+export const isSelfRefAmong = (ref: string, roster: ReadonlyArray<{ name: string | null }>): boolean => {
+  if (!isSelfRef(ref)) return false;
+  const fold = (x: string) => x.trim().toLocaleLowerCase("tr");
+  const r = fold(ref);
+  return !roster.some((m) => {
+    const name = fold(m.name ?? "");
+    return !!name && (name === r || name.split(/\s+/)[0] === r);
+  });
+};
+
 interface Working {
   rows: Map<string, AttendanceRow>;
   roster: Member[];
