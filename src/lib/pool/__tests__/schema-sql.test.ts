@@ -384,14 +384,14 @@ describe("the per-visit log migration of 2026-11-13, now history", () => {
   });
 });
 
-describe("the daily breakdown migration (2026-11-16): daily totals only, kept 90 days", () => {
+describe("the daily breakdown migration (2026-11-16): daily totals of opens only, kept 90 days", () => {
   const DAILY = "prisma/migrations/20261116120000_pool_visit_daily/migration.sql";
   const sql = code(read(DAILY));
   const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "PoolVisitDaily"'));
   const cols = table.slice(0, table.indexOf(");"));
-  const KEY = ["code", "day", "step", "trigger", "browser", "inApp", "device", "scanner"];
+  const KEY = ["code", "day", "step", "trigger", "inApp", "scanner"];
 
-  it("holds the bucket, the London day, the step, the categories and a count, and nothing else", () => {
+  it("holds the bucket, the London day, the step, the trigger, the in-app browser, the scanner flag and a count, and nothing else", () => {
     const names = [...cols.matchAll(/^\s*"([^"]+)" [A-Z]/gm)].map((m) => m[1]);
     expect(names).toEqual([...KEY, "count"]);
     expect(cols).toMatch(/"day" DATE NOT NULL/);
@@ -399,15 +399,16 @@ describe("the daily breakdown migration (2026-11-16): daily totals only, kept 90
   });
   it("keeps nothing per visit or about a person: no hour, time on screen, address, user agent, friend's code, user id or cookie", () => {
     expect(cols).not.toMatch(/"at"|hour|visible|TIMESTAMP|\bip\b|address|agent|"ua"|userId|"ref"|hasRef|referralCode|cookie|session|phone|name"|"id"/i);
+    // Review of #607: a browser family or device class could single out the
+    // one person who signed up that day (13 November, fb2: mobile Safari).
+    expect(cols).not.toMatch(/browser|device/i);
   });
   it("each category is one of its values, pinned to the TypeScript, in the migration and the CHECK file alike", () => {
     const checks = [
-      inList("step", ["opened", "started"]),
+      // Opens only: the daily counters count starts.
+      inList("step", ["opened"]),
       inList("trigger", L.POOL_VISIT_TRIGGERS),
-      `CHECK ("step" <> 'started' OR "trigger" = 'none')`,
-      inList("browser", L.POOL_BROWSERS),
       inList("inApp", L.POOL_IN_APPS),
-      inList("device", L.POOL_DEVICES),
       `CHECK ("count" >= 0)`,
       `CHECK ("code" IN ('_direct', '_referral') OR ("code" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length("code") <= 32))`,
     ];
@@ -427,7 +428,8 @@ describe("the daily breakdown migration (2026-11-16): daily totals only, kept 90
   });
   it("the schema has the model, keyed by every category and indexed by day", () => {
     const schema = read("prisma/schema.prisma");
-    expect(schema).toMatch(/model PoolVisitDaily \{[^}]*@@id\(\[code, day, step, trigger, browser, inApp, device, scanner\]\)/);
+    expect(schema).toMatch(/model PoolVisitDaily \{[^}]*@@id\(\[code, day, step, trigger, inApp, scanner\]\)/);
+    expect(schema).not.toMatch(/model PoolVisitDaily \{[^}]*\n\s+(browser|device)\s/);
     expect(schema).toMatch(/model PoolVisitDaily \{[^}]*day\s+DateTime\s+@db\.Date/);
     expect(schema).toMatch(/model PoolVisitDaily \{[^}]*@@index\(\[day\]\)/);
   });
@@ -436,6 +438,10 @@ describe("the daily breakdown migration (2026-11-16): daily totals only, kept 90
 describe("the staff test migration (2026-11-16)", () => {
   const STAFF = "prisma/migrations/20261116120100_pool_profile_staff_test/migration.sql";
   const sql = code(read(STAFF));
+  it("its header says plainly what fails without it: every PoolProfile insert and every update that returns the row", () => {
+    expect(read(STAFF)).toMatch(/EVERY insert into "PoolProfile"/);
+    expect(read(STAFF)).toMatch(/every update of a "PoolProfile" that returns the row/i);
+  });
   it("adds one column, false for every existing profile", () => {
     expect([...sql.matchAll(/ADD COLUMN IF NOT EXISTS "([^"]+)"/g)].map((m) => m[1])).toEqual(["staffTest"]);
     expect(sql).toContain(`ALTER TABLE "PoolProfile" ADD COLUMN IF NOT EXISTS "staffTest" BOOLEAN NOT NULL DEFAULT false;`);
@@ -454,10 +460,11 @@ describe("the backfill migration (2026-11-16): the per-visit rows added up, noth
   it("adds to the totals, never replaces them: the new code's own counts survive", () => {
     expect(sql).toMatch(/INSERT INTO "PoolVisitDaily"[\s\S]*FROM "PoolVisitEvent"[\s\S]*DO UPDATE SET "count" = "PoolVisitDaily"\."count" \+ EXCLUDED\."count"/);
   });
-  it("by London day, the trigger none for a start, the hour and the time on screen left behind", () => {
+  it("opens only, by London day, the browser, the device, the hour and the time on screen left behind", () => {
     expect(sql).toContain(`(("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date`);
-    expect(sql).toContain(`CASE WHEN "step" = 'started' THEN 'none' ELSE COALESCE("openedBy", 'none') END`);
-    expect(sql).not.toMatch(/"visibleMs"|"hasRef"/);
+    expect(sql).toContain(`COALESCE("openedBy", 'none')`);
+    expect(sql).toMatch(/FROM "PoolVisitEvent"\s+WHERE "step" = 'opened'/);
+    expect(sql).not.toMatch(/"visibleMs"|"hasRef"|"browser"|"device"/);
   });
   it("once only: it renames the old table in the same transaction, and does nothing when it is gone", () => {
     expect(sql).toMatch(/IF to_regclass\('"PoolVisitEvent"'\) IS NULL THEN[\s\S]*RETURN;/);
@@ -473,6 +480,13 @@ describe("the backfill migration (2026-11-16): the per-visit rows added up, noth
   it("its header says to apply it after the deploy, and how to check it against the counters", () => {
     expect(read(BACKFILL)).toMatch(/APPLY AFTER THE DEPLOY/);
     expect(read(BACKFILL)).toMatch(/FULL JOIN counters/);
+  });
+  // Review of #607: both sides of the "every old row was added" check count
+  // only days before the deploy day, so the deploy day raises no false alarm.
+  it("the after-check compares old rows and added totals on the same days", () => {
+    const header = read(BACKFILL);
+    expect(header).toMatch(/FROM "PoolVisitEventBackfilled"[\s-]+WHERE "step" = 'opened' AND \(\("at" AT TIME ZONE 'UTC'\) AT TIME ZONE 'Europe\/London'\)::date < '<deploy day>'/);
+    expect(header).toMatch(/FROM "PoolVisitDaily" WHERE "day" < '<deploy day>'/);
   });
 });
 

@@ -6,10 +6,11 @@
  * the confirm). Nothing about the person is stored: no address, no user
  * agent, no id, only the bucket, the day, the step and the count.
  *
- * The breakdown (2026-11-16, daily totals only): each page step also adds
- * one to a daily total per coarse category ("PoolVisitDaily"), ONE atomic
- * upsert, best-effort on its own; nothing per visit, no hour, no time on
- * screen. Deleted 90 days after its day. A staff test sign-up
+ * The breakdown (2026-11-16, daily totals only): each OPEN also adds one
+ * to a daily total by trigger, in-app browser and scanner flag
+ * ("PoolVisitDaily"), ONE atomic upsert, best-effort on its own; a start
+ * adds nothing; no browser, device, hour or time on screen. The server log
+ * line holds the same categories, never the user agent. Deleted 90 days after its day. A staff test sign-up
  * (`PoolProfile.staffTest`) counts as neither sent nor confirmed.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,13 +51,13 @@ function upsertValues(): unknown[] {
   return calls[0].values;
 }
 
-const DAILY_COLUMNS = ["code", "day", "step", "trigger", "browser", "inApp", "device", "scanner"];
+const DAILY_COLUMNS = ["code", "day", "step", "trigger", "inApp", "scanner"];
 
 /** The bound values of the one daily total upsert, by column. */
 function dailyRow(): Record<string, unknown> {
   const calls = dailyCalls();
   expect(calls).toHaveLength(1);
-  const cols = `"code", "day", "step", "trigger", "browser", "inApp", "device", "scanner"`;
+  const cols = `"code", "day", "step", "trigger", "inApp", "scanner"`;
   expect(calls[0].sql).toContain(`INSERT INTO "PoolVisitDaily" (${cols}, "count")`);
   expect(calls[0].sql).toContain(`ON CONFLICT (${cols}) DO UPDATE SET "count" = "PoolVisitDaily"."count" + 1`);
   expect(calls[0].values).toHaveLength(DAILY_COLUMNS.length);
@@ -78,9 +79,10 @@ describe("recordPoolVisit: the page's steps, opened and started", () => {
     expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03", "opened"]);
   });
 
-  it("started counts under the same bucket, on its own step", async () => {
+  it("started counts under the same bucket, on its own step, and is added to no breakdown (the counters already count it)", async () => {
     expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW, step: "started", trigger: "none" })).toBe("fb-sutton");
     expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03", "started"]);
+    expect(dailyCalls()).toHaveLength(0);
   });
 
   it("plain /play: direct, and no lookup at all", async () => {
@@ -107,12 +109,13 @@ describe("recordPoolVisit: the page's steps, opened and started", () => {
 
   it("a link preview fetcher counts nothing; it is added to the daily totals only as a scanner", async () => {
     for (const ua of ["facebookexternalhit/1.1", "WhatsApp/2.23.20.0 A", "Twitterbot/1.0", null]) {
+      expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: ua, now: NOW, step: "opened", trigger: "touch" })).toBeNull();
       expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: ua, now: NOW, step: "started", trigger: "none" })).toBeNull();
     }
     expect(counterCalls()).toHaveLength(0);
     const rows = dailyCalls().map((c) => Object.fromEntries(DAILY_COLUMNS.map((k, i) => [k, c.values[i]])));
     expect(rows).toHaveLength(4);
-    for (const row of rows) expect(row).toMatchObject({ code: "fb-sutton", step: "started", scanner: true });
+    for (const row of rows) expect(row).toMatchObject({ code: "fb-sutton", step: "opened", scanner: true });
   });
 
   it("stores nothing about the person: only the bucket, the day and the step are bound", async () => {
@@ -133,7 +136,7 @@ describe("recordPoolVisit: the page's steps, opened and started", () => {
 });
 
 describe("recordPoolVisit: the daily totals by category (2026-11-16)", () => {
-  it("one more for the visit's code, London day, step, trigger and coarse label, and nothing else", async () => {
+  it("one more for the open's code, London day, trigger, in-app browser and scanner flag, and nothing else: no browser, no device", async () => {
     await recordPoolVisit({
       source: { campaignCode: "fb-sutton", referralCode: null },
       userAgent: PERSON,
@@ -146,18 +149,16 @@ describe("recordPoolVisit: the daily totals by category (2026-11-16)", () => {
       day: "2026-11-03",
       step: "opened",
       trigger: "scroll",
-      browser: "safari",
       inApp: "none",
-      device: "mobile",
       scanner: false,
     });
   });
 
   it("a friend's link: under _referral, and never the friend's code, the user agent or the time of day", async () => {
-    await recordPoolVisit({ source: { campaignCode: null, referralCode: "AB12cd" }, userAgent: PERSON, now: new Date("2026-11-03T12:34:56Z"), step: "started", trigger: "none" });
-    expect(dailyRow()).toMatchObject({ code: POOL_VISIT_REFERRAL, step: "started", trigger: "none" });
+    await recordPoolVisit({ source: { campaignCode: null, referralCode: "AB12cd" }, userAgent: PERSON, now: new Date("2026-11-03T12:34:56Z"), step: "opened", trigger: "key" });
+    expect(dailyRow()).toMatchObject({ code: POOL_VISIT_REFERRAL, step: "opened", trigger: "key" });
     const stored = JSON.stringify(dailyCalls()[0].values);
-    for (const secret of ["AB12cd", "iPhone", "Mozilla", "Safari/604", "12:34", "T12"]) expect(stored).not.toContain(secret);
+    for (const secret of ["AB12cd", "iPhone", "Mozilla", "Safari", "safari", "mobile", "12:34", "T12"]) expect(stored).not.toContain(secret);
   });
 
   it("a failed total never costs the count", async () => {
@@ -201,45 +202,48 @@ describe("purgeOldPoolVisitDaily: the daily cron deletes the totals after 90 day
   });
 });
 
-describe("recordPoolVisit: one server log line per beacon, to identify scanners (2026-11-06)", () => {
+describe("recordPoolVisit: one server log line per beacon, the kept categories only (2026-11-06, 2026-11-16)", () => {
   const lines = () => info.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[pool-funnel] beacon "));
 
-  it("counted: the step, the code as sent, the bucket and the raw user agent, quoted", async () => {
+  it("counted: the step, the bucket, the trigger, the in-app browser, the scanner flag; never the user agent", async () => {
     await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW, step: "started", trigger: "none" });
-    expect(lines()).toEqual([`[pool-funnel] beacon step=started code=fb-sutton ref=no result=counted bucket=fb-sutton ua=${JSON.stringify(PERSON)}`]);
+    expect(lines()).toEqual(["[pool-funnel] beacon step=started code=fb-sutton trigger=none inApp=none scanner=no result=counted"]);
+    for (const secret of ["Mozilla", "iPhone", "Safari", "ua="]) expect(lines()[0]).not.toContain(secret);
   });
 
-  it("a link preview fetcher: filtered, with its user agent, and nothing counted", async () => {
+  it("a link preview fetcher: filtered, as a scanner, and nothing counted", async () => {
     await recordPoolVisit({ source: { campaignCode: "fb", referralCode: null }, userAgent: "facebookexternalhit/1.1", now: NOW, step: "opened", trigger: "touch" });
-    expect(lines()).toEqual(['[pool-funnel] beacon step=opened code=fb ref=no result=fetcher bucket=- ua="facebookexternalhit/1.1"']);
+    expect(lines()).toEqual(["[pool-funnel] beacon step=opened code=fb trigger=touch inApp=none scanner=yes result=fetcher"]);
     expect(counterCalls()).toHaveLength(0);
   });
 
-  it("no user agent at all, plain /play: filtered, ua=none", async () => {
+  it("no user agent at all, plain /play: filtered as a scanner", async () => {
     await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: null, now: NOW, step: "opened", trigger: "touch" });
-    expect(lines()).toEqual(["[pool-funnel] beacon step=opened code=- ref=no result=fetcher bucket=- ua=none"]);
+    expect(lines()).toEqual(["[pool-funnel] beacon step=opened code=_direct trigger=touch inApp=none scanner=yes result=fetcher"]);
   });
 
-  it("a friend's link logs that there was a share code, never the code itself", async () => {
+  it("a friend's link: only its bucket, never the code itself", async () => {
     await recordPoolVisit({ source: { campaignCode: null, referralCode: "AB12cd" }, userAgent: PERSON, now: NOW, step: "opened", trigger: "touch" });
-    expect(lines()).toHaveLength(1);
-    expect(lines()[0]).toContain("ref=yes result=counted bucket=_referral");
-    expect(lines()[0]).not.toContain("AB12cd");
+    expect(lines()).toEqual(["[pool-funnel] beacon step=opened code=_referral trigger=touch inApp=none scanner=no result=counted"]);
   });
 
-  it("a failure is logged as failed, still with its user agent", async () => {
+  it("a failed count is logged as failed; a failed lookup has no bucket", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     dbMock.db.$executeRaw.mockRejectedValue(new Error("pool down"));
     await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: PERSON, now: NOW, step: "opened", trigger: "touch" });
-    expect(lines()).toEqual([`[pool-funnel] beacon step=opened code=- ref=no result=failed bucket=- ua=${JSON.stringify(PERSON)}`]);
+    dbMock.db.poolCampaign.findFirst.mockRejectedValue(new Error("pool down"));
+    await recordPoolVisit({ source: { campaignCode: "fb", referralCode: null }, userAgent: PERSON, now: NOW, step: "opened", trigger: "key" });
+    expect(lines()).toEqual([
+      "[pool-funnel] beacon step=opened code=_direct trigger=touch inApp=none scanner=no result=failed",
+      "[pool-funnel] beacon step=opened code=- trigger=key inApp=none scanner=no result=failed",
+    ]);
     warn.mockRestore();
   });
 
-  it("a user agent with quotes or a line break stays on one line", async () => {
+  it("a user agent with quotes or a line break never reaches the log", async () => {
     await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: 'Evil "x"\nnext', now: NOW, step: "opened", trigger: "touch" });
     expect(lines()).toHaveLength(1);
-    expect(lines()[0]).not.toContain("\n");
-    expect(lines()[0]).toContain('ua="Evil \\"x\\"\\nnext"');
+    expect(lines()[0]).not.toMatch(/Evil|next|\n/);
   });
 });
 

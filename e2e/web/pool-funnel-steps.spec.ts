@@ -16,10 +16,12 @@
  *   - a fetcher calling the beacon counts nothing, and a page claiming the
  *     server's steps (sent, confirmed) counts nothing;
  *   - the opened beacon says what opened the page, and the breakdown
- *     (2026-11-16) keeps DAILY TOTALS only, per code, day, step, trigger
- *     and coarse browser label: no time of day, no time on screen, no
- *     address or user agent; a fetcher is added as a scanner, our staff
- *     not at all;
+ *     (2026-11-16) keeps DAILY TOTALS of OPENS only, per code, day,
+ *     trigger, in-app browser and scanner flag: no browser, no device, no
+ *     starts, no time of day, no time on screen, no address or user agent;
+ *     a fetcher is added as a scanner, our staff not at all;
+ *   - the staff cookie is set by the server (2026-11-16), HttpOnly, so
+ *     WebKit's 7-day cap on script-set cookies does not apply;
  *   - the owner's source codes page shows opened, started, sent and
  *     confirmed for today, 7 days or 30 days, with the drop between steps.
  * The server's own steps (sent, confirmed, a staff test sign-up) are
@@ -75,10 +77,10 @@ const beaconBodies = (page: Page) =>
     return (await Promise.all(sent)).map((body) => JSON.parse(body) as Record<string, unknown>);
   });
 
-type DailyTotal = { code: string; day: string; step: string; trigger: string; browser: string; inApp: string; device: string; scanner: boolean; count: number };
+type DailyTotal = { code: string; day: string; step: string; trigger: string; inApp: string; scanner: boolean; count: number };
 const dailyTotals = (db: TestDb, code: string) =>
   db.all<DailyTotal>(
-    `SELECT "code", to_char("day", 'YYYY-MM-DD') AS day, "step", "trigger", "browser", "inApp", "device", "scanner", "count" FROM "PoolVisitDaily" WHERE code = $1 ORDER BY "step", "trigger"`,
+    `SELECT "code", to_char("day", 'YYYY-MM-DD') AS day, "step", "trigger", "inApp", "scanner", "count" FROM "PoolVisitDaily" WHERE code = $1 ORDER BY "step", "trigger", "scanner"`,
     [code],
   );
 
@@ -217,7 +219,7 @@ test.describe("the page's steps", () => {
     await context.close();
   });
 
-  test("a club owner who loads /admin gets no staff cookie, his old one is cleared, and his /play visit counts", async ({ browser, baseURL, db }) => {
+  test("a club owner who loads /admin gets no staff cookie, the server clears his old one, and his /play visit counts", async ({ browser, baseURL, db }) => {
     await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
     await db.run(`UPDATE "User" SET "isSuperadmin" = false WHERE id = $1`, [U.admin]);
     const owner = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
@@ -232,7 +234,7 @@ test.describe("the page's steps", () => {
     await owner.close();
   });
 
-  test("MatchTime staff who load /admin get the staff cookie and their /play visit counts nothing; a player gets none", async ({ browser, db }) => {
+  test("MatchTime staff who load /admin get the staff cookie from the server, a year long and HttpOnly, and their /play visit counts nothing; a player gets none", async ({ browser, db }) => {
     await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
     await db.run(`UPDATE "User" SET "isSuperadmin" = true WHERE id = $1`, [U.admin]);
     const staff = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
@@ -243,6 +245,9 @@ test.describe("the page's steps", () => {
     expect(cookie.path).toBe("/");
     expect(cookie.sameSite).toBe("Lax");
     expect(cookie.expires * 1000 - Date.now()).toBeGreaterThan(360 * 86_400_000);
+    // Set in a response header, never by page script (WebKit caps those at 7 days).
+    expect(cookie.httpOnly).toBe(true);
+    expect(await page.evaluate(() => document.cookie)).not.toContain("mt-staff");
     await page.goto(`/play?src=${CODE}`);
     await hydrated(page);
     await page.mouse.wheel(0, 300);
@@ -263,38 +268,41 @@ test.describe("the page's steps", () => {
   test("a fetcher's beacon counts nothing, and a page cannot claim the server's steps", async ({ request, db }) => {
     await db.run(`DELETE FROM "PoolCampaignVisit"`);
     await db.run(`DELETE FROM "PoolVisitDaily"`);
-    const fetcher = await request.post("/api/play/visit", { headers: { "user-agent": FACEBOOK }, data: JSON.stringify({ src: CODE, step: "started" }) });
-    expect(fetcher.status()).toBe(204);
+    for (const step of ["opened", "started"]) {
+      const fetcher = await request.post("/api/play/visit", { headers: { "user-agent": FACEBOOK }, data: JSON.stringify({ src: CODE, step, trigger: "touch" }) });
+      expect(fetcher.status()).toBe(204);
+    }
     for (const step of ["sent", "confirmed"]) {
       const res = await request.post("/api/play/visit", { headers: { "user-agent": PERSON }, data: JSON.stringify({ src: CODE, step, trigger: "touch" }) });
       expect(res.status()).toBe(204);
     }
     await settle();
     expect(await db.one(`SELECT count(*)::int AS n FROM "PoolCampaignVisit"`)).toEqual({ n: 0 });
-    // The fetcher is in the breakdown as a scanner, and only it.
-    expect(await dailyTotals(db, CODE)).toEqual([expect.objectContaining({ step: "started", trigger: "none", scanner: true, device: "other", inApp: "none", count: 1 })]);
+    // The fetcher's open is in the breakdown as a scanner, and only it (a start is in no breakdown).
+    expect(await dailyTotals(db, CODE)).toEqual([expect.objectContaining({ step: "opened", trigger: "touch", scanner: true, inApp: "none", count: 1 })]);
     expect(await db.one(`SELECT count(*)::int AS n FROM "PoolVisitDaily"`)).toEqual({ n: 1 });
   });
 });
 
-test.describe("the breakdown: daily totals only (2026-11-16)", () => {
+test.describe("the breakdown: daily totals of opens only (2026-11-16)", () => {
   test.use({ userAgent: PERSON, locale: "en-GB" });
 
   test.beforeAll(async ({ db }) => {
     await db.run(`INSERT INTO "PoolCampaign" (code, source, label) VALUES ($1, 'facebook', 'Funnel web e2e') ON CONFLICT DO NOTHING`, [CODE]);
   });
 
-  test("the table holds a count per code, day, step and category: no time of day, time on screen, address, user agent, friend's code, user id or cookie", async ({ db }) => {
+  test("the table holds a count per code, day, trigger, in-app browser and scanner flag: no browser, device, time of day, time on screen, address, user agent, friend's code, user id or cookie", async ({ db }) => {
     const cols = await db.all<{ column_name: string; data_type: string }>(
       `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'PoolVisitDaily' ORDER BY column_name`,
     );
-    expect(cols.map((c) => c.column_name)).toEqual(["browser", "code", "count", "day", "device", "inApp", "scanner", "step", "trigger"]);
+    expect(cols.map((c) => c.column_name)).toEqual(["code", "count", "day", "inApp", "scanner", "step", "trigger"]);
     expect(cols.find((c) => c.column_name === "day")?.data_type).toBe("date");
     expect(await db.one(`SELECT to_regclass('"PoolVisitEvent"')::text AS t`)).toEqual({ t: null });
   });
 
-  test("two people scroll then type: the beacons carry what opened the page and nothing else, and the totals count them together", async ({ browser, db }) => {
+  test("two people scroll then type: the beacons carry what opened the page and nothing else, the opens are counted together, the starts in no breakdown", async ({ browser, db }) => {
     await db.run(`DELETE FROM "PoolVisitDaily" WHERE code = $1`, [CODE]);
+    await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
     for (let i = 0; i < 2; i++) {
       const context = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
       const page = await context.newPage();
@@ -310,14 +318,11 @@ test.describe("the breakdown: daily totals only (2026-11-16)", () => {
       await context.close();
     }
 
-    const label = { code: CODE, day: poolVisitDay(new Date()), browser: "safari", inApp: "none", device: "mobile", scanner: false };
-    await expect.poll(async () => (await dailyTotals(db, CODE)).map((r) => r.count), { timeout: 15_000 }).toEqual([2, 2]);
+    await expect.poll(async () => (await dailyTotals(db, CODE)).map((r) => r.count), { timeout: 15_000 }).toEqual([2]);
     const rows = await dailyTotals(db, CODE);
-    expect(rows).toEqual([
-      { ...label, step: "opened", trigger: "wheel", count: 2 },
-      { ...label, step: "started", trigger: "none", count: 2 },
-    ]);
-    expect(JSON.stringify(rows)).not.toMatch(/AB12cd|iPhone|Mozilla/);
+    expect(rows).toEqual([{ code: CODE, day: poolVisitDay(new Date()), step: "opened", trigger: "wheel", inApp: "none", scanner: false, count: 2 }]);
+    expect(JSON.stringify(rows)).not.toMatch(/AB12cd|iPhone|Mozilla|safari|mobile/i);
+    await expect.poll(() => count(db, CODE, "started"), { timeout: 15_000 }).toBe(2);
   });
 
   test("our own staff: nothing in the totals either", async ({ browser, baseURL, db }) => {
@@ -336,7 +341,7 @@ test.describe("the breakdown: daily totals only (2026-11-16)", () => {
     await context.close();
   });
 
-  test("only well-formed beacons count: an open by time on screen, with no trigger or an unknown one, counts nothing; a start still counts", async ({ request, db }) => {
+  test("only well-formed beacons count: an open by time on screen, with no trigger or an unknown one, counts nothing; a start still counts, in the counters only", async ({ request, db }) => {
     await db.run(`DELETE FROM "PoolVisitDaily" WHERE code = $1`, [CODE]);
     await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
     for (const body of [
@@ -350,9 +355,10 @@ test.describe("the breakdown: daily totals only (2026-11-16)", () => {
     }
     const started = await request.post("/api/play/visit", { headers: { "user-agent": PERSON }, data: JSON.stringify({ src: CODE, step: "started", visibleMs: 9e15 }) });
     expect(started.status()).toBe(204);
-    await expect.poll(async () => (await dailyTotals(db, CODE)).map((r) => [r.step, r.trigger, r.count]), { timeout: 15_000 }).toEqual([["started", "none", 1]]);
+    await expect.poll(() => count(db, CODE, "started"), { timeout: 15_000 }).toBe(1);
+    await settle();
     expect(await count(db, CODE, "opened")).toBe(0);
-    expect(await count(db, CODE, "started")).toBe(1);
+    expect(await dailyTotals(db, CODE)).toEqual([]);
   });
 });
 

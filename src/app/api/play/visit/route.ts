@@ -14,10 +14,11 @@
  * counted by the server where they happen, so a body naming them counts
  * nothing. Anything else in the body (a time on screen from a page cached
  * before 2026-11-16) is ignored. The user agent decides whether this is a
- * link preview fetcher (`recordPoolVisit`) and is written to the server
- * log once per beacon to identify scanners (2026-11-06). The user agent
- * itself is never stored: the daily breakdown keeps only a coarse label
- * read off it. No address, cookie or user id is passed on.
+ * link preview fetcher (`recordPoolVisit`); it is never stored or logged:
+ * the daily breakdown and the one log line per beacon keep only the
+ * in-app browser and the scanner flag read off it (2026-11-16). A beacon
+ * that counts nothing is logged in one short line, its step and why. No
+ * address, cookie or user id is passed on.
  *
  * OUR OWN STAFF (2026-11-12; MatchTime staff only since 2026-11-16): a
  * beacon carrying the staff cookie, or a session for a `User.isSuperadmin`
@@ -31,28 +32,34 @@ import { after } from "next/server";
 import { cookies } from "next/headers";
 import { readSignupSource } from "@/lib/pool/profile-fields";
 import { POOL_STAFF_COOKIE } from "@/lib/pool/visit-rules";
-import { readPoolPageBeacon } from "@/lib/pool/visit-log-rules";
+import { poolBeaconRejectedLogLine, readPoolPageBeacon } from "@/lib/pool/visit-log-rules";
 import { isPoolStaffRequest } from "@/lib/pool/staff-request";
 import { recordPoolVisit } from "@/lib/pool/visits";
 
 export async function POST(request: Request) {
   const text = await request.text().catch(() => "");
-  let body: Record<string, unknown> = {};
+  let body: Record<string, unknown> | null = null;
   try {
     const parsed: unknown = JSON.parse(text);
     if (parsed && typeof parsed === "object") body = parsed as Record<string, unknown>;
   } catch {
-    // Not JSON: not a beacon the page sends, so it counts nothing below.
+    // Not JSON: not a beacon the page sends.
   }
-  const beacon = readPoolPageBeacon(body);
-  if (!beacon) return new Response(null, { status: 204 });
-  const source = readSignupSource(body);
+  const read = body ? readPoolPageBeacon(body) : ({ ok: false, step: "other", reason: "not-json" } as const);
+  if (!read.ok) {
+    // One short line, so a page or scanner sending the wrong thing can be
+    // diagnosed: the step (only if it is one of ours) and why, nothing it sent.
+    console.info(poolBeaconRejectedLogLine({ step: read.step, reason: read.reason }));
+    return new Response(null, { status: 204 });
+  }
+  const beacon = read.beacon;
+  const source = readSignupSource(body ?? {});
   const userAgent = request.headers.get("user-agent");
   const now = new Date();
   const staffCookie = (await cookies()).get(POOL_STAFF_COOKIE)?.value ?? null;
   after(async () => {
     if (await isPoolStaffRequest(staffCookie)) {
-      console.info(`[pool-funnel] skipped staff visit step=${beacon.step} code=${source.campaignCode ?? "-"} ref=${source.referralCode ? "yes" : "no"}`);
+      console.info(`[pool-funnel] skipped staff visit step=${beacon.step} trigger=${beacon.trigger}`);
       return;
     }
     await recordPoolVisit({ source, userAgent, now, step: beacon.step, trigger: beacon.trigger });

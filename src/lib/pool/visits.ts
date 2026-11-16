@@ -11,12 +11,13 @@
  * "PoolCampaignVisit", one row per (bucket, London day, step).
  *
  * THE BREAKDOWN (per visit 2026-11-13; DAILY TOTALS ONLY since 2026-11-16,
- * rules in `visit-log-rules.ts`). Each page step also adds one to a daily
- * total per coarse category, "PoolVisitDaily", kept 90 days and then
- * deleted by the daily cron (`purgeOldPoolVisitDaily`), so drop-off can be
- * explained after the server log has gone. Nothing per visit is kept: no
- * hour, no time on screen. Sent and confirmed have no breakdown: the
- * counters and the sign-up itself already say all there is.
+ * rules in `visit-log-rules.ts`). Each OPEN also adds one to a daily total
+ * by what opened the page, the in-app browser and the scanner flag,
+ * "PoolVisitDaily", kept 90 days and then deleted by the daily cron
+ * (`purgeOldPoolVisitDaily`), so scanners can be told from people after
+ * the server log has gone. Nothing per visit is kept, nor a browser or
+ * device. Started, sent and confirmed have no breakdown: the counters
+ * already count them, and a start is the step just before a sign-up.
  *
  * STAFF TESTS (2026-11-16). A sign-up made from a MatchTime staff browser
  * (`PoolProfile.staffTest`, set by `createPoolSignup`) is counted as
@@ -28,16 +29,23 @@
  * The breakdown is the same, on its own: its failure never costs a count.
  *
  * PRIVACY. Stored in the counters: the bucket (a campaign code, "_direct"
- * or "_referral"), the London day, the step and a count. In the breakdown
- * (never linked to a sign-up or profile): the same, plus what opened the
- * page and a coarse browser label (browser family, in-app browser, device
- * class, scanner), and a count. No id, no address, no cookie, no friend's
- * code, no time of day, and never the user agent itself: it is read to
- * skip link preview fetchers and to make that label, and written to the
- * server log with each page step (`logBeacon`, 2026-11-06), never stored.
+ * or "_referral"), the London day, the step and a count. In the breakdown:
+ * the same for opens, plus what opened the page, the in-app browser and
+ * the scanner flag. No id, no address, no cookie, no friend's code, no
+ * browser or device, no time of day, and never the user agent itself: it
+ * is read to skip link preview fetchers and to make that label, and never
+ * stored or logged (the log line holds the same categories, 2026-11-16).
  */
 import { db } from "../db";
-import { poolVisitDailyKey, poolVisitPurgeBeforeDay, POOL_VISIT_RETENTION_DAYS, type PoolVisitDailyKey, type PoolVisitTrigger } from "./visit-log-rules";
+import {
+  poolBeaconLogLine,
+  poolVisitDailyKey,
+  poolVisitLabel,
+  poolVisitPurgeBeforeDay,
+  POOL_VISIT_RETENTION_DAYS,
+  type PoolVisitDailyKey,
+  type PoolVisitTrigger,
+} from "./visit-log-rules";
 import {
   isLinkPreviewFetcher,
   poolProfileBucket,
@@ -56,30 +64,6 @@ async function countStep(code: string, step: PoolFunnelStep, now: Date): Promise
 
 const warn = (step: string, err: unknown) => console.warn(`[pool-funnel] ${step} not counted:`, err instanceof Error ? err.message : err);
 
-/**
- * One server log line per beacon, there to identify scanners (Kemal,
- * 2026-11-06: a scanner made 17 opened and 17 started for "fb" in 34
- * seconds and its user agent got past the fetcher check, unrecorded). The
- * raw user agent goes to the log only, never the database (the breakdown
- * keeps only its coarse label); no address, and a friend's share code only
- * as ref=yes. The user agent is JSON-quoted, so it stays one line whatever
- * it holds.
- *   [pool-funnel] beacon step=started code=fb ref=no result=counted bucket=fb ua="Mozilla/5.0 ..."
- * `result` is counted, fetcher (filtered, not counted) or failed.
- */
-function logBeacon(
-  step: PoolPageStep,
-  source: { campaignCode: string | null; referralCode: string | null },
-  result: "counted" | "fetcher" | "failed",
-  bucket: string | null,
-  userAgent: string | null,
-): void {
-  const ua = userAgent === null ? "none" : JSON.stringify(userAgent);
-  console.info(
-    `[pool-funnel] beacon step=${step} code=${source.campaignCode ?? "-"} ref=${source.referralCode ? "yes" : "no"} result=${result} bucket=${bucket ?? "-"} ua=${ua}`,
-  );
-}
-
 /** The bucket a page step lands in, as `signup.ts` would attribute it. */
 async function pageStepBucket(source: { campaignCode: string | null; referralCode: string | null }): Promise<string> {
   const referralLive = source.referralCode
@@ -93,17 +77,17 @@ async function pageStepBucket(source: { campaignCode: string | null; referralCod
 }
 
 /**
- * One more for the visit's daily total (2026-11-16, `visit-log-rules.ts`):
- * only the columns `poolVisitDailyKey` builds, never the user agent, the
- * friend's code or the time of day. One statement, so two at once both
- * count. Best-effort on its own: a failure (the table not yet migrated, a
+ * One more for the open's daily total (2026-11-16, `visit-log-rules.ts`):
+ * only the columns `poolVisitDailyKey` builds, never the user agent, a
+ * browser or device, the friend's code or the time of day. One statement,
+ * so two at once both count. Best-effort on its own: a failure (the table not yet migrated, a
  * blip) is logged and costs nothing else, the count least of all.
  */
 async function addToDailyTotal(k: PoolVisitDailyKey): Promise<void> {
   try {
-    await db.$executeRaw`INSERT INTO "PoolVisitDaily" ("code", "day", "step", "trigger", "browser", "inApp", "device", "scanner", "count")
-      VALUES (${k.code}, ${k.day}::date, ${k.step}, ${k.trigger}, ${k.browser}, ${k.inApp}, ${k.device}, ${k.scanner}, 1)
-      ON CONFLICT ("code", "day", "step", "trigger", "browser", "inApp", "device", "scanner") DO UPDATE SET "count" = "PoolVisitDaily"."count" + 1`;
+    await db.$executeRaw`INSERT INTO "PoolVisitDaily" ("code", "day", "step", "trigger", "inApp", "scanner", "count")
+      VALUES (${k.code}, ${k.day}::date, ${k.step}, ${k.trigger}, ${k.inApp}, ${k.scanner}, 1)
+      ON CONFLICT ("code", "day", "step", "trigger", "inApp", "scanner") DO UPDATE SET "count" = "PoolVisitDaily"."count" + 1`;
   } catch (err) {
     console.warn(`[pool-funnel] ${k.step} not added to the daily breakdown:`, err instanceof Error ? err.message : err);
   }
@@ -113,10 +97,11 @@ async function addToDailyTotal(k: PoolVisitDailyKey): Promise<void> {
  * A page step (opened, started). The bucket counted, or null when nothing
  * was (a fetcher, or a failure).
  *
- * A link preview fetcher is never counted, but it is added to the daily
- * breakdown with the scanner flag (2026-11-13), so a burst of scanners on a
- * new post can be told from people. A failed count still adds the total,
- * and a failed total never fails the count.
+ * A link preview fetcher is never counted, but its open is added to the
+ * daily breakdown with the scanner flag (2026-11-13), so a burst of
+ * scanners on a new post can be told from people. A start is added to no
+ * breakdown. A failed count still adds the total, and a failed total never
+ * fails the count. One server log line each, the kept categories only.
  */
 export async function recordPoolVisit(a: {
   source: { campaignCode: string | null; referralCode: string | null };
@@ -128,12 +113,14 @@ export async function recordPoolVisit(a: {
 }): Promise<string | null> {
   const step = a.step;
   const fetcher = isLinkPreviewFetcher(a.userAgent);
+  const log = (bucket: string | null, result: "counted" | "fetcher" | "failed") =>
+    console.info(poolBeaconLogLine({ step, bucket, trigger: a.trigger, label: poolVisitLabel(a.userAgent), result }));
   let code: string;
   try {
     code = await pageStepBucket(a.source);
   } catch (err) {
     warn(step, err);
-    logBeacon(step, a.source, fetcher ? "fetcher" : "failed", null, a.userAgent);
+    log(null, fetcher ? "fetcher" : "failed");
     return null;
   }
   let counted = false;
@@ -145,8 +132,8 @@ export async function recordPoolVisit(a: {
       warn(step, err);
     }
   }
-  await addToDailyTotal(poolVisitDailyKey({ code, step, trigger: a.trigger, now: a.now, userAgent: a.userAgent }));
-  logBeacon(step, a.source, fetcher ? "fetcher" : counted ? "counted" : "failed", fetcher || !counted ? null : code, a.userAgent);
+  if (step === "opened") await addToDailyTotal(poolVisitDailyKey({ code, trigger: a.trigger, now: a.now, userAgent: a.userAgent }));
+  log(code, fetcher ? "fetcher" : counted ? "counted" : "failed");
   return counted ? code : null;
 }
 

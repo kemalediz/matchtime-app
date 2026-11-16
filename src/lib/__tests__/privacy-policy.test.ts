@@ -158,54 +158,59 @@ describe("the policy in English and Turkish", () => {
     expect(sectionText(copy, "how-long")).toMatch(/90/);
   });
 
-  // 2026-11-16 (Kemal): daily totals only. The sentence matches the code
-  // exactly (src/lib/pool/visit-log-rules.ts): per day, per link, counts by
-  // coarse category; no record of each visit, no time of day, no time on
-  // screen. It still claims no more than is true, and says what is NOT kept.
+  // 2026-11-16 (Kemal, after review of #607): daily totals only, no browser
+  // or device details. The sentence matches the code exactly
+  // (src/lib/pool/visit-log-rules.ts) and claims no more than is true: it
+  // says what is kept and that nothing in it names a person, never "we
+  // never link them", and never that scanners are never counted.
   it("English names exactly what join page visits keep, daily totals only, and what they do not", () => {
     const held = sectionText(privacyPolicy("en"), "what-we-hold").toLowerCase();
     for (const item of [
       "page for joining the player pool",
-      "daily totals",
+      "daily totals for each of our links",
       "not a record of each visit",
-      "which of our links",
+      "no browser or device details",
       "friend's link",
-      "started filling in the form",
       "what first showed a person was there",
-      "general browser type",
       "inside an app such as facebook or nextdoor",
-      "type of device",
       "automatic link preview rather than a person",
+      "nothing in these totals names a person",
       "no time of day",
-      "no ip address, no full browser details and no friend's code",
-      "never link them to sign-ups or profiles",
+      "no ip address",
+      "no friend's code",
       "deleted automatically after 90 days",
+      "started filling in the form",
     ]) {
       expect(held).toContain(item);
     }
-    for (const gone of ["the hour of the visit", "how long the page was on screen", "nothing that identifies"]) expect(held).not.toContain(gone);
+    for (const gone of ["never link", "general browser type", "type of device", "the hour of the visit", "how long the page was on screen", "nothing that identifies"]) {
+      expect(held).not.toContain(gone);
+    }
   });
 
   it.each(COPIES)("%s says why the join page visits are kept: our legitimate interest in improving the page", (_lang, copy) => {
     expect(sectionText(copy, "why")).toMatch(/legitimate interest.*improving it|iyileştirmekte meşru menfaatimiz/);
   });
 
-  it("Turkish says the same: daily totals, no time of day, never linked, and no claim of identifying nothing", () => {
+  it("Turkish says the same: daily totals per link, no browser or device details, nothing that names a person", () => {
     const held = sectionText(privacyPolicy("tr"), "what-we-hold");
     for (const item of [
-      "günlük toplamlar",
+      "bağlantılarımızın her biri için günlük toplamlar",
       "her ziyaretin ayrı bir kaydını tutmayız",
-      "formu doldurmaya başlayan",
+      "tarayıcı ya da cihaz ayrıntısı",
       "Facebook ya da Nextdoor",
       "otomatik bir bağlantı önizlemesi",
+      "kimseyi adıyla göstermez",
       "günün saati",
       "IP adresi",
-      "hiçbir zaman",
       "90 gün sonra otomatik olarak silinir",
+      "formu doldurmaya başlayanların",
     ]) {
       expect(held).toContain(item);
     }
-    for (const gone of ["hangi saatte", "ekranda ne kadar süre", "kişiyi tanımlayan hiçbir bilgi"]) expect(held).not.toContain(gone);
+    for (const gone of ["hiçbir zaman havuz başvurularıyla", "genel bir tarayıcı türü", "cihaz türüne", "hangi saatte", "ekranda ne kadar süre", "kişiyi tanımlayan hiçbir bilgi"]) {
+      expect(held).not.toContain(gone);
+    }
   });
 
   it("the version moved on with the daily totals (2026-11-16), and the date with it", () => {

@@ -82,6 +82,6 @@ describe("what opened it, sent with the beacon", () => {
     expect(openTriggerOf(signal("mousemove"))).toBeNull();
     const sent = [...POOL_OPEN_PERSON_SIGNALS.map((type) => openTriggerOf(signal(type))), openTriggerOf({ kind: "started" })];
     expect(new Set(sent)).toEqual(new Set(POOL_OPEN_TRIGGERS));
-    for (const trigger of sent) expect(readPoolPageBeacon({ step: "opened", trigger })).toEqual({ step: "opened", trigger });
+    for (const trigger of sent) expect(readPoolPageBeacon({ step: "opened", trigger })).toEqual({ ok: true, beacon: { step: "opened", trigger } });
   });
 });

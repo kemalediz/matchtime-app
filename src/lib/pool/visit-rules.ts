@@ -110,8 +110,9 @@ export function poolVisitDay(now: Date): string {
  * OUR OWN VISITS ARE NOT VISITS (2026-11-12). Kemal's tests and QA checks
  * of /play were counted as people opening and starting it. So a browser
  * that has loaded an /admin page as MatchTime staff carries this cookie
- * (set by `StaffMark` in the admin layout, a year long, so a staff phone is
- * known on /play even when signed out), and the beacon counts nothing for
+ * (set by the server, `POST /admin/staff-mark`, which the admin layout's
+ * `StaffMark` calls, a year long, so a staff phone is known on /play even
+ * when signed out), and the beacon counts nothing for
  * it, nor for a request that carries a staff session. A sign-up from such
  * a browser is a staff test: it works as any other, and is not counted as
  * sent or confirmed (`PoolProfile.staffTest`, 2026-11-16). Nothing about
@@ -121,8 +122,8 @@ export function poolVisitDay(now: Date): string {
  * the platform owner's own check, not every club's owner or admin. Until
  * then any club organiser who opened /admin got the cookie with "1"; the
  * value is now "2", so those year-long cookies count like none at all
- * (they say nothing about whose browser they are in), and the admin layout
- * clears the cookie for an organiser who is not staff.
+ * (they say nothing about whose browser they are in), and the same server
+ * route clears the cookie for an organiser who is not staff.
  */
 export const POOL_STAFF_COOKIE = "mt-staff";
 const POOL_STAFF_COOKIE_VALUE = "2";
@@ -139,19 +140,28 @@ export function hasPoolStaffCookie(staffCookie: string | null | undefined): bool
   return staffCookie === POOL_STAFF_COOKIE_VALUE;
 }
 
-const cookieString = (value: string, maxAge: number, secure: boolean) =>
-  [`${POOL_STAFF_COOKIE}=${value}`, `Max-Age=${maxAge}`, "Path=/", "SameSite=Lax", ...(secure ? ["Secure"] : [])].join("; ");
+export interface PoolStaffCookieOptions {
+  name: typeof POOL_STAFF_COOKIE;
+  value: string;
+  maxAge: number;
+  path: "/";
+  sameSite: "lax";
+  secure: boolean;
+  httpOnly: true;
+}
 
-/** The staff cookie as `document.cookie` takes it. First-party, the whole
- *  site, Lax so it is sent when /play is opened from a link elsewhere, and
- *  Secure on https (every deployment; plain http is only `next dev`). */
-export function poolStaffCookie(o: { secure: boolean }): string {
-  return cookieString(POOL_STAFF_COOKIE_VALUE, POOL_STAFF_COOKIE_MAX_AGE, o.secure);
+/** The staff cookie as the SERVER sets it (`/admin/staff-mark`, 2026-11-16:
+ *  WebKit caps a cookie a page script sets at 7 days, a server-set one keeps
+ *  its year). First-party, the whole site, Lax so it is sent when /play is
+ *  opened from a link elsewhere, Secure on https (every deployment; plain
+ *  http is only `next dev`), and HttpOnly: only the server reads it. */
+export function poolStaffCookieOptions(o: { secure: boolean }): PoolStaffCookieOptions {
+  return { name: POOL_STAFF_COOKIE, value: POOL_STAFF_COOKIE_VALUE, maxAge: POOL_STAFF_COOKIE_MAX_AGE, path: "/", sameSite: "lax", secure: o.secure, httpOnly: true };
 }
 
 /** The staff cookie deleted, for an organiser who is not MatchTime staff. */
-export function poolStaffCookieCleared(o: { secure: boolean }): string {
-  return cookieString("", 0, o.secure);
+export function poolStaffCookieClearedOptions(o: { secure: boolean }): PoolStaffCookieOptions {
+  return { ...poolStaffCookieOptions(o), value: "", maxAge: 0 };
 }
 
 // ── The owner's view ───────────────────────────────────────────────────

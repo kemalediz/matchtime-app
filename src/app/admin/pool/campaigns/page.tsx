@@ -134,9 +134,11 @@ export default async function PoolCampaignsPage({ searchParams }: { searchParams
         </p>
         <p className="mt-1 max-w-2xl text-sm text-slate-600">
           Each sign-up has four steps: opened the page in a browser, started the form (typed in it or ticked a box), sent the form, and confirmed by
-          sending the WhatsApp message. Opened and started count once per visit, and link previews (Facebook, Nextdoor, WhatsApp, X) never count. Each step
-          counts on the day it happened, so someone who opened yesterday and sent today counts on both days. Opened was first counted on 3 November 2026, the
-          other steps on 4 November 2026. Until 6 November 2026 started also counted a tap or click in the form, so a scanner could count there.
+          sending the WhatsApp message. Opened and started count once per visit, real interactions only, most scanners excluded: opened needs a tap, scroll or
+          key press (since 16 November 2026; before that, 5 seconds on screen also counted). MatchTime staff&apos;s own visits and test sign-ups are left
+          out. Each step counts on the day it happened, so someone who opened yesterday and sent today counts on both days. Opened was first counted on 3
+          November 2026, the other steps on 4 November 2026. Until 6 November 2026 started also counted a tap or click in the form, so a scanner could count
+          there.
         </p>
       </div>
 

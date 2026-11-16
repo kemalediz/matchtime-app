@@ -93,7 +93,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
           },
           {
             kind: "p",
-            text: "When people open the page for joining the player pool, we keep daily totals, not a record of each visit. For each day we count how many opened the page and how many started filling in the form, split by which of our links brought them there (or whether a friend's link did), by what first showed a person was there (such as a tap, a scroll or a key press), by a general browser type, by whether the page was opened inside an app such as Facebook or Nextdoor, by the type of device (such as a phone or a computer), and by whether it was an automatic link preview rather than a person. The totals hold no time of day, no IP address, no full browser details and no friend's code, and we never link them to sign-ups or profiles. They are deleted automatically after 90 days.",
+            text: "When people open the page for joining the player pool, we keep daily totals for each of our links (and for a friend's link, or no link), not a record of each visit, and no browser or device details. For each day we count how many opened the page, split by what first showed a person was there (such as a tap, a scroll or a key press), by whether the page was opened inside an app such as Facebook or Nextdoor, and by whether it was an automatic link preview rather than a person. We also count, for each day and link, how many started filling in the form and how many signed up. Nothing in these totals names a person: they hold no time of day, no IP address and no friend's code. The detailed totals are deleted automatically after 90 days.",
           },
         ],
       },

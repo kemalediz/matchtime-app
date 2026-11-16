@@ -17,8 +17,8 @@ import {
   poolFunnelPeriodStart,
   poolFunnelTotals,
   poolProfileBucket,
-  poolStaffCookie,
-  poolStaffCookieCleared,
+  poolStaffCookieOptions,
+  poolStaffCookieClearedOptions,
   poolVisitBucket,
   poolVisitDay,
   readPoolFunnelPeriod,
@@ -203,12 +203,14 @@ describe("our own staff's visits (2026-11-12): MatchTime staff only, since 2026-
       expect(isPoolStaffVisit({ staffCookie, staffSession: false })).toBe(false);
     }
   });
-  it("the cookie: a year long, the whole site, sent on a link opened from elsewhere, Secure on https", () => {
-    expect(poolStaffCookie({ secure: true })).toBe("mt-staff=2; Max-Age=31536000; Path=/; SameSite=Lax; Secure");
-    expect(poolStaffCookie({ secure: false })).toBe("mt-staff=2; Max-Age=31536000; Path=/; SameSite=Lax");
+  // Set by the server since 2026-11-16 (`/admin/staff-mark`): WebKit caps a
+  // cookie a page script sets at 7 days, so Kemal's iPhone lost the mark
+  // weekly. A server-set cookie keeps its year, and no script needs to read it.
+  it("the cookie the server sets: a year long, the whole site, sent on a link opened from elsewhere, Secure on https, out of page script's reach", () => {
+    expect(poolStaffCookieOptions({ secure: true })).toEqual({ name: "mt-staff", value: "2", maxAge: 31_536_000, path: "/", sameSite: "lax", secure: true, httpOnly: true });
+    expect(poolStaffCookieOptions({ secure: false })).toMatchObject({ value: "2", secure: false, httpOnly: true });
   });
   it("cleared for an organiser who is not MatchTime staff: the same cookie, expired", () => {
-    expect(poolStaffCookieCleared({ secure: true })).toBe("mt-staff=; Max-Age=0; Path=/; SameSite=Lax; Secure");
-    expect(poolStaffCookieCleared({ secure: false })).toBe("mt-staff=; Max-Age=0; Path=/; SameSite=Lax");
+    expect(poolStaffCookieClearedOptions({ secure: true })).toEqual({ name: "mt-staff", value: "", maxAge: 0, path: "/", sameSite: "lax", secure: true, httpOnly: true });
   });
 });

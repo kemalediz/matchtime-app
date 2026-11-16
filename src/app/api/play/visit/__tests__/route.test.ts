@@ -73,12 +73,20 @@ describe("POST /api/play/visit", () => {
   });
 
   // 15 November 2026: the 4 counted opens were scanners that waited 5000 ms.
-  it("an open by time on screen, with no trigger or an unknown one: 204, and nothing counted", async () => {
+  it("an open by time on screen, with no trigger or an unknown one: 204, nothing counted, one short log line saying why", async () => {
+    const log = vi.spyOn(console, "info").mockImplementation(() => {});
     for (const body of [opened({ trigger: "visible-time", visibleMs: 5000 }), opened({ trigger: undefined }), opened({ trigger: "<script>" }), JSON.stringify({ src: "fb-sutton" })]) {
       expect((await POST(req(body))).status).toBe(204);
     }
     expect(later.tasks).toHaveLength(0);
     expect(visits.recordPoolVisit).not.toHaveBeenCalled();
+    expect(log.mock.calls.map((c) => c[0])).toEqual([
+      "[pool-funnel] beacon rejected step=opened reason=time-on-screen",
+      "[pool-funnel] beacon rejected step=opened reason=no-trigger",
+      "[pool-funnel] beacon rejected step=opened reason=unknown-trigger",
+      "[pool-funnel] beacon rejected step=opened reason=no-trigger",
+    ]);
+    log.mockRestore();
   });
 
   it("never passes on anything that identifies the visitor: no address, no cookie", async () => {
@@ -100,17 +108,28 @@ describe("POST /api/play/visit", () => {
     expect(visits.recordPoolVisit).toHaveBeenCalledWith(expect.objectContaining({ step: "opened", trigger: "scroll" }));
   });
 
-  it("a page claiming sent or confirmed, or any other step, gets 204 and counts nothing", async () => {
+  it("a page claiming sent or confirmed, or any other step, gets 204 and counts nothing; the log names only our own steps", async () => {
+    const log = vi.spyOn(console, "info").mockImplementation(() => {});
     for (const step of ["sent", "confirmed", "paid", 3]) {
       expect((await POST(req(JSON.stringify({ src: "fb-sutton", step, trigger: "touch" })))).status).toBe(204);
     }
     expect(later.tasks).toHaveLength(0);
     expect(visits.recordPoolVisit).not.toHaveBeenCalled();
+    expect(log.mock.calls.map((c) => c[0])).toEqual([
+      "[pool-funnel] beacon rejected step=sent reason=server-step",
+      "[pool-funnel] beacon rejected step=confirmed reason=server-step",
+      "[pool-funnel] beacon rejected step=other reason=unknown-step",
+      "[pool-funnel] beacon rejected step=other reason=unknown-step",
+    ]);
+    log.mockRestore();
   });
 
-  it("a body that is not JSON is not a beacon the page sends: 204, nothing counted", async () => {
-    expect((await POST(req("not json"))).status).toBe(204);
+  it("a body that is not JSON is not a beacon the page sends: 204, nothing counted, logged as not-json", async () => {
+    const log = vi.spyOn(console, "info").mockImplementation(() => {});
+    expect((await POST(req('not json <script> Mozilla/5.0'))).status).toBe(204);
     expect(later.tasks).toHaveLength(0);
+    expect(log.mock.calls.map((c) => c[0])).toEqual(["[pool-funnel] beacon rejected step=other reason=not-json"]);
+    log.mockRestore();
   });
 
   it("no user agent is passed on as none (the recorder treats it as a fetcher)", async () => {
@@ -127,7 +146,7 @@ describe("POST /api/play/visit", () => {
       await later.tasks[0]();
       expect(visits.recordPoolVisit).not.toHaveBeenCalled();
       expect(session.auth).not.toHaveBeenCalled();
-      expect(log).toHaveBeenCalledWith("[pool-funnel] skipped staff visit step=started code=fb-sutton ref=no");
+      expect(log).toHaveBeenCalledWith("[pool-funnel] skipped staff visit step=started trigger=none");
       log.mockRestore();
     });
 

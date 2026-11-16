@@ -10,9 +10,17 @@
 --   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261116120100_pool_profile_staff_test/migration.sql
 --
 -- Second of four (see 20261116120000_pool_visit_daily). APPLY BEFORE
--- DEPLOYING THE CODE: the new sign-up writes the column, and would fail
--- without it (every /play sign-up). The old code never names it, and the
--- default keeps its inserts valid, so applying it first changes nothing live.
+-- DEPLOYING THE CODE. The new code's Prisma client knows the column and
+-- names it in its queries, so without it these fail on "PoolProfile":
+--   - EVERY insert into "PoolProfile" (a /play sign-up, a friend link's
+--     sign-up, a member's sign-up from his profile);
+--   - every update of a "PoolProfile" that returns the row (the WhatsApp
+--     confirm, the manage page, pausing, stopping, the offer rounds);
+--   - every read of a "PoolProfile" without a `select` (Prisma then lists
+--     every column).
+-- That is the whole player pool. The old code never names the column, and
+-- its default keeps the old inserts valid, so applying it first changes
+-- nothing live.
 --
 -- WHAT APPLYING THIS DOES TO A LIVE DATABASE
 -- ------------------------------------------

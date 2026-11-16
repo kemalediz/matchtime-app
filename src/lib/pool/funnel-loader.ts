@@ -8,6 +8,9 @@
  * town, sport keys, source and early-list mark, and only the ids and
  * results of his games. Never a name, a number, an area or a distance
  * (`__tests__/funnel-loader.test.ts` pins the selects).
+ *
+ * STAFF TESTS (2026-11-16): a sign-up made from a MatchTime staff browser
+ * (`PoolProfile.staffTest`) is left out of every count here.
  */
 import { db } from "../db";
 import { ORDINARY_MEMBER_WHERE } from "../guest-membership";
@@ -31,6 +34,7 @@ const CAP_LOOKBACK_MS = 26 * HOUR_MS;
 
 async function loadProfiles(): Promise<FunnelProfileFact[]> {
   const profiles = await db.poolProfile.findMany({
+    where: { staffTest: false },
     select: { userId: true, createdAt: true, status: true, consentAt: true, town: true, source: true, sourceCode: true, earlyList: true, sports: { select: { sport: true } } },
   });
   const userIds = profiles.map((p) => p.userId).filter((id): id is string => !!id);
@@ -97,7 +101,7 @@ async function loadOfferHealthFacts(q: FunnelQuery): Promise<OfferHealthFacts> {
       select: { createdAt: true, sendAfter: true, failReason: true, failedAt: true },
     }),
     db.poolOffer.findMany({ where: { sentAt: { gte: new Date(start.getTime() - CAP_LOOKBACK_MS), lt: end } }, select: { sentAt: true } }),
-    db.poolProfile.findMany({ where: { status: "paused", pausedReason: "ignored" }, select: { pausedAt: true } }),
+    db.poolProfile.findMany({ where: { status: "paused", pausedReason: "ignored", staffTest: false }, select: { pausedAt: true } }),
   ]);
   return {
     offerJobs,

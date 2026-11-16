@@ -3786,44 +3786,40 @@ model PoolCampaignVisit {
   @@id([code, day, step])
 }
 
-/// The /play visit breakdown, DAILY TOTALS ONLY (2026-11-16, Kemal;
-/// src/lib/pool/visit-log-rules.ts). Each page beacon (opened, started)
-/// adds one to the total for its bucket, London day, step and coarse
-/// category, so drop-off can be explained after the server log has gone.
-/// Nothing per visit: no hour, no time on screen (the per-visit
-/// "PoolVisitEvent" of 2026-11-13 was dropped for that: at our traffic an
-/// hour-stamped row could be matched to the one person who signed up that
-/// hour). NO IP address, NO user agent (only the coarse label below), NO
-/// friend's share code, no user id, no cookie. NEVER joined to a sign-up or
-/// a profile (the privacy policy promises it; `visit-log-unlinked.test.ts`).
-/// Link preview fetchers are added with `scanner` and never counted in
-/// "PoolCampaignVisit". Migrations 20261116120000_pool_visit_daily (the
-/// table) and 20261116120200_pool_visit_daily_backfill (the per-visit rows
-/// added up). RETENTION 90 days from `day`: deleted by the daily 06:00 cron
+/// The /play visit breakdown, DAILY TOTALS OF OPENS ONLY (2026-11-16, Kemal;
+/// src/lib/pool/visit-log-rules.ts). Each open adds one to the total for its
+/// bucket, London day, trigger, in-app browser and scanner flag, so link
+/// scanners can be told from people after the server log has gone. Nothing
+/// per visit (the per-visit "PoolVisitEvent" of 2026-11-13 is dropped), and
+/// nothing that could single out the one person who signed up that day: no
+/// browser family, no device class, no starts (the daily counters count
+/// them), no hour, no time on screen, NO IP address, NO user agent, NO
+/// friend's share code, no user id, no cookie. Link preview fetchers are
+/// added with `scanner` and never counted in "PoolCampaignVisit". Only
+/// `visits.ts` touches it (`visit-log-unlinked.test.ts`). Migrations
+/// 20261116120000_pool_visit_daily (the table) and
+/// 20261116120200_pool_visit_daily_backfill (the per-visit opens added up).
+/// RETENTION 90 days from `day`: deleted by the daily 06:00 cron
 /// (`purgeOldPoolVisitDaily`, POOL_VISIT_RETENTION_DAYS).
 model PoolVisitDaily {
   /// The bucket the counters use: a campaign code, "_direct" or "_referral".
   code    String
   /// The London day, as "PoolCampaignVisit".
   day     DateTime @db.Date
-  /// "opened" or "started".
+  /// Always "opened" (CHECK): starts are in "PoolCampaignVisit" only.
   step    String
   /// What opened the page: pointer, touch, key, wheel, scroll or
   /// before-start; "visible-time" only for opens before 16 November 2026;
-  /// "none" on started (POOL_VISIT_TRIGGERS).
+  /// "none" for an old open that did not say (POOL_VISIT_TRIGGERS).
   trigger String
-  /// chrome, safari, firefox, edge, samsung or other.
-  browser String
   /// An app's in-app browser: facebook, instagram, nextdoor, whatsapp,
   /// other or none.
   inApp   String
-  /// mobile, tablet, desktop or other (not a browser).
-  device  String
   /// A link preview fetcher or scripted browser.
   scanner Boolean
   count   Int      @default(0)
 
-  @@id([code, day, step, trigger, browser, inApp, device, scanner])
+  @@id([code, day, step, trigger, inApp, scanner])
   @@index([day])
 }
 

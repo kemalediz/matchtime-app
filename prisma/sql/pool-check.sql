@@ -211,30 +211,22 @@ ALTER TABLE "PoolCampaignVisit" DROP CONSTRAINT IF EXISTS "PoolCampaignVisit_ste
 ALTER TABLE "PoolCampaignVisit" ADD CONSTRAINT "PoolCampaignVisit_step_check"
   CHECK ("step" IN ('opened', 'started', 'sent', 'confirmed'));
 
--- PoolVisitDaily (2026-11-16, daily totals only; it replaces the per-visit
--- "PoolVisitEvent" of 2026-11-13): src/lib/pool/visit-log-rules.ts; applied
--- to production by prisma/migrations/20261116120000_pool_visit_daily
+-- PoolVisitDaily (2026-11-16, daily totals of opens only, no browser or
+-- device; it replaces the per-visit "PoolVisitEvent" of 2026-11-13):
+-- src/lib/pool/visit-log-rules.ts; applied to production by
+-- prisma/migrations/20261116120000_pool_visit_daily
 ALTER TABLE "PoolVisitDaily" DROP CONSTRAINT IF EXISTS "PoolVisitDaily_code_check";
 ALTER TABLE "PoolVisitDaily" ADD CONSTRAINT "PoolVisitDaily_code_check"
   CHECK ("code" IN ('_direct', '_referral') OR ("code" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length("code") <= 32));
 ALTER TABLE "PoolVisitDaily" DROP CONSTRAINT IF EXISTS "PoolVisitDaily_step_check";
 ALTER TABLE "PoolVisitDaily" ADD CONSTRAINT "PoolVisitDaily_step_check"
-  CHECK ("step" IN ('opened', 'started'));
+  CHECK ("step" IN ('opened'));
 ALTER TABLE "PoolVisitDaily" DROP CONSTRAINT IF EXISTS "PoolVisitDaily_trigger_check";
 ALTER TABLE "PoolVisitDaily" ADD CONSTRAINT "PoolVisitDaily_trigger_check"
   CHECK ("trigger" IN ('pointer', 'touch', 'key', 'wheel', 'scroll', 'before-start', 'visible-time', 'none'));
-ALTER TABLE "PoolVisitDaily" DROP CONSTRAINT IF EXISTS "PoolVisitDaily_started_trigger_check";
-ALTER TABLE "PoolVisitDaily" ADD CONSTRAINT "PoolVisitDaily_started_trigger_check"
-  CHECK ("step" <> 'started' OR "trigger" = 'none');
-ALTER TABLE "PoolVisitDaily" DROP CONSTRAINT IF EXISTS "PoolVisitDaily_browser_check";
-ALTER TABLE "PoolVisitDaily" ADD CONSTRAINT "PoolVisitDaily_browser_check"
-  CHECK ("browser" IN ('chrome', 'safari', 'firefox', 'edge', 'samsung', 'other'));
 ALTER TABLE "PoolVisitDaily" DROP CONSTRAINT IF EXISTS "PoolVisitDaily_inApp_check";
 ALTER TABLE "PoolVisitDaily" ADD CONSTRAINT "PoolVisitDaily_inApp_check"
   CHECK ("inApp" IN ('facebook', 'instagram', 'nextdoor', 'whatsapp', 'other', 'none'));
-ALTER TABLE "PoolVisitDaily" DROP CONSTRAINT IF EXISTS "PoolVisitDaily_device_check";
-ALTER TABLE "PoolVisitDaily" ADD CONSTRAINT "PoolVisitDaily_device_check"
-  CHECK ("device" IN ('mobile', 'tablet', 'desktop', 'other'));
 ALTER TABLE "PoolVisitDaily" DROP CONSTRAINT IF EXISTS "PoolVisitDaily_count_check";
 ALTER TABLE "PoolVisitDaily" ADD CONSTRAINT "PoolVisitDaily_count_check"
   CHECK ("count" >= 0);
