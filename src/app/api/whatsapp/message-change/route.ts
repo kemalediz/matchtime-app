@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const r = await applyMessageChange(input);
     console.log(
       `[message-change] ${input.kind} ${input.chatId} ${input.messageId}: analyzed=${r.analyzed} archived=${r.archived} ` +
-        `hq=${r.hq} mentions=${r.mentions} editsRefused=${r.editsRefused}`,
+        `hq=${r.hq} mentions=${r.mentions} refused=${r.refused}`,
     );
     return NextResponse.json({ ok: true, kind: input.kind, ...r });
   } catch (err) {

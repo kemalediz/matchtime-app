@@ -523,8 +523,17 @@ export async function postGroupPostability(body: {
 
 /** A group message deleted for everyone, or edited (message-change.ts). */
 export type MessageChangeBody =
-  | { kind: "revoke"; chatId: string; messageId: string }
-  | { kind: "edit"; chatId: string; messageId: string; text: string; senderJids: string[]; senderPhone: string | null };
+  | { kind: "revoke"; chatId: string; messageId: string; byAdmin: boolean; senderJids: string[]; senderPhone: string | null }
+  | {
+      kind: "edit";
+      chatId: string;
+      messageId: string;
+      text: string;
+      mentions?: string[];
+      mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+      senderJids: string[];
+      senderPhone: string | null;
+    };
 
 /** Counts only: the server never sends the words back. */
 export interface MessageChangeResponse {
@@ -533,7 +542,9 @@ export interface MessageChangeResponse {
   archived?: number;
   hq?: number;
   mentions?: number;
-  editsRefused?: number;
+  refused?: number;
+  /** Shadow mode refused the write here (`apiFetch`): nothing to retry. */
+  shadowMode?: boolean;
 }
 
 /**

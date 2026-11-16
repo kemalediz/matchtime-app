@@ -2706,6 +2706,33 @@ model GroupMessage {
   @@index([orgId, timestamp])
 }
 
+
+/// A WhatsApp message deleted for everyone (2026-11-15, the tombstone).
+/// One row per deleted message: its chat (group JID) and its BARE WhatsApp
+/// id, and who sent the delete. Every writer of a member's words checks it
+/// AFTER writing and takes the words out again if it applies
+/// (`src/lib/message-change.ts` `enforceDeletes`), and every edit checks it
+/// first, so a delete wins whatever order the message, the delete and an
+/// edit arrive in. A delete applies to a message only when it came from a
+/// group admin (`byAdmin`, read by the Pi from the group's metadata) or
+/// from the message's own author (one of `senderJids` / `senderPhones`).
+/// Holds ids and phones, never words. RETENTION 14 days from `deletedAt`,
+/// pruned on every write. Migration 20261116120000_deleted_messages.
+model DeletedMessage {
+  id           String   @id @default(cuid())
+  chatId       String
+  /// The bare WhatsApp id (the `<id>` of `<fromMe>_<chat>_<id>_<participant>`).
+  waMessageId  String
+  byAdmin      Boolean  @default(false)
+  /// Every spelling of the deleters seen, `<digits>@c.us` / `<digits>@lid`.
+  senderJids   String[] @default([])
+  /// The deleters' phones, digits only.
+  senderPhones String[] @default([])
+  deletedAt    DateTime @default(now())
+
+  @@unique([chatId, waMessageId])
+  @@index([deletedAt])
+}
 /// THE PEOPLE A GROUP MESSAGE TAGGED (2026-11-09, Vets MNF: "@Match Time DM
 /// these people"). One row per message MatchTime was shown, in the players'
 /// group or HQ, that @-mentioned anyone but MatchTime, so a later "DM the

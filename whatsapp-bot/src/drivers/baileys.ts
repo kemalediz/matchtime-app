@@ -227,6 +227,7 @@ import {
   authorLid,
   createGroupCache,
   handedUpId,
+  isAdminParticipant,
   legacyIdsOf,
   lidPnPairs,
   membershipEvent,
@@ -853,6 +854,36 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     return new Set([self.pn, self.lid].filter((s): s is string => !!s));
   }
 
+  /**
+   * Is one of these spellings an admin of the group (round 2, 2026-11-15)?
+   * Its roster from the cache, else ONE `groupMetadata` read, as every
+   * roster read here is. False when it cannot be read: a delete is then
+   * applied only to the sender's own messages.
+   */
+  async function senderIsGroupAdmin(groupJid: string, senderJids: string[]): Promise<boolean> {
+    if (senderJids.length === 0) return false;
+    try {
+      const meta = await readRoster(groupJid, "onMessageChange");
+      return (meta.participants ?? []).some((p) => isAdminParticipant(p) && legacyIdsOf(p).some((id) => senderJids.includes(id)));
+    } catch (err) {
+      log(`[baileys][msg] could not read ${groupJid}'s admins for a delete: ${errorText(err)}`);
+      return false;
+    }
+  }
+
+  /** An edit's new content as the edited message itself (its id, its author, the new words), or null. */
+  function editedView(notice: WAMessage, targetId: string, content: proto.IMessage, upsertType: string, senderPhone: string | null): BaileysInboundView | null {
+    const k = notice.key ?? {};
+    const edited = {
+      key: { remoteJid: k.remoteJid, fromMe: k.fromMe, id: targetId, participant: k.participant, participantAlt: k.participantAlt },
+      message: content,
+      messageTimestamp: notice.messageTimestamp,
+      pushName: notice.pushName,
+    } as WAMessage;
+    const mapped = mapInboundMessage(edited);
+    return mapped ? buildInboundView(edited, mapped, { upsertType, senderPhone }) : null;
+  }
+
   function pollMessage(id: string): proto.IMessage | undefined {
     return store.get({ id }) ?? decodePollMessage(pollArchive.get(id)) ?? undefined;
   }
@@ -1242,13 +1273,17 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         return;
       }
       const isGroup = isGroupJid(change.chatJid);
-      const senderJids = [
-        ...new Set(
-          (isGroup ? [key.participant, key.participantAlt] : [key.remoteJid, key.remoteJidAlt])
-            .map((j) => legacyJid(j))
-            .filter((j): j is string => !!j),
-        ),
-      ];
+      // Who sent it, every spelling: MatchTime's own number for our own
+      // device's delete (an admin deleting from the bot's phone).
+      const senderJids = key.fromMe
+        ? [...selfLegacy()]
+        : [
+            ...new Set(
+              (isGroup ? [key.participant, key.participantAlt] : [key.remoteJid, key.remoteJidAlt])
+                .map((j) => legacyJid(j))
+                .filter((j): j is string => !!j),
+            ),
+          ];
       let senderPhone: string | null = null;
       if (!key.fromMe) {
         const who = await senderPhoneOf(key);
@@ -1261,11 +1296,16 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         messageId: change.targetId,
         senderJids,
         senderPhone,
+        byAdmin: isGroup && change.kind === "revoke" ? await senderIsGroupAdmin(change.chatJid, senderJids) : false,
         fromMe: key.fromMe === true,
       };
-      // Set, not spread: this is an edit's words, not a text we send.
-      if (change.kind === "edit") event.text = change.text;
-      log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} handed up as a change`);
+      if (change.kind === "edit") {
+        // Set, not spread: this is an edit's words, not a text we send.
+        event.text = change.text;
+        const view = editedView(m, change.targetId, change.content, upsertType, senderPhone);
+        if (view) event.edited = view as InboundMessage;
+      }
+      log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} byAdmin=${event.byAdmin} handed up as a change`);
       tally(what);
       hand(changeHandlers, event, "onMessageChange");
       return;

@@ -1,14 +1,29 @@
 /**
  * What the Pi does with a delete for everyone or an edit (2026-11-15,
- * `message-change.ts`): housekeeping only. It takes the words out of what
- * the Pi itself still holds, waits for a running analysis of that group to
- * finish (so the server has stored what it is about to change), and posts
- * the change. It never sends, replies or reacts: the only effects it has
- * are the ones injected here. Simulated numbers, made-up people.
+ * `message-change.ts`, round 2): housekeeping only.
+ *
+ *   1. the Pi's own record and copies FIRST, for every group, whether or
+ *      not the org list has loaded yet (after a restart it may not have);
+ *   2. the change into the durable outbox, before any post;
+ *   3. a running analysis of that group allowed to end (bounded);
+ *   4. one post; a failure is left to the outbox's retries.
+ *
+ * It never sends, replies or reacts: its only effects are the injected
+ * ones. Simulated numbers, made-up people.
  */
 import { describe, it, expect, vi } from "vitest";
-import type { MessageChangeEvent } from "./driver.js";
-import { editIsByAuthor, handleMessageChange, isIdOfMessage, type MessageChangeDeps } from "./message-change.js";
+import type { InboundMessage, MessageChangeEvent } from "./driver.js";
+import {
+  bareOf,
+  bodyForServer,
+  deleteApplies,
+  handleMessageChange,
+  isByAuthor,
+  isIdOfMessage,
+  namesMessage,
+  type LocalMessageChange,
+  type MessageChangeDeps,
+} from "./message-change.js";
 
 const GROUP = "120363000000000000@g.us";
 const TARGET = "3EB0AAAABBBBCCCC0001";
@@ -23,6 +38,7 @@ const revoke = (over: Partial<MessageChangeEvent> = {}): MessageChangeEvent => (
   messageId: TARGET,
   senderJids: [`${SAM}@c.us`],
   senderPhone: SAM,
+  byAdmin: false,
   fromMe: false,
   ...over,
 });
@@ -30,88 +46,121 @@ const revoke = (over: Partial<MessageChangeEvent> = {}): MessageChangeEvent => (
 function deps(over: Partial<MessageChangeDeps> = {}) {
   const order: string[] = [];
   const logs: string[] = [];
+  const recorded: LocalMessageChange[] = [];
   const d: MessageChangeDeps = {
-    isTrackedGroup: () => true,
-    applyLocally: vi.fn(() => {
-      order.push("local");
-      return { buffered: 1, history: 1 };
+    applyLocally: vi.fn((c: LocalMessageChange) => {
+      order.push(`local:${c.kind}`);
+      return { buffered: 1, history: 1, quotes: 0 };
+    }),
+    readEdit: vi.fn(async () => ({ text: "ask @Ali Example", mentions: ["447700900456@c.us"], mentionNames: [{ jid: "447700900456@c.us", name: "Ali" }], botMentioned: false })),
+    record: vi.fn((c: LocalMessageChange) => {
+      order.push("record");
+      recorded.push(c);
+      return "key-1";
+    }),
+    attempt: vi.fn(async () => {
+      order.push("post");
+      return true;
     }),
     whenFlushIdle: vi.fn(async () => {
       order.push("idle");
       return true;
     }),
-    post: vi.fn(async () => {
-      order.push("post");
-      return { ok: true, analyzed: 1, archived: 0, hq: 0, mentions: 0, editsRefused: 0 };
-    }),
     log: (l) => logs.push(l),
     error: (l) => logs.push(`ERR ${l}`),
     ...over,
   };
-  return { d, order, logs };
+  return { d, order, logs, recorded };
 }
 
-describe("isIdOfMessage / editIsByAuthor (the Pi's own copies, by id and group)", () => {
-  it("a stored id names this group's message, never another group's or a longer id", () => {
+describe("the Pi's own copies, by id and group, never by text", () => {
+  it("isIdOfMessage / namesMessage / bareOf", () => {
     expect(isIdOfMessage(SAM_ID, GROUP, TARGET)).toBe(true);
     expect(isIdOfMessage(`false_${GROUP}_${TARGET}_${SAM_LID}`, GROUP, TARGET)).toBe(true);
     expect(isIdOfMessage(`false_120363000000000001@g.us_${TARGET}_${SAM}@c.us`, GROUP, TARGET)).toBe(false);
     expect(isIdOfMessage(`false_${GROUP}_${TARGET}X_${SAM}@c.us`, GROUP, TARGET)).toBe(false);
-    expect(isIdOfMessage("synthetic:abc", GROUP, TARGET)).toBe(false);
+    expect(namesMessage(TARGET, GROUP, TARGET)).toBe(true);
+    expect(namesMessage("synthetic:abc", GROUP, TARGET)).toBe(false);
+    expect(bareOf(SAM_ID)).toBe(TARGET);
+    expect(bareOf(TARGET)).toBe(TARGET);
+    expect(bareOf("synthetic:abc")).toBeNull();
   });
 
-  it("an edit is the author's when the stored participant or phone is the sender's", () => {
-    expect(editIsByAuthor(SAM_ID, null, { senderJids: [`${SAM}@c.us`], senderPhone: null })).toBe(true);
-    expect(editIsByAuthor(`false_${GROUP}_${TARGET}_${SAM_LID}`, SAM, { senderJids: [], senderPhone: SAM })).toBe(true);
-    expect(editIsByAuthor(SAM_ID, SAM, { senderJids: ["447700900999@c.us"], senderPhone: "447700900999" })).toBe(false);
+  it("isByAuthor: the stored participant or phone is the sender's", () => {
+    expect(isByAuthor(SAM_ID, null, { senderJids: [`${SAM}@c.us`], senderPhone: null })).toBe(true);
+    expect(isByAuthor(`false_${GROUP}_${TARGET}_${SAM_LID}`, SAM, { senderJids: [], senderPhone: SAM })).toBe(true);
+    expect(isByAuthor(SAM_ID, SAM, { senderJids: ["447700900999@c.us"], senderPhone: "447700900999" })).toBe(false);
+  });
+
+  it("deleteApplies: a group admin's delete always, anyone else's only their own", () => {
+    const by = (who: string, byAdmin = false) => ({ kind: "revoke" as const, groupId: GROUP, messageId: TARGET, senderJids: [`${who}@c.us`], senderPhone: who, byAdmin });
+    expect(deleteApplies(by(SAM), SAM_ID, SAM)).toBe(true);
+    expect(deleteApplies(by("447700900999", true), SAM_ID, SAM)).toBe(true);
+    expect(deleteApplies(by("447700900999"), SAM_ID, SAM)).toBe(false);
+  });
+
+  it("bodyForServer: a delete by ids and sender; an edit with its words and mentions", () => {
+    expect(bodyForServer({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: true })).toEqual({
+      kind: "revoke",
+      chatId: GROUP,
+      messageId: TARGET,
+      byAdmin: true,
+      senderJids: [`${SAM}@c.us`],
+      senderPhone: SAM,
+    });
+    expect(
+      bodyForServer({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [], senderPhone: SAM, byAdmin: false, text: "", mentions: ["x@c.us"], mentionNames: [{ jid: "x@c.us" }] }),
+    ).toEqual({ kind: "edit", chatId: GROUP, messageId: TARGET, text: "", mentions: ["x@c.us"], mentionNames: [{ jid: "x@c.us" }], senderJids: [], senderPhone: SAM });
   });
 });
 
 describe("handleMessageChange", () => {
-  it("a group delete: the Pi's copies first, then waits for a running flush, then posts by id and group", async () => {
-    const { d, order, logs } = deps();
+  it("a group delete: the Pi's own record first, then the outbox, then waits for a running flush, then one post", async () => {
+    const { d, order, logs, recorded } = deps();
     expect(await handleMessageChange(revoke(), d)).toBe("posted");
-    expect(order).toEqual(["local", "idle", "post"]);
-    expect(d.whenFlushIdle).toHaveBeenCalledWith(GROUP);
-    expect(d.post).toHaveBeenCalledWith({ kind: "revoke", chatId: GROUP, messageId: TARGET });
-    expect(logs.join("\n")).toMatch(/delete for everyone of 3EB0AAAABBBBCCCC0001 .*analyzed=1/);
+    expect(order).toEqual(["local:revoke", "record", "idle", "post"]);
+    expect(recorded[0]).toEqual({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
+    expect(d.attempt).toHaveBeenCalledWith("key-1");
+    expect(logs.join("\n")).toMatch(/delete for everyone of 3EB0AAAABBBBCCCC0001 .*batch=1/);
   });
 
-  it("an edit posts its text and sender, and the log never carries the text", async () => {
-    const { d, logs } = deps();
-    const change = revoke({ kind: "edit", text: "my private new words", senderJids: [SAM_LID, `${SAM}@c.us`] });
-    expect(await handleMessageChange(change, d)).toBe("posted");
-    expect(d.post).toHaveBeenCalledWith({
-      kind: "edit",
-      chatId: GROUP,
-      messageId: TARGET,
-      text: "my private new words",
-      senderJids: [SAM_LID, `${SAM}@c.us`],
-      senderPhone: SAM,
-    });
+  it("there is no 'not a group MatchTime reads' early return: a group the org list has not loaded yet is recorded and posted too", async () => {
+    const { d } = deps();
+    expect(await handleMessageChange(revoke({ chatId: "120363000000009999@g.us" }), d)).toBe("posted");
+    expect(d.applyLocally).toHaveBeenCalled();
+    expect(d.record).toHaveBeenCalled();
+  });
+
+  it("an edit is read from its new content exactly as an inbound message is (mentions named, bot tag found)", async () => {
+    const { d, recorded, logs } = deps();
+    const view = { body: "ask @447700900456" } as unknown as InboundMessage;
+    await handleMessageChange(revoke({ kind: "edit", text: "ask @447700900456 my private words", edited: view }), d);
+    expect(d.readEdit).toHaveBeenCalledWith(view);
+    expect(recorded[0]).toMatchObject({ kind: "edit", text: "ask @Ali Example", mentions: ["447700900456@c.us"], mentionNames: [{ jid: "447700900456@c.us", name: "Ali" }], botMentioned: false });
     expect(logs.join("\n")).not.toContain("private");
   });
 
-  it("a DM: nothing the server keeps for a later answer, so nothing is posted", async () => {
+  it("an edit that left no text is recorded as no text, so it clears", async () => {
+    const { d, recorded } = deps();
+    await handleMessageChange(revoke({ kind: "edit", text: "" }), d);
+    expect(d.readEdit).not.toHaveBeenCalled();
+    expect(recorded[0]).toMatchObject({ kind: "edit", text: "" });
+  });
+
+  it("a failed post is left to the outbox's retries ('queued'), and never throws", async () => {
+    const { d, logs } = deps({ attempt: vi.fn(async () => false) });
+    expect(await handleMessageChange(revoke(), d)).toBe("queued");
+    expect(logs.join("\n")).toMatch(/queued/);
+    const { d: d2 } = deps({ attempt: vi.fn(async () => Promise.reject(new Error("boom"))) });
+    await expect(handleMessageChange(revoke(), d2)).resolves.toBe("queued");
+  });
+
+  it("a DM: nothing the server keeps for a later answer, so nothing is recorded or posted", async () => {
     const { d, logs } = deps();
     expect(await handleMessageChange(revoke({ isGroup: false, chatId: `${SAM}@c.us` }), d)).toBe("dm");
     expect(d.applyLocally).not.toHaveBeenCalled();
-    expect(d.post).not.toHaveBeenCalled();
+    expect(d.record).not.toHaveBeenCalled();
     expect(logs.join("\n")).toMatch(/DM/);
-  });
-
-  it("a group MatchTime does not read: nothing stored, nothing posted", async () => {
-    const { d } = deps({ isTrackedGroup: () => false });
-    expect(await handleMessageChange(revoke(), d)).toBe("untracked");
-    expect(d.post).not.toHaveBeenCalled();
-  });
-
-  it("a failed or refused post is logged and never throws", async () => {
-    const { d, logs } = deps({ post: vi.fn(async () => null) });
-    expect(await handleMessageChange(revoke(), d)).toBe("failed");
-    expect(logs.join("\n")).toMatch(/ERR .*not applied/);
-    const { d: d2 } = deps({ post: vi.fn(async () => Promise.reject(new Error("boom"))) });
-    await expect(handleMessageChange(revoke(), d2)).resolves.toBe("failed");
   });
 
   it("a flush that never ends does not hold the delete back for ever", async () => {

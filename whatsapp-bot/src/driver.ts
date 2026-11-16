@@ -83,6 +83,19 @@ export interface MessageChangeEvent {
   /** Every spelling of the notice's sender we know, `@c.us`/`@lid`. */
   senderJids: string[];
   senderPhone: string | null;
+  /**
+   * The sender is an admin of the group, as its metadata says (round 2,
+   * 2026-11-15). A delete applies to somebody else's message only then:
+   * WhatsApp's own clients let a group admin delete anyone's message, and
+   * anyone else only their own. False when the metadata could not be read.
+   */
+  byAdmin: boolean;
+  /**
+   * An edit's NEW content as an inbound message (the edited message's id,
+   * the new words, the new mentions), so it is read exactly as an inbound
+   * message is. Absent for a delete, and for an edit that left no text.
+   */
+  edited?: InboundMessage;
   fromMe: boolean;
 }
 

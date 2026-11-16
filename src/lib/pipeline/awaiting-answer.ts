@@ -256,6 +256,9 @@ export function openStatsClarifications(
   const answeredAt = new Map<string, number>();
   for (const r of rows) {
     if (r.orgId !== orgId) continue;
+    // A question deleted for everyone keeps its row with no words
+    // (`message-change.ts`): nothing is open, and nothing is asked again.
+    if (r.intent === STATS_CLARIFICATION_INTENT && !(r.body ?? "").trim()) continue;
     const key = askerKey(r.authorUserId, r.authorName);
     if (!key) continue;
     if (r.intent === STATS_CLARIFIED_INTENT) {

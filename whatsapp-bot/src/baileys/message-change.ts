@@ -27,23 +27,35 @@ import type { WAMessage } from "baileys";
 
 export type ReadMessageChange =
   | { kind: "revoke"; chatJid: string; targetId: string }
-  | { kind: "edit"; chatJid: string; targetId: string; text: string };
+  | {
+      kind: "edit";
+      chatJid: string;
+      targetId: string;
+      /** The new text or caption, trimmed; "" when the edit left none (a caption removed). */
+      text: string;
+      /** The new content, so the driver can read it exactly as an inbound message (mentions). */
+      content: proto.IMessage;
+    };
 
 /** A WhatsApp message id: never '@', never a space (`group-history-bundle.ts`). */
 const PLAUSIBLE_ID = /^[0-9A-Za-z._:-]{8,64}$/;
 const MAX_EDIT_DEPTH = 3;
 
-/** The text or caption of a message's content, trimmed; "" when there is none. */
-function textOf(message: proto.IMessage | null | undefined): string {
+/**
+ * The text or caption of a message's content, trimmed: "" for a text or a
+ * captionable message that holds none, null for anything else (a sticker),
+ * which an edit cannot have left words in.
+ */
+function textOf(message: proto.IMessage | null | undefined): string | null {
   const content = normalizeMessageContent(message ?? undefined);
-  if (!content) return "";
+  if (!content) return null;
   const type = getContentType(content);
   if (type === "conversation") return (content.conversation ?? "").trim();
   if (type === "extendedTextMessage") return (content.extendedTextMessage?.text ?? "").trim();
   if (type === "imageMessage" || type === "videoMessage" || type === "documentMessage") {
     return ((content[type] as { caption?: string | null } | null | undefined)?.caption ?? "").trim();
   }
-  return "";
+  return null;
 }
 
 export function readMessageChange(msg: WAMessage): ReadMessageChange | null {
@@ -69,7 +81,7 @@ export function readMessageChange(msg: WAMessage): ReadMessageChange | null {
       content = inner;
     }
     const text = textOf(content);
-    return text ? { kind: "edit", chatJid, targetId, text } : null;
+    return text === null || !content ? null : { kind: "edit", chatJid, targetId, text, content };
   } catch {
     return null;
   }

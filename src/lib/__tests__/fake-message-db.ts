@@ -58,7 +58,20 @@ function stored(v: unknown): unknown {
   return v === Prisma.DbNull || v === Prisma.JsonNull ? null : v;
 }
 
-export function makeTable(rows: Row[]) {
+/** `{ a_b: { a, b } }` (a compound unique key) as a plain where. */
+function unique(where: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(where)) {
+    if (k.includes("_") && v && typeof v === "object" && !(v instanceof Date)) Object.assign(out, v);
+    else out[k] = v;
+  }
+  return out;
+}
+
+/** Test seam: throw from inside a write, to prove a transaction rolls back. */
+export const failures: { beforeWrite?: () => void } = {};
+
+export function makeTable(rows: Row[], uniqueKeys: string[][] = []) {
   const order = (list: Row[], orderBy: unknown): Row[] => {
     const specs = (Array.isArray(orderBy) ? orderBy : orderBy ? [orderBy] : []) as Array<Record<string, "asc" | "desc">>;
     if (specs.length === 0) return list;
@@ -81,9 +94,22 @@ export function makeTable(rows: Row[]) {
       const found = order(rows.filter((r) => matches(r, args.where)), args.orderBy);
       return found[0] ? { ...found[0] } : null;
     },
-    update: async (args: { where: { id: string }; data: Record<string, unknown> }) => {
-      const r = rows.find((x) => x.id === args.where.id);
-      if (!r) throw new Error(`no row ${args.where.id}`);
+    findUnique: async (args: { where: Record<string, unknown> }) => {
+      const r = rows.find((x) => matches(x, unique(args.where)));
+      return r ? { ...r } : null;
+    },
+    create: async (args: { data: Record<string, unknown> }) => {
+      const r = { id: `row-${++seq}`, ...Object.fromEntries(Object.entries(args.data).map(([k, v]) => [k, stored(v)])) } as Row;
+      for (const key of uniqueKeys) {
+        if (rows.some((x) => key.every((f) => x[f] === r[f]))) throw Object.assign(new Error("unique"), { code: "P2002" });
+      }
+      rows.push(r);
+      return { ...r };
+    },
+    update: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      failures.beforeWrite?.();
+      const r = rows.find((x) => matches(x, unique(args.where)));
+      if (!r) throw new Error(`no row ${JSON.stringify(args.where)}`);
       for (const [k, v] of Object.entries(args.data)) r[k] = stored(v);
       return { ...r };
     },
@@ -97,6 +123,7 @@ export function makeTable(rows: Row[]) {
       return { count };
     },
     deleteMany: async (args: { where?: Record<string, unknown> } = {}) => {
+      failures.beforeWrite?.();
       const keep = rows.filter((r) => !matches(r, args.where));
       const count = rows.length - keep.length;
       rows.splice(0, rows.length, ...keep);
@@ -107,4 +134,34 @@ export function makeTable(rows: Row[]) {
 
 export function row(fields: Record<string, unknown>): Row {
   return { id: `row-${++seq}`, ...fields };
+}
+
+/**
+ * A db over named tables, with `$transaction(fn)` that ROLLS BACK: every
+ * table is restored to its state before `fn` if `fn` throws.
+ */
+export function makeDb(T: Record<string, Row[]>, names: string[], uniqueKeys: Record<string, string[][]> = {}) {
+  /** Tables that do not exist yet (a deploy before the migration): every call throws. */
+  const missing = new Set<string>();
+  const gone = (n: string) =>
+    new Proxy({}, { get: () => async () => Promise.reject(new Error(`relation "${n}" does not exist`)) }) as ReturnType<typeof makeTable>;
+  const tables = () => Object.fromEntries(names.map((n) => [n, missing.has(n) ? gone(n) : makeTable((T[n] ??= []), uniqueKeys[n] ?? [])]));
+  return {
+    missing,
+    get db() {
+      const t = tables() as Record<string, ReturnType<typeof makeTable>>;
+      return {
+        ...t,
+        $transaction: async <R>(fn: (tx: unknown) => Promise<R>): Promise<R> => {
+          const snapshot = Object.fromEntries(names.map((n) => [n, (T[n] ?? []).map((r) => ({ ...r }))]));
+          try {
+            return await fn(t);
+          } catch (err) {
+            for (const n of names) T[n].splice(0, T[n].length, ...snapshot[n]);
+            throw err;
+          }
+        },
+      };
+    },
+  };
 }

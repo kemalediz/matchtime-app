@@ -347,6 +347,7 @@ import { askPoolFromWords } from "@/lib/pool-ask-words";
 import { recruitPlacesFromWords } from "@/lib/recruit-source";
 import { dmNamedPeople } from "@/lib/named-invite";
 import { rememberMentions } from "@/lib/group-mentions";
+import { deletedAmong, enforceDeletes, withoutDeletedQuotes } from "@/lib/message-change";
 import { groupSourceAnswers } from "@/lib/ask-source-group";
 import { groupAdminFollowups } from "@/lib/group-admin-followups";
 import { setVenueFromWords } from "@/lib/venue-from-words";
@@ -450,6 +451,8 @@ type ActionForBot = {
  * Purely additive: the column is nullable and nothing branches on it.
  */
 export async function POST(request: Request) {
+  // Read again at the end for the deletes (below); the handler reads its own copy.
+  const copy = request.clone();
   return withAnalyzeBatch(() =>
     withPipelineTrace(async () => {
       try {
@@ -463,9 +466,21 @@ export async function POST(request: Request) {
         // every row is written by now whichever path wrote it. Never
         // throws: see `pipeline/trace.ts`.
         await persistPipelineTraces(writePipelineTrace);
+        // A message deleted for everyone WHILE this batch ran (2026-11-15):
+        // every row is written by now, traces included, so whatever a
+        // recorded delete applies to is cleared again. Never throws.
+        await enforceDeletesOfBatch(copy);
       }
     }),
   );
+}
+
+/** The batch's messages, cleared again of any recorded delete (`message-change.ts`). */
+async function enforceDeletesOfBatch(copy: Request): Promise<void> {
+  if (copy.headers.get("x-api-key") !== process.env.WHATSAPP_API_KEY) return;
+  const b = (await copy.json().catch(() => null)) as InboundBody | null;
+  if (!b?.groupId || !Array.isArray(b.messages)) return;
+  await enforceDeletes(b.groupId, b.messages.map((m) => (typeof m?.waMessageId === "string" ? m.waMessageId : null)));
 }
 
 async function handleAnalyzeRequest(request: Request) {
@@ -510,6 +525,22 @@ async function handleAnalyzeRequest(request: Request) {
   }
   const organisersMode = organisersAnnounce(org);
   bindAiBudgetKey(org.id);
+
+  // A MESSAGE DELETED FOR EVERYONE (2026-11-15) is left out before anything
+  // reads it: not archived, not analysed, not stored, not shown as recent
+  // chat (a Pi replaying it after a restart, or a delete that beat its
+  // batch here). A reply QUOTING one carries no quote text: never the
+  // Pi's copy of the words (`message-change.ts`). Best-effort: with no
+  // record readable, nothing is left out.
+  {
+    const gone = await deletedAmong(body.groupId, body.messages.map((m) => ({ id: m.waMessageId, authorPhone: m.authorPhone })));
+    if (gone.size > 0) {
+      console.log(`[analyze] ${body.groupId}: ${gone.size} message(s) deleted for everyone left out: ${[...gone].join(", ")}`);
+      body.messages = body.messages.filter((m) => !gone.has(m.waMessageId));
+    }
+    body.messages = await withoutDeletedQuotes(body.groupId, body.messages, "quotedBody");
+    if (body.messages.length === 0) return NextResponse.json({ ok: true, results: [] });
+  }
 
   // Name every @-mention the roster can vouch for BEFORE anything reads a
   // body: the squad-from-list archive, the dedupe's empty-body check, the

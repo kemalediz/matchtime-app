@@ -59,6 +59,7 @@ import {
   postAdminGroupMessage,
   postAdminGroupLink,
   postMessageChange,
+  releaseInstruction,
 } from "./api.js";
 import {
   ackReply,
@@ -71,9 +72,14 @@ import {
   startBatchFlushTimer,
   stopBatchFlushTimer,
   applyMessageChangeLocally,
+  adjustForServer,
+  isDeletedLocally,
+  restoreMessageChanges,
   whenFlushIdle,
 } from "./smart-analysis.js";
-import { handleMessageChange } from "./message-change.js";
+import { bodyForServer, handleMessageChange } from "./message-change.js";
+import { createMessageChangeOutbox, outboxPath } from "./message-change-outbox.js";
+import { jsonFileIO } from "./baileys/json-file.js";
 import { config } from "./config.js";
 import { resolveWaMessageId } from "./message-id.js";
 import { dmSenderExtras, type DmSenderExtras } from "./dm-identity.js";
@@ -544,6 +550,25 @@ async function main() {
   // / noise / unclear. The server executes side effects (attendance,
   // scoring, Elo, replies) and hands back the WhatsApp-side actions
   // (react, reply) for the bot to perform.
+  // Deletes and edits the server has not taken yet, and the Pi's own record
+  // of the last day's, read back BEFORE any message is handled: a replay
+  // after this restart is held to them (2026-11-15, message-change-outbox.ts).
+  const changesPath = outboxPath(process.env);
+  const messageChanges = createMessageChangeOutbox({
+    io: changesPath ? jsonFileIO(changesPath) : null,
+    now: () => Date.now(),
+    post: async (c) => {
+      const r = await postMessageChange(bodyForServer(c));
+      // Shadow mode refuses every write here: nothing to retry.
+      return !!r && (r.ok === true || r.shadowMode === true);
+    },
+    log: (l) => console.log(l),
+    error: (l) => console.error(l),
+  });
+  restoreMessageChanges(messageChanges.load());
+  messageChanges.start();
+  console.log(`[message-change] outbox read back: ${messageChanges.pending()} change(s) waiting for the server`);
+
   driver.onMessage(async (msg) => {
     try {
       // Read EVERY headline field through one total helper.
@@ -687,7 +712,15 @@ async function main() {
         {
           isAdminGroup,
           addAdminGroup,
-          read: () => readGroupMessageForServer(driver, msg),
+          // Held to the Pi's record of deletes and edits (2026-11-15): a
+          // deleted message is not forwarded, an edited one goes with its
+          // new words, a quote of a deleted one without its words.
+          read: async () => {
+            const m = await readGroupMessageForServer(driver, msg);
+            return m ? adjustForServer(m) : null;
+          },
+          isDeleted: (id, phone) => isDeletedLocally(head.from, id, phone),
+          release: releaseInstruction,
           postAdminGroupMessage,
           postAdminGroupLink,
           reply: (text) => driver.sendText(head.from, text),
@@ -798,10 +831,15 @@ async function main() {
   // analysed, sent, replied to or reacted to (message-change.ts).
   driver.onMessageChange?.(async (change) => {
     await handleMessageChange(change, {
-      isTrackedGroup: (chatId) => isMonitoredGroup(chatId) || isAdminGroup(chatId),
       applyLocally: applyMessageChangeLocally,
+      // An edit's new content, read exactly as an inbound message is.
+      readEdit: async (view) => {
+        const r = await readGroupMessageForServer(driver, view);
+        return r ? { text: r.text, botMentioned: r.botMentioned, mentions: r.mentions, mentionNames: r.mentionNames } : null;
+      },
+      record: (c) => messageChanges.record(c),
+      attempt: (key) => messageChanges.attempt(key),
       whenFlushIdle: (groupId) => whenFlushIdle(groupId),
-      post: postMessageChange,
       log: (l) => console.log(l),
       error: (l) => console.error(l),
     });
