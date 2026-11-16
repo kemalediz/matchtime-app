@@ -25,6 +25,12 @@ import { test, expect, resetDb } from "../fixtures";
 import { ACTIVITY_ID, ORG_ID, U } from "../helpers/constants";
 import { REPO_ROOT } from "../helpers/env";
 import type { TestDb } from "../helpers/test-db";
+import { costOf } from "@/lib/pipeline/llm";
+import { WHO_IS_WHO_CALL } from "@/lib/pipeline/who-is-who";
+
+/** What the fake API says each answered call used: priced from the real table. */
+const FAKE_USAGE = { input_tokens: 20_000, output_tokens: 400 };
+const FAKE_CALL_USD = costOf(WHO_IS_WHO_CALL.model, { inputTokens: FAKE_USAGE.input_tokens, outputTokens: FAKE_USAGE.output_tokens, cacheReadTokens: 0, cacheWriteTokens: 0 });
 
 test.describe.configure({ mode: "serial" });
 
@@ -72,16 +78,18 @@ const DOCUMENTED = "node --env-file=.env ./node_modules/.bin/tsx scripts/set-mat
 /**
  * A stand-in for the Anthropic API on 127.0.0.1. Records the `x-api-key`
  * of every request. "answer": a who-is-who answer by first name (one
- * member is that member, several are ambiguous), with usage, so the call
- * is priced. "reject": a 400, which the SDK does not retry.
+ * member is that member, several are ambiguous), with `FAKE_USAGE`, so the
+ * call is priced. "reject": a 400, which the SDK does not retry. "hang":
+ * takes the request and never answers.
  */
-async function fakeAnthropic(mode: "answer" | "reject") {
+async function fakeAnthropic(mode: "answer" | "reject" | "hang") {
   const keys: string[] = [];
   const server = createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
       keys.push(String(req.headers["x-api-key"] ?? ""));
+      if (mode === "hang") return;
       res.setHeader("content-type", "application/json");
       if (mode === "reject") {
         res.statusCode = 400;
@@ -109,14 +117,29 @@ async function fakeAnthropic(mode: "answer" | "reject") {
           content: [{ type: "text", text: JSON.stringify({ people }) }],
           stop_reason: "end_turn",
           stop_sequence: null,
-          usage: { input_tokens: 1000, output_tokens: 40, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+          usage: { ...FAKE_USAGE, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
         }),
       );
     });
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { url, keys, close: () => new Promise<void>((r) => server.close(() => r())) };
+  return {
+    url,
+    keys,
+    close: () =>
+      new Promise<void>((r) => {
+        server.closeAllConnections();
+        server.close(() => r());
+      }),
+  };
+}
+
+/** Refused before the database is read: the first line it prints names the club. */
+function refusedBeforeDb(r: Ran, message: string): void {
+  expect(r.code, r.out).toBe(1);
+  expect(r.stderr).toContain(`REFUSED: ${message}`);
+  expect(r.stdout, "the match was read").not.toContain("E2E Test FC");
 }
 
 const nothingWritten = async (db: TestDb) => {
@@ -171,8 +194,60 @@ test("an ambiguous or unknown name is refused, nothing written", async ({ db }) 
   const amb = await run(["--score", "Yellow 7 Red 4", "--mom", "Omar", "--apply"]);
   expect(amb.code).toBe(1);
   expect(amb.stderr).toContain('REFUSED: "Omar" could be Omar One or Omar Two');
-  const unknown = await run(["--mom", "Zed", "--apply"]);
-  expect(unknown.code).toBe(1);
+  // With a score too: refused means the score is not written either.
+  const unknown = await run(["--score", "Yellow 7 Red 4", "--mom", "Zed", "--apply"]);
+  expect(unknown.code, unknown.out).toBe(1);
+  expect(unknown.stderr).toContain(`REFUSED: "Zed" is not one of the match's players. Nothing written.`);
+  await nothingWritten(db);
+});
+
+test("arguments are read strictly, before the database: a flag with no value, an empty one, --flag=value, an unknown or repeated flag, a stray word, --by without --mom", async ({ db }) => {
+  test.setTimeout(180_000);
+  const score = ["--score", "Yellow 7 Red 4"];
+  const cases: Array<[string[], string]> = [
+    [[...score, "--mom", "", "--apply"], "--mom needs a value"],
+    [[...score, "--mom", "   ", "--apply"], "--mom needs a value"],
+    [[...score, "--apply", "--mom"], "--mom needs a value"],
+    [[...score, "--mom", "--apply"], "--mom needs a value"],
+    [[...score, "--mom=Pat", "--apply"], `"--mom=Pat": write the value after a space (--mom <value>)`],
+    [[...score, "--mom", "Pat", "--by", "", "--apply"], "--by needs a value"],
+    [[...score, "--mom", "Pat", "--mom", "Omar", "--apply"], "--mom is given twice"],
+    [[...score, "--mom", "Pat", "--apply", "--apply"], "--apply is given twice"],
+    [[...score, "--moom", "Pat", "--apply"], `unknown flag "--moom"`],
+    [[...score, "Pat", "--apply"], `unexpected "Pat"`],
+    [[...score, "--by", "Alex", "--apply"], "--by says who records the Man of the Match: it needs --mom"],
+  ];
+  for (const [args, message] of cases) refusedBeforeDb(await run(args), message);
+  // The match id is a flag like any other: twice is refused too.
+  refusedBeforeDb(await spawnRun("npx", ["tsx", "scripts/set-match-result.ts", "--match", MATCH_ID, "--match", "other", ...score], {}), "--match is given twice");
+  await nothingWritten(db);
+});
+
+test("--by without --mom makes no who-is-who call", async ({ db }) => {
+  test.setTimeout(120_000);
+  const api = await fakeAnthropic("answer");
+  try {
+    refusedBeforeDb(await run(["--score", "Yellow 7 Red 4", "--by", "Alex", "--apply"], bothKeys(api.url)), "--by says who records the Man of the Match: it needs --mom");
+    expect(api.keys, "requests made").toEqual([]);
+  } finally {
+    await api.close();
+  }
+  await nothingWritten(db);
+});
+
+test("a test stub variable outside the harness's own database is refused before anything is read", async ({ db }) => {
+  test.setTimeout(120_000);
+  // Never connected to: the refusal comes first. (Neither could be reached
+  // if it were not: an .invalid host, and a closed loopback port that is
+  // not the harness's.)
+  for (const url of ["postgresql://ops:secret@db.example.invalid:5432/matchtime", "postgresql://postgres:postgres@127.0.0.1:9/matchtime"]) {
+    const r = await run(["--score", "Yellow 7 Red 4", "--mom", "Pat", "--apply"], { DATABASE_URL: url, MT_TEST_EXTRACTOR_STUB_FILE: "/tmp/e2e-stub.json", MT_TEST_PERSON_PICKER_STUB: "" });
+    // (The worker's env carries the suite's other MT_TEST_* files too: all are named.)
+    refusedBeforeDb(r, "test stub variables are set (");
+    expect(r.stderr).toMatch(/MT_TEST_EXTRACTOR_STUB_FILE[^)]*\) and DATABASE_URL is not the e2e harness's database/);
+    expect(r.stderr).not.toMatch(/MT_TEST_PERSON_PICKER_STUB[,)]/);
+    expect(r.out).not.toContain("secret");
+  }
   await nothingWritten(db);
 });
 
@@ -209,7 +284,7 @@ test("--by is looked up the same way: each organiser by his first name records i
 
 test("with no ANTHROPIC_API_KEY_DEV, --mom and --by are refused at once, naming the key; nothing written", async ({ db }) => {
   test.setTimeout(120_000);
-  for (const args of [["--score", "Yellow 7 Red 4", "--mom", "Pat", "--apply"], ["--score", "Yellow 7 Red 4", "--by", "Alex", "--apply"]]) {
+  for (const args of [["--score", "Yellow 7 Red 4", "--mom", "Pat", "--apply"], ["--score", "Yellow 7 Red 4", "--mom", "Pat", "--by", "Alex", "--apply"]]) {
     const r = await run(args, NO_KEY);
     expect(r.code, r.out).toBe(1);
     expect(r.stderr, args.join(" ")).toContain("REFUSED: --mom and --by are looked up by who-is-who, a model call on ANTHROPIC_API_KEY_DEV, and it is not set");
@@ -227,8 +302,42 @@ test("the call goes on the DEV key, never the production one, even with both loa
     expect(r.code, r.out).toBe(0);
     expect(r.stdout).toContain("Man of the Match: Pat Player, recorded by Sue Second");
     expect(api.keys, "one who-is-who request, on the dev key").toEqual([DEV_KEY]);
-    expect(r.stdout).toMatch(/who-is-who: 1 call, \$0\.\d{4} on the dev key \(ANTHROPIC_API_KEY_DEV\)/);
+    // The exact price of the fake's known usage, from the real price table.
+    const usd = (FAKE_CALL_USD ?? 0).toFixed(4);
+    expect(usd, "the fake's usage must cost something, or this proves nothing").not.toBe("0.0000");
+    expect(r.stdout).toContain(`  who-is-who: 1 call, $${usd} on the dev key (ANTHROPIC_API_KEY_DEV)\n`);
     expect(r.out).not.toContain(PROD_KEY);
+  } finally {
+    await api.close();
+  }
+  await nothingWritten(db);
+});
+
+test("the production-key guard itself: with the key NOT dropped at start (test seam), the model client is refused, no request is made", async ({ db }) => {
+  test.setTimeout(120_000);
+  const api = await fakeAnthropic("answer");
+  try {
+    const r = await run(["--score", "Yellow 7 Red 4", "--mom", "Pat", "--apply"], { ...bothKeys(api.url), MT_TEST_KEEP_PRODUCTION_KEY: "1" });
+    expect(r.code, r.out).toBe(1);
+    expect(r.stderr).toContain("ANTHROPIC_API_KEY is still set in this process");
+    expect(api.keys, "requests made").toEqual([]);
+  } finally {
+    await api.close();
+  }
+  await nothingWritten(db);
+});
+
+test("an API that takes the call and never answers: refused as timed out within the script's limit, nothing written", async ({ db }) => {
+  test.setTimeout(120_000);
+  const api = await fakeAnthropic("hang");
+  try {
+    const started = Date.now();
+    const r = await run(["--score", "Yellow 7 Red 4", "--mom", "Pat", "--apply"], { ...bothKeys(api.url), MT_TEST_WHO_IS_WHO_TIMEOUT_MS: "1500" });
+    expect(r.code, r.out).toBe(1);
+    expect(r.stderr).toContain('REFUSED: who-is-who could not answer for "Pat" (the call failed (timed out after 1.5s))');
+    expect(api.keys.length, "the call reached the API").toBeGreaterThan(0);
+    // The whole run, tsx start-up included, well inside the SDK's own minutes.
+    expect(Date.now() - started).toBeLessThan(60_000);
   } finally {
     await api.close();
   }
@@ -262,9 +371,9 @@ test("when who-is-who's call fails, --mom and --by are refused SAYING the call f
     expect(mom.code, mom.out).toBe(1);
     expect(mom.stderr).toContain('REFUSED: who-is-who could not answer for "Pat" (the call failed)');
     expect(mom.stdout).toContain("who-is-who: 0 calls, $0.0000 on the dev key");
-    const by = await run(["--score", "Yellow 7 Red 4", "--by", "Alex", "--apply"], bothKeys(api.url));
+    const by = await run(["--score", "Yellow 7 Red 4", "--mom", "Pat", "--by", "Alex", "--apply"], bothKeys(api.url));
     expect(by.code, by.out).toBe(1);
-    expect(by.stderr).toContain('REFUSED: who-is-who could not answer for "Alex" (the call failed)');
+    expect(by.stderr).toContain('REFUSED: who-is-who could not answer for "Pat" and "Alex" (the call failed)');
     expect(by.out).not.toContain("not one organiser");
     expect(api.keys.length).toBeGreaterThan(0);
     expect(new Set(api.keys)).toEqual(new Set([DEV_KEY]));
