@@ -91,6 +91,7 @@ import { HAIKU_EFFORT } from "../models";
 import { nowLine, quotedLines, type ContextMessage } from "../reply-context";
 import type { Degradation, Route, RoutedMessage } from "./types";
 import { ORGANISER_ONLY_ROUTES } from "./types";
+import { settleRoutes } from "./multi-route";
 import { isAiBudgetExceeded, withAttendanceOverflow } from "../ai-budget-context";
 
 
@@ -396,8 +397,31 @@ import { isAiBudgetExceeded, withAttendanceOverflow } from "../ai-budget-context
  * 21,689 to 22,377 characters (count_tokens, claude-haiku-5-5: 8,214 to
  * 8,496). Old and new: MDs/prompt-router-help-topics-2026-11-10.md; the
  * paid check: scripts/live-check-help-topics.ts.
+ *
+ * ── 2026-11-16: SEVERAL INSTRUCTIONS IN ONE MESSAGE ───────────────────
+ *
+ * Vets, 18:07 UTC: "@Match Time switch to 7aside, take Luca to bench,
+ * @<mention> is IN and then make the teams." One route per message, so
+ * other_att: the bench and the IN were done, the switch and the teams
+ * dropped, and nobody was told. The answer gains `also`, the OTHER routes
+ * the message tells MatchTime to carry out; `route` keeps its meaning (the
+ * owner that answers), so a message with one instruction, and every trace
+ * written before, reads as it did; `also` never changes it, and never holds
+ * none or unsure (the schema's enum leaves both out). Code settles the order
+ * the parts are done in (`multi-route.ts`). The idea is defined once, in
+ * its own paragraph after the three questions; question 1's "the place
+ * wins" now says where the rest goes; the example "@Kemal can you switch
+ * it to 7 a side ..." keeps its route and is named as a request to a
+ * person; one example group (EN and TR side by side) and the answer's
+ * `also` line. 22,377 to 24,391 characters; the cached prefix (system and
+ * schema) measured live at 9,842 tokens. Paid check, dev key, once each:
+ * the incident with its three extractor reads 1/1, eight other messages
+ * with several instructions 8/8, thirteen single-instruction messages
+ * 13/13 with an empty also (25 calls, $0.011). Old and new:
+ * MDs/prompt-router-multi-instruction-2026-11-16.md; the paid check:
+ * scripts/live-check-multi-instruction.ts.
  */
-export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, finding players when the club is short, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
+export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, finding players when the club is short, results, payments, reminders and the players' stats. For EVERY message id you are given, return its route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot. When one message gives MatchTime more than one instruction, also name the parts that handle the others, so that none is dropped.
 
 WHAT YOU ARE SHOWN. Code knows these facts; rely on them rather than guessing.
 - NOW: the date and time at the club.
@@ -413,11 +437,13 @@ WHAT IS AT STAKE. A message routed none is gone: nothing is written, nobody repl
 
 HOW TO DECIDE. Route on what a message DOES, not on what it is about. Ask three questions, in this order, and stop at the first yes.
 
-1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. The plainest case is a name or an @mention followed by in or out (var or yok in Turkish), even as two bare words: that is other_att, always, whoever sends it. It is a real sign-in and never a demonstration of how to write one, even beside a telling-off, instructions on how to say IN, or a pasted copy of the list. An attendance message is never none, however casually it is worded, whoever it is addressed to, and whatever chat, apology, joke or question mark surrounds it. When it also changes a setting, the place wins. Nothing below overrides this.
+1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. The plainest case is a name or an @mention followed by in or out (var or yok in Turkish), even as two bare words: that is other_att, always, whoever sends it. It is a real sign-in and never a demonstration of how to write one, even beside a telling-off, instructions on how to say IN, or a pasted copy of the list. An attendance message is never none, however casually it is worded, whoever it is addressed to, and whatever chat, apology, joke or question mark surrounds it. When it also tells MatchTime to do something else (change a setting, make the teams), the place still wins the route and the rest goes in also. Nothing below overrides this.
 
 2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message, or the bot's name used to speak to it ("MatchTime who runs this club?"). In the players' group, so is a reply to MatchTime's own message; a reply to a member's message is not. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word; send it to the owner of what it asks for. A tagged name, stat or table alone is a question; the same words untagged, between members, are none. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. "Match Time" written without the @ while talking ABOUT the bot to the others ("rate them via the link from Matchtime") is not a tag.
 
 3. Is it for the bot at all? An untagged message can still ask for something the bot holds, give it an instruction, ask for the teams or report our result. Otherwise it is none: banter, jokes, links, emoji, greetings, football chat, and members talking to each other in a way that settles no place and asks the bot for nothing.
+
+SEVERAL INSTRUCTIONS IN ONE MESSAGE. An organiser often packs two, three or four instructions into one message ("@Match Time make it 6 aside, Ali is out, Musa is in, then do the teams"). The three questions give its route; then put in also every OTHER route the message tells or asks MatchTime to carry out, each once, so that every part is done. Only an instruction or a question to the bot counts: a reason, a condition, a joke, chat around it, or a request made to a person ("@Kemal can you switch it to 7 a side") is not one. Every place in the message is covered by its one attendance route, so more names in or out never add to also. A message with one instruction, as almost every message is, has an empty also.
 
 THE ROUTES, each defined once.
 self_att    the SENDER joins or leaves this match, bench included, or says when they will be away or back ("not this week", "back next month").
@@ -596,6 +622,16 @@ Instructions to the bot:
   "@Match Time 6 kişilik oynayalım" -> admin_ops
   "@Match Time how many do we need to play?" -> question
 
+Several instructions in one message: the route as above, every other part in also:
+  "@Match Time make it 6 aside, Ali is out and Musa is in, then do the teams" -> other_att, also admin_ops, balancer
+  "@Match Time 6 kişilik yap, Ali yok Musa var, sonra takımları kur" -> other_att, also admin_ops, balancer
+  "@Match Time switch Thursday to 8 aside and generate the teams" -> admin_ops, also balancer
+  "@Match Time perşembe 8 kişilik olsun, takımları da kur" -> admin_ops, also balancer
+  "@Match Time I'm out, swap Tom with Ali" -> self_att, also balancer
+  "@Match Time I'm out, what's the list now?" -> self_att, also question
+  "@Match Time ben yokum, liste ne oldu?" -> self_att, also question
+  "@Match Time Ali is in, Musa is in, Jem is out" -> other_att, also nothing
+
 Chat between members, not for the bot:
   "Are you injured ?" -> none
   "Are you available to play @Enayem ?" -> none
@@ -627,10 +663,11 @@ Calling a match off in the organisers' group, and putting it back on:
   "maç yapılıyor, iptali geri al" -> admin_ops
   "with this storm the session should be cancelled anyway" -> none
 
-THE ANSWER. For every id give its route and two facts about the message; neither changes the route.
+THE ANSWER. For every id give its route, the other routes it also needs, and two facts about the message; neither fact changes the route.
+also         the OTHER routes the message tells MatchTime to carry out besides its route, each once, as SEVERAL INSTRUCTIONS says; [] for a message with one instruction. Never its route again, never none.
 to_bot       true when the message speaks TO MatchTime as question 2 defines it (a tag, the bot's name used to speak to it, or a players' group reply to MatchTime's own message); false when it only talks about MatchTime or does not mention it at all.
 pasted_list  true when the message reposts the squad as a list of players, one name a line, numbered or not, the roster other_att defines (often MatchTime's own list copied with a name added); false for anything else, including a sentence that names a few players.
-Return JSON only: {"routes":[{"id":"<id>","route":"<route>","to_bot":<true or false>,"pasted_list":<true or false>}]}`;
+Return JSON only: {"routes":[{"id":"<id>","route":"<route>","also":[<the other routes; empty for one instruction>],"to_bot":<true or false>,"pasted_list":<true or false>}]}`;
 
 // Room for adaptive thinking on top of the routes: one message at medium
 // effort used up to 520 output tokens (2026-10-19); a batch of eight needs
@@ -853,16 +890,22 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
   const toBot = new Set<string>();
   /** The model's reading that the message reposts the squad list (`pasted_list`). */
   const pastedList = new Set<string>();
+  /** The other instructions the message gives MatchTime (`also`, 2026-11-16). */
+  const alsoById = new Map<string, Route[]>();
 
   try {
     const parsed = extractJson(text) as { routes?: Array<{ id?: unknown; route?: unknown }> };
     const rows = Array.isArray(parsed?.routes) ? parsed.routes : [];
-    for (const row of rows as Array<{ id?: unknown; route?: unknown; to_bot?: unknown; pasted_list?: unknown }>) {
+    for (const row of rows as Array<{ id?: unknown; route?: unknown; to_bot?: unknown; pasted_list?: unknown; also?: unknown }>) {
       const id = typeof row?.id === "string" ? cleanId(row.id) : null;
       const route = typeof row?.route === "string" ? normaliseRoute(row.route) : null;
       if (!id) continue;
       if (ids.includes(id) && row.to_bot === true) toBot.add(id);
       if (ids.includes(id) && row.pasted_list === true) pastedList.add(id);
+      if (ids.includes(id)) {
+        const also = parseAlso(row.also, id, organiserIds.has(id), degradations);
+        if (also.length > 0) alsoById.set(id, also);
+      }
       if (!ids.includes(id)) {
         degradations.push(
           degradation("router", null, `router returned an unknown id "${id}"; dropped`),
@@ -899,14 +942,19 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
   }
 
   const routes: RoutedMessage[] = ids.map((id) => {
-    const route = byId.get(id);
-    if (route) {
+    const given = byId.get(id);
+    if (given) {
+      // `route` is always the model's own (`also` never changes it); the
+      // other parts in the order they are done (`multi-route.ts`). One
+      // instruction: no `alsoRoutes` key at all.
+      const settled = settleRoutes(given, alsoById.get(id) ?? []);
       return {
         messageId: id,
-        route,
+        route: settled.route,
         source: "model" as const,
         ...(toBot.has(id) ? { toBot: true } : {}),
         ...(pastedList.has(id) ? { pastedList: true } : {}),
+        ...(settled.alsoRoutes.length > 0 ? { alsoRoutes: settled.alsoRoutes } : {}),
       };
     }
     // §3.2 S1's incident, and §11.1's asymmetry. A missing route is a
@@ -917,6 +965,35 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
   });
 
   return { routes, degradations };
+}
+
+/**
+ * The `also` list as the model returned it, read the way `route` is: an
+ * unknown route is dropped with a degradation, `help` in the players' group
+ * is the question extractor's (as for `route`), and an organisers'-only
+ * route on a players' group message is dropped (its `route` already says
+ * what the message is for). Never throws.
+ */
+function parseAlso(raw: unknown, id: string, organisers: boolean, degradations: Degradation[]): Route[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Route[] = [];
+  for (const item of raw) {
+    const r = typeof item === "string" ? normaliseRoute(item) : null;
+    if (!r) {
+      degradations.push(degradation("router", id, `router returned an unknown also route "${String(item)}"; dropped`));
+      continue;
+    }
+    if (r === "help" && !organisers) {
+      out.push("question");
+      continue;
+    }
+    if (ORGANISER_ONLY_ROUTES.includes(r) && !organisers) {
+      degradations.push(degradation("router", id, `router gave the organisers' route "${r}" as an also route to a players' group message; dropped`));
+      continue;
+    }
+    out.push(r);
+  }
+  return out;
 }
 
 export interface RouteBatchOptions {
@@ -995,7 +1072,16 @@ function cappedRoutes(messages: RouterMessage[], why: string): RouterResult {
  * dashboard and gives the first tagged one the day's polite line.
  */
 function attendanceOnly(routes: RoutedMessage[], degradations: Degradation[]): RoutedMessage[] {
-  return routes.map((r) => {
+  return routes.map((given) => {
+    // A message's other instructions are not attendance (its place, when it
+    // has one, is its `route`: `settleRoutes`), so not handled at the cap.
+    let r = given;
+    if (r.alsoRoutes) {
+      degradations.push(degradation("router", r.messageId, `also ${r.alsoRoutes.join(", ")} at the daily AI cap; not handled`));
+      const { alsoRoutes: _dropped, ...rest } = r;
+      void _dropped;
+      r = rest;
+    }
     if (r.route === "none" || ATTENDANCE_ROUTES.includes(r.route)) return r;
     degradations.push(degradation("router", r.messageId, `${r.route} at the daily AI cap; not handled`));
     return { ...r, route: "none" as const, source: "capped" as const, overrodeRoute: r.route };
@@ -1059,8 +1145,11 @@ async function routeBatchInner(
               route: { type: "string", enum: Object.keys(VALID) },
               to_bot: { type: "boolean" },
               pasted_list: { type: "boolean" },
+              // Never none or unsure: neither is an instruction of its own
+              // (`settleRoutes` still drops them, defensively).
+              also: { type: "array", items: { type: "string", enum: Object.keys(VALID).filter((r) => r !== "none" && r !== "unsure") } },
             },
-            required: ["id", "route", "to_bot", "pasted_list"],
+            required: ["id", "route", "to_bot", "pasted_list", "also"],
             additionalProperties: false,
           },
         },

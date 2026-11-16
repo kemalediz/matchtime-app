@@ -149,7 +149,9 @@ import {
 import { runAnswerBatch, ANSWER_HANDLED_BY } from "@/lib/pipeline/answer-batch";
 import { runScoreBatch } from "@/lib/score-engine-batch";
 import { SCORE_HANDLED_BY } from "@/lib/score-engine";
-import { runAdminOpsBatch } from "@/lib/admin-ops-engine-batch";
+import { runAdminOpsBatch, type AdminOpsMessageOutcome } from "@/lib/admin-ops-engine-batch";
+import { benchBlock, notDoneLine, partsNotDone } from "@/lib/multi-instruction-reply";
+import type { Route } from "@/lib/pipeline/types";
 import { ADMIN_OPS_HANDLED_BY } from "@/lib/admin-ops-engine";
 import { runTeamOpsBatch } from "@/lib/team-ops-engine-batch";
 import { alsoTeamsIds } from "@/lib/team-also-signal";
@@ -2146,6 +2148,149 @@ async function handleAnalyzeRequest(request: Request) {
       console.error(`[analyze] monthly week for ${activeMatchForReply.id} failed to load:`, err);
     }
   }
+
+  // What every step-7 owner is shown of a message (the attendance engine
+  // has its own shape above). One function, so the owners below and the
+  // early format pass read a message the same way.
+  const ownerMessageOf = (m: InboundMessage) => {
+    const s = senderById.get(m.waMessageId)!;
+    return {
+      waMessageId: m.waMessageId,
+      body: m.body,
+      authorName: senderLabel(m.waMessageId),
+      senderUserId: s.userId,
+      senderName: s.name,
+      tagged: messageTagsBot(m),
+      // May MatchTime ANSWER it? The real tag only (Kemal, 2026-10-31):
+      // not a swipe-reply, not the name typed, not the router's to_bot.
+      // Actions read `tagged`, which is unchanged.
+      addressed: messageAddressesBot(m),
+      // The Pi's real mention flag, read by the bulk-DM commands and a
+      // score answer that is not a reply.
+      taggedExplicitly: piMentionsBot(m),
+      // A WhatsApp reply to MatchTime's own post addresses it (the
+      // quoted id, a fact the Pi computes): a swipe-replied swap counts.
+      repliesToMatchTime: m.quotedFromMatchTime === true,
+      route: gateRouteById.get(m.waMessageId),
+      gated: gatedIds.has(m.waMessageId),
+      // A reply: the message it quotes, whoever wrote it, for every
+      // owner's extractor (slice S4).
+      ...replyField(replyById, m),
+      // The quoted post's id, for the engine: a reply to a partner
+      // club's ask never recruits for this club's own match (2026-10-22).
+      ...(() => {
+        const quoted = quotedRefOf(m);
+        return quoted ? { quoted } : {};
+      })(),
+    };
+  };
+
+  // The step-7 routes live for this request. The test-only per-request
+  // header still works (it is inert unless MT_TEST_MODE is "1"), which
+  // is what lets a live A/B move one route at a time without a deploy.
+  const stepSevenEnabled = enabledStepSevenRoutes(
+    process.env,
+    routesHeaderOverride(request.headers.get(STEP_SEVEN_HEADER)),
+  );
+  const adminOpsDeps = {
+    ...buildAdminOpsApplyDeps({ orgId: org.id }),
+    // The per-category opt-out (`Membership.subReminderDm`), which
+    // `route.ts:3959` read one row at a time. Loaded once per
+    // batch here; the engine does the rest.
+    reminderMutedUserIds: async () =>
+      (
+        await db.membership.findMany({
+          where: { orgId: org.id, leftAt: null, subReminderDm: false },
+          select: { userId: true },
+        })
+      ).map((r) => r.userId),
+  };
+
+  // ── SEVERAL INSTRUCTIONS IN ONE MESSAGE: THE FORMAT FIRST (2026-11-16) ─
+  //
+  //   Vets, 18:07 UTC: "@Match Time switch to 7aside, take Luca to bench,
+  //   @<mention> is IN and then make the teams" routed other_att, and the
+  //   switch and the teams were dropped without a word. The router now
+  //   lists a message's other instructions (`RoutedMessage.alsoRoutes`,
+  //   settled by `pipeline/multi-route.ts`): the message keeps ONE owner,
+  //   whose reply leads, and every other part is done by its own owner,
+  //   reading the whole message with its own extractor.
+  //
+  //   The ORDER is the point of this block. A size change is done FIRST,
+  //   before the attendance engine counts anybody's place against the
+  //   match, by the same admin owner and the same gates (an organiser, an
+  //   explicit tag) as "@Match Time make it 7 aside" alone; then who plays
+  //   (the engine below); then the teams (`runTeamOpsBatch`'s
+  //   `alsoTeamsGenerate`). What each part says is joined into the
+  //   message's one reply after the squad post is composed.
+  //
+  //   Only for a message the router said holds more than one instruction,
+  //   so every other batch runs exactly as before: no call, no query.
+  const alsoRoutesById = new Map(
+    (gate?.routes ?? []).filter((r) => (r.alsoRoutes?.length ?? 0) > 0).map((r) => [r.messageId, r.alsoRoutes!]),
+  );
+  // Every message with several parts of which one is admin_ops, whether
+  // admin_ops answers for it ("make it 7 aside, how many do we need now?")
+  // or is one of its other parts: the switch is done before anything is
+  // counted or answered. `partOfSeveral`: the switch queues no list of its
+  // own; the message's one reply carries it (or the team sheet).
+  const earlyAdminMessages = fresh.filter(
+    (m) =>
+      (alsoRoutesById.get(m.waMessageId)?.includes("admin_ops") ||
+        (alsoRoutesById.has(m.waMessageId) && gateRouteById.get(m.waMessageId) === "admin_ops")) &&
+      !gatedIds.has(m.waMessageId) &&
+      !pastedRosterIds.has(m.waMessageId) &&
+      !clauseResidualById.has(m.waMessageId) &&
+      !lateById.has(m.waMessageId),
+  );
+  // THE ONE POST (review of #613). A message with several parts gets ONE
+  // reply carrying the list or the team sheet, built from the database
+  // after every part. A squad filled by its squad part would otherwise ALSO
+  // queue "Squad complete" as its own group post the moment the last place
+  // is taken (`squad-announce.ts`), before the teams part makes the teams:
+  // a second, already out-of-date list. So the fill cycle's claim is taken
+  // here, and given back after the batch unless the squad really is full
+  // (then the reply showed it). Not in a club whose organisers announce the
+  // list: their notice is theirs. No query for a batch without such a message.
+  const squadLockKey =
+    nextMatchForReply && !organisersMode && fresh.some((m) => alsoRoutesById.has(m.waMessageId) && !lateById.has(m.waMessageId) && !gatedIds.has(m.waMessageId))
+      ? `${nextMatchForReply.id}:squad-locked`
+      : null;
+  const heldSquadLock = squadLockKey
+    ? await db.sentNotification
+        .create({ data: { key: squadLockKey, kind: "group-message", matchId: nextMatchForReply!.id } })
+        .then(() => true)
+        .catch(() => false)
+    : false;
+
+  const earlyAdminBatch =
+    earlyAdminMessages.length > 0
+      ? await runAdminOpsBatch({
+          silence,
+          orgId: org.id,
+          now: new Date(),
+          messages: earlyAdminMessages.map((m) => ({ ...ownerMessageOf(m), route: "admin_ops" as const })),
+          history,
+          enabled: stepSevenEnabled,
+          deps: adminOpsDeps,
+          partOfSeveral: true,
+        })
+      : null;
+  for (const d of earlyAdminBatch?.degradations ?? []) console.warn(`[analyze] also admin_ops: ${d}`);
+  const earlyAdminIds = new Set(earlyAdminMessages.map((m) => m.waMessageId));
+  /** The early pass's outcome for a message admin_ops ANSWERS for (its
+   *  owner, read in the step-7 branch), apart from the ones where it is
+   *  one of the other parts (joined into the owner's reply after the loop). */
+  const earlyAdminOwnOutcome = (id: string) =>
+    gateRouteById.get(id) === "admin_ops" ? earlyAdminBatch?.outcomes.get(id) : undefined;
+  if (earlyAdminBatch && earlyAdminBatch.outcomes.size > 0 && nextMatchForReply) {
+    // A size the format part just changed is the size the squad post says.
+    const fresher = await db.match
+      .findUnique({ where: { id: nextMatchForReply.id }, select: { maxPlayers: true } })
+      .catch(() => null);
+    if (fresher) nextMatchForReply.maxPlayers = fresher.maxPlayers;
+  }
+
   const engineBatch =
     fresh.length > 0
       ? await runAttendanceEngineBatch({
@@ -2380,48 +2525,10 @@ async function handleAnalyzeRequest(request: Request) {
         // A late message executes nothing but attendance (touch 3 of 4).
         !lateById.has(m.waMessageId),
     )
-    .map((m) => {
-      const s = senderById.get(m.waMessageId)!;
-      return {
-        waMessageId: m.waMessageId,
-        body: m.body,
-        authorName: senderLabel(m.waMessageId),
-        senderUserId: s.userId,
-        senderName: s.name,
-        tagged: messageTagsBot(m),
-        // May MatchTime ANSWER it? The real tag only (Kemal, 2026-10-31):
-        // not a swipe-reply, not the name typed, not the router's to_bot.
-        // Actions read `tagged`, which is unchanged.
-        addressed: messageAddressesBot(m),
-        // The Pi's real mention flag, read by the bulk-DM commands and a
-        // score answer that is not a reply.
-        taggedExplicitly: piMentionsBot(m),
-        // A WhatsApp reply to MatchTime's own post addresses it (the
-        // quoted id, a fact the Pi computes): a swipe-replied swap counts.
-        repliesToMatchTime: m.quotedFromMatchTime === true,
-        route: gateRouteById.get(m.waMessageId),
-        gated: gatedIds.has(m.waMessageId),
-        // A reply: the message it quotes, whoever wrote it, for every
-        // owner's extractor (slice S4).
-        ...replyField(replyById, m),
-        // The quoted post's id, for the engine: a reply to a partner
-        // club's ask never recruits for this club's own match (2026-10-22).
-        ...(() => {
-          const quoted = quotedRefOf(m);
-          return quoted ? { quoted } : {};
-        })(),
-      };
-    });
+    .map(ownerMessageOf);
+  const ownerBaseIds = new Set(ownerBase.map((m) => m.waMessageId));
   const ownerHistory = history;
   const now = new Date();
-
-  // The step-7 routes live for this request. The test-only per-request
-  // header still works (it is inert unless MT_TEST_MODE is "1"), which
-  // is what lets a live A/B move one route at a time without a deploy.
-  const stepSevenEnabled = enabledStepSevenRoutes(
-    process.env,
-    routesHeaderOverride(request.headers.get(STEP_SEVEN_HEADER)),
-  );
 
   // A CHANGE THAT ALSO ASKS MATCHTIME SOMETHING (#392 follow-up, Kemal
   // 2026-10-24): "@Match Time I'm out, what's the list?". The engine owns
@@ -2430,10 +2537,30 @@ async function handleAnalyzeRequest(request: Request) {
   // that change, and the engine's reply carries the answer
   // (`also-asks-reply.ts`). Never in a club whose organisers announce the
   // list: those clubs hear exactly what they did before.
+  // Since 2026-11-16 the router can say so too (`alsoRoutes` lists
+  // question for a message the engine owns): the same answer, once.
   const alsoAsksIds = new Set(
     organisersMode
       ? []
-      : [...(engineBatch?.outcomes.values() ?? [])].filter((o) => o.alsoAsksQuestion).map((o) => o.waMessageId),
+      : [
+          ...[...(engineBatch?.outcomes.values() ?? [])].filter((o) => o.alsoAsksQuestion).map((o) => o.waMessageId),
+          // Whatever owns the message (2026-11-16, review of #613): "make it
+          // 7 aside, how many do we need now?" is answered after the
+          // switch. Not where the question answering itself owns the
+          // message's route (question, help, and balancer's `show`).
+          ...[...alsoRoutesById]
+            .filter(([id, also]) => {
+              const owner = gateRouteById.get(id);
+              return (
+                also.includes("question") &&
+                ownerBaseIds.has(id) &&
+                owner !== "question" &&
+                owner !== "help" &&
+                owner !== "balancer"
+              );
+            })
+            .map(([id]) => id),
+        ],
   );
   const answerBatch =
     fresh.length > 0
@@ -2497,22 +2624,12 @@ async function handleAnalyzeRequest(request: Request) {
           silence,
           orgId: org.id,
           now,
-          messages: ownerBase,
+          // Not a message the early format pass already did as its owner.
+          messages: ownerBase.filter((m) => !earlyAdminIds.has(m.waMessageId)),
           history: ownerHistory,
           enabled: stepSevenEnabled,
-          deps: {
-            ...buildAdminOpsApplyDeps({ orgId: org.id }),
-            // The per-category opt-out (`Membership.subReminderDm`), which
-            // `route.ts:3959` read one row at a time. Loaded once per
-            // batch here; the engine does the rest.
-            reminderMutedUserIds: async () =>
-              (
-                await db.membership.findMany({
-                  where: { orgId: org.id, leftAt: null, subReminderDm: false },
-                  select: { userId: true },
-                })
-              ).map((r) => r.userId),
-          },
+          // Built above, shared with the early format pass.
+          deps: adminOpsDeps,
         })
       : null;
 
@@ -2528,6 +2645,11 @@ async function handleAnalyzeRequest(request: Request) {
   // days' tagged commands to MatchTime were "generate the teams", more
   // than every question shape combined. Silence here would not be a
   // conservative default, it would be the feature going dark.
+  // The messages the router said ALSO ask for the teams (`alsoRoutes`),
+  // among those the owners read (a late message or a list is not).
+  const routerAlsoTeamsIds = new Set(
+    [...alsoRoutesById].filter(([id, also]) => also.includes("balancer") && ownerBaseIds.has(id)).map(([id]) => id),
+  );
   const teamOpsBatch =
     fresh.length > 0
       ? await runTeamOpsBatch({
@@ -2540,9 +2662,14 @@ async function handleAnalyzeRequest(request: Request) {
           deps: buildTeamOpsApplyDeps({ orgId: org.id }),
           // The team half of a message the attendance engine owns
           // ("swap X with Y, and I'm out"): the engine's signal, a fact.
-          alsoTeams: new Set(
-            [...alsoTeamsIds(fresh, engineBatch?.outcomes.values() ?? [])].filter((id) => engineOwnedIds.has(id)),
-          ),
+          // And (2026-11-16) a message whose other instructions, as the
+          // router listed them, include the teams, whoever owns it: done
+          // after its squad changes, a generate included.
+          alsoTeams: new Set([
+            ...[...alsoTeamsIds(fresh, engineBatch?.outcomes.values() ?? [])].filter((id) => engineOwnedIds.has(id)),
+            ...routerAlsoTeamsIds,
+          ]),
+          alsoTeamsGenerate: routerAlsoTeamsIds,
           // The teams extractor's reading the attendance engine already
           // made of those messages (its swap guard reads it): not read twice.
           alsoTeamsFacts: engineBatch?.teamsReadings,
@@ -2607,6 +2734,8 @@ async function handleAnalyzeRequest(request: Request) {
   claim(SCORE_HANDLED_BY, scoreBatch?.ownedIds ?? []);
   claim(TEAM_OPS_HANDLED_BY, teamOpsBatch?.ownedIds ?? []);
   claim(ADMIN_OPS_HANDLED_BY, adminOpsBatch?.ownedIds ?? []);
+  // The messages admin_ops answers for, done in the early format pass.
+  claim(ADMIN_OPS_HANDLED_BY, [...(earlyAdminBatch?.ownedIds ?? [])].filter((id) => !!earlyAdminOwnOutcome(id)));
 
   // ── 3. TURN EACH OWNER'S OUTCOME INTO ONE REPLY AND ONE ROW ────────
   //
@@ -2646,6 +2775,15 @@ async function handleAnalyzeRequest(request: Request) {
    *  the 2026-09-15 replacement post. Excluded from the §10 step 4
    *  composition pass below; see `EngineMessageOutcome.deterministicTeamPost`. */
   const deterministicTeamPostIds = new Set<string>();
+  // The teams just made as one part of a message with several instructions
+  // (2026-11-16): the balancer's sheet, built from the database after every
+  // squad change, IS that message's post. It is added after the squad pass,
+  // which therefore leaves this message alone (one list, not two).
+  for (const [id, o] of teamOpsBatch?.alsoOutcomes ?? []) {
+    if (o.teamsGenerated) deterministicTeamPostIds.add(id);
+  }
+  /** Did this message's own teams part make the teams? */
+  const teamsMadeBySameMessage = (id: string) => teamOpsBatch?.alsoOutcomes.get(id)?.teamsGenerated === true;
 
   // ── THE RECRUIT BLAST STILL RUNS LAST ───────────────────────────────
   //   Collected here, fired once after every write in the batch has
@@ -2695,6 +2833,40 @@ async function handleAnalyzeRequest(request: Request) {
   // people tagged, decided by the engine (an admin, tagged) and performed
   // in the same batch-final pass (`named-invite.ts`).
   const namedInviteRequests: Array<{ msg: InboundMessage; sender: ResolvedSender }> = [];
+  // What an `admin_ops` outcome asks the batch-final pass to do, deferred
+  // there: for the message the admin owner answers, and (2026-11-16) for the
+  // admin part of a message with several instructions.
+  const deferAdminRequests = (msg: InboundMessage, sender: ResolvedSender, adminOutcome: AdminOpsMessageOutcome) => {
+    // An admin's recruit ask, deferred to the batch-final pass with
+    // its clamped lookback. `recruitLookbackMatches` is null when the
+    // ask did not state a number, and `inviteRecentPlayers` then uses
+    // its own default of 5.
+    if (adminOutcome.recruitRequest) {
+      recruitRequests.push({
+        msg,
+        sender,
+        lookbackMatches: adminOutcome.recruitLookbackMatches ?? null,
+        sourceUnsaid: adminOutcome.recruitSourceUnsaid === true,
+      });
+    }
+    // An admin's stats blast, deferred the same way. The engine has
+    // already applied both gates (admin, and an explicit @-mention);
+    // nothing here re-decides, it only defers.
+    if (adminOutcome.statsBlastRequest) {
+      statsBlastRequests.push({ msg });
+    }
+    if (adminOutcome.partnerAskRequest) {
+      partnerAskRequests.push({ msg, sender, ...adminOutcome.partnerAskRequest });
+    }
+    // An admin's tagged ask for the MatchTime player pool (L10), deferred
+    // the same way; the engine applied both gates.
+    if (adminOutcome.poolAskRequest && sender.userId) {
+      poolRequests.push({ msg, userId: sender.userId, ...adminOutcome.poolAskRequest });
+    }
+    // An admin's tagged "DM these people" (2026-11-09), deferred the same
+    // way; the engine applied both gates.
+    if (adminOutcome.namedInviteRequest) namedInviteRequests.push({ msg, sender });
+  };
   // The places an organiser's answer to "who shall I ask?" picked (the
   // early pass above): asked here with every other ask, partners before the
   // pool so the pool joins their round.
@@ -2995,42 +3167,14 @@ async function handleAnalyzeRequest(request: Request) {
     // types: a `"recruitRequest" in x` test over a three-way union
     // narrows to "has the key", not to the member that declares it, and
     // `recruitLookbackMatches` comes back as `{}`.
-    const adminOutcome = adminOpsBatch?.outcomes.get(msg.waMessageId);
+    const adminOutcome = adminOpsBatch?.outcomes.get(msg.waMessageId) ?? earlyAdminOwnOutcome(msg.waMessageId);
     const stepSeven =
       answerBatch?.outcomes.get(msg.waMessageId) ??
       scoreBatch?.outcomes.get(msg.waMessageId) ??
       teamOpsBatch?.outcomes.get(msg.waMessageId) ??
       adminOutcome;
     if (stepSeven) {
-      // An admin's recruit ask, deferred to the batch-final pass with
-      // its clamped lookback. `recruitLookbackMatches` is null when the
-      // ask did not state a number, and `inviteRecentPlayers` then uses
-      // its own default of 5.
-      if (adminOutcome?.recruitRequest) {
-        recruitRequests.push({
-          msg,
-          sender,
-          lookbackMatches: adminOutcome.recruitLookbackMatches ?? null,
-          sourceUnsaid: adminOutcome.recruitSourceUnsaid === true,
-        });
-      }
-      // An admin's stats blast, deferred the same way. The engine has
-      // already applied both gates (admin, and an explicit @-mention);
-      // nothing here re-decides, it only defers.
-      if (adminOutcome?.statsBlastRequest) {
-        statsBlastRequests.push({ msg });
-      }
-      if (adminOutcome?.partnerAskRequest) {
-        partnerAskRequests.push({ msg, sender, ...adminOutcome.partnerAskRequest });
-      }
-      // An admin's tagged ask for the MatchTime player pool (L10), deferred
-      // the same way; the engine applied both gates.
-      if (adminOutcome?.poolAskRequest && sender.userId) {
-        poolRequests.push({ msg, userId: sender.userId, ...adminOutcome.poolAskRequest });
-      }
-      // An admin's tagged "DM these people" (2026-11-09), deferred the same
-      // way; the engine applied both gates.
-      if (adminOutcome?.namedInviteRequest) namedInviteRequests.push({ msg, sender });
+      if (adminOutcome) deferAdminRequests(msg, sender, adminOutcome);
       // The asker's own stats link (2026-09-17, `QuestionTopic.my_stats`).
       // The engine has applied the tag and resolved-sender gates; this
       // performs it, for the SENDER of this message and nobody else.
@@ -3076,7 +3220,9 @@ async function handleAnalyzeRequest(request: Request) {
       // A swap's reply IS the team sheet it wrote (2026-10-30): never
       // recomposed into the squad post below.
       if (teamOpsBatch?.outcomes.get(msg.waMessageId)?.teamSheetPost) deterministicTeamPostIds.add(msg.waMessageId);
-      let reply = stepSeven.reply;
+      // A switch whose own message then made the teams: without "the
+      // teams are cleared, tag me to make them again" (2026-11-16).
+      let reply = stepSeven === adminOutcome && teamsMadeBySameMessage(msg.waMessageId) ? (adminOutcome?.replyIfTeamsMade ?? stepSeven.reply) : stepSeven.reply;
       if (reply && nextMatchForReply) {
         reply = enforceProximity(reply, nextMatchForReply.date, org.language);
       }
@@ -3084,6 +3230,22 @@ async function handleAnalyzeRequest(request: Request) {
       // whole of what the group hears for it. When the DM was not queued
       // the line is null and the group hears nothing, as before.
       if (answerOutcome?.statsLinkRequest) reply = statsLinkLine;
+      // A question in the same message, answered after this owner's part
+      // (several instructions, 2026-11-16): one reply, as the engine's.
+      const alsoAnswerHere = late ? undefined : answerBatch?.alsoAnswered.get(msg.waMessageId);
+      if (alsoAnswerHere?.reply) {
+        const joined = joinAlsoAnswered(
+          reply,
+          {
+            reply: nextMatchForReply ? enforceProximity(alsoAnswerHere.reply, nextMatchForReply.date, org.language) : alsoAnswerHere.reply,
+            intent: alsoAnswerHere.intent,
+          },
+          org.language,
+        );
+        reply = joined.reply;
+        if (joined.afterComposition) alsoAnswerAfterComposition.set(msg.waMessageId, joined.afterComposition);
+        console.log(`[analyze] ${msg.waMessageId}: also asks MatchTime: answered (${alsoAnswerHere.intent})`);
+      }
       await recordAnalysis({
         orgId: org.id,
         groupId: body.groupId,
@@ -3508,6 +3670,18 @@ async function handleAnalyzeRequest(request: Request) {
         ? `${target.reply}\n\n${SQUAD_POST_MARKER}`
         : SQUAD_POST_MARKER;
     }
+  } else if (!organisersMode) {
+    // SEVERAL INSTRUCTIONS (2026-11-16): a size switch done as one part
+    // queued no list of its own, and a "show the teams" part answers with
+    // the post. With no squad post in the batch and no team sheet made by
+    // the same message, that message carries the batch's one post, built
+    // from the database after every part.
+    const carriers = [
+      ...[...(earlyAdminBatch?.outcomes ?? [])].filter(([, o]) => o.intent.startsWith("format-switched")).map(([id]) => id),
+      ...(teamOpsBatch?.alsoShowIds ?? []),
+    ].filter((id) => !deterministicTeamPostIds.has(id) && !lateById.has(id));
+    const carrier = results.filter((r) => carriers.includes(r.waMessageId)).at(-1);
+    if (carrier) carrier.reply = carrier.reply ? `${carrier.reply}\n\n${SQUAD_POST_MARKER}` : SQUAD_POST_MARKER;
   }
 
   // 3a-ii. THE SQUAD POST IS COMPOSED, NOT CHECKED ────────────────────
@@ -3767,6 +3941,20 @@ async function handleAnalyzeRequest(request: Request) {
     }
   }
 
+  // The fill cycle's claim taken for a several-part message (above): kept
+  // only when the squad is full now, as `squad-announce.ts` would have left
+  // it; otherwise given back so the next fill is announced.
+  if (heldSquadLock && squadLockKey && nextMatchForReply) {
+    try {
+      const m = await db.match.findUnique({ where: { id: nextMatchForReply.id }, select: { maxPlayers: true } });
+      const confirmed = await db.attendance.count({ where: { matchId: nextMatchForReply.id, status: "CONFIRMED" } });
+      if (!m || confirmed < m.maxPlayers) await db.sentNotification.deleteMany({ where: { key: squadLockKey } });
+    } catch (err) {
+      console.error("[analyze] squad-locked claim not settled:", err instanceof Error ? err.message : "failed");
+      await db.sentNotification.deleteMany({ where: { key: squadLockKey } }).catch(() => undefined);
+    }
+  }
+
   // A change's own question whose answer the squad pass must not touch
   // (`also-asks-reply.ts`): added now, after the change's line and any list.
   for (const [id, text] of alsoAnswerAfterComposition) {
@@ -3778,9 +3966,67 @@ async function handleAnalyzeRequest(request: Request) {
   for (const [id, o] of teamOpsBatch?.alsoOutcomes ?? []) {
     const r = results.find((x) => x.waMessageId === id);
     if (!r) continue;
+    // Teams made as one part of a message whose squad part changed who
+    // plays (2026-11-16): the sheet is the message's post, so the bench it
+    // does not show goes just above it, from the database.
+    if (o.teamsGenerated && o.matchId && engineBatch?.outcomes.get(id)?.action !== "none" && engineOwnedIds.has(id)) {
+      const benchRows = await db.attendance
+        .findMany({ where: { matchId: o.matchId, status: "BENCH" }, select: { userId: true, user: { select: { name: true } } }, orderBy: { position: "asc" } })
+        .catch(() => []);
+      const shown = await loadPlayerNames(org.id, benchRows.map((b) => b.userId), org.language).catch(() => new Map());
+      const bench = benchBlock(
+        benchRows.map((b) => shown.get(b.userId)?.display ?? b.user.name ?? strings(org.language).unnamed),
+        org.language,
+      );
+      if (bench) r.reply = appendAfterComposition(r.reply ?? null, bench);
+    }
     if (o.reply) r.reply = appendAfterComposition(r.reply ?? null, o.reply);
     r.react = r.react ?? o.react;
     await augmentAnalysis({ waMessageId: id, action: o.action, reasoningSuffix: o.reasoning });
+  }
+
+  // ── SEVERAL INSTRUCTIONS IN ONE MESSAGE: ONE REPLY (2026-11-16) ──────
+  //   The format part was done first (the early pass above the engine), so
+  //   its line leads the message's one reply; the owner's line, the squad
+  //   post and the teams follow. A part no owner reported anything for is
+  //   named in one plain line, only for a message that really tagged
+  //   MatchTime (`multi-instruction-reply.ts`); a refused part has already
+  //   said why. A late message says nothing, as always.
+  for (const [id, o] of earlyAdminBatch?.outcomes ?? []) {
+    // Where admin_ops answers for the message, its outcome WAS the reply
+    // (the step-7 branch above); only another owner's message is joined.
+    if (earlyAdminOwnOutcome(id)) continue;
+    const r = results.find((x) => x.waMessageId === id);
+    if (!r) continue;
+    // Without "the teams are cleared, tag me..." when this message's own
+    // teams part then made them.
+    r.reply = mergeOneReply(teamsMadeBySameMessage(id) ? (o.replyIfTeamsMade ?? o.reply) : o.reply, r.reply);
+    r.react = r.react ?? o.react;
+    const msg = fresh.find((m) => m.waMessageId === id);
+    if (msg) deferAdminRequests(msg, senderById.get(id)!, o);
+    await augmentAnalysis({ waMessageId: id, action: o.action, reasoningSuffix: `also admin_ops: ${o.reasoning}` });
+  }
+  // A part not done is named only where main would have answered or acted
+  // on it in this club (review of #613): never a question (an unanswered
+  // question beside a change was always silent here, and an organisers-
+  // announce club is asked nothing), and never a part its owner chose to
+  // be silent on (team balancing off reports a silent outcome).
+  for (const [id, also] of alsoRoutesById) {
+    const msg = fresh.find((m) => m.waMessageId === id);
+    const r = results.find((x) => x.waMessageId === id);
+    if (!msg || !r || lateById.has(id) || gatedIds.has(id) || !piMentionsBot(msg)) continue;
+    const done = new Set<Route>(["question", "help"]);
+    // A write that threw said nothing (§3.2 S7): that part was not done.
+    const adminPart = earlyAdminBatch?.outcomes.get(id);
+    if (adminPart && !adminPart.writeFailed) done.add("admin_ops");
+    const teamPart = teamOpsBatch?.alsoOutcomes.get(id) ?? teamOpsBatch?.outcomes.get(id);
+    if ((teamPart && !teamPart.writeFailed) || teamOpsBatch?.alsoShowIds?.has(id)) done.add("balancer");
+    if (scoreBatch?.outcomes.has(id)) done.add("score");
+    const missing = partsNotDone(also, done);
+    const line = notDoneLine(missing, org.language);
+    if (!line) continue;
+    r.reply = appendAfterComposition(r.reply ?? null, line);
+    console.log(`[analyze] ${id}: several instructions; not done: ${missing.join(", ")}`);
   }
 
   // ── RUN THE RECRUIT (verdict-driven, 2026-09-01) ────────────────────

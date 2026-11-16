@@ -23,7 +23,15 @@ import { organisersAnnounce } from "./list-announcer";
 import { buildOrganiserRelay } from "./organisers-list-copy";
 import { sendAdminNotice } from "./admin-channel";
 
-export async function switchMatchToActivity(p: { matchId: string; newActivityId: string; actorUserId: string }): Promise<{ maxPlayers: number; kickoff: Date }> {
+export async function switchMatchToActivity(p: {
+  matchId: string;
+  newActivityId: string;
+  actorUserId: string;
+  /** False: no new list queued for the players' group (one part of a
+   *  message with several instructions, 2026-11-16; that message's one
+   *  reply carries the list). The organisers' relay still goes. */
+  groupList?: boolean;
+}): Promise<{ maxPlayers: number; kickoff: Date }> {
   const { matchId, newActivityId } = p;
 
   const match = await db.match.findUnique({
@@ -150,7 +158,7 @@ export async function switchMatchToActivity(p: { matchId: string; newActivityId:
   // players. Same words, with a lead saying it was not posted in the group.
   if (organisersAnnounce(match.activity.org)) {
     await sendAdminNotice({ orgId: match.activity.orgId, text: buildOrganiserRelay(announcement, lang) });
-  } else {
+  } else if (p.groupList !== false) {
     await db.botJob.create({
       data: {
         orgId: match.activity.orgId,

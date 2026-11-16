@@ -41,6 +41,9 @@ export interface SwitchWordsResult {
   outcome: string;
   /** Null: nothing is said (a reply that is not to a suggestion). */
   replyText: string | null;
+  /** The reply without the "teams are cleared" line, for a message that
+   *  makes the teams right after (`ResizeResult.replyIfTeamsMade`). */
+  replyIfTeamsMade?: string;
 }
 
 export async function applySwitchFormatWords(p: {
@@ -55,6 +58,9 @@ export async function applySwitchFormatWords(p: {
   quotedId?: string | null;
   /** The real @-mention: a tagged ask stands on its own. */
   explicit?: boolean;
+  /** False: the switch queues no list for the players' group (one part of
+   *  a message with several instructions; `resizeMatch`'s `groupList`). */
+  groupList?: boolean;
 }): Promise<SwitchWordsResult> {
   const c = flexFormatCopy(p.lang);
   if (p.quotedId) {
@@ -73,15 +79,15 @@ export async function applySwitchFormatWords(p: {
   const other = await otherFormatWith(picked.id, p.perSide);
   if (other) {
     const { switchMatchToActivity } = await import("./activity-format-switch");
-    const r = await switchMatchToActivity({ matchId: picked.id, newActivityId: other.id, actorUserId: p.actorUserId });
+    const r = await switchMatchToActivity({ matchId: picked.id, newActivityId: other.id, actorUserId: p.actorUserId, ...(p.groupList === false ? { groupList: false } : {}) });
     console.log(`[format-switch-words] org=${p.orgId} match=${picked.id} to the club's ${other.name} (${r.maxPlayers} places) by ${p.via}`);
     return {
       outcome: "format-switched-activity",
       replyText: c.activitySwitched({ day: weekdayLabel(normaliseLang(p.lang), r.kickoff), perSide: p.perSide, places: r.maxPlayers }),
     };
   }
-  const r = await resizeMatch({ matchId: picked.id, perSide: p.perSide, actorUserId: p.actorUserId, via: p.via, now: p.now });
-  return { outcome: r.outcome, replyText: r.replyText };
+  const r = await resizeMatch({ matchId: picked.id, perSide: p.perSide, actorUserId: p.actorUserId, via: p.via, now: p.now, ...(p.groupList === false ? { groupList: false } : {}) });
+  return { outcome: r.outcome, replyText: r.replyText, ...(r.replyIfTeamsMade ? { replyIfTeamsMade: r.replyIfTeamsMade } : {}) };
 }
 
 /**

@@ -109,6 +109,9 @@ export interface SimPlayerSpec {
   /** true → sends messages @lid-style: empty authorPhone, resolved by
    *  pushname only. Implies no phone on record. */
   lid?: boolean;
+  /** A fixed number on record (E.164), e.g. Ofcom's drama range
+   *  +447700900xxx. Default: the next sim number. */
+  phone?: string;
 }
 
 export interface SimPlayer {
@@ -240,7 +243,7 @@ export async function createGroup(
   for (const spec of opts.players ?? defaultRoster()) {
     const userId = `sim-u-${nonce}-${spec.key}`;
     const lid = spec.lid === true;
-    const phone = lid || spec.hasPhone === false ? null : nextSimPhone();
+    const phone = lid || spec.hasPhone === false ? null : (spec.phone ?? nextSimPhone());
     await db.run(
       `INSERT INTO "User" (id, name, email, "phoneNumber", onboarded, "isActive", "updatedAt")
        VALUES ($1, $2, $3, $4, true, true, now())`,

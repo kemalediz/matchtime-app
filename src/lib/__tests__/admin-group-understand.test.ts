@@ -2703,3 +2703,114 @@ describe("a game's kickoff moved from HQ", () => {
     expect(dbMock.match.updateMany).not.toHaveBeenCalled();
   });
 });
+
+// 2026-11-16 (Vets): ONE message with several instructions. HQ had the same
+// one-route limit as the players' group; each part is now done by its own
+// case, in order (the format, who plays, the teams), as ONE reply.
+describe("several instructions in one HQ message", () => {
+  const INCIDENT = "@Match Time switch to 7aside, take Luca to bench, Zak is IN and then make the teams";
+  const routeWithAlso = (route: string, also: string[]) => model(() => ({ routes: [{ id: "wa-9", route, also }] }));
+  // Each extractor answers for its own part of the same message.
+  const byExtractor = model((req) =>
+    req.label === "extractor:admin"
+      ? { action: "switch_format", payerRef: "", count: 0, coveredRefs: [], phrase: "", note: "", lookbackMatches: 0, size: 7, aSide: true, toMatchTime: true }
+      : { action: "generate", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [], sides: { red: [], yellow: [] }, toMatchTime: true },
+  );
+  beforeEach(() => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqLog.hqLogSince.mockResolvedValue([]);
+    switchWords.applySwitchFormatWords.mockReset();
+    switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-switched", replyText: "✅ Done: Monday is 7-a-side now, 14 places." });
+    squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Luca on the bench, Zak in." });
+    teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-proposed", replyText: "📝 *Proposed teams* ..." });
+  });
+
+  it("the incident: the switch, the squad change and the teams, in that order, in one reply", async () => {
+    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["balancer", "admin_ops"]), extractorModel: byExtractor } });
+    expect(switchWords.applySwitchFormatWords).toHaveBeenCalledWith(expect.objectContaining({ perSide: 7, via: "hq", explicit: true }));
+    expect(squad.handleAdminSquadChange).toHaveBeenCalledTimes(1);
+    expect(teams.handleTeamCommand).toHaveBeenCalledTimes(1);
+    // The order the parts were done in.
+    const order = [
+      switchWords.applySwitchFormatWords.mock.invocationCallOrder[0],
+      squad.handleAdminSquadChange.mock.invocationCallOrder[0],
+      teams.handleTeamCommand.mock.invocationCallOrder[0],
+    ];
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(r).toEqual({
+      route: "other_att",
+      outcome: "hq-format-switched+squad-changed+teams-proposed",
+      replyText: "✅ Done: Monday is 7-a-side now, 14 places.\n\nDone: Luca on the bench, Zak in.\n\n📝 *Proposed teams* ...",
+    });
+  });
+
+  it("a member who is not an organiser: the switch and the teams are refused in words, nothing changed there", async () => {
+    const r = await ask(INCIDENT, "other_att", {
+      organiser: false,
+      senderUserId: "u-2",
+      deps: { routerModel: routeWithAlso("other_att", ["admin_ops", "balancer"]), extractorModel: byExtractor },
+    });
+    expect(switchWords.applySwitchFormatWords).not.toHaveBeenCalled();
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+    expect(r?.outcome).toContain("hq-only-organisers");
+    // One reply; a refusal two parts both gave is said once.
+    expect(r?.replyText).toBe("Only Hamzah or Raihan can do that.\n\nOnly Hamzah or Raihan can make the teams.");
+  });
+
+  it("a part that did nothing is named in one plain line", async () => {
+    const r = await ask(INCIDENT, "other_att", {
+      deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: adminFacts({ action: "other" }) },
+    });
+    expect(r?.replyText).toContain("Done: Luca on the bench, Zak in.");
+    expect(r?.replyText).toContain("I can't do that from this group.");
+  });
+
+  it("one instruction: exactly the one case, as before", async () => {
+    const r = await ask("@Match Time make it 7 aside", "admin_ops", { deps: { routerModel: routeTo("admin_ops"), extractorModel: byExtractor } });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-format-switched", replyText: "✅ Done: Monday is 7-a-side now, 14 places." });
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+  });
+
+  // Review of #613, item 2: the squad part already answered the question.
+  it("FNF's \"Glazers is out now. @Match Time what is the list?\": the question is answered ONCE", async () => {
+    squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Glazers out.", alsoAsks: true });
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: "The list: 13 of 14." });
+    const r = await ask("Glazers is out now.\n\n@Match Time what is the list?", "other_att", {
+      deps: { routerModel: routeWithAlso("other_att", ["question"]), extractorModel: byExtractor },
+    });
+    expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
+    expect(r?.replyText).toBe("Done: Glazers out.\n\nThe list: 13 of 14.");
+  });
+
+  // Item 3: a YES to what is waiting runs first, so a pasted list is applied
+  // before the teams are built on it.
+  it("a YES to a pending pasted list and \"make the teams\": the list is applied BEFORE the teams", async () => {
+    dbMock.adminSquadProposal.findFirst.mockResolvedValue({ waMessageId: "wa-paste", createdAt: ASKED, proposedByUserId: "u-admin" });
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "list:wa-paste", "Adding: Bilal. Say *@Match Time YES* to apply.")]);
+    // The HQ squad reader reads this message as about the teams.
+    paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
+    const r = await ask("@Match Time yes, and make the teams", "balancer", {
+      deps: { routerModel: routeWithAlso("balancer", ["approve"]), extractorModel: byExtractor },
+    });
+    expect(paste.answerSquadPasteYes).toHaveBeenCalledTimes(1);
+    expect(teams.handleTeamCommand).toHaveBeenCalledTimes(1);
+    expect(paste.answerSquadPasteYes.mock.invocationCallOrder[0]).toBeLessThan(teams.handleTeamCommand.mock.invocationCallOrder[0]);
+    expect(r?.replyText).toBe("Done.\n\n📝 *Proposed teams* ...");
+  });
+
+  // Item 7: a part with nothing to do says nothing when another part acted.
+  it("a squad part with nothing to change adds no \"didn't catch that\" and asks no question when the switch was done", async () => {
+    squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
+    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: byExtractor } });
+    expect(r).toEqual({ route: "other_att", outcome: "hq-format-switched", replyText: "✅ Done: Monday is 7-a-side now, 14 places." });
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+  });
+
+  it("no part did anything: the one line, once", async () => {
+    squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
+    switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-not-a-suggestion", replyText: null });
+    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: byExtractor } });
+    expect(r?.outcome).toBe("hq-not-understood");
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+  });
+});

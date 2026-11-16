@@ -354,6 +354,10 @@ export interface TeamOpsBatchResult {
    *  owns: "swap X with Y, and I'm out" (2026-10-30). NOT owned here; the
    *  caller adds the reply to that owner's one reply. */
   alsoOutcomes: Map<string, TeamOpsMessageOutcome>;
+  /** The team half that asks to SEE the teams (several instructions,
+   *  2026-11-16): nothing is done here; the caller's one reply carries the
+   *  post, composed from the database after every part. */
+  alsoShowIds?: Set<string>;
   /** The match teams were generated for, or null. */
   generatedMatchId: string | null;
   degradations: string[];
@@ -405,6 +409,7 @@ function empty(degradations: string[] = []): TeamOpsBatchResult {
     ownedIds: new Set(),
     outcomes: new Map(),
     alsoOutcomes: new Map(),
+    alsoShowIds: new Set(),
     generatedMatchId: null,
     degradations,
     cost: { usd: 0, calls: 0, ms: 0 },
@@ -428,12 +433,21 @@ export async function runTeamOpsBatch(args: {
    *  engine already made it for its swap guard
    *  (`EngineBatchResult.teamsReadings`). Used as read; no second call. */
   alsoTeamsFacts?: ReadonlyMap<string, Facts>;
+  /**
+   * Of `alsoTeams`, the messages the ROUTER said also ask for the teams
+   * (`RoutedMessage.alsoRoutes`, 2026-11-16: "switch to 7aside, take Luca
+   * to bench, Zak is IN and then make the teams"). For these a `generate`
+   * is done too, after the squad changes, with the batch's one-generate
+   * rule; for the attendance extractor's own side request it is not.
+   */
+  alsoTeamsGenerate?: ReadonlySet<string>;
   /** Where this batch reports the silences it chose (`tagged-silence.ts`),
    *  so the route does not call them "not understood". Absent: unreported. */
   silence?: SilenceFacts;
 }): Promise<TeamOpsBatchResult> {
   const { orgId, now, messages, history, enabled, deps } = args;
   const alsoTeams = args.alsoTeams ?? new Set<string>();
+  const alsoTeamsGenerate = args.alsoTeamsGenerate ?? new Set<string>();
   const t0 = Date.now();
 
   // ── Ownership, part 1: everything knowable without a model ─────────
@@ -505,10 +519,28 @@ export async function runTeamOpsBatch(args: {
         writeFailed: false,
       });
     }
+    // The team half of another owner's message: the same silence, said as
+    // an outcome so the caller does not call it a part not done (2026-11-16).
+    const alsoOutcomes = new Map<string, TeamOpsMessageOutcome>();
+    for (const m of candidates.filter((x) => isAlso(x))) {
+      alsoOutcomes.set(m.waMessageId, {
+        waMessageId: m.waMessageId,
+        route: "balancer",
+        reply: null,
+        react: null,
+        intent: "noise",
+        action: "none",
+        reasoning: `${TEAM_OPS_HANDLED_BY} (also balancer): team balancing is off for this org; silent`,
+        matchId: null,
+        teamsGenerated: false,
+        writeFailed: false,
+      });
+    }
     return {
       ownedIds: new Set(outcomes.keys()),
       outcomes,
-      alsoOutcomes: new Map(),
+      alsoOutcomes,
+      alsoShowIds: new Set(),
       generatedMatchId: null,
       degradations,
       cost: { usd: 0, calls: 0, ms: Date.now() - t0 },
@@ -597,6 +629,9 @@ export async function runTeamOpsBatch(args: {
   // them (Kemal, 2026-10-30, "no string parsing at all").
   const ownedIds = new Set<string>();
   const alsoIds = new Set<string>();
+  /** The team half that asks to make the teams (`alsoTeamsGenerate`). */
+  const alsoGenerateIds = new Set<string>();
+  const alsoShowIds = new Set<string>();
   const declined = new Map<string, "unsupported">();
   const swapFacts = new Map<string, Extract<Facts, { kind: "teams" }>>();
   const clearIds = new Set<string>();
@@ -617,7 +652,12 @@ export async function runTeamOpsBatch(args: {
       continue;
     }
     if (facts.action === "show") {
-      hand(`team action "show" is not owned here (answer-batch.ts owns show)`);
+      // The team half that asks to see the teams, addressed: the caller's
+      // one reply carries the post (2026-11-16). Otherwise answer-batch.ts
+      // owns show.
+      const shown = isAlso(m) && (m.taggedExplicitly === undefined ? m.tagged === true : m.taggedExplicitly === true || m.repliesToMatchTime === true);
+      if (shown) alsoShowIds.add(m.waMessageId);
+      else hand(`team action "show" is not owned here (answer-batch.ts owns show)`);
       continue;
     }
     // ADDRESSED, facts only (`messageTagsBot`): the Pi's mention flag, or a
@@ -637,8 +677,11 @@ export async function runTeamOpsBatch(args: {
       // The team half of an engine-owned message: a swap or a clear, done
       // and added to the engine's one reply; anything else (a form note
       // included: the chat already carries it) is left alone.
+      // A generate only when the router listed the teams as one of the
+      // message's instructions (`alsoTeamsGenerate`).
       if (kind === "swap") swapFacts.set(m.waMessageId, facts);
       else if (kind === "clear") clearIds.add(m.waMessageId);
+      else if (kind === "generate" && alsoTeamsGenerate.has(m.waMessageId)) alsoGenerateIds.add(m.waMessageId);
       else continue;
       alsoIds.add(m.waMessageId);
       continue;
@@ -649,7 +692,7 @@ export async function runTeamOpsBatch(args: {
     else if (kind !== "generate") declined.set(m.waMessageId, "unsupported");
     ownedIds.add(m.waMessageId);
   }
-  if (ownedIds.size === 0 && alsoIds.size === 0) return empty(degradations);
+  if (ownedIds.size === 0 && alsoIds.size === 0) return { ...empty(degradations), alsoShowIds };
 
   // ── ONE GENERATE PER BATCH, AND IT IS THE LAST ONE ─────────────────
   //
@@ -662,7 +705,7 @@ export async function runTeamOpsBatch(args: {
   // answer to "generate the teams" asked twice.
   const orderedOwned = messages.filter(
     (m) =>
-      ownedIds.has(m.waMessageId) &&
+      (ownedIds.has(m.waMessageId) || alsoGenerateIds.has(m.waMessageId)) &&
       !declined.has(m.waMessageId) &&
       !swapFacts.has(m.waMessageId) &&
       !clearIds.has(m.waMessageId) &&
@@ -1082,7 +1125,7 @@ export async function runTeamOpsBatch(args: {
     if (superseded) {
       // `route.ts:2088-2100` verbatim: intent `noise`, react ⚽, no
       // reply, and every team field cleared.
-      outcomes.set(m.waMessageId, {
+      into.set(m.waMessageId, {
         waMessageId: m.waMessageId,
         route: m.route as Route,
         reply: null,
@@ -1106,7 +1149,9 @@ export async function runTeamOpsBatch(args: {
     const react = failed ? null : (reactByMessage.get(m.waMessageId) ?? null);
     const generated = generatedIds.has(m.waMessageId);
 
-    outcomes.set(m.waMessageId, {
+    // `into`: a generate that is the team half of another owner's message
+    // (`alsoTeamsGenerate`) is reported beside that owner's reply.
+    into.set(m.waMessageId, {
       waMessageId: m.waMessageId,
       route: m.route as Route,
       reply,
@@ -1135,6 +1180,7 @@ export async function runTeamOpsBatch(args: {
     ownedIds,
     outcomes,
     alsoOutcomes,
+    alsoShowIds,
     generatedMatchId,
     degradations,
     cost: { ...cost, ms: Date.now() - t0 },

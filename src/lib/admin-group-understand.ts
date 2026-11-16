@@ -154,6 +154,8 @@ import { confirmQuestion } from "./admin-group-confirm-copy";
 import { parseJoinRequestRef, parsePoolAskRef } from "./admin-group-pool-refs";
 import { decideRecruitSource, namedSources, sourcesFromAnswer, sourceQuestionAnswered, type RecruitSource } from "./ask-source-rules";
 import { mergeOneReply } from "./pipeline/clause-peel";
+import { isAttendanceRoute, orderedRoutes } from "./pipeline/multi-route";
+import { notDoneLine } from "./multi-instruction-reply";
 import { askWhichSource, sourcesAvailable } from "./ask-source";
 import { RETRY_FOLLOWUP_MS, latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./refused-ask-retry";
 import { applyQuietHoursWords } from "./quiet-hours-words";
@@ -681,7 +683,13 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // The players' group's own question answering, for the organisers
     // (`admin-group-question.ts`). Null when it answers nothing.
     const hqGates = hqHelpGates(org, input.poolEnv);
-    const answerQuestion = () =>
+    // Asked once per message (review of #613): a squad change that also
+    // asks ("Glazers is out now. @Match Time what is the list?") answers it
+    // after the change, and the router's own question part then reuses that
+    // one answer instead of asking again.
+    let questionAnswered: ReturnType<typeof answerQuestionOnce> | null = null;
+    const answerQuestion = () => (questionAnswered ??= answerQuestionOnce());
+    const answerQuestionOnce = () =>
       answerHqQuestion({
         orgId: org.id,
         lang,
@@ -785,7 +793,11 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // The teams (a teams route, or a squad message the HQ squad reader read
     // as about the teams): the teams extractor, then `team-proposal.ts`.
     // Tagged (the gate above), so a build or a change is asked of MatchTime.
-    const teamsHere = async (): Promise<Understood | null> => {
+    // Once per message: a message with several instructions can reach the
+    // teams from its squad part and its teams part (2026-11-16).
+    let teamsAnswered: Promise<Understood | null> | null = null;
+    const teamsHere = (): Promise<Understood | null> => (teamsAnswered ??= teamsHereOnce());
+    const teamsHereOnce = async (): Promise<Understood | null> => {
       if (!actor) return onlyOrganisers("teams");
       if (!weekly) return notHere();
       const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
@@ -1015,6 +1027,14 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       if (route !== "score") console.log(`[admin-group] ${messageId}: a reply to the Man of the Match question; ${route ?? "nowhere"} -> score`);
       return scoreHere();
     }
+    // One part of the message, by its route (several parts: below).
+    // `several`: one part of a message with several instructions. Then a
+    // part that finds nothing to do says nothing (no "didn't catch that",
+    // no second question answering); the other parts speak, and a message
+    // where no part did anything gets the one line below.
+    // `squadPartDone`: that message's squad part has already been read.
+    const byRoute = async (route: Route | null, opts: { several?: boolean; squadPartDone?: boolean } = {}): Promise<Understood | null> => {
+      const { several = false, squadPartDone = false } = opts;
     switch (route) {
       case "approve": {
         // A LATE YES to a partner club's ask that closed before anyone here
@@ -1162,8 +1182,10 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // the bench or that no teams are made yet. The HQ squad reader is
         // shown the squad and the teams, so it reads the message too; only
         // a change to who plays is taken from it, and everything else goes
-        // to the teams as before.
-        if (weekly && squadActor) {
+        // to the teams as before. Not when the same message's squad part has
+        // just been read and done (several instructions, 2026-11-16): the
+        // teams part is then the teams.
+        if (weekly && squadActor && !squadPartDone) {
           const read = await readWhoPlays(squadActor);
           if (read.reading.kind === "change") {
             const done = await whoPlays(squadActor, read);
@@ -1179,6 +1201,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         const done = await whoPlays(squadActor, await readWhoPlays(squadActor));
         if (done === "teams") return teamsHere();
         if (done) return done;
+        if (several) return null;
         // Nothing to change: answered as a question if it is one, else one
         // line rather than silence.
         const answered = await answerQuestion();
@@ -1355,6 +1378,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
           if (done === "teams") return teamsHere();
           if (done) return done;
         }
+        if (several) return null;
         // Then the question answering, for anyone (FNF HQ, 2026-10-18 13:32:
         // "@Match Time what is squad now including bench?" fell back to
         // `unsure` and got "I didn't catch that" instead of the squad).
@@ -1367,7 +1391,60 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // conversation, and it stays theirs (#269).
         return null;
     }
+    };
+
+    // ── SEVERAL INSTRUCTIONS IN ONE MESSAGE (2026-11-16) ────────────────
+    // The players' group's Vets incident has the same shape here: one route
+    // per message did one part. The router now lists the others
+    // (`alsoRoutes`); each part is handled by its own case above, reading
+    // the whole message with its own reader, in the order `multi-route.ts`
+    // gives (the format first, then who plays, then the teams), and what
+    // each says is ONE reply. A part that did nothing is named in one line
+    // (the message is tagged: untagged ones returned above). One instruction
+    // is exactly the case above, as before.
+    const also = routed?.alsoRoutes ?? [];
+    if (also.length === 0) return byRoute(route);
+    const parts: Array<{ part: Route; result: Understood | null }> = [];
+    for (const part of orderedRoutes({ route: route ?? "none", alsoRoutes: also })) {
+      parts.push({ part, result: await byRoute(part, { several: true, squadPartDone: parts.some((p) => isAttendanceRoute(p.part)) }) });
+    }
+    // No part did anything: the one line a tagged message gets, once.
+    if (parts.every((p) => !p.result)) return said("hq-not-understood", s.hq_not_understood);
+    return joinHqParts({ route, parts, lang });
   });
+}
+
+/**
+ * PURE. The parts of an HQ message with several instructions, done in
+ * order, as ONE reply: each part's line in that order (a line already said
+ * by an earlier part, such as the teams answered twice, is said once), and
+ * one plain line naming any OTHER part that did nothing. The owner part
+ * (`route`) doing nothing is not named: that is today's silence or line.
+ */
+export function joinHqParts(args: {
+  route: Route | null;
+  parts: Array<{ part: Route; result: Understood | null }>;
+  lang: string | null;
+}): Understood | null {
+  const { route, parts, lang } = args;
+  let replyText: string | null = null;
+  const outcomes: string[] = [];
+  const notDone: Route[] = [];
+  for (const { part, result } of parts) {
+    if (!result) {
+      if (part !== route) notDone.push(part);
+      continue;
+    }
+    outcomes.push(result.outcome);
+    if (result.replyText && !(replyText ?? "").includes(result.replyText)) replyText = mergeOneReply(replyText, result.replyText);
+  }
+  const line = notDoneLine(notDone, lang);
+  if (line) {
+    replyText = mergeOneReply(replyText, line);
+    outcomes.push("hq-part-not-done");
+  }
+  if (outcomes.length === 0) return null;
+  return { route, outcome: outcomes.join("+"), replyText };
 }
 
 /**

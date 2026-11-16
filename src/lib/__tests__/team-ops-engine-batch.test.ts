@@ -1098,6 +1098,41 @@ describe("a message the attendance engine owns that also asks for a team change"
   });
 });
 
+// ── 12. SEVERAL INSTRUCTIONS: THE ROUTER LISTED THE TEAMS (2026-11-16) ──
+
+describe("a message whose other instructions, as the router listed them, include making the teams", () => {
+  const BODY = "@Match Time switch to 7aside, take Luca to bench, Zak is IN and make the teams";
+  const id = `wa-${BODY.slice(0, 14)}`;
+
+  it("the teams are made, reported beside the owner's reply, and the message is not owned here", async () => {
+    const { model } = stubModel({ [BODY]: teamsFacts() });
+    const r = recorder(model, squadWorld());
+    const res = await runTeamOpsBatch({
+      orgId: "org-1", now: NOW, messages: [msg({ body: BODY, route: "other_att" })], history: [],
+      enabled: new Set<Route>(["balancer"]), deps: r.deps,
+      alsoTeams: new Set([id]),
+      alsoTeamsGenerate: new Set([id]),
+    });
+    expect(res.ownedIds.size).toBe(0);
+    expect(r.generated.length).toBe(1);
+    expect(res.alsoOutcomes.get(id)).toMatchObject({ intent: "generate_teams_request", action: "generate_teams", teamsGenerated: true });
+    expect(res.outcomes.size).toBe(0);
+  });
+
+  it("untagged, nothing is made: the teams need the tag, as alone", async () => {
+    const { model } = stubModel({ [BODY]: teamsFacts() });
+    const r = recorder(model, squadWorld());
+    const res = await runTeamOpsBatch({
+      orgId: "org-1", now: NOW, messages: [msg({ body: BODY, route: "other_att", tagged: false })], history: [],
+      enabled: new Set<Route>(["balancer"]), deps: r.deps,
+      alsoTeams: new Set([id]),
+      alsoTeamsGenerate: new Set([id]),
+    });
+    expect(r.generated).toEqual([]);
+    expect(res.alsoOutcomes.size).toBe(0);
+  });
+});
+
 describe("teamActionOf: what the extractor's facts ask this path to do", () => {
   const base = { kind: "teams" as const, includeRefs: [], teamNames: null, swaps: [], moves: [], pairings: [], swapSides: false };
   it("reads every action, the extractor's future `clear` included", () => {
