@@ -275,6 +275,11 @@ describe("UNIFIED_ANSWERS on: round 2 (2026-11-11)", () => {
     expect(loads).toContain("own:u-kemal");
   });
 
+  it.each(["I", "myself", "beni", "bana"])("HQ, the asker's own numbers when the question says '%s'", async (personRef) => {
+    const { loads } = await ask({ unified: true, kind: "other", personRef, audience: "organisers", senderUserId: "u-kemal", answer: "6.8." });
+    expect(loads).toContain("own:u-kemal");
+  });
+
   it("the players' group never reads the asker's own block (their stats go by DM)", async () => {
     const { loads } = await ask({ unified: true, kind: "other", personRef: "me", senderUserId: "u-sait" });
     expect(loads.some((l) => l.startsWith("own:"))).toBe(false);
@@ -385,6 +390,17 @@ describe("UNIFIED_ANSWERS on: the person a question names", () => {
   it("UNCHANGED: 'me', or no name at all, is the asker", async () => {
     expect((await contextFor("me")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
     expect((await contextFor("")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  // Review of #604 (2026-11-16): the literal "me" missed every other way of
+  // saying it, which `isSelfRef` (engine.ts) already knows, English and
+  // Turkish, so "I" or "beni" lost the asker's own numbers.
+  it.each(["I", "myself", "Me", "beni", "bana", "kendim", "BENİ"])("'%s' is the asker too", async (ref) => {
+    expect((await contextFor(ref)).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  it("'Ben' is a name, not the asker (isSelfRef leaves the nominative out): no subject", async () => {
+    expect((await contextFor("Ben")).user).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
   });
 });
 

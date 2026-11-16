@@ -173,7 +173,7 @@ import type { QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
 import { OPEN_ANSWER_INTENT, ORGANISERS_SPACE_INTENT, UNIFIED_ANSWER_INTENT } from "../group-copy";
-import { decide as decideDefault } from "./engine";
+import { decide as decideDefault, isSelfRef } from "./engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
 import { extractForRouteTraced } from "./trace";
@@ -1775,9 +1775,11 @@ export async function runAnswerBatch(args: {
       // nobody, a misspelling) has NO subject: it is not about the asker,
       // and showing the asker's numbers as the subject's is how "what is
       // Alex's rating?" got the asker's (review of #595, 2026-11-15). The
-      // tables still carry everyone's under their own names.
+      // tables still carry everyone's under their own names. The asker's
+      // own words for themselves ("me", "I", "myself", "beni", "bana") are
+      // `isSelfRef`'s, never a literal (review of #604, 2026-11-16).
       let person: { userId: string; self: boolean } | null = m?.senderUserId ? { userId: m.senderUserId, self: true } : null;
-      if (f?.kind === "question" && f.personRef && f.personRef.toLowerCase() !== "me") {
+      if (f?.kind === "question" && f.personRef && !isSelfRef(f.personRef)) {
         const r = resolvePerson(f.personRef, state.roster, peopleById.get(id));
         person = r.kind === "resolved" ? { userId: r.member.userId, self: r.member.userId === m?.senderUserId } : null;
       }
@@ -1793,7 +1795,7 @@ export async function runAnswerBatch(args: {
       const asker = m?.senderUserId ? state.roster.find((r) => r.userId === m.senderUserId) : undefined;
       // The asker's own stats, in HQ only, when the question is about them.
       const own: string[] = [];
-      if (organisers && m?.senderUserId && f?.kind === "question" && f.personRef?.toLowerCase() === "me") {
+      if (organisers && m?.senderUserId && f?.kind === "question" && isSelfRef(f.personRef ?? "")) {
         const loadOwn = deps.loadOwnStats ?? (async (o: string, uid: string) => (await import("../unified-dm")).loadAskerOwnStats(o, uid));
         try {
           const block = await loadOwn(orgId, m.senderUserId);

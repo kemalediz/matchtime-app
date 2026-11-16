@@ -691,76 +691,22 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
 export type UnifiedAnswerResult = { text: string } | { rejected: string };
 
 /**
- * PURE. The stats tables the players' group's context shows, each as its
- * members' ids in the order printed, cut to the top the group is shown
- * (`GROUP_LIST_CAP`): what a reply may name a run of players from without
- * copying the squad list (`reproducesSquad`).
- */
-export function tablesShownToPlayers(s: StatsSnapshot | null | undefined, periods: ReadonlyArray<UnifiedPeriod>): string[][] {
-  if (!s) return [];
-  const top = <T extends { userId: string }>(rows: ReadonlyArray<T>) => rows.slice(0, GROUP_LIST_CAP).map((r) => r.userId);
-  const tables = [
-    top(s.ratings),
-    top(s.appearances),
-    top(s.mom),
-    top(s.elo),
-    top(s.mrReliable),
-    (s.teamOfSeason?.slots ?? []).map((x) => x.userId),
-    (s.lastMom?.recent ?? []).flatMap((m) => m.winners.map((w) => w.userId)),
-    (s.lastMom?.last?.tally ?? []).map((x) => x.userId),
-    ...periods.flatMap((p) => [top(p.tables.appearances), top(p.tables.ratings), top(p.tables.mom)]),
-  ];
-  return tables.filter((t) => t.length > 0);
-}
-
-/**
  * PURE. Does a reply to the players' group of a club whose organisers post
- * the list copy the squad or the bench (2026-11-11; redesigned 2026-11-15)?
- * Its context names nobody in the squad, so a reply can only list them by
- * copying a list from the chat. Read against the records, never the words.
- *
- *   1. A member the reply names is EXPLAINED by a stats table the group is
- *      shown (`tablesShownToPlayers`) when the reply names at least two of
- *      its entries and at least two thirds of that table from its top down
- *      to the deepest entry it names: "the top 10", "the last 3 Men of the
- *      Match". A table answer names players in and out of the squad alike,
- *      and is not a list. (One entry explains nothing: a one-row table
- *      would otherwise excuse a name in a copy.)
- *   2. Of the members left, it is a copy when the squad players among them
- *      are at least a third of the squad (at least 3, or the whole squad
- *      when it is smaller), or the bench players at least two thirds of the
- *      bench (at least 2, a bench of one is never "copied").
- *
- * Names outside the squad and the bench no longer clear a reply (the squad
- * plus "Xavier is out" was a copy that passed), and the bench now counts.
- * A count names nobody; a short answer names one or two. Known limit: a
- * table whose top is mostly this week's squad (the most appearances) is
- * explained by rule 1 whatever else it names, since by the names alone it
- * is that table.
+ * the list reproduce the squad list (2026-11-11)? Its context names nobody
+ * in the squad, so a reply can only list them by copying a list from the
+ * chat. Read against the records, not the words: it names at least two
+ * thirds of the squad (and at least 4, or the whole squad when it is
+ * smaller), and nobody outside the squad and the bench. A ratings table (which names players who are not in the squad, and
+ * at most `GROUP_LIST_CAP` of them) and a count pass.
  */
-export function reproducesSquad(reply: string, state: SquadState, tables: ReadonlyArray<ReadonlyArray<string>> = []): boolean {
+export function reproducesSquad(reply: string, state: SquadState): boolean {
   const named = membersNamed(reply, state.roster);
-  if (named.size === 0) return false;
-  const explained = new Set<string>();
-  for (const table of tables) {
-    let deepest = -1;
-    let hits = 0;
-    table.forEach((id, i) => {
-      if (named.has(id)) {
-        deepest = i;
-        hits++;
-      }
-    });
-    if (hits >= 2 && hits * 3 >= (deepest + 1) * 2) for (const id of table.slice(0, deepest + 1)) if (named.has(id)) explained.add(id);
-  }
-  const left = [...named].filter((id) => !explained.has(id));
-  const squad = new Set(state.rows.filter((r) => r.status === "CONFIRMED").map((r) => r.userId));
-  const bench = new Set(state.rows.filter((r) => r.status === "BENCH").map((r) => r.userId));
-  const squadLeft = left.filter((id) => squad.has(id)).length;
-  const benchLeft = left.filter((id) => bench.has(id)).length;
-  const squadBar = Math.max(Math.min(3, squad.size), Math.ceil(squad.size / 3));
-  const benchBar = Math.max(2, Math.ceil((2 * bench.size) / 3));
-  return (squad.size >= 2 && squadLeft >= squadBar) || (bench.size >= 2 && benchLeft >= benchBar);
+  const confirmed = new Set(state.rows.filter((r) => r.status === "CONFIRMED").map((r) => r.userId));
+  const onList = new Set(state.rows.filter((r) => r.status === "CONFIRMED" || r.status === "BENCH").map((r) => r.userId));
+  const squadNamed = [...named].filter((id) => confirmed.has(id)).length;
+  const outside = [...named].filter((id) => !onList.has(id)).length;
+  if (confirmed.size < 2 || outside > 0) return false;
+  return squadNamed >= Math.max(Math.min(4, confirmed.size), Math.ceil((2 * confirmed.size) / 3));
 }
 
 /**
@@ -813,7 +759,7 @@ export async function answerUnified(
   let result: UnifiedAnswerResult = check.ok ? { text: tidy } : { rejected: `grounding check failed: ${check.why}` };
   // The organisers post the list: a reply that copies the squad from the
   // chat is their line instead. Anything else (a table, a count) stands.
-  if ("text" in result && args.audience === "players" && args.state.features.listAnnouncer === "organisers" && reproducesSquad(result.text, args.state, tablesShownToPlayers(args.stats, args.periods ?? []))) {
+  if ("text" in result && args.audience === "players" && args.state.features.listAnnouncer === "organisers" && reproducesSquad(result.text, args.state)) {
     result = { text: t(lang).oa_list_by_organisers };
   }
   return { result, capped: false, costUsd, ms, called: true, inputTokens, calls: 1 };

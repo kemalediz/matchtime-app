@@ -333,6 +333,12 @@ export const STATS_ANSWER_INTENTS: ReadonlySet<string> = new Set([
 
 const TEAM_POST_INTENTS: ReadonlySet<string> = new Set(["generate_teams_request", "show_teams_request"]);
 
+/** PURE. Is this the intent of a team post (making or showing the teams),
+ *  whose reply is the team sheet (`squad-post-carrier.ts`)? */
+export function isTeamPostIntent(intent: string | null | undefined): boolean {
+  return !!intent && TEAM_POST_INTENTS.has(intent);
+}
+
 /**
  * The intent of the answer to "is there still space?" in a players' group
  * whose organisers announce the list (FNF 2026-10-20, `oa_space_answer`):

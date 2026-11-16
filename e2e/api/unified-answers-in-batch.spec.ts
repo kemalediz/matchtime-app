@@ -15,6 +15,13 @@
  * the batch sends ONE squad post on the IN and the question's own answer
  * beside it, never two squad posts.
  *
+ * AND NEVER TWO TEAM SHEETS (review of #604, 2026-11-16): once teams exist
+ * the squad post the composition renders IS the team sheet, so "Ian Innes is
+ * in" beside "@Match Time show the teams" (teams out) or "generate the teams"
+ * (match day) sent the sheet twice. A batch that already posts a sheet has no
+ * squad post carrier. Every case below counts what the group receives: squad
+ * posts AND team sheets.
+ *
  * The router, the extractors and the answers are STUBBED by message body
  * (`engineOn`); the engine, the batch, the composer and the analyze route are
  * the real code against a real Postgres. No model call, $0. The seed's
@@ -27,7 +34,7 @@
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
-import { MATCH, U } from "../helpers/constants";
+import { MATCH, SPORT_ID, U, londonAt } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import { engineOn, clearPipelineStubs, helpFacts, otherFacts, selfIn } from "../helpers/stub";
 
@@ -45,6 +52,9 @@ const OPEN_Q = "@Match Time is it cold tonight?";
 const OPEN_ANSWER = "I can't see the weather from here.";
 const HELP_Q = "@Match Time help";
 const BENCH_POST = "*Bench (1):*\n1. Ben Bench";
+const SHOW = "@Match Time show the teams";
+const GEN = "@Match Time generate the teams";
+const COUNT_Q = "@Match Time how many are we?";
 
 type Result = { waMessageId: string; reply?: string | null; react?: string | null; intent?: string | null };
 
@@ -54,7 +64,7 @@ const msgId = () => `e2e-unified-batch-${Date.now()}-${++n}`;
 async function batch(
   request: APIRequestContext,
   unified: boolean,
-  first: { body: string; authorPhone: string; authorName: string } = { body: IN, ...IAN },
+  first: { body: string; authorPhone: string; authorName: string; botMentioned?: boolean } = { body: IN, ...IAN },
   question = BENCH_Q,
 ) {
   const inId = msgId();
@@ -64,7 +74,7 @@ async function batch(
     data: {
       groupId: E2E.GROUP_ID,
       messages: [
-        { waMessageId: inId, ...first, botMentioned: false, timestamp: new Date().toISOString() },
+        { waMessageId: inId, ...first, botMentioned: first.botMentioned ?? false, timestamp: new Date().toISOString() },
         { waMessageId: askId, body: question, ...PAT, botMentioned: true, timestamp: new Date().toISOString() },
       ],
     },
@@ -89,10 +99,33 @@ const arm = () =>
       facts: { topic: "other", kind: "other", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none", badge: "none", answer: OPEN_ANSWER },
     },
     [HELP_Q]: { route: "question", facts: helpFacts() },
+    [COUNT_Q]: {
+      route: "question",
+      facts: { topic: "count", kind: "other", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none", badge: "none", answer: "4 of 5." },
+    },
+    [SHOW]: { route: "balancer", facts: { action: "show", includeRefs: [], teamNames: null, swaps: [], pairings: [] } },
+    [GEN]: { route: "balancer", facts: { action: "generate", includeRefs: [], teamNames: null, swaps: [], pairings: [] } },
   });
 
-/** Every send that is a squad post. */
-const squadPosts = (spoke: Result[]) => spoke.filter((r) => (r.reply ?? "").includes("*Playing:*"));
+/** What the group receives: every squad post and every team sheet, counted
+ *  across all the replies (one reply could carry both). */
+const count = (spoke: Result[], marker: string) => spoke.reduce((n, r) => n + ((r.reply ?? "").split(marker).length - 1), 0);
+const received = (spoke: Result[]) => ({ squadPosts: count(spoke, "*Playing:*"), teamSheets: count(spoke, "*Teams for") });
+
+/** The match's teams are made and published (two a side, Ian not in them). */
+async function teamsOut(db: { run: (q: string, p: unknown[]) => Promise<unknown> }) {
+  for (const [userId, team] of [[U.admin, "RED"], [U.player, "RED"], [U.collector, "YELLOW"], [U.third, "YELLOW"]] as const) {
+    await db.run(`INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES ($1, $2, $3, $4::"Team")`, [`e2e-uab-${userId}`, MATCH.upcoming, userId, team]);
+  }
+  await db.run(`UPDATE "Match" SET status = 'TEAMS_PUBLISHED' WHERE id = $1`, [MATCH.upcoming]);
+}
+
+/** The match is tonight, two a side, so the teams can be made now. */
+async function matchDay(db: { run: (q: string, p: unknown[]) => Promise<unknown> }) {
+  const k = londonAt(0, 22, 0);
+  await db.run(`UPDATE "Match" SET date = $2, "attendanceDeadline" = $3 WHERE id = $1`, [MATCH.upcoming, k.toISOString(), new Date(k.getTime() - 5 * 3600e3).toISOString()]);
+  await db.run(`UPDATE "Sport" SET "playersPerTeam" = 2 WHERE id = $1`, [SPORT_ID]);
+}
 
 async function statusOf(db: { all: <T>(q: string, p: unknown[]) => Promise<T[]> }, userId: string) {
   const rows = await db.all<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, userId]);
@@ -119,7 +152,7 @@ test("flag ON: ONE squad post (on the IN, naming the bench) and the unified answ
   arm();
   const { spoke, askR, inR } = await batch(request, true, { body: ADD_IAN, ...ALEX });
   expect(await statusOf(db, U.fresh)).toBe("CONFIRMED");
-  expect(squadPosts(spoke)).toHaveLength(1);
+  expect(received(spoke)).toEqual({ squadPosts: 1, teamSheets: 0 });
   expect(inR.reply).toContain(BENCH_POST);
   expect(inR.reply).toContain("5/5");
   expect(askR.intent).toBe("unified_answer");
@@ -140,7 +173,7 @@ test("flag ON, a plain IN beside the question (no squad post in this batch eithe
 test("flag OFF, the open answer beside the squad change: ONE squad post on the IN, and the open answer", async ({ request }) => {
   arm();
   const { spoke, askR, inR } = await batch(request, false, { body: ADD_IAN, ...ALEX }, OPEN_Q);
-  expect(squadPosts(spoke)).toHaveLength(1);
+  expect(received(spoke)).toEqual({ squadPosts: 1, teamSheets: 0 });
   expect(inR.reply).toContain(BENCH_POST);
   expect(askR.intent).toBe("open_answer");
   expect(askR.reply).toBe(OPEN_ANSWER);
@@ -149,9 +182,42 @@ test("flag OFF, the open answer beside the squad change: ONE squad post on the I
 test("help beside the squad change: ONE squad post on the IN, and the help untouched", async ({ request }) => {
   arm();
   const { spoke, askR, inR } = await batch(request, false, { body: ADD_IAN, ...ALEX }, HELP_Q);
-  expect(squadPosts(spoke)).toHaveLength(1);
+  expect(received(spoke)).toEqual({ squadPosts: 1, teamSheets: 0 });
   expect(inR.reply).toContain(BENCH_POST);
   expect(askR.intent).toBe("help");
   expect(askR.reply ?? "").not.toContain("*Playing:*");
   expect(askR.reply ?? "").not.toContain("[SQUAD]");
+});
+
+for (const unified of [true, false]) {
+  test(`teams out: "Ian Innes is in" + "show the teams" sends ONE team sheet, no squad post (flag ${unified ? "ON" : "OFF"})`, async ({ request, db }) => {
+    await teamsOut(db);
+    arm();
+    const { spoke, askR, inR } = await batch(request, unified, { body: ADD_IAN, ...ALEX }, SHOW);
+    expect(await statusOf(db, U.fresh)).toBe("CONFIRMED");
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1 });
+    expect(askR.intent).toBe("show_teams_request");
+    expect(inR.reply ?? null).toBeNull();
+  });
+
+  test(`match day: "Ian Innes is in" + "generate the teams" sends ONE team sheet, no squad post (flag ${unified ? "ON" : "OFF"})`, async ({ request, db }) => {
+    await matchDay(db);
+    arm();
+    const { spoke, askR, inR } = await batch(request, unified, { body: ADD_IAN, ...ALEX }, GEN);
+    expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1 });
+    expect(askR.intent).toBe("generate_teams_request");
+    expect(inR.reply ?? null).toBeNull();
+  });
+}
+
+
+test("teams out, flag OFF: 'show the teams' + 'how many are we?' (a squad answer the composition renders as the sheet) sends ONE team sheet", async ({ request, db }) => {
+  await teamsOut(db);
+  arm();
+  const { spoke, inR: showR, askR } = await batch(request, false, { body: SHOW, ...ALEX, botMentioned: true }, COUNT_Q);
+  expect(showR.intent).toBe("show_teams_request");
+  expect(received(spoke), JSON.stringify(spoke)).toEqual({ squadPosts: 0, teamSheets: 1 });
+  expect(showR.reply).toContain("*Teams for");
+  // The question is answered by the sheet beside it, never "I didn't catch that".
+  expect(askR.intent).not.toBe("not_understood");
 });

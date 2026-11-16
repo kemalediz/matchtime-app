@@ -19,6 +19,7 @@ import { formatOwnStatsLines } from "./dm-qa";
 import { formatMyPaymentsBlock } from "./my-payments-rules";
 import type { Lang } from "./i18n/lang";
 import type { StatsPeriod, StatsSnapshot } from "./pipeline/types";
+import { GROUP_RATINGS_MIN_GAMES } from "./pipeline/stats-answer";
 
 const DM_PERIODS: ReadonlyArray<readonly [string, StatsPeriod]> = [
   ["the last 30 days", { kind: "last", count: 30, unit: "day" }],
@@ -54,6 +55,20 @@ export async function loadAskerOwnStats(orgId: string, userId: string, aboutThem
     nemesis: mine.rivalry.nemesis?.name ?? null,
   });
   return [aboutThemselves ? "THE ASKER'S OWN STATS (they asked about themselves):" : "THE ASKER'S OWN STATS:", ...lines.slice(1)].join("\n");
+}
+
+/**
+ * PURE. The asker's own place in the club ratings table, for THE ASKER'S
+ * OWN STATS in a DM (review of #604, 2026-11-16). The DM has no subject
+ * block (`loadUnifiedDmInput`), and the table it is shown stops at the top
+ * 10, so without this line "what's my rank?" from the 12th had nothing to be
+ * answered from. Their own, so given wherever they rank.
+ */
+export function askerRatingLine(ratings: StatsSnapshot["ratings"], userId: string): string {
+  const r = ratings.find((x) => x.userId === userId);
+  return r
+    ? `- Club rating: ${r.avg.toFixed(1)} from ${r.games} rated matches, no. ${r.rank} in the club ratings table`
+    : `- Club rating: none yet (fewer than ${GROUP_RATINGS_MIN_GAMES} rated matches)`;
 }
 
 /**
@@ -119,7 +134,9 @@ export async function loadUnifiedDmInput(args: {
   // Headed as the asker's, not "YOUR": in the answer's context "you" is
   // MatchTime (ABOUT YOU, 2026-11-11).
   const mine = await soft("own stats", () => loadAskerOwnStats(orgId, userId, false));
-  if (mine) own.push(mine);
+  // Their club rating and rank, in their own block (the table stops at 10).
+  const rating = stats ? askerRatingLine(stats.ratings, userId) : null;
+  if (mine || rating) own.push([mine ?? "THE ASKER'S OWN STATS:", ...(rating ? [rating] : [])].join("\n"));
   const fee = state.club?.feePerPlayer ?? null;
   const pay = await soft("own payments", () => loadMyPayments({ orgId, userId, upcomingFee: state.matchId ? fee : null }));
   if (pay) own.push(formatMyPaymentsBlock(pay.payments, args.lang, pay.payLinks).replace(/^YOUR PAYMENTS/, "THE ASKER'S OWN PAYMENTS"));
@@ -133,8 +150,8 @@ export async function loadUnifiedDmInput(args: {
     // No subject block (review of #595, 2026-11-15). A DM has no reading of
     // who its question names, so "THE PLAYER THE QUESTION IS ABOUT: <the
     // asker>" was a guess, and "what is Bruno's rating?" was given the
-    // asker's numbers under it. The asker's own numbers are THE ASKER'S OWN
-    // STATS (what the DM answer has always shown); anyone else's are in
+    // asker's numbers under it. The asker's own numbers, their club rating
+    // and rank included, are THE ASKER'S OWN STATS; anyone else's are in
     // the tables, under their own names.
     person: null,
     results,

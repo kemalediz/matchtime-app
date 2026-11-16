@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   })),
   loadRatingProgressSnapshot: vi.fn(async () => ({ ok: true, matchName: "Tuesday", matchWhen: "3 Nov", confirmed: 4, ratedCount: 2, momCount: 1, notRated: ["Cosmo Dale"], ratedNoMom: [] })),
   state: null as unknown,
+  ratings: null as null | Array<{ userId: string; name: string; avg: number; games: number; rank: number; delta: number }>,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -50,7 +51,7 @@ vi.mock("@/lib/pipeline/load-state", () => ({
 vi.mock("@/lib/pipeline/load-stats", () => ({
   loadStatsTables: async () => ({
     fullTableUrl: "https://matchtime.ai/profile/stats",
-    ratings: [
+    ratings: h.ratings ?? [
       { userId: "u-bruno", name: "Bruno Carr", avg: 7.6, games: 6, rank: 1, delta: 0 },
       { userId: "u-alfie", name: "Alfie Brook", avg: 6.4, games: 5, rank: 2, delta: 0 },
     ],
@@ -131,6 +132,7 @@ const ask = (over: Partial<Parameters<typeof answerScopedQuestion>[0]> = {}) =>
 
 beforeEach(() => {
   h.state = squad();
+  h.ratings = null;
   h.loadHelpClubFacts.mockClear();
   h.loadRatingProgressSnapshot.mockClear();
   process.env.ANTHROPIC_API_KEY = "sk-test";
@@ -214,6 +216,37 @@ describe("the subject: a DM never presents the asker as the person asked about",
     const text = await context("what is my rating?");
     expect(text).toContain("THE ASKER'S OWN STATS:");
     expect(text).toContain("- Average rating: 6.4");
+  });
+
+  // Review of #604 (2026-11-16): with no subject block the asker's rank was
+  // gone, so "what's my rank?" outside the top 10 had nothing to answer
+  // from. It is in the asker's OWN block now, labelled as theirs.
+  const ownBlock = (text: string) => text.slice(text.indexOf("THE ASKER'S OWN STATS:")).split("\n\n")[0];
+  const table = (askerRank: number) =>
+    Array.from({ length: 12 }, (_, i) => {
+      const rank = i + 1;
+      return rank === askerRank
+        ? { userId: "u-alfie", name: "Alfie Brook", avg: 6.4, games: 5, rank, delta: 0 }
+        : { userId: `u-p${rank}`, name: `Player ${rank}`, avg: 8 - i * 0.1, games: 4, rank, delta: 0 };
+    });
+
+  it("'what's my rank?' outside the top 10: the asker's own block has their club rating and rank", async () => {
+    h.ratings = table(12);
+    const text = await context("what's my rank?");
+    expect(ownBlock(text)).toContain("- Club rating: 6.4 from 5 rated matches, no. 12 in the club ratings table");
+    expect(text).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
+    // The group-sized table still stops at 10: only the asker's own rank is added.
+    expect(text).not.toContain("12. Alfie Brook");
+  });
+
+  it("inside the top 10 too", async () => {
+    h.ratings = table(3);
+    expect(ownBlock(await context("what's my rank?"))).toContain("no. 3 in the club ratings table");
+  });
+
+  it("not in the table yet: said so, in the asker's own block", async () => {
+    h.ratings = table(99).filter((r) => r.userId !== "u-alfie");
+    expect(ownBlock(await context("what's my rank?"))).toMatch(/- Club rating: none yet \(fewer than 3 rated matches\)/);
   });
 });
 

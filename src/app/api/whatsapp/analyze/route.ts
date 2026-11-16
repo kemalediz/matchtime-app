@@ -111,7 +111,12 @@ import {
   rosterShownKey,
   squadFingerprint,
 } from "@/lib/roster-shown";
-import { composesSquadPost, squadPostCarrierId as squadPostCarrierFor } from "@/lib/squad-post-carrier";
+import {
+  composesSquadPost,
+  postsTeamSheet,
+  squadPostCarrierId as squadPostCarrierFor,
+  withoutRepeatedTeamSheet,
+} from "@/lib/squad-post-carrier";
 import {
   composeSquadStateReply,
   buildRecruitAckReply,
@@ -3494,12 +3499,23 @@ async function handleAnalyzeRequest(request: Request) {
     engineBatch?.squadPostForMessageId && lateById.has(engineBatch.squadPostForMessageId)
       ? lastFreshActedId
       : (engineBatch?.squadPostForMessageId ?? null);
+  // A batch that already posts a team sheet (review of #604, 2026-11-16):
+  // making or showing the teams, a swap's or a replacement's sheet, or the
+  // team half of an attendance message, which is added to its reply after
+  // the composition. Once teams exist the squad post IS the team sheet, so
+  // such a batch has no carrier for it, and a reply the composition turns
+  // into that sheet keeps only its own words (below): one sheet, never two.
+  const appendedSheetIds = new Set(
+    [...(teamOpsBatch?.alsoOutcomes ?? [])].filter(([, o]) => o.teamSheetPost === true && !!o.reply).map(([id]) => id),
+  );
+  const batchPostsTeamSheet = appendedSheetIds.size > 0 || results.some((r) => postsTeamSheet(r, deterministicTeamPostIds));
   // The organisers announce the list (2026-10-14): no batch squad post.
   if (squadPostId && !organisersMode) {
     const carrierId = squadPostCarrierFor(results, {
       squadPostId,
       late: new Set(lateById.keys()),
       teamPostIds: deterministicTeamPostIds,
+      appendedSheetIds,
     });
     const target = carrierId ? results.find((r) => r.waMessageId === carrierId) : undefined;
     if (target) {
@@ -3535,6 +3551,9 @@ async function handleAnalyzeRequest(request: Request) {
   // The message the batch's ONE composed squad post rides on, when there
   // is one (2026-10-30, read by the "never met with silence" pass).
   let squadPostCarrierId: string | null = null;
+  // A message whose composed reply was the team sheet the batch already
+  // posts: answered by that sheet, so never met with the not-understood line.
+  const answeredByTeamSheet = new Set<string>();
   if (nextMatchForReply) {
     try {
       const candidates: number[] = [];
@@ -3713,6 +3732,18 @@ async function handleAnalyzeRequest(request: Request) {
           }
           results[i].reply = text;
           composedIdx.push(i);
+        }
+        // NEVER THE TEAM SHEET TWICE (review of #604, 2026-11-16). With
+        // teams made, every composed reply above is that team sheet; when the
+        // batch already posts it, each keeps only its own words (or says
+        // nothing, its question answered by the sheet beside it).
+        if (truth.teams && batchPostsTeamSheet && composedIdx.length > 0) {
+          const sheet = composeSquadStateReply(SQUAD_POST_MARKER, truth, org.language).text;
+          for (const i of composedIdx.splice(0)) {
+            results[i].reply = withoutRepeatedTeamSheet(results[i].reply!, sheet);
+            answeredByTeamSheet.add(results[i].waMessageId);
+          }
+          console.log(`[analyze] the batch already posts the team sheet: the composed copy is not sent again`);
         }
         // The group is about to see this list, so the scheduler must not
         // post the same one again (and its 30-minute floor counts from now).
@@ -4308,7 +4339,7 @@ async function handleAnalyzeRequest(request: Request) {
       gated: gatedIds.has(m.waMessageId),
       refused: silence.refused.has(m.waMessageId),
       readFailed: silence.readFailed.has(m.waMessageId),
-      answeredBySquadPost: silence.squadPostAnswers.has(m.waMessageId) && squadPostWentOut,
+      answeredBySquadPost: (silence.squadPostAnswers.has(m.waMessageId) && squadPostWentOut) || answeredByTeamSheet.has(m.waMessageId),
       monthNotStarted: silence.monthNotStarted.has(m.waMessageId),
       route: gateRouteById.get(m.waMessageId),
       result: { reply: r.reply ?? null, react: r.react ?? null, intent: r.intent ?? "noise", handledBy: r.handledBy },
