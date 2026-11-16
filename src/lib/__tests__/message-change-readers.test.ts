@@ -33,6 +33,7 @@ import { decideApproval } from "../admin-group-confirm-rules";
 import { sourceQuestionAnswered } from "../ask-source-rules";
 import { loadHqRecentMessages } from "../hq-squad-reader";
 import { recentHqMessages } from "../organiser-pick";
+import { quotedLines } from "../reply-context";
 import { hqWeekChat, loadWeekChat, playersWeekChat } from "../week-chat";
 import { loadStoredGroupLines } from "../group-chat-history";
 import { groupLogSince, hqLogSince } from "../admin-group-log";
@@ -261,6 +262,13 @@ describe("an author's edit: MatchTime forgets the words and otherwise behaves as
     for (const lines of [squad, pick]) {
       expect(lines.length).toBeGreaterThan(0);
       expect(lines.map((l) => l.body.trim()).filter((b) => b === "")).toEqual([]);
+    }
+  });
+
+  it("a reply quoting MatchTime's acknowledgement whose words were blanked shows no words, never a blank quote", () => {
+    for (const text of [null, ""]) {
+      const lines = quotedLines({ author: null, at: null, text, topic: null, matchId: null, match: null, found: true } as never);
+      expect(lines[1]).toBe("(its words are not known)");
     }
   });
 

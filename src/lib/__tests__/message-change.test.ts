@@ -220,36 +220,62 @@ describe("an edit purges the TEXT and keeps the FACTS (round 8)", () => {
     expect(await applyMessageChange(editBy(SAM), NOW)).toEqual({ analyzed: 0, archived: 0, hq: 0, mentions: 0, notes: 0, refused: 0 });
   });
 
-  it("a form note's reason goes when the message that WROTE it is changed, though a later message moved the note on; and its copy in the rating adjustment goes with it", async () => {
-    const LATER = `false_${G}_LATERID00001_${SAM_PN}@c.us`;
-    T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -2, reason: "door code 4321", sourceMessageId: LATER, reasonSourceMessageId: SAM_ID, createdAt: ago(9), updatedAt: ago(2) }));
-    // The audit rows exactly as team generation writes them (`formNotesWin`,
-    // the note's amount clamped): the note's reason comes formatted.
-    const written = formNotesWin(
-      new Map([["u-ali", { playerId: "u-ali", delta: 0.5, reason: "Form note in the chat: door code 4321 (the adjuster quoting the chat)", confidence: 0.6 }]]),
-      [{ userId: "u-sam", delta: -2, reason: "door code 4321" }] as never,
-      ["u-sam", "u-ali"],
-    );
-    for (const a of written.values()) T.ratingAdjustment.push(row({ matchId: "m2", userId: a.playerId, delta: a.delta, reason: a.reason, confidence: a.confidence }));
-    expect(T.ratingAdjustment.find((r) => r.userId === "u-sam")!.reason).toMatch(/^Form note in the chat: door code 4321$/);
-    // MatchTime's acknowledgement of the note, which repeated the reason.
-    T.sentNotification.push(
-      row({ key: `greply:org-a:${SAM_ID}`, kind: "group-reply", text: "Noted: -1 for Sam Sample (door code 4321) in Tuesday's game.", createdAt: ago(9) }),
-      row({ key: `greply:org-a:${LATER}`, kind: "group-reply", text: "Changed: -1 for Sam Sample (door code 4321) in Tuesday's game.", createdAt: ago(2) }),
-      row({ key: "greply:org-a:false_other", kind: "group-reply", text: "Noted: -1 for Ali (door code 4321) in Tuesday's game.", createdAt: ago(2) }),
-    );
-    expect(await applyMessageChange(editBy(SAM), NOW)).toMatchObject({ notes: 1 });
-    expect(T.formNote[0]).toMatchObject({ reason: "", delta: -2 });
-    // The note's copy goes; the adjuster's own row (another player, its own words) is left, never hit by a loose match.
-    expect(T.ratingAdjustment.find((r) => r.userId === "u-sam")!.reason).toBe("");
-    expect(T.ratingAdjustment.find((r) => r.userId === "u-ali")!.reason).toBe("Form note in the chat: door code 4321 (the adjuster quoting the chat)");
-    expect(T.sentNotification.map((n) => n.text)).toEqual([
-      "Noted: -1 for Sam Sample in Tuesday's game.",
-      "Changed: -1 for Sam Sample in Tuesday's game.",
-      "Noted: -1 for Ali (door code 4321) in Tuesday's game.",
-    ]);
+  // ── Round 11: copies of a note's words, found by WHICH MESSAGES they hold ──
+  const A_BARE = "NOTEMSGA0001";
+  const B_BARE = "NOTEMSGB0001";
+  const A_ID = `false_${G}_${A_BARE}_${SAM_PN}@c.us`;
+  const B_ID = `false_${G}_${B_BARE}_${SAM_PN}@c.us`;
+  const ack = (id: string, text: string) => row({ key: `greply:org-a:${id}`, kind: "group-reply", text, createdAt: ago(5) });
+  const adj = (userId: string, reason: string) => row({ matchId: "m2", userId, delta: -1, reason, confidence: 1 });
+
+  for (const how of ["delete", "edit"] as const) {
+    const change = (bare: string) => (how === "delete" ? { ...byAuthor, messageId: bare } : { ...editBy(SAM), messageId: bare });
+
+    it(`${how}: a later note REPLACED the reason (A, then B): changing A clears every copy of A's words; B's reason stays`, async () => {
+      T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -1, reason: "knee", sourceMessageId: B_ID, reasonSourceMessageId: B_ID, reasonMessageIds: [A_ID, B_ID], createdAt: ago(9), updatedAt: ago(2) }));
+      // Team generation copied A's reason while it stood.
+      T.ratingAdjustment.push(adj("u-sam", "Form note in the chat: tired legs"));
+      T.sentNotification.push(ack(A_ID, "Noted: -1 for Dan Dee (tired legs) in Tuesday's game."), ack(B_ID, "Changed: -1 for Dan Dee (knee) in Tuesday's game."), ack("false_other", "Noted: -1 for Ali (tired legs)."));
+      await applyMessageChange(change(A_BARE), NOW);
+      expect(T.formNote[0]).toMatchObject({ reason: "knee", delta: -1 });
+      expect(T.ratingAdjustment[0].reason).toBe("");
+      // The WHOLE ack goes, never a garbled half; another member's is untouched.
+      expect(T.sentNotification.map((n) => n.text)).toEqual([null, null, "Noted: -1 for Ali (tired legs)."]);
+    });
+
+    it(`${how}: the amount was set to 0 later; changing the message that wrote the reason still clears its copy`, async () => {
+      T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: 0, reason: "ill", sourceMessageId: B_ID, reasonSourceMessageId: A_ID, reasonMessageIds: [A_ID, B_ID], createdAt: ago(9), updatedAt: ago(2) }));
+      T.ratingAdjustment.push(adj("u-sam", "Form note in the chat: ill"));
+      T.sentNotification.push(ack(A_ID, "Noted: -1 for Henry Hill (ill) in Tuesday's game."));
+      await applyMessageChange(change(A_BARE), NOW);
+      expect(T.formNote[0]).toMatchObject({ reason: "", delta: 0 });
+      expect(T.ratingAdjustment[0].reason).toBe("");
+      // "Henry Hill" is not garbled into "Henry H": the whole ack is blank.
+      expect(T.sentNotification[0].text).toBeNull();
+    });
+  }
+
+  it("the adjuster's own row for the same player and match is left alone (only formNoteReason writes the prefix)", async () => {
+    T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -1, reason: "tired", sourceMessageId: A_ID, reasonSourceMessageId: A_ID, reasonMessageIds: [A_ID], createdAt: ago(9), updatedAt: ago(2) }));
+    T.ratingAdjustment.push(adj("u-sam", "Sam said he was tired, so a little lower"), adj("u-ali", "Form note in the chat: tired"));
+    await applyMessageChange({ ...byAuthor, messageId: A_BARE }, NOW);
+    expect(T.ratingAdjustment.map((r) => r.reason)).toEqual(["Sam said he was tired, so a little lower", "Form note in the chat: tired"]);
+    expect(T.formNote[0].reason).toBe("");
   });
 
+  it("THE RACE: team generation writes its copy AFTER the purge; clear-after-write and the sweep find the note by its message ids (its reason already blank) and clear it", async () => {
+    T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -1, reason: "tired", sourceMessageId: A_ID, reasonSourceMessageId: A_ID, reasonMessageIds: [A_ID], createdAt: ago(9), updatedAt: ago(2) }));
+    await applyMessageChange({ ...byAuthor, messageId: A_BARE }, ago(10));
+    expect(T.formNote[0].reason).toBe("");
+    // The generation that read the note before the purge writes now.
+    T.ratingAdjustment.push(adj("u-sam", "Form note in the chat: tired"));
+    T.sentNotification.push(ack(A_ID, "Noted: -1 for Sam Sample (tired) in Tuesday's game."));
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ cleared: 1 });
+    expect(T.ratingAdjustment[0].reason).toBe("");
+    expect(T.sentNotification[0].text).toBeNull();
+    // Idempotent.
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ cleared: 0 });
+  });
   it("and when the LATER message (the note's last source) is deleted, the reason goes too", async () => {
     const LATER_BARE = "LATERID00002";
     T.formNote.push(row({ orgId: "org-a", matchId: "m3", userId: "u-sam", delta: -2, reason: "tired", sourceMessageId: `false_${G}_${LATER_BARE}_${SAM_PN}@c.us`, reasonSourceMessageId: `false_${G}_EARLIER00002_${SAM_PN}@c.us`, createdAt: ago(9), updatedAt: ago(2) }));
@@ -516,13 +542,28 @@ describe("the other stores a message's words reach", () => {
     expect(JSON.stringify([T.sentNotification, T.adminGroupMessage])).not.toContain("Door Code Dave");
   });
 
-  it("an unsent reminder DM asked for in the message is cancelled; one already sent is left", async () => {
+  it("a DELETE: an unsent reminder DM asked for in the message is cancelled; a SENT one, and a sent month-seed draft, keep their rows but lose their words; another message's stays", async () => {
     T.botJob.push(
       row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "⏰ Reminder: door code 4321", aboutKey: `asked-reminder:${SAM_ID}`, sentAt: null, createdAt: ago(5) }),
+      row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "⏰ Reminder: door code 4321 (sent)", aboutKey: `asked-reminder:${SAM_ID}`, sentAt: ago(1), createdAt: ago(5) }),
+      row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "Your month: Door Code Dave", aboutKey: `month-seed-of:${SAM_ID}`, sentAt: ago(1), createdAt: ago(5) }),
       row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "⏰ Reminder: an old one", aboutKey: `asked-reminder:false_${G}_OTHERID999_${SAM_PN}@c.us`, sentAt: null, createdAt: ago(5) }),
     );
     await applyMessageChange(byAuthor, NOW);
-    expect(T.botJob.map((j) => j.text)).toEqual(["⏰ Reminder: an old one"]);
+    expect(T.botJob.map((j) => [j.text, j.sentAt !== null])).toEqual([
+      ["", true],
+      ["", true],
+      ["⏰ Reminder: an old one", false],
+    ]);
+  });
+
+  it("an EDIT leaves the reminder DMs, sent or not, as they are (MatchTime acted on what it read)", async () => {
+    T.botJob.push(
+      row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "⏰ Reminder: bring the bibs", aboutKey: `asked-reminder:${SAM_ID}`, sentAt: null, createdAt: ago(5) }),
+      row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "⏰ Reminder: bring the bibs (sent)", aboutKey: `asked-reminder:${SAM_ID}`, sentAt: ago(1), createdAt: ago(5) }),
+    );
+    await applyMessageChange(editBy(SAM), NOW);
+    expect(T.botJob.map((j) => j.text)).toEqual(["⏰ Reminder: bring the bibs", "⏰ Reminder: bring the bibs (sent)"]);
   });
 
   it("mention rows go only with their own author's (or an admin's) change: a member reusing another member's bare id removes nothing of theirs", async () => {

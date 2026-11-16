@@ -10,9 +10,11 @@
 -- Also one index on "GroupMessage" ("waChatId", "createdAt"): the purge and
 -- the sweep find a message's archived copy by its group, not by a scan.
 --
--- And one nullable column on "FormNote", "reasonSourceMessageId": the
--- message that WROTE a note's reason, kept when a later message only changes
--- the amount, so a delete or an edit of it still clears the reason.
+-- And two columns on "FormNote": "reasonSourceMessageId", the message that
+-- WROTE a note's reason (kept when a later message only changes the
+-- amount), and "reasonMessageIds", every message whose words were ever in
+-- the note or its acknowledgement, so a delete or an edit of any of them
+-- clears every copy.
 --
 --   npx tsx scripts/apply-deleted-message-migration.ts            # DRY RUN
 --   npx tsx scripts/apply-deleted-message-migration.ts --apply    # do it
@@ -43,9 +45,9 @@
 -- Additive. One NEW table "DeletedMessage" (no foreign key), its unique
 -- index and two indexes; one NEW index on the existing "GroupMessage" (a
 -- plain CREATE INDEX: it holds a write lock on "GroupMessage" while it
--- builds, which on the archive's size is well under a second); one NEW
--- nullable column on "FormNote" (no default, no rewrite: instant). No row
--- changes.
+-- builds, which on the archive's size is well under a second); two NEW
+-- columns on "FormNote" (one nullable, one with a constant default: no
+-- rewrite, instant). No row changes.
 --
 -- IDEMPOTENT: IF NOT EXISTS everywhere. ONE transaction; SET LOCAL only.
 --
@@ -57,6 +59,7 @@
 --   DROP TABLE IF EXISTS "DeletedMessage";
 --   DROP INDEX IF EXISTS "GroupMessage_waChatId_createdAt_idx";
 --   ALTER TABLE "FormNote" DROP COLUMN IF EXISTS "reasonSourceMessageId";
+--   ALTER TABLE "FormNote" DROP COLUMN IF EXISTS "reasonMessageIds";
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -82,5 +85,6 @@ CREATE INDEX IF NOT EXISTS "DeletedMessage_lastChangeAt_idx" ON "DeletedMessage"
 CREATE INDEX IF NOT EXISTS "DeletedMessage_enforcedAt_lastChangeAt_idx" ON "DeletedMessage"("enforcedAt", "lastChangeAt");
 CREATE INDEX IF NOT EXISTS "GroupMessage_waChatId_createdAt_idx" ON "GroupMessage"("waChatId", "createdAt");
 ALTER TABLE "FormNote" ADD COLUMN IF NOT EXISTS "reasonSourceMessageId" TEXT;
+ALTER TABLE "FormNote" ADD COLUMN IF NOT EXISTS "reasonMessageIds" TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 COMMIT;

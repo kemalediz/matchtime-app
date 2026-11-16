@@ -328,10 +328,10 @@ interface Copies {
   archived: Array<{ id: string; waMessageId: string; senderPhone: string | null }>;
   hq: Array<{ id: string; waMessageId: string; prefix: string; text: string; pipelineTrace: unknown }>;
   mentions: Array<{ id: string; waMessageId: string }>;
-  notes: Array<{ id: string; orgId: string; sourceMessageId: string; sourceIds: string[]; matchId: string; userId: string; delta: number; reason: string }>;
+  notes: Array<{ id: string; orgId: string; matched: string; current: boolean; heldIds: string[]; matchId: string; userId: string; reason: string }>;
   squadProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
   feeProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
-  reminders: Array<{ id: string; storedId: string }>;
+  reminders: Array<{ id: string; storedId: string; sent: boolean }>;
 }
 
 /** The clubs a group belongs to (its players' group or its HQ). */
@@ -379,21 +379,24 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
       select: { id: true, waMessageId: true },
     })
   ).filter((r) => isStoredIdOf(r.waMessageId, chatId, messageId, { bare: true }));
-  // A form note's reason, when this message set the note last OR wrote its
-  // reason (a later message may only have changed the amount).
+  // A form note whose words this message ever held (round 11): found by the
+  // messages the note RECORDS (`reasonMessageIds`, the ones that set the
+  // note last or wrote its reason), never by its current text, so a note
+  // whose reason was replaced, or already cleared, still leads to the copies
+  // of the old words (its rating adjustment row, MatchTime's acks). The
+  // club's notes of the window, checked exactly.
   const notes = (
     await tx.formNote.findMany({
-      where: {
-        orgId: { in: orgIds },
-        reason: { not: "" },
-        OR: [...idWhere(chatId, messageId, { field: "sourceMessageId" }), ...idWhere(chatId, messageId, { field: "reasonSourceMessageId" })],
-      },
-      select: { id: true, orgId: true, sourceMessageId: true, reasonSourceMessageId: true, matchId: true, userId: true, delta: true, reason: true },
+      where: { orgId: { in: orgIds }, updatedAt: { gte: since } },
+      select: { id: true, orgId: true, sourceMessageId: true, reasonSourceMessageId: true, reasonMessageIds: true, matchId: true, userId: true, reason: true },
     })
   ).flatMap((r) => {
-    const ids = [r.sourceMessageId, r.reasonSourceMessageId].filter((x): x is string => !!x);
-    const src = ids.find((x) => isStoredIdOf(x, chatId, messageId));
-    return src ? [{ id: r.id, orgId: r.orgId, sourceMessageId: src, sourceIds: [...new Set(ids)], matchId: r.matchId, userId: r.userId, delta: r.delta, reason: r.reason }] : [];
+    const held = [...new Set([r.sourceMessageId, r.reasonSourceMessageId, ...(r.reasonMessageIds ?? [])].filter((x): x is string => !!x))];
+    const matched = held.find((x) => isStoredIdOf(x, chatId, messageId));
+    if (!matched) return [];
+    // Its CURRENT reason is this message's words when this message set the note last or wrote that reason.
+    const current = [r.sourceMessageId, r.reasonSourceMessageId].some((x) => !!x && isStoredIdOf(x, chatId, messageId));
+    return [{ id: r.id, orgId: r.orgId, matched, current, heldIds: held, matchId: r.matchId, userId: r.userId, reason: r.reason }];
   });
   // What MatchTime was about to do because of the message: only a delete cancels it.
   if (!withMade) return { analyzed, archived, hq, mentions, notes, squadProposals: [], feeProposals: [], reminders: [] };
@@ -406,14 +409,15 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
   );
   const reminders = (
     await tx.botJob.findMany({
-      where: { orgId: { in: orgIds }, kind: "dm", sentAt: null, OR: SOURCE_ABOUT_PREFIXES.flatMap((prefix) => idWhere(chatId, messageId, { prefix, field: "aboutKey" })) },
-      select: { id: true, aboutKey: true },
+      // Sent or not (round 11): an unsent one is cancelled, a sent one loses its words. One already blank is done.
+      where: { orgId: { in: orgIds }, kind: "dm", NOT: { text: "" }, OR: SOURCE_ABOUT_PREFIXES.flatMap((prefix) => idWhere(chatId, messageId, { prefix, field: "aboutKey" })) },
+      select: { id: true, aboutKey: true, sentAt: true },
     })
   )
     .map((r) => {
       const key = r.aboutKey ?? "";
       const prefix = SOURCE_ABOUT_PREFIXES.find((x) => key.startsWith(x)) ?? "";
-      return { id: r.id, storedId: key.slice(prefix.length) };
+      return { id: r.id, storedId: key.slice(prefix.length), sent: r.sentAt !== null };
     })
     .filter((r) => isStoredIdOf(r.storedId, chatId, messageId));
   return { analyzed, archived, hq, mentions, notes, squadProposals, feeProposals, reminders };
@@ -505,27 +509,28 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   // DELETE removes it; an edit keeps it (who was tagged is no words).
   const mentionsGone = c.mentions.filter((r) => mode(r.waMessageId) === "delete");
   if (mentionsGone.length) out.mentions += (await tx.messageMentions.deleteMany({ where: { id: { in: mentionsGone.map((r) => r.id) } } })).count;
-  const notesOk = c.notes.filter((r) => applies(r.sourceMessageId));
-  out.refused += c.notes.length - notesOk.length;
-  if (notesOk.length) {
-    out.notes += (await tx.formNote.updateMany({ where: { id: { in: notesOk.map((r) => r.id) } }, data: { reason: "" } })).count;
-    for (const n of notesOk) {
-      // Team generation copies the reason into the rating adjustment's audit
-      // row, formatted (`form-note-rules.ts` `formNoteReason`, through
-      // `formNotesWin`): that exact string for that player in that match, and
-      // nothing looser, so the adjuster's own rows are never touched.
-      const copied = forms.formNoteReason({ delta: forms.clampFormDelta(n.delta).delta, reason: n.reason });
-      await tx.ratingAdjustment.updateMany({ where: { matchId: n.matchId, userId: n.userId, reason: copied }, data: { reason: "" } });
-      // MatchTime's acknowledgement ("Noted: -0.5 for Pete Power (tired) ..."),
-      // claimed under the message it answered (`group-reply-claims.ts`): the
-      // note's reason, MatchTime's own copy of that exact string, goes from it.
-      const keys = n.sourceIds.flatMap((id) => [groupReplyKey(n.orgId, id), hqReplyKey(n.orgId, id)]);
-      const acks = await tx.sentNotification.findMany({ where: { key: { in: keys } }, select: { id: true, text: true } });
-      for (const a of acks) {
-        const text = withoutReason(a.text, n.reason);
-        if (text !== a.text) await tx.sentNotification.update({ where: { id: a.id }, data: { text } });
-      }
+  // Form notes (round 11), each by the messages it records. Idempotent: the
+  // request's own clear-after-write and the sweep run it again, so a copy
+  // team generation writes after the purge is cleaned at the next run.
+  for (const n of c.notes) {
+    if (!applies(n.matched)) {
+      if (n.reason !== "") out.refused++;
+      continue;
     }
+    // The note's reason, when it is this message's words.
+    if (n.current && n.reason !== "") {
+      out.notes += (await tx.formNote.updateMany({ where: { id: n.id, NOT: { reason: "" } }, data: { reason: "" } })).count;
+    }
+    // EVERY copy team generation made of a note's reason for that player in
+    // that match: only `formNoteReason` writes this prefix, so the rating
+    // adjuster's own rows are never touched, and no text is rebuilt.
+    out.notes += (
+      await tx.ratingAdjustment.updateMany({ where: { matchId: n.matchId, userId: n.userId, reason: { startsWith: forms.FORM_NOTE_REASON_PREFIX } }, data: { reason: "" } })
+    ).count;
+    // MatchTime's acknowledgements ("Noted: -0.5 for Pete Power (tired) ..."),
+    // claimed under each message the note records: the WHOLE text goes.
+    const keys = n.heldIds.flatMap((id) => [groupReplyKey(n.orgId, id), hqReplyKey(n.orgId, id)]);
+    out.notes += (await tx.sentNotification.updateMany({ where: { key: { in: keys }, NOT: { text: null } }, data: { text: null } })).count;
   }
   // FOR A DELETE ONLY: what MatchTime was about to do because of the message.
   // An HQ proposal made from it (a pasted list, a fee): an open one is
@@ -568,7 +573,11 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   if (asked.length) await tx.sentNotification.updateMany({ where: { key: { in: [...new Set(asked)] } }, data: { text: null } });
   const remindersOk = c.reminders.filter((r) => cancels(r.storedId));
   out.refused += c.reminders.length - remindersOk.length;
-  if (remindersOk.length) await tx.botJob.deleteMany({ where: { id: { in: remindersOk.map((r) => r.id) }, sentAt: null } });
+  const unsent = remindersOk.filter((r) => !r.sent).map((r) => r.id);
+  if (unsent.length) await tx.botJob.deleteMany({ where: { id: { in: unsent }, sentAt: null } });
+  // Sent already: the row stays (the reply and ack history), its words go.
+  const sent = remindersOk.filter((r) => r.sent).map((r) => r.id);
+  if (sent.length) await tx.botJob.updateMany({ where: { id: { in: sent } }, data: { text: "" } });
   return deferred;
 }
 
@@ -601,16 +610,9 @@ interface Clarification {
   ttlMs: number;
 }
 
-/** How team generation formats a note's reason (`form-note-rules.ts`). */
+/** How team generation marks a note's copy on the rating adjustment row (`form-note-rules.ts`). */
 interface FormNoteFormat {
-  formNoteReason(note: { delta: number; reason: string }): string;
-  clampFormDelta(raw: number): { delta: number };
-}
-
-/** PURE. MatchTime's own text with a note's reason taken out ("... (tired) in" becomes "... in"). */
-function withoutReason(text: string | null, reason: string): string | null {
-  if (!text || !reason) return text;
-  return text.split(` (${reason})`).join("").split(`(${reason})`).join("").split(reason).join("");
+  FORM_NOTE_REASON_PREFIX: string;
 }
 
 /** One message's change, cleared in one transaction. True when a copy was left for later (see `clearCopies`). */

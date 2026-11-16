@@ -156,11 +156,16 @@ export function formNoteSavedReply(args: {
   return lines.join(" ");
 }
 
+/** What every `RatingAdjustment.reason` a note decided starts with, and
+ *  nothing else writes: how a delete or an edit of the note's message finds
+ *  the copies of its words (`message-change.ts`). */
+export const FORM_NOTE_REASON_PREFIX = "Form note in the chat:";
+
 /** The reason on the `RatingAdjustment` audit row for a player whose
  *  stored note decided their adjustment. */
 export function formNoteReason(note: { delta: number; reason: string }): string {
-  if (note.delta === 0) return "Form note in the chat: no adjustment";
-  return note.reason ? `Form note in the chat: ${note.reason}` : "Form note in the chat";
+  if (note.delta === 0) return `${FORM_NOTE_REASON_PREFIX} no adjustment`;
+  return note.reason ? `${FORM_NOTE_REASON_PREFIX} ${note.reason}` : "Form note in the chat";
 }
 
 /**

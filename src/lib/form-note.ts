@@ -55,13 +55,18 @@ export const prismaFormNoteStore: FormNoteStore = {
     const { db } = await import("./db");
     const before = await db.formNote.findUnique({
       where: { matchId_userId: { matchId: note.matchId, userId: note.userId } },
-      select: { reason: true, sourceMessageId: true, reasonSourceMessageId: true },
+      select: { reason: true, sourceMessageId: true, reasonSourceMessageId: true, reasonMessageIds: true },
     });
     const reason = note.reason || before?.reason || "";
     // The message that WROTE the reason (PR #606): a message that only
     // changes the amount keeps the earlier one, so a delete or an edit of
     // it still clears the reason (`message-change.ts`).
     const reasonSourceMessageId = note.reason ? note.sourceMessageId : reason ? (before?.reasonSourceMessageId ?? before?.sourceMessageId ?? null) : null;
+    // Every message whose words are, or were, in the note or MatchTime's
+    // acknowledgement of it (that repeats the reason): this one when the note
+    // has a reason now, after every earlier one.
+    const earlier = before ? (before.reasonMessageIds?.length ? before.reasonMessageIds : before.reason ? [before.reasonSourceMessageId ?? before.sourceMessageId].filter((x): x is string => !!x) : []) : [];
+    const reasonMessageIds = [...new Set([...earlier, ...(reason && note.sourceMessageId ? [note.sourceMessageId] : [])])];
     await db.formNote.upsert({
       where: { matchId_userId: { matchId: note.matchId, userId: note.userId } },
       create: {
@@ -73,8 +78,9 @@ export const prismaFormNoteStore: FormNoteStore = {
         setByUserId: note.setByUserId,
         sourceMessageId: note.sourceMessageId,
         reasonSourceMessageId,
+        reasonMessageIds,
       },
-      update: { delta: note.delta, reason, setByUserId: note.setByUserId, sourceMessageId: note.sourceMessageId, reasonSourceMessageId },
+      update: { delta: note.delta, reason, setByUserId: note.setByUserId, sourceMessageId: note.sourceMessageId, reasonSourceMessageId, reasonMessageIds },
     });
     return { existed: before !== null, reason };
   },

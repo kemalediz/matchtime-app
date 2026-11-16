@@ -2632,6 +2632,12 @@ model FormNote {
   /// message that only changes the amount moves `sourceMessageId` on, not
   /// this. A delete or an edit of either message clears the reason.
   reasonSourceMessageId String?
+  /// EVERY message whose words were ever in this note or MatchTime's
+  /// acknowledgement of it: each message that saved the note while it had a
+  /// reason (2026-11-16, PR #606). A delete or an edit of any of them clears
+  /// the copies (the rating adjustment's, the acks), found by these ids,
+  /// never by the current text.
+  reasonMessageIds String[] @default([])
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 

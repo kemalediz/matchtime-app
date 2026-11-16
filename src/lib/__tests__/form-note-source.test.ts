@@ -33,16 +33,20 @@ beforeEach(() => {
 describe("prismaFormNoteStore", () => {
   it("the message that wrote the reason stays its source when a later message only changes the amount", async () => {
     await prismaFormNoteStore.save(note({ reason: "tired", sourceMessageId: "msg-A" }));
-    expect(T.formNote[0]).toMatchObject({ reason: "tired", sourceMessageId: "msg-A", reasonSourceMessageId: "msg-A" });
+    expect(T.formNote[0]).toMatchObject({ reason: "tired", sourceMessageId: "msg-A", reasonSourceMessageId: "msg-A", reasonMessageIds: ["msg-A"] });
+    // B only changes the amount: its acknowledgement repeats A's reason, so B's id joins the list.
     await prismaFormNoteStore.save(note({ delta: -2, reason: "", sourceMessageId: "msg-B" }));
-    expect(T.formNote[0]).toMatchObject({ delta: -2, reason: "tired", sourceMessageId: "msg-B", reasonSourceMessageId: "msg-A" });
-    // A new reason moves it on.
+    expect(T.formNote[0]).toMatchObject({ delta: -2, reason: "tired", sourceMessageId: "msg-B", reasonSourceMessageId: "msg-A", reasonMessageIds: ["msg-A", "msg-B"] });
+    // A new reason moves the current source on; every earlier id stays listed (their copies may hold the old words).
     await prismaFormNoteStore.save(note({ delta: -1, reason: "knee", sourceMessageId: "msg-C" }));
-    expect(T.formNote[0]).toMatchObject({ reason: "knee", sourceMessageId: "msg-C", reasonSourceMessageId: "msg-C" });
+    expect(T.formNote[0]).toMatchObject({ reason: "knee", sourceMessageId: "msg-C", reasonSourceMessageId: "msg-C", reasonMessageIds: ["msg-A", "msg-B", "msg-C"] });
+    // The same message again is listed once.
+    await prismaFormNoteStore.save(note({ delta: -1, reason: "knee", sourceMessageId: "msg-C" }));
+    expect(T.formNote[0].reasonMessageIds).toEqual(["msg-A", "msg-B", "msg-C"]);
   });
 
   it("a note with no reason has no reason source", async () => {
     await prismaFormNoteStore.save(note({ reason: "", sourceMessageId: "msg-D" }));
-    expect(T.formNote[0]).toMatchObject({ reason: "", sourceMessageId: "msg-D", reasonSourceMessageId: null });
+    expect(T.formNote[0]).toMatchObject({ reason: "", sourceMessageId: "msg-D", reasonSourceMessageId: null, reasonMessageIds: [] });
   });
 });
