@@ -74,9 +74,11 @@ import {
   adjustForServer,
   isDeletedLocally,
   restoreMessageChanges,
+  replacePendingWithEdit,
+  isRevokedLocally,
   whenFlushIdle,
 } from "./smart-analysis.js";
-import { bodyForServer, handleMessageChange } from "./message-change.js";
+import { bareOf, bodyForServer, handleMessageChange } from "./message-change.js";
 import { createMessageChangeOutbox, outboxPath } from "./message-change-outbox.js";
 import { jsonFileIO } from "./baileys/json-file.js";
 import { config } from "./config.js";
@@ -575,7 +577,34 @@ async function main() {
   messageChanges.start();
   console.log(`[message-change] outbox read back: ${messageChanges.pending()} change(s) waiting for the server`);
 
+  // Each inbound message's own handler, while it runs, by group and bare id:
+  // an author's edit waits for its original's handler to finish, so the
+  // original is in the batch before the edit looks for it there. The driver
+  // hands the original up before its edit, on one chain, so the original's
+  // entry is always here first (2026-11-15).
+  const inboundRunning = new Map<string, Promise<void>>();
+  const inboundKey = (groupId: string, bare: string) => `${groupId}|${bare}`;
   driver.onMessage(async (msg) => {
+    let finished!: () => void;
+    const running = new Promise<void>((r) => (finished = r));
+    const runningKey = (() => {
+      try {
+        const from = asString(safeRead(msg, "from")) ?? "";
+        const bare = bareOf(resolveWaMessageId(msg).waMessageId);
+        return from.endsWith("@g.us") && bare ? inboundKey(from, bare) : null;
+      } catch {
+        return null;
+      }
+    })();
+    if (runningKey) inboundRunning.set(runningKey, running);
+    try {
+      await handleInbound(msg);
+    } finally {
+      finished();
+      if (runningKey && inboundRunning.get(runningKey) === running) inboundRunning.delete(runningKey);
+    }
+  });
+  async function handleInbound(msg: Parameters<Parameters<typeof driver.onMessage>[0]>[0]): Promise<void> {
     try {
       // Read EVERY headline field through one total helper.
       //
@@ -719,13 +748,15 @@ async function main() {
           isAdminGroup,
           addAdminGroup,
           // Held to the Pi's record of deletes and edits (2026-11-15): a
-          // deleted message is not forwarded, an edited one goes with its
-          // new words, a quote of a deleted one without its words.
+          // message deleted, or edited after it was sent, is not forwarded;
+          // a quote of one its author or an admin took back goes without
+          // its words.
           read: async () => {
             const m = await readGroupMessageForServer(driver, msg);
             return m ? adjustForServer(m) : null;
           },
-          isDeleted: (id, phone) => isDeletedLocally(head.from, id, phone),
+          // Only a DELETE takes the ✅ away; an edit keeps it.
+          isDeleted: (id, phone) => isRevokedLocally(head.from, id, phone),
           postAdminGroupMessage,
           postAdminGroupLink,
           reply: (text) => driver.sendText(head.from, text),
@@ -820,7 +851,7 @@ async function main() {
     } catch (err) {
       console.error("message handler failed:", err);
     }
-  });
+  }
 
   // A message that could not be decrypted and never came back (Baileys
   // only). The driver has already logged the CRITICAL line with the id,
@@ -831,11 +862,23 @@ async function main() {
   });
 
   // A message deleted for everyone, or edited (2026-11-15, Baileys only).
-  // HOUSEKEEPING ONLY: its words leave the Pi's batch and recent chat and
-  // every store the server keeps, or an edit's replace them. Nothing is
-  // analysed, sent, replied to or reacted to (message-change.ts).
+  // HOUSEKEEPING ONLY: a delete, or an edit of a message already sent, takes
+  // its words out of the Pi's batch and recent chat and every store the
+  // server keeps; an author's edit of a message still waiting replaces it
+  // in the batch, to be analysed once. Nothing is sent, replied to or
+  // reacted to here (message-change.ts).
   driver.onMessageChange?.(async (change) => {
     await handleMessageChange(change, {
+      waitForInbound: async (groupId, messageId) => {
+        const running = inboundRunning.get(inboundKey(groupId, messageId));
+        if (running) await Promise.race([running, new Promise<void>((r) => setTimeout(r, 30_000))]);
+      },
+      // An edit's new content, read exactly as an inbound message is.
+      readEdit: async (view) => {
+        const r = await readGroupMessageForServer(driver, view);
+        return r ? { text: r.text, botMentioned: r.botMentioned, mentions: r.mentions, mentionNames: r.mentionNames } : null;
+      },
+      replacePending: replacePendingWithEdit,
       applyLocally: applyMessageChangeLocally,
       record: (c) => messageChanges.record(c),
       attempt: (key) => messageChanges.attempt(key),

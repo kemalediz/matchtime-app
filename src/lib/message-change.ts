@@ -37,6 +37,14 @@
  * Anything else is recorded (it can be checked again when the message
  * turns up) and applies to nothing.
  *
+ * THE DOOR AND AN EDIT (round 4): an author's edit to a message the Pi has
+ * NOT sent for analysis yet replaces it in the Pi's waiting batch (the
+ * original words never leave the Pi), and the Pi posts nothing for it. An
+ * edit to a message already sent is posted here and purges it. So the
+ * analyze door leaves out only a DELETED message; a batch carrying an
+ * edited one carries what the Pi holds now, and clear-after-write still
+ * purges any copy stored under an edited tombstone.
+ *
  * THE STORES OF A MEMBER'S WORDS, and what an applying change does (one
  * transaction per message, so a retry finds it whole or untouched):
  *
@@ -49,7 +57,13 @@
  *       squad-from-list reader leaves an empty body out.
  *   AdminGroupMessage HQ's log (`<id>`) and the players' group's organiser
  *       lines (`group:<id>`): DELETED, trace and hqOutcome with them.
- *   MessageMentions   deleted.
+ *   MessageMentions   deleted, each row by its own id's author.
+ *   AdminSquadProposal / AdminFeeProposal  an HQ proposal made from the
+ *       message: an open one cancelled (outcome "source-deleted", so a later
+ *       YES applies nothing); its copied names, month seed and fee text
+ *       cleared.
+ *   BotJob            an unsent reminder DM the message asked for
+ *       (`aboutKey` "asked-reminder:<id>"): cancelled.
  *
  * MATCHED BY WHATSAPP ID AND GROUP, NEVER BY TEXT (`isStoredIdOf`). Every
  * lookup is narrowed by an index: the group (AnalyzedMessage.groupId,
@@ -97,11 +111,13 @@ export interface MessageChangeResult {
   refused: number;
 }
 
-/** What a tombstone says about who changed the message. */
+/** What a tombstone says about who changed the message, and how. */
 export interface Tombstone {
   byAdmin: boolean;
   senderJids: string[];
   senderPhones: string[];
+  /** "deleted" once any delete was seen, else "edited". */
+  reason?: string;
 }
 
 const digits = (v: unknown): string => (typeof v === "string" ? v.replace(/\D/g, "") : "");
@@ -202,13 +218,20 @@ export function deleteApplies(
 // ── The stores ─────────────────────────────────────────────────────────
 
 /** The models a transaction here touches (the extended client's own delegates). */
-type Tx = Pick<typeof db, "analyzedMessage" | "groupMessage" | "adminGroupMessage" | "messageMentions" | "deletedMessage" | "organisation">;
+type Tx = Pick<
+  typeof db,
+  "analyzedMessage" | "groupMessage" | "adminGroupMessage" | "messageMentions" | "deletedMessage" | "organisation" | "adminSquadProposal" | "adminFeeProposal" | "botJob"
+>;
 
-function idWhere(chatId: string, messageId: string, opts: { prefix?: string; bare?: boolean } = {}) {
+/** The prefix of a reminder DM's `BotJob.aboutKey`: the message that asked for it (`owner-deps.ts`). */
+export const REMINDER_ABOUT_PREFIX = "asked-reminder:";
+
+function idWhere(chatId: string, messageId: string, opts: { prefix?: string; bare?: boolean; field?: string } = {}) {
   const f = storedIdForms(chatId, messageId, opts.prefix ?? "");
+  const field = opts.field ?? "waMessageId";
   return [
-    { waMessageId: { in: opts.bare ? [...f.exact, messageId] : f.exact } },
-    ...f.prefixes.map((p) => ({ waMessageId: { startsWith: p } })),
+    { [field]: { in: opts.bare ? [...f.exact, messageId] : f.exact } },
+    ...f.prefixes.map((p) => ({ [field]: { startsWith: p } })),
   ];
 }
 
@@ -217,6 +240,14 @@ interface Copies {
   archived: Array<{ id: string; waMessageId: string; senderPhone: string | null }>;
   hq: Array<{ id: string; waMessageId: string; prefix: string }>;
   mentions: Array<{ id: string; waMessageId: string }>;
+  squadProposals: Array<{ id: string; waMessageId: string; resolvedAt: Date | null }>;
+  feeProposals: Array<{ id: string; waMessageId: string; resolvedAt: Date | null }>;
+  reminders: Array<{ id: string; storedId: string }>;
+}
+
+/** The clubs a group belongs to (its players' group or its HQ). */
+async function clubsOf(tx: Pick<typeof db, "organisation">, chatId: string): Promise<string[]> {
+  return (await tx.organisation.findMany({ where: { OR: [{ whatsappGroupId: chatId }, { adminGroupId: chatId }] }, select: { id: true } })).map((o) => o.id);
 }
 
 /**
@@ -224,11 +255,8 @@ interface Copies {
  * each checked exactly. Narrowed by indexes: the group, its club(s), the
  * time.
  */
-async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date): Promise<Copies> {
+async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, orgIds: string[]): Promise<Copies> {
   const since = new Date(at.getTime() - WINDOW_MS);
-  const orgIds = (
-    await tx.organisation.findMany({ where: { OR: [{ whatsappGroupId: chatId }, { adminGroupId: chatId }] }, select: { id: true } })
-  ).map((o) => o.id);
   const analyzed = (
     await tx.analyzedMessage.findMany({
       where: { groupId: chatId, createdAt: { gte: since }, OR: idWhere(chatId, messageId, { bare: true }) },
@@ -243,7 +271,8 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date): Pr
       select: { id: true, waMessageId: true, senderPhone: true, body: true },
     })
   ).filter((r) => isStoredIdOf(r.waMessageId, chatId, messageId, { bare: true }) && r.body !== "");
-  if (orgIds.length === 0) return { analyzed, archived, hq: [], mentions: [] };
+  const none = { hq: [], mentions: [], squadProposals: [], feeProposals: [], reminders: [] };
+  if (orgIds.length === 0) return { analyzed, archived, ...none };
   const hq = (
     await tx.adminGroupMessage.findMany({
       where: {
@@ -263,11 +292,26 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date): Pr
       select: { id: true, waMessageId: true },
     })
   ).filter((r) => isStoredIdOf(r.waMessageId, chatId, messageId, { bare: true }));
-  return { analyzed, archived, hq, mentions };
+  const proposalWhere = { orgId: { in: orgIds }, createdAt: { gte: since }, OR: idWhere(chatId, messageId) };
+  const squadProposals = (await tx.adminSquadProposal.findMany({ where: proposalWhere, select: { id: true, waMessageId: true, resolvedAt: true } })).filter((r) =>
+    isStoredIdOf(r.waMessageId, chatId, messageId),
+  );
+  const feeProposals = (await tx.adminFeeProposal.findMany({ where: proposalWhere, select: { id: true, waMessageId: true, resolvedAt: true } })).filter((r) =>
+    isStoredIdOf(r.waMessageId, chatId, messageId),
+  );
+  const reminders = (
+    await tx.botJob.findMany({
+      where: { orgId: { in: orgIds }, kind: "dm", sentAt: null, OR: idWhere(chatId, messageId, { prefix: REMINDER_ABOUT_PREFIX, field: "aboutKey" }) },
+      select: { id: true, aboutKey: true },
+    })
+  )
+    .map((r) => ({ id: r.id, storedId: (r.aboutKey ?? "").slice(REMINDER_ABOUT_PREFIX.length) }))
+    .filter((r) => isStoredIdOf(r.storedId, chatId, messageId));
+  return { analyzed, archived, hq, mentions, squadProposals, feeProposals, reminders };
 }
 
 /** Take the words out of every copy a change applies to. Inside the caller's transaction. */
-async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombstone, c: Copies, out: MessageChangeResult): Promise<void> {
+async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombstone, c: Copies, out: MessageChangeResult, now: Date): Promise<void> {
   const applies = (storedId: string, storedPhone?: string | null, prefix = "") => deleteApplies(t, { storedId, chatId, messageId, prefix, storedPhone });
   const analyzedOk = c.analyzed.filter((r) => applies(r.waMessageId, r.authorPhone));
   out.refused += c.analyzed.length - analyzedOk.length;
@@ -282,51 +326,105 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   const hqOk = c.hq.filter((r) => applies(r.waMessageId, null, r.prefix));
   out.refused += c.hq.length - hqOk.length;
   if (hqOk.length) out.hq += (await tx.adminGroupMessage.deleteMany({ where: { id: { in: hqOk.map((r) => r.id) } } })).count;
-  // Who a message tagged has no author column: its own id's participant,
-  // or another copy's author, decides; an admin's delete always.
-  const authorised = t.byAdmin || analyzedOk.length > 0 || hqOk.length > 0 || archivedOk.length > 0 || c.mentions.some((r) => applies(r.waMessageId));
-  if (authorised && c.mentions.length) out.mentions += (await tx.messageMentions.deleteMany({ where: { id: { in: c.mentions.map((r) => r.id) } } })).count;
+  // Each mention row by its own id's author (the participant in it): a
+  // member who reuses another's bare id never removes the other's row.
+  const mentionsOk = c.mentions.filter((r) => applies(r.waMessageId));
+  if (mentionsOk.length) out.mentions += (await tx.messageMentions.deleteMany({ where: { id: { in: mentionsOk.map((r) => r.id) } } })).count;
+  // An HQ proposal made from the message (a pasted list, a fee): an open one
+  // is cancelled, so a later YES applies nothing, and its copied names,
+  // month seed and fee text go with every one.
+  const squadOk = c.squadProposals.filter((r) => applies(r.waMessageId));
+  if (squadOk.length) {
+    const open = squadOk.filter((r) => r.resolvedAt === null).map((r) => r.id);
+    if (open.length) await tx.adminSquadProposal.updateMany({ where: { id: { in: open }, resolvedAt: null }, data: { resolvedAt: now, outcome: "source-deleted" } });
+    await tx.adminSquadProposal.updateMany({ where: { id: { in: squadOk.map((r) => r.id) } }, data: { playingNewNames: [], reserveNewNames: [], monthSeed: Prisma.DbNull } });
+  }
+  const feeOk = c.feeProposals.filter((r) => applies(r.waMessageId));
+  if (feeOk.length) {
+    const open = feeOk.filter((r) => r.resolvedAt === null).map((r) => r.id);
+    if (open.length) await tx.adminFeeProposal.updateMany({ where: { id: { in: open }, resolvedAt: null }, data: { resolvedAt: now, outcome: "source-deleted" } });
+    await tx.adminFeeProposal.updateMany({ where: { id: { in: feeOk.map((r) => r.id) } }, data: { text: "" } });
+  }
+  // A reminder DM it asked for, not sent yet: cancelled (its note quotes the message).
+  const remindersOk = c.reminders.filter((r) => applies(r.storedId));
+  if (remindersOk.length) await tx.botJob.deleteMany({ where: { id: { in: remindersOk.map((r) => r.id) }, sentAt: null } });
+}
+
+/**
+ * The deleters' phones, widened through the club's LID map (the server's
+ * `loadKnownLids`, the same one the mention naming uses): an author whose
+ * copy is stored under a phone JID, deleting with only a LID, is matched.
+ */
+async function withKnownPhones(t: Tombstone, orgIds: string[]): Promise<Tombstone> {
+  const lids = t.senderJids.filter((j) => j.endsWith("@lid")).map((j) => j.split("@")[0]);
+  if (lids.length === 0 || orgIds.length === 0) return t;
+  try {
+    const { loadKnownLids } = await import("./known-lids");
+    const known = (await Promise.all(orgIds.map((o) => loadKnownLids(o)))).flat();
+    const phones = known.filter((k) => k.phone && lids.includes(k.lid.split("@")[0])).map((k) => digits(k.phone));
+    return phones.length ? { ...t, senderPhones: [...new Set([...t.senderPhones, ...phones])] } : t;
+  } catch {
+    return t;
+  }
 }
 
 /** One message's change, cleared in one transaction. */
-async function clearMessage(chatId: string, messageId: string, t: Tombstone, at: Date, out: MessageChangeResult): Promise<void> {
-  await db.$transaction(async (tx) => clearCopies(tx, chatId, messageId, t, await copiesOf(tx, chatId, messageId, at), out));
+async function clearMessage(chatId: string, messageId: string, t: Tombstone, at: Date, out: MessageChangeResult, now: Date): Promise<void> {
+  const orgIds = await clubsOf(db, chatId);
+  const widened = await withKnownPhones(t, orgIds);
+  await db.$transaction(async (tx) => clearCopies(tx, chatId, messageId, widened, await copiesOf(tx, chatId, messageId, at, orgIds), out, now));
 }
 
-/** The recorded change of one message, merged with any earlier one. Its own statement, committed before any clear. */
+async function markEnforced(chatId: string, messageIds: string[], now: Date): Promise<void> {
+  if (messageIds.length === 0) return;
+  await db.deletedMessage.updateMany({ where: { chatId, waMessageId: { in: messageIds } }, data: { enforcedAt: now } }).catch(() => {});
+}
+
+/**
+ * The recorded change of one message, merged with any earlier one IN ONE
+ * STATEMENT (an upsert whose UPDATE merges in SQL: byAdmin = old OR new,
+ * the senders unioned, "deleted" wins over "edited"), so two changes
+ * posted at once can never lose each other's values. Committed before any
+ * clear. A merge resets `enforcedAt`, so the change is cleared again.
+ */
 async function recordTombstone(input: MessageChangeInput, now: Date): Promise<Tombstone & { deletedAt: Date }> {
-  const where = { chatId_waMessageId: { chatId: input.chatId, waMessageId: input.messageId } };
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const cur = await db.deletedMessage.findUnique({ where, select: { byAdmin: true, reason: true, senderJids: true, senderPhones: true, deletedAt: true } });
-    const next = {
-      byAdmin: (cur?.byAdmin ?? false) || input.byAdmin,
-      reason: cur?.reason === "deleted" || input.kind === "revoke" ? "deleted" : "edited",
-      senderJids: [...new Set([...(cur?.senderJids ?? []), ...input.senderJids])],
-      senderPhones: [...new Set([...(cur?.senderPhones ?? []), ...(input.senderPhone ? [input.senderPhone] : [])])],
-    };
-    try {
-      if (cur) await db.deletedMessage.update({ where, data: next });
-      else await db.deletedMessage.create({ data: { chatId: input.chatId, waMessageId: input.messageId, ...next, deletedAt: now } });
-      return { ...next, deletedAt: cur?.deletedAt ?? now };
-    } catch (err) {
-      // Two changes of one message at once: the other created it; merge into it.
-      if (attempt === 0 && (err as { code?: string })?.code === "P2002") continue;
-      throw err;
-    }
-  }
-  throw new Error("tombstone not recorded");
+  const rows = (await db.$queryRawUnsafe(
+    `INSERT INTO "DeletedMessage" ("id", "chatId", "waMessageId", "byAdmin", "reason", "senderJids", "senderPhones", "deletedAt")
+     VALUES ($1, $2, $3, $4, $5, $6::text[], $7::text[], $8)
+     ON CONFLICT ("chatId", "waMessageId") DO UPDATE SET
+       "byAdmin" = "DeletedMessage"."byAdmin" OR EXCLUDED."byAdmin",
+       "reason" = CASE WHEN "DeletedMessage"."reason" = 'deleted' OR EXCLUDED."reason" = 'deleted' THEN 'deleted' ELSE 'edited' END,
+       "senderJids" = ARRAY(SELECT DISTINCT x FROM unnest(COALESCE("DeletedMessage"."senderJids", '{}'::text[]) || EXCLUDED."senderJids") AS x),
+       "senderPhones" = ARRAY(SELECT DISTINCT x FROM unnest(COALESCE("DeletedMessage"."senderPhones", '{}'::text[]) || EXCLUDED."senderPhones") AS x),
+       "enforcedAt" = NULL
+     RETURNING "byAdmin", "reason", "senderJids", "senderPhones", "deletedAt"`,
+    `dm_${now.getTime().toString(36)}_${Math.random().toString(36).slice(2, 12)}`,
+    input.chatId,
+    input.messageId,
+    input.byAdmin,
+    input.kind === "revoke" ? "deleted" : "edited",
+    input.senderJids,
+    input.senderPhone ? [input.senderPhone] : [],
+    now,
+  )) as Array<{ byAdmin: boolean; reason: string; senderJids: string[] | null; senderPhones: string[] | null; deletedAt: Date }>;
+  const r = rows[0];
+  if (!r) throw new Error("tombstone not recorded");
+  return { byAdmin: r.byAdmin, reason: r.reason, senderJids: r.senderJids ?? [], senderPhones: r.senderPhones ?? [], deletedAt: new Date(r.deletedAt) };
 }
 
 /**
  * Apply a delete or an author's edit: record it, then clear every copy it
- * applies to. Idempotent: a retry finds the same rows already cleared, or
- * none. Throws only on a database failure, which the route turns into a
- * 500 the Pi retries.
+ * applies to. Only for a group linked to a club (nothing is stored for any
+ * other). Idempotent: a retry finds the same rows already cleared, or none.
+ * Throws only on a database failure, which the route turns into a 500 the
+ * Pi retries.
  */
 export async function applyMessageChange(input: MessageChangeInput, now: Date = new Date()): Promise<MessageChangeResult> {
   const out = empty();
+  if ((await clubsOf(db, input.chatId)).length === 0) return out;
   const t = await recordTombstone({ ...input, byAdmin: input.kind === "revoke" && input.byAdmin }, now);
-  await clearMessage(input.chatId, input.messageId, t, now, out);
+  await clearMessage(input.chatId, input.messageId, t, now, out, now);
+  await markEnforced(input.chatId, [input.messageId], now);
   return out;
 }
 
@@ -339,17 +437,21 @@ async function tombstonesFor(chatId: string, bareIds: string[]): Promise<Map<str
   try {
     const rows = await db.deletedMessage.findMany({
       where: { chatId, waMessageId: { in: ids } },
-      select: { waMessageId: true, byAdmin: true, senderJids: true, senderPhones: true, deletedAt: true },
+      select: { waMessageId: true, byAdmin: true, reason: true, senderJids: true, senderPhones: true, deletedAt: true },
     });
-    return new Map(rows.map((r) => [r.waMessageId, { byAdmin: r.byAdmin, senderJids: r.senderJids, senderPhones: r.senderPhones, deletedAt: r.deletedAt }]));
+    return new Map(rows.map((r) => [r.waMessageId, { byAdmin: r.byAdmin, reason: r.reason, senderJids: r.senderJids, senderPhones: r.senderPhones, deletedAt: r.deletedAt }]));
   } catch {
     return new Map();
   }
 }
 
 /**
- * The messages of a batch a recorded change applies to (by their stored
- * ids), so a door leaves them out before reading anything. Best-effort.
+ * The messages of a batch a recorded DELETE applies to (by their stored
+ * ids), so the door leaves them out before reading anything. An EDITED
+ * message is not left out: a batch carrying it carries what the Pi holds
+ * for it now (the Pi puts an author's edit into its waiting batch in place
+ * of the original, `smart-analysis.ts`), and clear-after-write still purges
+ * any copy stored under an edited one. Best-effort.
  */
 export async function deletedAmong(chatId: string, items: Array<{ id: string; authorPhone?: string | null }>): Promise<Set<string>> {
   const withBare = items.map((i) => ({ ...i, bare: bareIdOf(i.id) })).filter((i): i is typeof i & { bare: string } => !!i.bare);
@@ -357,17 +459,39 @@ export async function deletedAmong(chatId: string, items: Array<{ id: string; au
   const out = new Set<string>();
   for (const i of withBare) {
     const ts = t.get(i.bare);
-    if (ts && deleteApplies(ts, { storedId: i.id, chatId, messageId: i.bare, storedPhone: i.authorPhone ?? null })) out.add(i.id);
+    if (ts && ts.reason === "deleted" && deleteApplies(ts, { storedId: i.id, chatId, messageId: i.bare, storedPhone: i.authorPhone ?? null })) out.add(i.id);
   }
   return out;
+}
+
+/** The author of a stored message, from its stored copy's id (the participant) or phone. */
+async function storedAuthorOf(chatId: string, messageId: string): Promise<{ jids: string[]; phones: string[] }> {
+  try {
+    const rows = await db.analyzedMessage.findMany({
+      where: { groupId: chatId, OR: idWhere(chatId, messageId, { bare: true }) },
+      select: { waMessageId: true, authorPhone: true },
+      take: 5,
+    });
+    const jids: string[] = [];
+    const phones: string[] = [];
+    for (const r of rows) {
+      const p = participantPart(r.waMessageId, chatId, messageId);
+      if (p) jids.push(p);
+      if (digits(r.authorPhone)) phones.push(digits(r.authorPhone));
+    }
+    return { jids, phones };
+  } catch {
+    return { jids: [], phones: [] };
+  }
 }
 
 /**
  * A reply quoting a deleted or edited message carries no quote text, never
  * the Pi's copy: when the change came from a group admin, or from the
  * QUOTED message's author, matched by the quote's participant id (LID or
- * phone JID) or its phone. A change from anybody else (a forged delete)
- * leaves the quote. Best-effort.
+ * phone JID) or its phone. When the Pi could not name the quoted author,
+ * the stored copy of the quoted message names them. A change from anybody
+ * else (a forged delete) leaves the quote. Best-effort.
  */
 export async function withoutDeletedQuotes<T extends { quotedMessageId?: string | null; quotedAuthorPhone?: string | null; quotedAuthorJid?: string | null }>(
   chatId: string,
@@ -378,18 +502,27 @@ export async function withoutDeletedQuotes<T extends { quotedMessageId?: string 
   if (quoted.length === 0) return messages;
   const t = await tombstonesFor(chatId, quoted.map((m) => bareIdOf(m.quotedMessageId as string) ?? ""));
   if (t.size === 0) return messages;
-  return messages.map((m) => {
+  const out: T[] = [];
+  for (const m of messages) {
     const bare = typeof m.quotedMessageId === "string" ? bareIdOf(m.quotedMessageId) : null;
     const ts = bare ? t.get(bare) : undefined;
-    if (!ts || !bare) return m;
+    if (!ts || !bare) {
+      out.push(m);
+      continue;
+    }
     const jid = typeof m.quotedAuthorJid === "string" && LEGACY_JID.test(m.quotedAuthorJid) ? m.quotedAuthorJid : null;
     const phone = digits(m.quotedAuthorPhone) || (jid?.endsWith("@c.us") ? digits(jid.split("@")[0]) : "");
-    const byAuthor = (!!jid && ts.senderJids.includes(jid)) || (!!phone && ts.senderPhones.map(digits).includes(phone));
-    if (!ts.byAdmin && !byAuthor) return m;
+    const author = jid || phone ? { jids: jid ? [jid] : [], phones: phone ? [phone] : [] } : await storedAuthorOf(chatId, bare);
+    const byAuthor = author.jids.some((j) => ts.senderJids.includes(j)) || author.phones.some((p) => ts.senderPhones.map(digits).includes(p));
+    if (!ts.byAdmin && !byAuthor) {
+      out.push(m);
+      continue;
+    }
     const copy = { ...m };
     delete copy[textField];
-    return copy;
-  });
+    out.push(copy);
+  }
+  return out;
 }
 
 /**
@@ -404,9 +537,10 @@ export async function enforceDeletes(chatId: string, storedIds: Array<string | n
     const bares = [...new Set(storedIds.map((id) => (id ? bareIdOf(id) : null)).filter((b): b is string => !!b))];
     const t = await tombstonesFor(chatId, bares);
     let cleared = 0;
+    const now = new Date();
     for (const [bare, ts] of t) {
       const out = empty();
-      await clearMessage(chatId, bare, ts, ts.deletedAt, out);
+      await clearMessage(chatId, bare, ts, ts.deletedAt, out, now);
       if (out.analyzed + out.archived + out.hq + out.mentions > 0) {
         cleared++;
         console.log(`[message-change] ${chatId} ${bare}: a late copy of a deleted or edited message cleared (analyzed=${out.analyzed} archived=${out.archived} hq=${out.hq} mentions=${out.mentions})`);
@@ -419,31 +553,41 @@ export async function enforceDeletes(chatId: string, storedIds: Array<string | n
   }
 }
 
+/** How long after a change the sweep keeps re-checking it for late writers. */
+export const SWEEP_RECHECK_MS = 6 * 60 * 60 * 1000;
+
 /**
- * THE SAFETY SWEEP (hourly, /api/cron/bot-health). Every tombstone of the
- * last 14 days enforced against the stores again, for a request that died
- * before its own clear (a function time limit), then the older ones
- * pruned. Idempotent (a cleared copy is cleared again as a no-op) and
- * bounded (SWEEP_MAX, newest first); each message is a handful of indexed
- * reads. Never throws.
+ * THE SAFETY SWEEP (hourly, /api/cron/bot-health). The tombstones never
+ * enforced yet (`enforcedAt` null: a request that died before its own
+ * clear), oldest first, then the ones of the last six hours again (a late
+ * writer), at most SWEEP_MAX a run, each marked enforced; then the ones
+ * past the 14-day retention pruned. A backlog is worked through run by
+ * run. Idempotent; each message is a handful of indexed reads. Never throws.
  */
 export async function sweepRecentTombstones(now: Date = new Date()): Promise<{ checked: number; cleared: number; pruned: number }> {
   try {
     const since = new Date(now.getTime() - WINDOW_MS);
     const pruned = (await db.deletedMessage.deleteMany({ where: { deletedAt: { lt: since } } })).count;
-    const rows = await db.deletedMessage.findMany({
-      where: { deletedAt: { gte: since } },
-      orderBy: { deletedAt: "desc" },
-      take: SWEEP_MAX,
-      select: { chatId: true, waMessageId: true, byAdmin: true, senderJids: true, senderPhones: true, deletedAt: true },
-    });
+    const select = { chatId: true, waMessageId: true, byAdmin: true, reason: true, senderJids: true, senderPhones: true, deletedAt: true } as const;
+    const never = await db.deletedMessage.findMany({ where: { enforcedAt: null, deletedAt: { gte: since } }, orderBy: { deletedAt: "asc" }, take: SWEEP_MAX, select });
+    const recent =
+      never.length < SWEEP_MAX
+        ? await db.deletedMessage.findMany({
+            where: { enforcedAt: { not: null }, deletedAt: { gte: new Date(now.getTime() - SWEEP_RECHECK_MS) } },
+            orderBy: { deletedAt: "desc" },
+            take: SWEEP_MAX - never.length,
+            select,
+          })
+        : [];
+    const rows = [...never, ...recent];
     let cleared = 0;
     for (const r of rows) {
       const out = empty();
-      await clearMessage(r.chatId, r.waMessageId, r, r.deletedAt, out);
+      await clearMessage(r.chatId, r.waMessageId, r, r.deletedAt, out, now);
       if (out.analyzed + out.archived + out.hq + out.mentions > 0) cleared++;
+      await markEnforced(r.chatId, [r.waMessageId], now);
     }
-    if (cleared > 0) console.log(`[message-change] sweep: ${cleared} of ${rows.length} recent deleted or edited message(s) had copies cleared`);
+    if (cleared > 0) console.log(`[message-change] sweep: ${cleared} of ${rows.length} deleted or edited message(s) had copies cleared`);
     return { checked: rows.length, cleared, pruned };
   } catch (err) {
     console.error("[message-change] sweep failed:", err instanceof Error ? err.message : "failed");

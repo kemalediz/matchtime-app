@@ -529,9 +529,12 @@ async function handleAnalyzeRequest(request: Request) {
   // A MESSAGE DELETED FOR EVERYONE (2026-11-15) is left out before anything
   // reads it: not archived, not analysed, not stored, not shown as recent
   // chat (a Pi replaying it after a restart, or a delete that beat its
-  // batch here). A reply QUOTING one carries no quote text: never the
-  // Pi's copy of the words (`message-change.ts`). Best-effort: with no
-  // record readable, nothing is left out.
+  // batch here). Only a DELETE: an edited message in a batch carries what
+  // the Pi holds for it now, and clear-after-write purges any stored copy
+  // under an edited tombstone. A reply QUOTING a deleted or edited message
+  // carries no quote text: never the Pi's copy of the words
+  // (`message-change.ts`). Best-effort: with no record readable, nothing
+  // is left out.
   {
     const gone = await deletedAmong(body.groupId, body.messages.map((m) => ({ id: m.waMessageId, authorPhone: m.authorPhone })));
     if (gone.size > 0) {
@@ -539,7 +542,21 @@ async function handleAnalyzeRequest(request: Request) {
       body.messages = body.messages.filter((m) => !gone.has(m.waMessageId));
     }
     body.messages = await withoutDeletedQuotes(body.groupId, body.messages, "quotedBody");
-    if (body.messages.length === 0) return NextResponse.json({ ok: true, results: [] });
+    if (body.messages.length === 0) {
+      // Nothing left to read; the Pi still needs the next kickoff for its urgency flush.
+      const next = await db.match.findFirst({
+        where: { activity: { orgId: org.id }, status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
+        orderBy: { date: "asc" },
+        select: { date: true },
+      });
+      return NextResponse.json({ ok: true, results: [], nextKickoffMs: next?.date.getTime() ?? null });
+    }
+    // TEST SEAM, honoured only under MT_TEST_MODE=1: hold the batch here, past
+    // the door, so an e2e spec can land a delete WHILE it is being analysed.
+    if (process.env.MT_TEST_MODE === "1") {
+      const ms = Number(request.headers.get("x-mt-test-pause-after-door-ms") ?? 0);
+      if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 10_000)));
+    }
   }
 
   // Name every @-mention the roster can vouch for BEFORE anything reads a

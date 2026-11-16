@@ -540,10 +540,11 @@ export interface MessageChangeResponse {
 }
 
 /**
- * Housekeeping only: the server takes the message's words out of what it
- * stored, or puts an edit's in their place. Null on any failure (a 404 from
- * a server older than the route included). Never throws, and never logs
- * the body, which can hold an edit's text.
+ * Housekeeping only: the server records the delete or the edit and takes
+ * the message's original words out of what it stored (an edit is posted
+ * only for a message already sent, and carries no words). Null on any
+ * failure (a 404 from a server older than the route included). Never
+ * throws, and never logs the body.
  */
 export async function postMessageChange(body: MessageChangeBody): Promise<MessageChangeResponse | null> {
   try {

@@ -17,7 +17,10 @@
 --
 -- RETENTION: 14 DAYS from "deletedAt", pruned by the sweep
 -- (DELETED_MESSAGE_RETENTION_DAYS in src/lib/message-change.ts). Ids and
--- phones only, never a word of the message.
+-- phones only, never a word of the message. "enforcedAt" is when every copy
+-- was last cleared; the sweep takes the rows never cleared yet, plus a short
+-- re-check window for late writers. Recorded only for a group linked to a
+-- club.
 --
 -- ORDER: APPLY THIS BEFORE DEPLOYING THE SERVER. Deployed without it,
 -- /api/whatsapp/message-change answers 500 (the Pi keeps the change in its
@@ -28,7 +31,7 @@
 -- WHAT APPLYING THIS DOES TO A LIVE DATABASE
 -- ------------------------------------------
 -- Additive. One NEW table "DeletedMessage" (no foreign key), its unique
--- index and one index; one NEW index on the existing "GroupMessage" (a
+-- index and two indexes; one NEW index on the existing "GroupMessage" (a
 -- plain CREATE INDEX: it holds a write lock on "GroupMessage" while it
 -- builds, which on the archive's size is well under a second). No column
 -- or row changes.
@@ -55,12 +58,14 @@ CREATE TABLE IF NOT EXISTS "DeletedMessage" (
     "senderJids" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "senderPhones" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "deletedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "enforcedAt" TIMESTAMP(3),
 
     CONSTRAINT "DeletedMessage_pkey" PRIMARY KEY ("id")
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "DeletedMessage_chatId_waMessageId_key" ON "DeletedMessage"("chatId", "waMessageId");
 CREATE INDEX IF NOT EXISTS "DeletedMessage_deletedAt_idx" ON "DeletedMessage"("deletedAt");
+CREATE INDEX IF NOT EXISTS "DeletedMessage_enforcedAt_deletedAt_idx" ON "DeletedMessage"("enforcedAt", "deletedAt");
 CREATE INDEX IF NOT EXISTS "GroupMessage_waChatId_createdAt_idx" ON "GroupMessage"("waChatId", "createdAt");
 
 COMMIT;

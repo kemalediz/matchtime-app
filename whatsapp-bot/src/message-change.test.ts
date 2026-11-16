@@ -12,7 +12,7 @@
  * ones. Simulated numbers, made-up people.
  */
 import { describe, it, expect, vi } from "vitest";
-import type { MessageChangeEvent } from "./driver.js";
+import type { InboundMessage, MessageChangeEvent } from "./driver.js";
 import {
   bareOf,
   bodyForServer,
@@ -63,6 +63,17 @@ function deps(over: Partial<MessageChangeDeps> = {}) {
     }),
     whenFlushIdle: vi.fn(async () => {
       order.push("idle");
+      return true;
+    }),
+    waitForInbound: vi.fn(async () => {
+      order.push("inbound");
+    }),
+    readEdit: vi.fn(async () => {
+      order.push("read");
+      return { text: "In", botMentioned: false, mentions: [], mentionNames: [] };
+    }),
+    replacePending: vi.fn(() => {
+      order.push("replace");
       return true;
     }),
     log: (l) => logs.push(l),
@@ -134,10 +145,34 @@ describe("handleMessageChange", () => {
     expect(d.record).toHaveBeenCalled();
   });
 
-  it("an edit is recorded as a purge: which message and who, never an admin's, never words", async () => {
-    const { d, recorded } = deps();
-    await handleMessageChange(revoke({ kind: "edit", byAdmin: true }), d);
+  it("an author's edit to a message STILL WAITING in the batch replaces it there: read as inbound text is, nothing recorded, nothing posted", async () => {
+    const { d, order, recorded } = deps();
+    const view = { body: "In" } as unknown as InboundMessage;
+    expect(await handleMessageChange(revoke({ kind: "edit", edited: view }), d)).toBe("replaced");
+    // The original's own handler first, so the original is in the batch before the edit looks for it.
+    expect(order).toEqual(["inbound", "read", "replace"]);
+    expect(d.readEdit).toHaveBeenCalledWith(view);
+    expect(d.replacePending).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "edit", groupId: GROUP, messageId: TARGET, byAdmin: false }),
+      { text: "In", botMentioned: false, mentions: [], mentionNames: [] },
+    );
+    expect(recorded).toEqual([]);
+    expect(d.attempt).not.toHaveBeenCalled();
+  });
+
+  it("an edit to a message already sent (nothing waiting to replace) is recorded as a purge: which message and who, never an admin's, never words", async () => {
+    const { d, recorded } = deps({ replacePending: vi.fn(() => false) });
+    const view = { body: "In" } as unknown as InboundMessage;
+    expect(await handleMessageChange(revoke({ kind: "edit", byAdmin: true, edited: view }), d)).toBe("posted");
     expect(recorded[0]).toEqual({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
+    expect(JSON.stringify(recorded)).not.toContain("In\"");
+  });
+
+  it("an edit with no readable new content is a purge too", async () => {
+    const { d, recorded } = deps();
+    await handleMessageChange(revoke({ kind: "edit" }), d);
+    expect(d.replacePending).not.toHaveBeenCalled();
+    expect(recorded[0]).toMatchObject({ kind: "edit" });
   });
 
   it("a delete whose admin status could not be read is recorded as such, for the outbox to check again", async () => {

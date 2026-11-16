@@ -16,7 +16,8 @@
  *
  * WHAT IT DOES, all additive: CREATE TABLE "DeletedMessage" (new, empty, no
  * foreign key), one unique index ("chatId", "waMessageId"), one index
- * ("deletedAt", for the pruning), and CREATE INDEX on the existing
+ * ("deletedAt", for the pruning), one ("enforcedAt", "deletedAt", for the
+ * sweep), and CREATE INDEX on the existing
  * "GroupMessage" ("waChatId", "createdAt"). It rewrites, backfills, drops
  * or renames nothing. The dry run prints the state; the apply checks every
  * object is in place.
@@ -50,8 +51,11 @@ async function main() {
     const table: any = await db.$queryRawUnsafe(`SELECT to_regclass('"DeletedMessage"')::text AS t;`);
     const unique: any = await db.$queryRawUnsafe(`SELECT to_regclass('"DeletedMessage_chatId_waMessageId_key"')::text AS t;`);
     const archiveIdx: any = await db.$queryRawUnsafe(`SELECT to_regclass('"GroupMessage_waChatId_createdAt_idx"')::text AS t;`);
+    const enforced: any = await db.$queryRawUnsafe(
+      `SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_name = 'DeletedMessage' AND column_name = 'enforcedAt';`,
+    );
     const analyzed: any = await db.$queryRawUnsafe(`SELECT COUNT(*)::int AS n FROM "AnalyzedMessage";`);
-    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", analyzedRows: analyzed[0].n };
+    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", enforcedAt: enforced[0].n === 1, analyzedRows: analyzed[0].n };
   };
 
   const todo = statements(readFileSync(FILE, "utf8"));
@@ -71,7 +75,7 @@ async function main() {
 
   const after = await state();
   console.log(`AFTER:  DeletedMessage=${after.table}  unique index=${after.unique}  GroupMessage index=${after.archiveIdx}  (AnalyzedMessage rows: ${after.analyzedRows})`);
-  if (after.table === "MISSING" || after.unique === "MISSING" || after.archiveIdx === "MISSING") throw new Error("the migration is not complete");
+  if (after.table === "MISSING" || after.unique === "MISSING" || after.archiveIdx === "MISSING" || !after.enforcedAt) throw new Error("the migration is not complete");
   console.log("table and indexes in place; nothing else touched");
   await db.$disconnect();
 }

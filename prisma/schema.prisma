@@ -2718,9 +2718,9 @@ model GroupMessage {
 /// whatever order things arrive. It applies to a copy only when it came
 /// from a group admin (`byAdmin`, a delete only, read by the Pi from the
 /// group's metadata) or from the message's own author (one of `senderJids` /
-/// `senderPhones`). Holds ids and phones, never words. RETENTION 14 days
-/// from `deletedAt`, pruned by the sweep. Migration
-/// 20261116120000_deleted_messages.
+/// `senderPhones`). Recorded only for a group linked to a club. Holds ids
+/// and phones, never words. RETENTION 14 days from `deletedAt`, pruned by
+/// the sweep. Migration 20261116120000_deleted_messages.
 model DeletedMessage {
   id           String   @id @default(cuid())
   chatId       String
@@ -2734,9 +2734,14 @@ model DeletedMessage {
   /// The deleters' phones, digits only.
   senderPhones String[] @default([])
   deletedAt    DateTime @default(now())
+  /// When every copy was last cleared for it (the live clear or the sweep).
+  /// NULL: never yet, or changed since (a merge resets it). The sweep takes
+  /// the NULL ones, oldest first, plus a short re-check window for late writers.
+  enforcedAt   DateTime?
 
   @@unique([chatId, waMessageId])
   @@index([deletedAt])
+  @@index([enforcedAt, deletedAt])
 }
 /// THE PEOPLE A GROUP MESSAGE TAGGED (2026-11-09, Vets MNF: "@Match Time DM
 /// these people"). One row per message MatchTime was shown, in the players'

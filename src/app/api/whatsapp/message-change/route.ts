@@ -1,16 +1,18 @@
 /**
  * POST /api/whatsapp/message-change (2026-11-15).
  *
- * The Pi saw a group message deleted for everyone, or edited
- * (whatsapp-bot/src/message-change.ts). Body:
+ * The Pi saw a group message deleted for everyone, or edited by its author
+ * after it was sent for analysis (whatsapp-bot/src/message-change.ts). Body:
  *
- *   { kind: "revoke", chatId, messageId }
- *   { kind: "edit", chatId, messageId, text, senderJids?, senderPhone? }
+ *   { kind: "revoke", chatId, messageId, byAdmin, senderJids, senderPhone }
+ *   { kind: "edit",   chatId, messageId, senderJids, senderPhone }
  *
- * `messageId` is the BARE WhatsApp id; `chatId` the group. The stores are
- * changed by `applyMessageChange` (src/lib/message-change.ts), which says
- * what each one keeps. HOUSEKEEPING ONLY: nothing is analysed, replied,
- * reacted or sent, and the answer is counts, never words.
+ * An edit carries NO words, old or new (any sent are dropped): it is a
+ * purge of the original. `messageId` is the BARE WhatsApp id; `chatId` the
+ * group (only a group linked to a club is recorded). The stores are changed
+ * by `applyMessageChange` (src/lib/message-change.ts), which says what each
+ * one keeps. HOUSEKEEPING ONLY: nothing is analysed, replied, reacted or
+ * sent, and the answer is counts, never words.
  *
  * Auth via WHATSAPP_API_KEY, like the rest of /api/whatsapp/*.
  */

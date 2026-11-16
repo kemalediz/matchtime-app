@@ -202,7 +202,7 @@ describe("routeAdminGroupInbound", () => {
     });
   });
 
-  it("deleted or edited while the server answered (2026-11-15): no tick on it, but the reply (it may carry the squad or the teams) still goes", async () => {
+  it("DELETED while the server answered (2026-11-15): no tick on it, but the reply (it may carry the squad or the teams) still goes", async () => {
     const sendReaction = vi.fn(async () => ({ ok: true as const }));
     let deleted = false;
     const { d, replies } = deps(

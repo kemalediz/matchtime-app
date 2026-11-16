@@ -37,7 +37,7 @@ vi.mock("./api.js", () => ({
 }));
 
 const sa = await import("./smart-analysis.js");
-const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, restoreMessageChanges, adjustForServer, isDeletedLocally, whenFlushIdle, _test_flushNow, _test_reset } = sa;
+const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, replacePendingWithEdit, restoreMessageChanges, adjustForServer, isDeletedLocally, isRevokedLocally, whenFlushIdle, _test_flushNow, _test_reset } = sa;
 
 const GROUP = "120363000000009300@g.us";
 const SAM = "447700900123";
@@ -80,7 +80,7 @@ async function arrive(m: InboundMessage) {
   await enqueueForAnalysis(driver, m);
 }
 
-type Posted = { messages: Array<{ body: string; waMessageId: string; quotedBody?: string; quotedMessageId?: string; quotedAuthorJid?: string }>; history: Array<Record<string, unknown>> };
+type Posted = { messages: Array<{ body: string; waMessageId: string; quotedBody?: string; quotedMessageId?: string; quotedAuthorJid?: string; mentions?: string[]; mentionNames?: unknown[]; botMentioned?: boolean }>; history: Array<Record<string, unknown>> };
 const posted = (call = 0) => postAnalyzeFull.mock.calls[call][0] as Posted;
 
 const SECRET = "my door code is 4321";
@@ -191,34 +191,92 @@ describe("a quote of a deleted message: stripped only when the quoted message's 
   });
 });
 
-describe("an edit is a purge", () => {
-  it("by its author: the message leaves the batch (it is not analysed) and the recent chat, and quotes of it lose the words", async () => {
-    await arrive(message("SAMMSG000020", SECRET));
-    await arrive(message("ALIMSG000020", "@Match Time right?", ALI, "Ali", { id: "SAMMSG000020", text: SECRET, participant: `${SAM}@c.us` }));
-    expect(applyMessageChangeLocally(edit("SAMMSG000020"))).toEqual({ buffered: 1, history: 1, quotes: 1 });
+describe("an author's edit of a message STILL WAITING in the batch replaces it (round 4)", () => {
+  const read = (text: string, extra: Record<string, unknown> = {}) => ({ text, botMentioned: false, ...extra });
+
+  it("'Inn' fixed to 'In': the batch and the recent chat carry 'In', read once; the original words never leave the Pi", async () => {
+    await arrive(message("SAMMSG000020", "Inn"));
+    expect(replacePendingWithEdit(edit("SAMMSG000020"), read("In"))).toBe(true);
     await _test_flushNow(GROUP);
-    expect(posted().messages.map((m) => m.body)).toEqual(["@Match Time right?"]);
-    expect(posted().history.map((h) => h.body)).toEqual(["@Match Time right?"]);
-    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("4321");
+    expect(postAnalyzeFull).toHaveBeenCalledTimes(1);
+    expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
+    expect(posted().history.map((h) => h.body)).toEqual(["In"]);
+    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("Inn");
   });
 
-  it("by anyone else, a group admin included: ignored entirely, nothing undone", async () => {
+  it("the mentions, names and tag are the edited content's", async () => {
+    await arrive(message("SAMMSG000021", "out"));
+    replacePendingWithEdit(edit("SAMMSG000021"), read("@Match Time out, ask @447700900456", { botMentioned: true, mentions: [BOT_WID, `${ALI}@c.us`], mentionNames: [{ jid: `${ALI}@c.us`, name: "Ali" }] }));
+    await _test_flushNow(GROUP);
+    expect(posted().messages[0]).toMatchObject({ body: "@Match Time out, ask @447700900456", botMentioned: true, mentions: [BOT_WID, `${ALI}@c.us`], mentionNames: [{ jid: `${ALI}@c.us`, name: "Ali" }] });
+  });
+
+  it("a later copy of the original (a replay) carries the edited content too, and is never shown with the original words", async () => {
+    await arrive(message("SAMMSG000022", "Inn"));
+    replacePendingWithEdit(edit("SAMMSG000022"), read("In"));
+    await arrive(message("SAMMSG000022", "Inn")); // the replay
+    await _test_flushNow(GROUP);
+    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("Inn");
+  });
+
+  it("by anyone else, a group admin included: nothing replaced, nothing purged", async () => {
     await arrive(message("SAMMSG000023", SECRET));
-    expect(applyMessageChangeLocally(edit("SAMMSG000023", by(ALI)))).toEqual({ buffered: 0, history: 0, quotes: 0 });
+    expect(replacePendingWithEdit(edit("SAMMSG000023", by(ALI)), read("I owe everyone £50"))).toBe(false);
     expect(applyMessageChangeLocally(edit("SAMMSG000023", by(ADMIN, true)))).toEqual({ buffered: 0, history: 0, quotes: 0 });
     await _test_flushNow(GROUP);
     expect(posted().messages.map((m) => m.body)).toEqual([SECRET]);
   });
 
-  it("an edit, then a delete, or the other way round: gone either way", async () => {
-    applyMessageChangeLocally(del("SAMMSG000024"));
+  it("nothing waiting (already sent): no replacement; the edit is then a purge of every later copy", async () => {
+    expect(replacePendingWithEdit(edit("SAMMSG000024"), read("In"))).toBe(false);
     applyMessageChangeLocally(edit("SAMMSG000024"));
-    applyMessageChangeLocally(edit("SAMMSG000025"));
-    applyMessageChangeLocally(del("SAMMSG000025"));
     await arrive(message("SAMMSG000024", SECRET));
-    await arrive(message("SAMMSG000025", SECRET));
     await _test_flushNow(GROUP);
     expect(postAnalyzeFull).not.toHaveBeenCalled();
+  });
+
+  it("an edit during a flush that then fails is a purge: the requeued batch has lost it", async () => {
+    await arrive(message("SAMMSG000025", SECRET));
+    await arrive(message("ALIMSG000025", "see you at 8", ALI, "Ali"));
+    let fail!: (e: Error) => void;
+    postAnalyzeFull.mockImplementationOnce(() => new Promise((_r, rej) => (fail = rej)));
+    const running = _test_flushNow(GROUP);
+    await vi.waitFor(() => expect(postAnalyzeFull).toHaveBeenCalledTimes(1));
+    expect(replacePendingWithEdit(edit("SAMMSG000025"), read("new"))).toBe(false); // in flight, not waiting
+    applyMessageChangeLocally(edit("SAMMSG000025"));
+    fail(new Error("504"));
+    await running;
+    await _test_flushNow(GROUP);
+    expect(posted(1).messages.map((m) => m.body)).toEqual(["see you at 8"]);
+  });
+
+  it("an edit, then a delete, or the other way round: gone either way", async () => {
+    applyMessageChangeLocally(del("SAMMSG000026"));
+    applyMessageChangeLocally(edit("SAMMSG000026"));
+    applyMessageChangeLocally(edit("SAMMSG000027"));
+    applyMessageChangeLocally(del("SAMMSG000027"));
+    await arrive(message("SAMMSG000026", SECRET));
+    await arrive(message("SAMMSG000027", SECRET));
+    await _test_flushNow(GROUP);
+    expect(postAnalyzeFull).not.toHaveBeenCalled();
+  });
+});
+
+describe("a quote whose author the reply does not name", () => {
+  it("is tied to its author through the Pi's own copies (their ids carry the participant): the author's delete strips it, a forged one does not", async () => {
+    await arrive(message("SAMMSG000028", SECRET));
+    await arrive(message("ALIMSG000028", "@Match Time right?", ALI, "Ali", { id: "SAMMSG000028", text: SECRET }));
+    applyMessageChangeLocally(del("SAMMSG000028", by(ALI))); // forged
+    await _test_flushNow(GROUP);
+    expect(posted(0).messages.find((m) => m.quotedMessageId)?.quotedBody).toBe(SECRET);
+  });
+
+  it("the author's own delete strips it", async () => {
+    recordHistory(GROUP, { authorName: "Sam", body: SECRET, timestamp: new Date(1_763_200_000_000).toISOString() }, `false_${GROUP}_SAMMSG000029_${SAM}@c.us`);
+    applyMessageChangeLocally(del("SAMMSG000029"));
+    await arrive(message("ALIMSG000029", "@Match Time right?", ALI, "Ali", { id: "SAMMSG000029", text: SECRET }));
+    await _test_flushNow(GROUP);
+    expect(posted().messages[0].quotedBody).toBeUndefined();
   });
 });
 
@@ -258,6 +316,28 @@ describe("a delete while the batch is being analysed (the reviewers' case)", () 
   });
 });
 
+describe("an EDIT while the batch is being analysed keeps the tick", () => {
+  it("Sam's IN is recorded and edited mid-analysis: the ✅ still lands (only a DELETE takes the reaction away)", async () => {
+    const react = vi.spyOn(driver, "sendReaction").mockResolvedValue({ ok: true } as never);
+    try {
+      await arrive(message("SAMMSG000031", "in", SAM, "Sam"));
+      let answer!: (v: unknown) => void;
+      postAnalyzeFull.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+      const running = _test_flushNow(GROUP);
+      await vi.waitFor(() => expect(postAnalyzeFull).toHaveBeenCalledTimes(1));
+      const [samId] = posted().messages.map((m) => m.waMessageId);
+      applyMessageChangeLocally(edit("SAMMSG000031"));
+      answer({ results: [{ waMessageId: samId, handledBy: "engine", intent: "in", react: "✅", reply: null }], nextKickoffMs: null });
+      await running;
+      expect(react).toHaveBeenCalledTimes(1);
+      expect(isDeletedLocally(GROUP, samId, SAM)).toBe(true);
+      expect(isRevokedLocally(GROUP, samId, SAM)).toBe(false);
+    } finally {
+      react.mockRestore();
+    }
+  });
+});
+
 describe("an admin-group (HQ) forward is held to the record (adjustForServer)", () => {
   const hq = (over: Record<string, unknown> = {}) => ({
     groupId: GROUP,
@@ -265,7 +345,8 @@ describe("an admin-group (HQ) forward is held to the record (adjustForServer)", 
     text: SECRET,
     botMentioned: false,
     senderPhone: SAM,
-    timestamp: new Date().toISOString(),
+    // Fixed: two calls must build the same forward.
+    timestamp: "2026-11-15T18:00:00.000Z",
     ...over,
   });
 

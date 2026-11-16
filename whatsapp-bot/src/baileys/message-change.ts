@@ -12,9 +12,16 @@
  *                 arrives inside an `editedMessage` wrapper, which
  *                 `normalizeMessageContent` peels.
  *
- * AN EDIT IS A PURGE (round 3): MatchTime forgets the original words of an
- * edited message and never keeps the new ones, so only WHICH message was
- * edited is read here. The new content is never read, returned or logged.
+ * AN EDIT (round 4): its new content is returned for the driver to hand up
+ * as the edited message, IN MEMORY ONLY: an author's edit to a message
+ * still waiting in the Pi's batch replaces it there (and is analysed once);
+ * an edit to a message already sent is a purge. The content is never
+ * logged, written to disk or posted as a change.
+ *
+ * A MERGED EDIT: after a reconnect Baileys can merge an edit into the
+ * original's own upsert (`Utils/event-buffer.js`), so the original arrives
+ * as `editedMessage` holding the NEW content itself. That is not a change
+ * but the message, in its edited form (`isMergedEdit`).
  *
  * `mapInboundMessage` still returns null for both: neither is ever handed
  * up as a chat message, so an edit is never analysed. The driver reads this
@@ -29,6 +36,14 @@ export interface ReadMessageChange {
   kind: "revoke" | "edit";
   chatJid: string;
   targetId: string;
+  /** An edit's new content. In memory only; never logged. */
+  content?: proto.IMessage;
+}
+
+/** PURE. An original Baileys merged its edit into: `editedMessage` around the new content, not around an edit notice. */
+export function isMergedEdit(msg: WAMessage): boolean {
+  const inner = (msg?.message as { editedMessage?: { message?: proto.IMessage | null } | null } | null | undefined)?.editedMessage?.message;
+  return !!inner && !inner.protocolMessage;
 }
 
 /** A WhatsApp message id: never '@', never a space (`group-history-bundle.ts`). */
@@ -46,7 +61,9 @@ export function readMessageChange(msg: WAMessage): ReadMessageChange | null {
     // one; the key naming a message is what makes it a real delete.
     const type = protocol.type ?? proto.Message.ProtocolMessage.Type.REVOKE;
     if (type === proto.Message.ProtocolMessage.Type.REVOKE) return { kind: "revoke", chatJid, targetId };
-    if (type === proto.Message.ProtocolMessage.Type.MESSAGE_EDIT) return { kind: "edit", chatJid, targetId };
+    if (type === proto.Message.ProtocolMessage.Type.MESSAGE_EDIT) {
+      return { kind: "edit", chatJid, targetId, ...(protocol.editedMessage ? { content: protocol.editedMessage } : {}) };
+    }
     return null;
   } catch {
     return null;

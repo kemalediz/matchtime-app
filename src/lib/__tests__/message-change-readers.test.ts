@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { makeDb, row, type Row } from "./fake-message-db";
 
-const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias", "organisation"];
+const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias", "organisation", "adminSquadProposal", "adminFeeProposal", "onboardingSession", "clubConnect"];
 const T: Record<string, Row[]> = {};
 const fake = makeDb(T, NAMES, { deletedMessage: [["chatId", "waMessageId"]] });
 vi.mock("@/lib/db", () => ({

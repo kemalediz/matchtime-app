@@ -51,17 +51,21 @@ describe("readMessageChange: a delete for everyone", () => {
   });
 });
 
-describe("readMessageChange: an edit (a purge: only WHICH message, never its new words)", () => {
-  it("a text edited: the edited message's id, and nothing of the new content", () => {
-    const r = readMessageChange(wa(edit({ extendedTextMessage: { text: "new secret words" } })));
-    expect(r).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
-    expect(JSON.stringify(r)).not.toContain("secret");
+describe("readMessageChange: an edit", () => {
+  it("a text edited: the edited message's id, and its new content (kept in memory only, for a message still waiting)", () => {
+    const r = readMessageChange(wa(edit({ extendedTextMessage: { text: "new words" } })));
+    expect(r).toMatchObject({ kind: "edit", chatJid: GROUP, targetId: TARGET });
+    expect(r?.content?.extendedTextMessage?.text).toBe("new words");
   });
 
   it("inside the editedMessage wrapper, and an edit of a caption or of anything else", () => {
-    expect(readMessageChange(wa({ editedMessage: { message: edit({ conversation: "wrapped edit" }) } }))).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
-    expect(readMessageChange(wa(edit({ imageMessage: { mimetype: "image/jpeg" } })))).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
-    expect(readMessageChange(wa(edit({ stickerMessage: { mimetype: "image/webp" } })))).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
+    expect(readMessageChange(wa({ editedMessage: { message: edit({ conversation: "wrapped edit" }) } }))).toMatchObject({ kind: "edit", chatJid: GROUP, targetId: TARGET });
+    expect(readMessageChange(wa(edit({ imageMessage: { mimetype: "image/jpeg" } })))).toMatchObject({ kind: "edit", targetId: TARGET });
+    expect(readMessageChange(wa(edit({ stickerMessage: { mimetype: "image/webp" } })))).toMatchObject({ kind: "edit", targetId: TARGET });
+  });
+
+  it("an ORIGINAL that Baileys merged its edit into (`editedMessage` holding the new content itself) is a message, not a change", () => {
+    expect(readMessageChange(wa({ editedMessage: { message: { conversation: "In" } } }))).toBeNull();
   });
 
   it("an edit that names no message is nothing", () => {

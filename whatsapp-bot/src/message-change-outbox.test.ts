@@ -165,6 +165,16 @@ describe("the outbox", () => {
     expect(t.box.pending()).toBe(0);
   });
 
+  it("a delete the server ACCEPTED but kept pending for the sender's admin status is not reported CRITICAL when it is let go after seven days", async () => {
+    const t = setup({ recheck: async () => null });
+    await t.box.attempt(t.box.record(change("MSG000000023", "revoke", { adminUnknown: true })));
+    t.advance(7 * 24 * 60 * 60 * 1000 + 1);
+    await t.box.drainDue();
+    expect(t.box.pending()).toBe(0);
+    expect(t.logs.join("\n")).not.toMatch(/CRITICAL/);
+    expect(t.logs.join("\n")).toMatch(/MSG000000023.*admin status never became known/);
+  });
+
   it("a corrupt or missing file is an empty outbox, never a crash", () => {
     expect(setup({ file: memoryFile({ entries: "nope" }) }).box.load()).toEqual([]);
     expect(setup({ file: memoryFile(null) }).box.load()).toEqual([]);

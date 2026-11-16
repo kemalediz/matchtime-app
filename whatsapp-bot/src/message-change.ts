@@ -21,11 +21,18 @@
  *   4. one post to `/api/whatsapp/message-change`; a failure is left to the
  *      outbox's retries with backoff, across restarts.
  *
- * AN EDIT IS A PURGE (round 3): when the AUTHOR edits a message, MatchTime
- * forgets the original words exactly as for a delete, through the same
- * path, and never keeps the new ones. No edited text is read, held,
- * written to the outbox or posted. A message still waiting in the batch is
- * taken out of it, not analysed.
+ * AN EDIT (round 4):
+ *
+ *   - by its author, of a message STILL WAITING in the batch (not sent for
+ *     analysis yet): it REPLACES the original there. The new content is
+ *     read exactly as an inbound message is (`readGroupMessageForServer`:
+ *     body, mentions, mention names, the bot's tag), then analysed once,
+ *     normally. The original words never leave the Pi, and nothing is
+ *     recorded or posted for the edit. The original's own inbound handler
+ *     is allowed to finish first (`waitForInbound`), so a fast edit never
+ *     races its own message into the batch;
+ *   - of a message already sent (or not seen at all): a PURGE through the
+ *     delete path, recorded and posted with no words, old or new.
  *
  * WHO: a delete from a group admin (`byAdmin`, from the group's metadata)
  * or the message's own author; an edit from its author only. Anything else
@@ -41,7 +48,7 @@
  *
  * Logs carry ids and counts, never the words.
  */
-import type { MessageChangeEvent } from "./driver.js";
+import type { InboundMessage, MessageChangeEvent } from "./driver.js";
 import type { MessageChangeBody } from "./api.js";
 import { legacyJid, parseKey } from "./baileys/key.js";
 
@@ -113,7 +120,21 @@ export function bodyForServer(c: LocalMessageChange): MessageChangeBody {
   return { kind: "edit", chatId: c.groupId, messageId: c.messageId, senderJids: c.senderJids, senderPhone: c.senderPhone };
 }
 
+/** An edit's new content, read as an inbound message is. In memory only. */
+export interface ReadEdit {
+  text: string;
+  botMentioned: boolean;
+  mentions?: string[];
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+}
+
 export interface MessageChangeDeps {
+  /** The original's own inbound handler, if it is still running, allowed to finish. Bounded. */
+  waitForInbound(groupId: string, messageId: string): Promise<void>;
+  /** An edit's new content read exactly as an inbound message is. */
+  readEdit(view: InboundMessage): Promise<ReadEdit | null>;
+  /** Put an author's edit in place of the original still waiting in the batch. False when none is waiting (or not the author's). */
+  replacePending(change: LocalMessageChange, read: ReadEdit): boolean;
   applyLocally(change: LocalMessageChange): { buffered: number; history: number; quotes: number };
   /** Into the durable outbox; returns its key. */
   record(change: LocalMessageChange): string;
@@ -125,7 +146,7 @@ export interface MessageChangeDeps {
   error(line: string): void;
 }
 
-export type MessageChangeOutcome = "posted" | "queued" | "dm";
+export type MessageChangeOutcome = "posted" | "queued" | "dm" | "replaced";
 
 /** Never throws. */
 export async function handleMessageChange(change: MessageChangeEvent, deps: MessageChangeDeps): Promise<MessageChangeOutcome> {
@@ -145,6 +166,19 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     byAdmin: isDelete && change.byAdmin === true,
     ...(isDelete && change.adminUnknown ? { adminUnknown: true } : {}),
   };
+  // An author's edit of a message still waiting to be analysed: it replaces it there.
+  if (!isDelete && change.edited) {
+    try {
+      await deps.waitForInbound(change.chatId, change.messageId);
+      const read = await deps.readEdit(change.edited);
+      if (read && deps.replacePending(local, read)) {
+        deps.log(`${tag}: the message was still waiting; the edit replaced it there (analysed once, nothing posted)`);
+        return "replaced";
+      }
+    } catch (err) {
+      deps.error(`${tag}: could not be read as the waiting message (${err instanceof Error ? err.message : "failed"}); purged instead`);
+    }
+  }
   try {
     const counts = deps.applyLocally(local);
     const key = deps.record(local);

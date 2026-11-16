@@ -152,6 +152,29 @@ export function makeDb(T: Record<string, Row[]>, names: string[], uniqueKeys: Re
       const t = tables() as Record<string, ReturnType<typeof makeTable>>;
       return {
         ...t,
+        /**
+         * The one raw statement `message-change.ts` sends: the tombstone's
+         * INSERT ... ON CONFLICT DO UPDATE, merged in place in one step
+         * (as Postgres does), so two calls can never lose each other's values.
+         */
+        $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
+          if (!sql.includes('INSERT INTO "DeletedMessage"')) throw new Error(`unexpected raw SQL: ${sql.slice(0, 60)}`);
+          if (missing.has("deletedMessage")) throw new Error('relation "DeletedMessage" does not exist');
+          const [id, chatId, waMessageId, byAdmin, reason, senderJids, senderPhones, deletedAt] = params as [string, string, string, boolean, string, string[], string[], Date];
+          const rows = (T.deletedMessage ??= []);
+          let r = rows.find((x) => x.chatId === chatId && x.waMessageId === waMessageId);
+          if (!r) {
+            r = { id, chatId, waMessageId, byAdmin, reason, senderJids: [...new Set(senderJids)], senderPhones: [...new Set(senderPhones)], deletedAt, enforcedAt: null };
+            rows.push(r);
+          } else {
+            r.byAdmin = (r.byAdmin as boolean) || byAdmin;
+            r.reason = r.reason === "deleted" || reason === "deleted" ? "deleted" : "edited";
+            r.senderJids = [...new Set([...((r.senderJids as string[]) ?? []), ...senderJids])];
+            r.senderPhones = [...new Set([...((r.senderPhones as string[]) ?? []), ...senderPhones])];
+            r.enforcedAt = null;
+          }
+          return [{ byAdmin: r.byAdmin, reason: r.reason, senderJids: r.senderJids, senderPhones: r.senderPhones, deletedAt: r.deletedAt }];
+        },
         $transaction: async <R>(fn: (tx: unknown) => Promise<R>): Promise<R> => {
           const snapshot = Object.fromEntries(names.map((n) => [n, (T[n] ?? []).map((r) => ({ ...r }))]));
           try {

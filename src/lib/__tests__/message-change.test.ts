@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { failures, makeDb, row, type Row } from "./fake-message-db";
 
-const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "organisation"];
+const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "organisation", "adminSquadProposal", "adminFeeProposal", "botJob", "onboardingSession", "clubConnect"];
 const T: Record<string, Row[]> = {};
 const fake = makeDb(T, NAMES, { deletedMessage: [["chatId", "waMessageId"]] });
 vi.mock("@/lib/db", () => ({
@@ -241,10 +241,21 @@ describe("the delete or edit wins whatever the order (the tombstone)", () => {
     expect(analyzed().body).toBe("my door code is 4321");
   });
 
-  it("deletedAmong names the batch's deleted or edited messages", async () => {
+  it("deletedAmong (the door) names only DELETED messages: a batch carrying an edited message's new content is not dropped", async () => {
     await applyMessageChange(editBy(SAM), NOW);
+    expect((await deletedAmong(G, [{ id: SAM_ID }])).size).toBe(0);
+    await applyMessageChange(byAuthor, NOW);
     expect([...(await deletedAmong(G, [{ id: SAM_ID }, { id: `false_${G}_OTHERID999_${SAM_PN}@c.us` }]))]).toEqual([SAM_ID]);
     expect((await deletedAmong(OTHER_G, [{ id: `false_${OTHER_G}_${ID}_${SAM_PN}@c.us` }])).size).toBe(0);
+  });
+
+  it("an edited message, either order: a stale ORIGINAL stored before the edit is purged; a copy written after it is cleared by clear-after-write", async () => {
+    seed(); // the original, stored
+    await applyMessageChange(editBy(SAM), NOW);
+    expect(words()).not.toContain("4321");
+    seed(); // a stale copy written after the edit (a replay)
+    expect(await enforceDeletes(G, [SAM_ID])).toBe(1);
+    expect(words()).not.toContain("4321");
   });
 
   it("with no tombstone table yet: the doors change nothing and never throw; the change itself fails, for the Pi to retry", async () => {
@@ -287,21 +298,110 @@ describe("a quote of a deleted or edited message: stripped only when its author 
 });
 
 describe("the safety sweep (hourly, on /api/cron/bot-health)", () => {
-  it("enforces every recent tombstone against the stores: a copy an interrupted request wrote is cleared", async () => {
-    await applyMessageChange(byAuthor, ago(30));
-    seed(ago(20)); // written after the delete, by a request that died before its own clear
-    expect(await sweepRecentTombstones(NOW)).toEqual({ checked: 1, cleared: 1, pruned: 0 });
+  it("enforces a tombstone a request never cleared for, then not again once it is past the re-check window", async () => {
+    T.deletedMessage.push(row({ chatId: G, waMessageId: ID, byAdmin: false, reason: "deleted", senderJids: [`${SAM_PN}@c.us`], senderPhones: [SAM_PN], deletedAt: ago(10 * 60), enforcedAt: null }));
+    seed(ago(9 * 60)); // written by a request that died before its own clear
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 1, cleared: 1, pruned: 0 });
     expect(words()).not.toContain("4321");
-    // Idempotent: a second run changes nothing more.
-    expect(await sweepRecentTombstones(NOW)).toEqual({ checked: 1, cleared: 0, pruned: 0 });
+    expect(T.deletedMessage[0].enforcedAt).toEqual(NOW);
+    // Enforced and older than the re-check window: not taken again.
+    expect(await sweepRecentTombstones(new Date(NOW.getTime() + 60 * 60 * 1000))).toMatchObject({ checked: 0 });
   });
 
-  it("prunes tombstones older than the retention, and never applies a delete that does not apply", async () => {
+  it("a recent one is re-checked every run for late writers, even once enforced", async () => {
+    await applyMessageChange(byAuthor, ago(30));
+    seed(ago(20));
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 1, cleared: 1 });
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 1, cleared: 0 });
+  });
+
+  it("a backlog of 600 never-enforced tombstones is cleared in two runs, oldest first", async () => {
+    for (let i = 0; i < 600; i++) {
+      const bare = `BACKLOG${String(i).padStart(6, "0")}`;
+      const at = ago(24 * 60 + 600 - i);
+      T.deletedMessage.push(row({ chatId: G, waMessageId: bare, byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: at, enforcedAt: null }));
+      T.analyzedMessage.push(row({ waMessageId: `false_${G}_${bare}_${SAM_PN}@c.us`, orgId: "org-a", groupId: G, authorPhone: SAM_PN, body: `secret ${i}`, handledBy: "none", createdAt: at }));
+    }
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 500, cleared: 500 });
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 100, cleared: 100 });
+    expect(T.analyzedMessage.filter((r) => r.body !== null)).toEqual([]);
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 0 });
+  });
+
+  it("prunes tombstones older than the retention, and never applies a change that does not apply", async () => {
     await applyMessageChange({ ...byAuthor, ...ALI }, ago(10));
-    T.deletedMessage.push(row({ chatId: G, waMessageId: "OLDMESSAGE01", byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: ago((DELETED_MESSAGE_RETENTION_DAYS + 1) * 24 * 60) }));
+    T.deletedMessage.push(row({ chatId: G, waMessageId: "OLDMESSAGE01", byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: ago((DELETED_MESSAGE_RETENTION_DAYS + 1) * 24 * 60), enforcedAt: null }));
     seed();
-    expect(await sweepRecentTombstones(NOW)).toEqual({ checked: 1, cleared: 0, pruned: 1 });
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 1, cleared: 0, pruned: 1 });
     expect(analyzed().body).toBe("my door code is 4321");
     expect(T.deletedMessage).toHaveLength(1);
+  });
+});
+
+describe("the tombstone is merged atomically", () => {
+  it("two changes of one message at once (an admin's and the author's) never lose byAdmin or a sender", async () => {
+    seed();
+    await Promise.all([applyMessageChange({ ...byAuthor, ...ALI, byAdmin: true }, NOW), applyMessageChange(byAuthor, NOW), applyMessageChange(editBy(SAM), NOW)]);
+    expect(T.deletedMessage).toHaveLength(1);
+    expect(T.deletedMessage[0]).toMatchObject({ byAdmin: true, reason: "deleted" });
+    expect([...(T.deletedMessage[0].senderPhones as string[])].sort()).toEqual([SAM_PN, ALI_PN].sort());
+  });
+
+  it("a group linked to no club records nothing", async () => {
+    expect(await applyMessageChange({ ...byAuthor, chatId: "120363000000000777@g.us" }, NOW)).toMatchObject({ analyzed: 0 });
+    expect(T.deletedMessage).toEqual([]);
+  });
+});
+
+describe("the other stores a message's words reach", () => {
+  it("HQ proposals made from the message are cancelled and their copied names, month seed and fee text cleared; a YES then applies nothing", async () => {
+    const HQ_ID = `false_${HQ}_${ID}_${SAM_PN}@c.us`;
+    T.adminSquadProposal.push(
+      row({ orgId: "org-a", matchId: "m1", waMessageId: HQ_ID, proposedByUserId: "u-sam", playingUserIds: ["u1"], playingNewNames: ["Door Code Dave"], reserveUserIds: [], reserveNewNames: ["Secret Sid"], monthSeed: { names: ["Dave"] }, resolvedAt: null, outcome: null, createdAt: ago(5), expiresAt: ago(-60) }),
+    );
+    T.adminFeeProposal.push(row({ orgId: "org-a", matchId: "m1", waMessageId: HQ_ID, proposedByUserId: "u-sam", userIds: ["u1"], text: "£10 each, code 4321", resolvedAt: null, createdAt: ago(5), expiresAt: ago(-60) }));
+    await applyMessageChange({ ...byAuthor, chatId: HQ }, NOW);
+    expect(T.adminSquadProposal[0]).toMatchObject({ resolvedAt: NOW, outcome: "source-deleted", playingNewNames: [], reserveNewNames: [], monthSeed: null });
+    expect(T.adminFeeProposal[0]).toMatchObject({ resolvedAt: NOW, outcome: "source-deleted", text: "" });
+  });
+
+  it("an unsent reminder DM asked for in the message is cancelled; one already sent is left", async () => {
+    T.botJob.push(
+      row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "⏰ Reminder: door code 4321", aboutKey: `asked-reminder:${SAM_ID}`, sentAt: null, createdAt: ago(5) }),
+      row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "⏰ Reminder: an old one", aboutKey: `asked-reminder:false_${G}_OTHERID999_${SAM_PN}@c.us`, sentAt: null, createdAt: ago(5) }),
+    );
+    await applyMessageChange(byAuthor, NOW);
+    expect(T.botJob.map((j) => j.text)).toEqual(["⏰ Reminder: an old one"]);
+  });
+
+  it("mention rows go only with their own author's (or an admin's) change: a member reusing another member's bare id removes nothing of theirs", async () => {
+    T.messageMentions.push(row({ waMessageId: SAM_ID, orgId: "org-a", chatId: G, mentions: [{ phone: "447700900555" }], sentAt: ago(5), createdAt: ago(5) }));
+    const ALI_ID = `false_${G}_${ID}_${ALI_PN}@c.us`;
+    T.analyzedMessage.push(row({ waMessageId: ALI_ID, orgId: "org-a", groupId: G, authorPhone: ALI_PN, body: "Ali's own words", handledBy: "none", createdAt: ago(5) }));
+    await applyMessageChange({ ...byAuthor, ...ALI }, NOW);
+    expect(T.analyzedMessage.find((r) => r.waMessageId === ALI_ID)!.body).toBeNull();
+    expect(T.messageMentions).toHaveLength(1);
+  });
+
+  it("an author whose copy is stored under a phone JID, deleting with only a LID: matched through the club's LID map", async () => {
+    seed();
+    T.clubConnect.push(row({ orgId: "org-a", userId: "u-sam", dmLid: null, participants: [{ phone: `+${SAM_PN}`, lidId: SAM_LID, pushname: "Sam" }] }));
+    expect(await applyMessageChange({ ...byAuthor, senderJids: [`${SAM_LID}@lid`], senderPhone: null }, NOW)).toMatchObject({ analyzed: 1, archived: 1, mentions: 1 });
+    expect(words()).not.toContain("4321");
+  });
+
+  it("without that mapping, the same LID-only delete is refused", async () => {
+    seed();
+    expect(await applyMessageChange({ ...byAuthor, senderJids: [`${SAM_LID}@lid`], senderPhone: null }, NOW)).toMatchObject({ analyzed: 0 });
+  });
+});
+
+describe("a quote whose author the Pi did not name", () => {
+  it("is tied to its author through the stored copy: the author's delete strips it, a forged one does not", async () => {
+    seed();
+    await applyMessageChange({ ...byAuthor, ...ALI }, NOW); // forged
+    expect((await withoutDeletedQuotes(G, [{ quotedMessageId: ID, quotedBody: "w" }], "quotedBody"))[0].quotedBody).toBe("w");
+    await applyMessageChange(byAuthor, NOW); // the author's (the stored copy is now cleared; the record still names him)
+    expect((await withoutDeletedQuotes(G, [{ quotedMessageId: ID, quotedBody: "w" }], "quotedBody"))[0].quotedBody).toBeUndefined();
   });
 });

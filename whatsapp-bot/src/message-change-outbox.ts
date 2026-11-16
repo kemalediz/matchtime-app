@@ -57,6 +57,8 @@ interface Entry {
   change: LocalMessageChange;
   recordedAt: number;
   takenAt: number | null;
+  /** Posted and accepted, but kept for the sender's admin status to become known. */
+  acceptedAt?: number | null;
   attempts: number;
   nextAt: number;
 }
@@ -93,7 +95,17 @@ function readEntries(raw: unknown): Entry[] {
   return list.flatMap((e) => {
     const x = e as Partial<Entry> | null;
     if (!x || typeof x.key !== "string" || !isChange(x.change) || typeof x.recordedAt !== "number") return [];
-    return [{ key: x.key, change: x.change, recordedAt: x.recordedAt, takenAt: typeof x.takenAt === "number" ? x.takenAt : null, attempts: Number(x.attempts) || 0, nextAt: Number(x.nextAt) || 0 }];
+    return [
+      {
+        key: x.key,
+        change: x.change,
+        recordedAt: x.recordedAt,
+        takenAt: typeof x.takenAt === "number" ? x.takenAt : null,
+        acceptedAt: typeof x.acceptedAt === "number" ? x.acceptedAt : null,
+        attempts: Number(x.attempts) || 0,
+        nextAt: Number(x.nextAt) || 0,
+      },
+    ];
   });
 }
 
@@ -120,7 +132,12 @@ export function createMessageChangeOutbox(deps: {
     entries = entries.filter((e) => {
       if (e.takenAt !== null) return now - e.takenAt <= KEEP_TAKEN_MS;
       if (now - e.recordedAt > GIVE_UP_MS) {
-        deps.error(`CRITICAL: [message-change] ${tag(e)}: the server never took it in 7 days; gave up`);
+        if (e.acceptedAt) {
+          // Applied to the sender's own messages already; only the admin check never resolved.
+          deps.log(`[message-change] ${tag(e)}: the sender's admin status never became known in 7 days; kept as the sender's own delete`);
+        } else {
+          deps.error(`CRITICAL: [message-change] ${tag(e)}: the server never took it in 7 days; gave up`);
+        }
         return false;
       }
       return true;
@@ -169,6 +186,7 @@ export function createMessageChangeOutbox(deps: {
     }
     if (ok && e.change.adminUnknown) {
       // Applied to the sender's own messages; kept until we know whether they are an admin.
+      e.acceptedAt ??= deps.now();
       e.nextAt = deps.now() + backoffMs(e.attempts);
       deps.log(`[message-change] ${tag(e)}: posted; whether the sender is a group admin is checked again in ${Math.round(backoffMs(e.attempts) / 1000)}s`);
       save();

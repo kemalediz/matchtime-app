@@ -25,7 +25,7 @@ vi.mock("./api.js", () => ({
   ackInstruction: async () => {},
 }));
 
-const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
+const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, replacePendingWithEdit, readGroupMessageForServer, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
 const { handleMessageChange } = await import("./message-change.js");
 
 const GROUP = "120363000000007700@g.us";
@@ -66,15 +66,33 @@ async function wired() {
   await driver.start();
   sockets[sockets.length - 1].open();
   const outbox: unknown[] = [];
-  // As index.ts wires it.
+  // As index.ts wires it, the inbound-running map included.
+  const running = new Map<string, Promise<void>>();
   driver.onMessage(async (msg: InboundMessage) => {
     const head = readInboundHeadline(msg);
-    if (head.fromMe || !head.from.endsWith("@g.us")) return;
-    recordHistory(head.from, { authorName: head.notifyName ?? null, body: head.body, timestamp: new Date(head.timestampSec * 1000).toISOString() }, resolveWaMessageId(msg).waMessageId);
-    await enqueueForAnalysis(driver, msg);
+    let done!: () => void;
+    const key = `${head.from}|${resolveWaMessageId(msg).waMessageId.split("_")[2]}`;
+    running.set(key, new Promise<void>((r) => (done = r)));
+    try {
+      if (head.fromMe || !head.from.endsWith("@g.us")) return;
+      // The real handler awaits a contact lookup here; the edit must still wait for it.
+      await new Promise((r) => setTimeout(r, 20));
+      recordHistory(head.from, { authorName: head.notifyName ?? null, body: head.body, timestamp: new Date(head.timestampSec * 1000).toISOString() }, resolveWaMessageId(msg).waMessageId);
+      await enqueueForAnalysis(driver, msg);
+    } finally {
+      done();
+    }
   });
   driver.onMessageChange!(async (change) => {
     await handleMessageChange(change, {
+      waitForInbound: async (groupId, messageId) => {
+        await running.get(`${groupId}|${messageId}`);
+      },
+      readEdit: async (view) => {
+        const r = await readGroupMessageForServer(driver, view);
+        return r ? { text: r.text, botMentioned: r.botMentioned, mentions: r.mentions, mentionNames: r.mentionNames } : null;
+      },
+      replacePending: replacePendingWithEdit,
       applyLocally: applyMessageChangeLocally,
       record: (c) => {
         outbox.push(c);
@@ -86,8 +104,10 @@ async function wired() {
       error: () => {},
     });
   });
-  const upsert = async (m: WAMessage) => {
-    sockets[sockets.length - 1].emit("messages.upsert", { messages: [m], type: "notify" });
+  const upsert = async (...ms: WAMessage[]) => {
+    sockets[sockets.length - 1].emit("messages.upsert", { messages: ms, type: "notify" });
+    for (let i = 0; i < 10; i++) await tick();
+    await new Promise((r) => setTimeout(r, 60));
     for (let i = 0; i < 10; i++) await tick();
   };
   return { driver, upsert, outbox };
@@ -139,16 +159,45 @@ describe("the Baileys driver, the local record and the batch together", () => {
     expect(posted().messages.map((m) => m.body)).toEqual([SECRET]);
   });
 
-  it("an edit by its author is a purge: the message leaves the batch (it is not analysed), and no new words go anywhere", async () => {
+  it("'Inn' fixed to 'In' while it waits: the batch carries 'In' (with the NEW content's mentions), analysed once; nothing recorded or posted", async () => {
     const t = await wired();
-    await t.upsert(wa("3EB0BAILEYS00021", { conversation: SECRET }));
-    await t.upsert(wa("3EB0BAILEYS00022", { conversation: "see you at 8" }, { lid: ALI_LID, pn: ALI_PN }));
-    await t.upsert(wa("3EB0NOTICE000021", editOf("3EB0BAILEYS00021", { extendedTextMessage: { text: "my new words" } })));
-    expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00021", byAdmin: false })]);
-    expect(JSON.stringify(t.outbox)).not.toContain("my new words");
+    await t.upsert(wa("3EB0BAILEYS00021", { conversation: "Inn" }));
+    await t.upsert(wa("3EB0NOTICE000021", editOf("3EB0BAILEYS00021", { extendedTextMessage: { text: "In, ask @158055467598022", contextInfo: { mentionedJid: [ALI_LID] } } })));
+    expect(t.outbox).toEqual([]);
     await _test_flushNow(GROUP);
-    expect(posted().messages.map((m) => m.body)).toEqual(["see you at 8"]);
-    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toMatch(/4321|my new words/);
+    expect(postAnalyzeFull).toHaveBeenCalledTimes(1);
+    expect(posted().messages).toHaveLength(1);
+    expect(posted().messages[0]).toMatchObject({ body: "In, ask @158055467598022", mentions: [ALI_LID] });
+    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("Inn");
+  });
+
+  it("an edit arriving in the SAME upsert as its original (no wait between): still a replacement, never a race that loses the IN", async () => {
+    const t = await wired();
+    await t.upsert(wa("3EB0BAILEYS00023", { conversation: "Inn" }), wa("3EB0NOTICE000023", editOf("3EB0BAILEYS00023", { conversation: "In" })));
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
+    expect(t.outbox).toEqual([]);
+  });
+
+  it("after a reconnect Baileys merged the edit into the original: 'In' is analysed once, and no purge races it", async () => {
+    const t = await wired();
+    await t.upsert(wa("3EB0BAILEYS00024", { editedMessage: { message: { conversation: "In" } } }), wa("3EB0NOTICE000024", editOf("3EB0BAILEYS00024", { conversation: "In" })));
+    expect(t.outbox).toEqual([]);
+    await _test_flushNow(GROUP);
+    expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
+  });
+
+  it("an edit of a message ALREADY SENT for analysis is a purge: recorded with no words, and every later copy kept out", async () => {
+    const t = await wired();
+    await t.upsert(wa("3EB0BAILEYS00025", { conversation: SECRET }));
+    await _test_flushNow(GROUP);
+    postAnalyzeFull.mockClear();
+    await t.upsert(wa("3EB0NOTICE000025", editOf("3EB0BAILEYS00025", { conversation: "my new words" })));
+    expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00025", byAdmin: false })]);
+    expect(JSON.stringify(t.outbox)).not.toMatch(/my new words|4321/);
+    await t.upsert(wa("3EB0BAILEYS00025", { conversation: SECRET })); // a replay of the original
+    await _test_flushNow(GROUP);
+    expect(postAnalyzeFull).not.toHaveBeenCalled();
   });
 
   it("an edit by somebody else is ignored", async () => {

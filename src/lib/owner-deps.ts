@@ -42,6 +42,7 @@
  * it is called out rather than slipped in because §13's rule is that
  * moving a guard must not lose it — here it moves and gets stricter.
  */
+import { REMINDER_ABOUT_PREFIX } from "./message-change";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db as defaultDb } from "./db";
 import type { ScoreApplyDeps } from "./score-engine";
@@ -219,7 +220,7 @@ export function buildAdminOpsApplyDeps(args: {
       return u?.phoneNumber ?? null;
     },
 
-    async queueReminderDm({ phone, text, sendAt }) {
+    async queueReminderDm({ phone, text, sendAt, sourceMessageId }) {
       // `sendAfter` is the whole mechanism: the scheduler's BotJob block
       // only emits rows whose `sendAfter` has passed, so a reminder for
       // Monday needs no second timer and no cron of its own.
@@ -235,6 +236,9 @@ export function buildAdminOpsApplyDeps(args: {
           phone: phone.replace(/^\+/, ""),
           text,
           sendAfter: sendAt,
+          // The message that asked for it: a delete or an edit of it cancels
+          // this DM, whose note quotes it (`message-change.ts`, 2026-11-15).
+          ...(sourceMessageId ? { aboutKey: `${REMINDER_ABOUT_PREFIX}${sourceMessageId}` } : {}),
         },
       });
     },
