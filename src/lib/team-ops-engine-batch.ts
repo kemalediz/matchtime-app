@@ -346,17 +346,6 @@ export interface TeamOpsMessageOutcome {
    *  route must not recompose it as the squad post. Never for a swap
    *  deferred because no teams exist, which says the deferral alone. */
   teamSheetPost?: boolean;
-  /** When this message's reply renders a team sheet a write in this batch
-   *  left (the teams made, a swap's sheet): its place in the order the
-   *  batch's sheets were rendered, so the route sends only the last, which
-   *  shows the batch's final teams (review of #604, 2026-11-16). */
-  sheetSeq?: number;
-  /** The reply's team sheet and its claim-making line apart (#604 round 4):
-   *  the route drops a stale sheet and keeps the rest, and replaces `lead`
-   *  with a neutral one when an earlier team change in the batch was folded
-   *  into this sheet. `lead` is null for the teams made (their words are
-   *  notes, never a claim about the change). */
-  sheetParts?: { lead: string | null; sheet: string };
 }
 
 export interface TeamOpsBatchResult {
@@ -806,9 +795,6 @@ export async function runTeamOpsBatch(args: {
   const reactByMessage = new Map<string, string>();
   const failedIds = new Set<string>();
   const generatedIds = new Set<string>();
-  // The order this batch's team sheets were rendered in (`sheetSeq`).
-  const sheetSeqById = new Map<string, number>();
-  const generatedSheetById = new Map<string, string>();
   let generatedMatchId: string | null = null;
   let targetMatchId: string | null = null;
 
@@ -887,8 +873,6 @@ export async function runTeamOpsBatch(args: {
     if (applied.react) reactByMessage.set(w.sourceMessageId, applied.react);
     if (applied.generated) {
       generatedIds.add(w.sourceMessageId);
-      sheetSeqById.set(w.sourceMessageId, sheetSeqById.size);
-      if (applied.sheet) generatedSheetById.set(w.sourceMessageId, applied.sheet);
       generatedMatchId = applied.matchId;
     }
     if (applied.unmatchedNoted.length > 0) {
@@ -943,14 +927,15 @@ export async function runTeamOpsBatch(args: {
   for (const [id, facts] of swapFacts) {
     const m = messages.find((x) => x.waMessageId === id)!;
     try {
-      const done = await (deps.applySwap ?? applyPlayersGroupSwap)({
-        orgId,
-        facts,
-        sender: m.senderUserId ? { userId: m.senderUserId, name: m.senderName ?? m.authorName ?? "" } : null,
-        people: swapPeople?.people.get(id),
-      });
-      swapResults.set(id, done);
-      if (done.kind === "applied" && done.parts) sheetSeqById.set(id, sheetSeqById.size);
+      swapResults.set(
+        id,
+        await (deps.applySwap ?? applyPlayersGroupSwap)({
+          orgId,
+          facts,
+          sender: m.senderUserId ? { userId: m.senderUserId, name: m.senderName ?? m.authorName ?? "" } : null,
+          people: swapPeople?.people.get(id),
+        }),
+      );
     } catch (err) {
       failedIds.add(id);
       degradations.push(
@@ -1090,9 +1075,7 @@ export async function runTeamOpsBatch(args: {
         matchId: null,
         teamsGenerated: false,
         writeFailed: failedIds.has(m.waMessageId),
-        teamSheetPost: applied && r?.kind === "applied" && !!r.parts,
-        ...(applied && r?.kind === "applied" && r.parts ? { sheetParts: { lead: r.parts.lead, sheet: r.parts.sheet } } : {}),
-        ...(sheetSeqById.has(m.waMessageId) ? { sheetSeq: sheetSeqById.get(m.waMessageId)! } : {}),
+        teamSheetPost: applied && r?.kind === "applied" && r.sheet,
       });
       continue;
     }
@@ -1146,8 +1129,6 @@ export async function runTeamOpsBatch(args: {
       matchId: targetMatchId,
       teamsGenerated: generated,
       writeFailed: failed,
-      ...(generated && sheetSeqById.has(m.waMessageId) ? { sheetSeq: sheetSeqById.get(m.waMessageId)! } : {}),
-      ...(generated && !failed && generatedSheetById.has(m.waMessageId) ? { sheetParts: { lead: null, sheet: generatedSheetById.get(m.waMessageId)! } } : {}),
     });
   }
 

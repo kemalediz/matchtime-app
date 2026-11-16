@@ -84,11 +84,10 @@ export interface Utterance {
    *  sheet" from this, never from the intent, which also carries "No teams
    *  generated yet" (review of #604, 2026-11-16). */
   teamSheet?: true;
-  /** Set only on the replacement post (#604, 2026-11-16): its lead and its
-   *  sheet apart, so a caller can drop the sheet and keep the news, and the
-   *  line that is still true when the slot move does not land (who is out),
-   *  or null when nobody went out. */
-  sheetParts?: { lead: string; sheet: string; outOnly: string | null };
+  /** Set only on the replacement post (#604, 2026-11-16): the attendance
+   *  batch replaces it when its slot move does not land, since the sheet it
+   *  shows is then one the database refused. */
+  replacementPost?: true;
 }
 
 export interface ComposedOutput {
@@ -353,21 +352,21 @@ export function compose(result: EngineResult): ComposedOutput {
             teamLabel: label(x.team),
           })),
         });
-        const replacementSheet = formatTeamsPost({
-          redLabel: state.teamLabels[0],
-          yellowLabel: state.teamLabels[1],
-          red: withNotes(sh.red),
-          yellow: withNotes(sh.yellow),
-          kickoff: state.kickoffLabel,
-          venue: state.venue,
-          lang,
-          footer: s.teams_post_footer_after_replacement,
-        });
-        const outNames = sp.swaps.filter((x) => x.outWentOut).map((x) => first(x.outName));
         utterances.push({
           messageId: sp.messageId,
-          text: `${lead}\n\n${replacementSheet}`,
-          sheetParts: { lead, sheet: replacementSheet, outOnly: outNames.length > 0 ? s.replacement_out_only({ outNames }) : null },
+          text:
+            `${lead}\n\n` +
+            formatTeamsPost({
+              redLabel: state.teamLabels[0],
+              yellowLabel: state.teamLabels[1],
+              red: withNotes(sh.red),
+              yellow: withNotes(sh.yellow),
+              kickoff: state.kickoffLabel,
+              venue: state.venue,
+              lang,
+              footer: s.teams_post_footer_after_replacement,
+            }),
+          replacementPost: true,
         });
         break;
       }

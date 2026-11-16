@@ -259,9 +259,13 @@ export const tr: Strings = {
   },
   teams_post_footer_after_replacement:
     "İtirazınız mı var? Admin benden takımları yeniden kurmamı isteyebilir.",
-  replacement_out_only: (p) => `🔁 *${joinList("tr", p.outNames)}* yok.`,
+  replacement_slot_not_moved: (p) => {
+    const out = p.outNames.length > 0 ? `*${joinList("tr", p.outNames)}* yok.` : null;
+    const inn = p.inNames.length > 0 ? `*${joinList("tr", p.inNames)}* kadroda.` : null;
+    return `🔁 ${[out, inn].filter(Boolean).join(" ")}`;
+  },
   teams_post_unslotted: (p) => `Kadroda, henüz bir takımda değil: ${joinList("tr", p.names.map((n) => `*${n}*`))}.`,
-  teams_updated_lead: "Güncel takımlar:",
+
 
   // ── row 43: buildSquadCompletePost ───────────────────────────────
 

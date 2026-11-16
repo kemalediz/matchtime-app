@@ -31,29 +31,15 @@
  *            a swap's sheet, a replacement's, or the team half of an
  *            attendance message, appended after the composition.
  * A "read" sheet beside a "write" one was rendered before the write and is
- * stale, and of two written sheets (regenerate + swap, replacement + swap)
- * the earlier is stale too: only the LAST written sheet, which shows the
- * batch's final teams, goes out (`staleSheetIds`, review round 3).
+ * stale (`staleReadSheetIds`): only the written sheet goes out.
  *
  * PURE: no database, no I/O. `route.ts` is the only caller.
  */
 import { skipsSquadComposition } from "./group-copy";
 
-/** A team sheet a reply really renders: as the teams stand ("read"), or as
- *  a team write in this batch left them ("write"), with `seq` the order the
- *  written sheets were rendered in (a replacement's first, then the team
- *  path's in its own order, `TeamOpsMessageOutcome.sheetSeq`). */
-export type Sheet =
-  | { kind: "read" }
-  | {
-      kind: "write";
-      seq: number;
-      /** The sheet inside the reply and its claim-making line (null: none,
-       *  e.g. the teams made, whose words are notes), so a stale one keeps
-       *  its news and the final one can be given a neutral lead (#604
-       *  round 4). Absent: the reply is the sheet alone. */
-      parts?: { lead: string | null; sheet: string };
-    };
+/** A team sheet a reply really renders: as the teams stand, or as a team
+ *  write in this batch left them. */
+export type SheetKind = "read" | "write";
 
 /** The fields of a route result the choice reads. */
 export interface CarrierResult {
@@ -80,22 +66,14 @@ export function composesSquadPost(r: CarrierResult, teamPostIds: ReadonlySet<str
 }
 
 /**
- * PURE. The sheets that are stale: with any written sheet in the batch,
- * every shown one and every written one but the last rendered (the highest
- * `seq`; on a tie, the later in the batch). Those replies are not sent; the
- * one sheet left answers them.
+ * PURE. The shown ("read") sheets that are stale because a team write in the
+ * same batch rendered its own sheet: those replies are not sent, the written
+ * sheet answers them.
  */
-export function staleSheetIds(sheets: ReadonlyMap<string, Sheet>): string[] {
-  let last: string | null = null;
-  let lastSeq = Number.NEGATIVE_INFINITY;
-  for (const [id, sh] of sheets) {
-    if (sh.kind === "write" && sh.seq >= lastSeq) {
-      last = id;
-      lastSeq = sh.seq;
-    }
-  }
-  if (last === null) return [];
-  return [...sheets.keys()].filter((id) => id !== last);
+export function staleReadSheetIds(sheets: ReadonlyMap<string, SheetKind>): string[] {
+  const kinds = [...sheets.values()];
+  if (!kinds.includes("write")) return [];
+  return [...sheets].filter(([, k]) => k === "read").map(([id]) => id);
 }
 
 /**
@@ -108,7 +86,7 @@ export function staleSheetIds(sheets: ReadonlyMap<string, Sheet>): string[] {
  */
 export function squadPostCarrierId(
   results: ReadonlyArray<CarrierResult>,
-  opts: { squadPostId: string; late: ReadonlySet<string>; teamPostIds: ReadonlySet<string>; sheets: ReadonlyMap<string, Sheet> },
+  opts: { squadPostId: string; late: ReadonlySet<string>; teamPostIds: ReadonlySet<string>; sheets: ReadonlyMap<string, SheetKind> },
 ): string | null {
   if (opts.sheets.size > 0) return null;
   const speaks = results.filter((r) => !opts.late.has(r.waMessageId) && composesSquadPost(r, opts.teamPostIds));
@@ -125,30 +103,4 @@ export function withoutRepeatedTeamSheet(text: string, sheet: string): string | 
   if (text === sheet) return null;
   if (text.endsWith(`\n\n${sheet}`)) return text.slice(0, -(sheet.length + 2)).trim() || null;
   return text;
-}
-
-/**
- * PURE. `text` without `sheet` (#604 round 4): a stale written sheet loses
- * its sheet and keeps its news, the replacement's "Pat is out, Ian takes his
- * place", the generated sheet's "couldn't find Zork". Null when nothing
- * else was said; unchanged when the sheet is not in it.
- */
-export function withoutSheet(text: string | null, sheet: string): string | null {
-  if (!text) return null;
-  const at = sheet ? text.indexOf(sheet) : -1;
-  if (at < 0) return text;
-  const rest = `${text.slice(0, at)}${text.slice(at + sheet.length)}`.replace(/\n{3,}/g, "\n\n").trim();
-  return rest || null;
-}
-
-/**
- * PURE. Is the batch's final sheet standing in for an earlier team write
- * that went stale (#604 round 4)? Then its own lead ("Same teams, sides
- * flipped", "nobody dropped") may contradict that change, and a neutral one
- * is used instead. A shown sheet going stale does not count: it changed
- * nothing.
- */
-export function finalSheetFoldsEarlierWrite(sheets: ReadonlyMap<string, Sheet>): boolean {
-  const stale = new Set(staleSheetIds(sheets));
-  return [...sheets].some(([id, sh]) => stale.has(id) && sh.kind === "write");
 }

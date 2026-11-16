@@ -148,6 +148,8 @@ import { extractForRouteTraced } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import { withAttendanceOverflow } from "./ai-budget-context";
+import { t } from "./i18n/t";
+import { firstWord } from "./i18n/text";
 import { compose } from "./pipeline/compose";
 import { decide } from "./pipeline/engine";
 import { engineOwnsRoute } from "./pipeline/gate";
@@ -253,10 +255,6 @@ export interface EngineMessageOutcome {
    * batch's written team sheet.
    */
   teamSheetWritten: boolean;
-  /** The replacement post's lead and sheet apart, when its sheet is the
-   *  database's (`teamSheetWritten`): the route drops the sheet and keeps
-   *  the lead when a later team write in the batch shows the final teams. */
-  sheetParts?: { lead: string; sheet: string };
   /** An admin asked for a replacement in this same message (PR #33). */
   recruitRequest: boolean;
   /** Personal-uncertainty conditional: record a MAYBE and chase later
@@ -1421,13 +1419,34 @@ export async function runAttendanceEngineBatch(args: {
     const moves = applied.filter((a) => a.write.kind === "team_slot_inherit" && a.write.sourceMessageId === id);
     return moves.length > 0 && moves.every((a) => a.ok);
   };
-  // Every OUT this message proposed landed, and there was at least one.
-  const dropsLanded = (id: string): boolean => {
-    const drops = applied.filter((a) => a.write.kind === "attendance" && a.write.sourceMessageId === id && a.write.status === "DROPPED");
-    return drops.length > 0 && drops.every((a) => a.ok);
+  // The replacement posts whose slot moves landed: their sheet is the
+  // database's. One whose move failed shows a sheet the database refused
+  // (#604, rows 13a and 13b), so it is replaced by what did land.
+  const landedReplacementIds = new Set<string>();
+  // What did land of a replacement whose slot move failed, by first name:
+  // the player whose OUT landed, the player whose IN landed. Null when
+  // neither did: nothing of the replacement is said.
+  const slotNotMovedLine = (id: string): string | null => {
+    const moves = applied.filter((a) => a.write.kind === "team_slot_inherit" && a.write.sourceMessageId === id);
+    const landed = (userId: string, out: boolean) =>
+      applied.some(
+        (a) =>
+          a.ok &&
+          a.write.kind === "attendance" &&
+          a.write.sourceMessageId === id &&
+          a.write.userId === userId &&
+          (out ? a.write.status === "DROPPED" : a.write.status !== "DROPPED"),
+      );
+    const outNames: string[] = [];
+    const inNames: string[] = [];
+    for (const mv of moves) {
+      if (mv.write.kind !== "team_slot_inherit") continue;
+      if (landed(mv.write.fromUserId, true)) outNames.push(firstWord(mv.write.fromName));
+      if (landed(mv.write.toUserId, false)) inNames.push(firstWord(mv.write.toName));
+    }
+    if (outNames.length + inNames.length === 0) return null;
+    return t(state.features.language).replacement_slot_not_moved({ outNames, inNames });
   };
-  // The replacement posts whose sheet is the database's (#604 round 4).
-  const sheetPartsByMessage = new Map<string, { lead: string; sheet: string }>();
   for (const u of composed.utterances) {
     if (u.messageId === null) {
       squadPost = u.text;
@@ -1435,15 +1454,9 @@ export async function runAttendanceEngineBatch(args: {
     }
     if (!ownedIds.has(u.messageId)) continue;
     let text: string | null = u.text;
-    if (u.sheetParts) {
-      if (slotMovesLanded(u.messageId)) {
-        sheetPartsByMessage.set(u.messageId, { lead: u.sheetParts.lead, sheet: u.sheetParts.sheet });
-      } else {
-        // The post was composed from the projection; the slot move did not
-        // land, so its sheet is one the database refused (rows 13a, 13b).
-        // Say only what is still true: who is out, when their OUT landed.
-        text = u.sheetParts.outOnly && dropsLanded(u.messageId) ? u.sheetParts.outOnly : null;
-      }
+    if (u.replacementPost) {
+      if (slotMovesLanded(u.messageId)) landedReplacementIds.add(u.messageId);
+      else text = slotNotMovedLine(u.messageId);
     }
     if (text === null) continue;
     const list = utteranceByMessageId.get(u.messageId) ?? [];
@@ -1454,9 +1467,9 @@ export async function runAttendanceEngineBatch(args: {
   // Which replies are already-composed TEAM SHEETS. See
   // `EngineMessageOutcome.deterministicTeamPost` for why the analyze
   // route has to be told.
-  // Only those whose sheet still goes out: a replacement whose slot move
-  // did not land says no sheet, and is no team post (#604 round 4).
-  const teamPostMessageIds = new Set(sheetPartsByMessage.keys());
+  // Only those whose sheet still goes out (#604): a replacement whose slot
+  // move did not land says no sheet, and is no team post.
+  const teamPostMessageIds = landedReplacementIds;
   for (const n of composed.operatorNotes) degradations.push(n);
 
   // ── Per-message outcomes ───────────────────────────────────────────
@@ -1554,8 +1567,7 @@ export async function runAttendanceEngineBatch(args: {
       failures,
       senderOwnRowMoved,
       deterministicTeamPost: teamPostMessageIds.has(m.waMessageId),
-      teamSheetWritten: sheetPartsByMessage.has(m.waMessageId),
-      ...(sheetPartsByMessage.has(m.waMessageId) ? { sheetParts: sheetPartsByMessage.get(m.waMessageId)! } : {}),
+      teamSheetWritten: landedReplacementIds.has(m.waMessageId),
       // PR #33: a recruit ask alongside a drop must do BOTH, and the
       // blast has to run after the drop lands, so the route defers it to
       // the batch-final pass. It used to share that pass with the
