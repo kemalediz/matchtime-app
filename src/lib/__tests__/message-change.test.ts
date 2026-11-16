@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { failures, makeDb, row, type Row } from "./fake-message-db";
+import { formNotesWin } from "../form-note-rules";
 
 const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "organisation", "adminSquadProposal", "adminFeeProposal", "botJob", "formNote", "ratingAdjustment", "sentNotification", "onboardingSession", "clubConnect"];
 const T: Record<string, Row[]> = {};
@@ -222,14 +223,31 @@ describe("an edit purges the TEXT and keeps the FACTS (round 8)", () => {
   it("a form note's reason goes when the message that WROTE it is changed, though a later message moved the note on; and its copy in the rating adjustment goes with it", async () => {
     const LATER = `false_${G}_LATERID00001_${SAM_PN}@c.us`;
     T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -2, reason: "door code 4321", sourceMessageId: LATER, reasonSourceMessageId: SAM_ID, createdAt: ago(9), updatedAt: ago(2) }));
-    T.ratingAdjustment.push(
-      row({ matchId: "m2", userId: "u-sam", delta: -2, reason: "door code 4321", confidence: 1 }),
-      row({ matchId: "m2", userId: "u-ali", delta: 1, reason: "the adjuster's own words", confidence: 0.6 }),
+    // The audit rows exactly as team generation writes them (`formNotesWin`,
+    // the note's amount clamped): the note's reason comes formatted.
+    const written = formNotesWin(
+      new Map([["u-ali", { playerId: "u-ali", delta: 0.5, reason: "Form note in the chat: door code 4321 (the adjuster quoting the chat)", confidence: 0.6 }]]),
+      [{ userId: "u-sam", delta: -2, reason: "door code 4321" }] as never,
+      ["u-sam", "u-ali"],
+    );
+    for (const a of written.values()) T.ratingAdjustment.push(row({ matchId: "m2", userId: a.playerId, delta: a.delta, reason: a.reason, confidence: a.confidence }));
+    expect(T.ratingAdjustment.find((r) => r.userId === "u-sam")!.reason).toMatch(/^Form note in the chat: door code 4321$/);
+    // MatchTime's acknowledgement of the note, which repeated the reason.
+    T.sentNotification.push(
+      row({ key: `greply:org-a:${SAM_ID}`, kind: "group-reply", text: "Noted: -1 for Sam Sample (door code 4321) in Tuesday's game.", createdAt: ago(9) }),
+      row({ key: `greply:org-a:${LATER}`, kind: "group-reply", text: "Changed: -1 for Sam Sample (door code 4321) in Tuesday's game.", createdAt: ago(2) }),
+      row({ key: "greply:org-a:false_other", kind: "group-reply", text: "Noted: -1 for Ali (door code 4321) in Tuesday's game.", createdAt: ago(2) }),
     );
     expect(await applyMessageChange(editBy(SAM), NOW)).toMatchObject({ notes: 1 });
     expect(T.formNote[0]).toMatchObject({ reason: "", delta: -2 });
-    expect(T.ratingAdjustment.map((r) => r.reason)).toEqual(["", "the adjuster's own words"]);
-    expect(JSON.stringify([T.formNote, T.ratingAdjustment])).not.toContain("4321");
+    // The note's copy goes; the adjuster's own row (another player, its own words) is left, never hit by a loose match.
+    expect(T.ratingAdjustment.find((r) => r.userId === "u-sam")!.reason).toBe("");
+    expect(T.ratingAdjustment.find((r) => r.userId === "u-ali")!.reason).toBe("Form note in the chat: door code 4321 (the adjuster quoting the chat)");
+    expect(T.sentNotification.map((n) => n.text)).toEqual([
+      "Noted: -1 for Sam Sample in Tuesday's game.",
+      "Changed: -1 for Sam Sample in Tuesday's game.",
+      "Noted: -1 for Ali (door code 4321) in Tuesday's game.",
+    ]);
   });
 
   it("and when the LATER message (the note's last source) is deleted, the reason goes too", async () => {
@@ -383,6 +401,44 @@ describe("the safety sweep (hourly, on /api/cron/bot-health)", () => {
     await applyMessageChange(byAuthor, NOW);
     expect(T.deletedMessage[0]).toMatchObject({ lastChangeAt: ago(7 * 60) });
     expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 0 });
+  });
+
+  it("the SAME change posted again leaves enforcedAt as it was (the upsert itself never resets it; its clear failing here shows what the upsert left)", async () => {
+    await applyMessageChange(byAuthor, ago(60));
+    expect(T.deletedMessage[0].enforcedAt).toEqual(ago(60));
+    failures.beforeWrite = () => {
+      throw new Error("the clear fails after the upsert");
+    };
+    seed(); // something to clear, so the clear writes (and fails)
+    await expect(applyMessageChange(byAuthor, NOW)).rejects.toThrow();
+    delete failures.beforeWrite;
+    expect(T.deletedMessage[0].enforcedAt).toEqual(ago(60));
+    // A NEW change does make it due again.
+    failures.beforeWrite = () => {
+      throw new Error("the clear fails after the upsert");
+    };
+    await expect(applyMessageChange({ ...byAuthor, ...ALI, byAdmin: true }, NOW)).rejects.toThrow();
+    delete failures.beforeWrite;
+    expect(T.deletedMessage[0].enforcedAt).toBeNull();
+  });
+
+  it("the sweep runs each tombstone ONCE per run, never in both its sets", async () => {
+    T.deletedMessage.push(
+      tomb({ chatId: G, waMessageId: "ONCE00000001", byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: ago(30), enforcedAt: null }),
+      tomb({ chatId: G, waMessageId: "ONCE00000002", byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: ago(20), enforcedAt: ago(19) }),
+      tomb({ chatId: G, waMessageId: "ONCE00000003", byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: ago(10), enforcedAt: ago(9) }),
+    );
+    const runs: string[] = [];
+    failures.onTransaction = (label) => runs.push(label);
+    try {
+      expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 3 });
+    } finally {
+      delete failures.onTransaction;
+    }
+    expect(runs).toHaveLength(3);
+    // Every one is enforced at the end of its own run, and the next run takes the two recent ones again, still once each.
+    expect(T.deletedMessage.every((t) => t.enforcedAt !== null)).toBe(true);
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 3 });
   });
 
   it("late writers are re-checked for six hours after EACH change, not only the first", async () => {

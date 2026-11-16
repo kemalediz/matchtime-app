@@ -98,7 +98,8 @@
  */
 import { db } from "./db";
 import { Prisma } from "@/generated/prisma/client";
-import { hqReplyKey } from "./reply-context";
+import { TOMBSTONE_UPSERT_SQL } from "./message-change-sql";
+import { groupReplyKey, hqReplyKey } from "./reply-context";
 import { listAskRef } from "./admin-group-log";
 import { feeAskRef } from "./fee-waiver-rules";
 import { heldQuestionOf, isTextFree, sameJson, textFreeTrace, withHeldQuestion } from "./message-change-trace";
@@ -327,7 +328,7 @@ interface Copies {
   archived: Array<{ id: string; waMessageId: string; senderPhone: string | null }>;
   hq: Array<{ id: string; waMessageId: string; prefix: string; text: string; pipelineTrace: unknown }>;
   mentions: Array<{ id: string; waMessageId: string }>;
-  notes: Array<{ id: string; sourceMessageId: string; matchId: string; userId: string; reason: string }>;
+  notes: Array<{ id: string; orgId: string; sourceMessageId: string; sourceIds: string[]; matchId: string; userId: string; delta: number; reason: string }>;
   squadProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
   feeProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
   reminders: Array<{ id: string; storedId: string }>;
@@ -387,11 +388,12 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
         reason: { not: "" },
         OR: [...idWhere(chatId, messageId, { field: "sourceMessageId" }), ...idWhere(chatId, messageId, { field: "reasonSourceMessageId" })],
       },
-      select: { id: true, sourceMessageId: true, reasonSourceMessageId: true, matchId: true, userId: true, reason: true },
+      select: { id: true, orgId: true, sourceMessageId: true, reasonSourceMessageId: true, matchId: true, userId: true, delta: true, reason: true },
     })
   ).flatMap((r) => {
-    const src = [r.sourceMessageId, r.reasonSourceMessageId].find((x): x is string => !!x && isStoredIdOf(x, chatId, messageId));
-    return src ? [{ id: r.id, sourceMessageId: src, matchId: r.matchId, userId: r.userId, reason: r.reason }] : [];
+    const ids = [r.sourceMessageId, r.reasonSourceMessageId].filter((x): x is string => !!x);
+    const src = ids.find((x) => isStoredIdOf(x, chatId, messageId));
+    return src ? [{ id: r.id, orgId: r.orgId, sourceMessageId: src, sourceIds: [...new Set(ids)], matchId: r.matchId, userId: r.userId, delta: r.delta, reason: r.reason }] : [];
   });
   // What MatchTime was about to do because of the message: only a delete cancels it.
   if (!withMade) return { analyzed, archived, hq, mentions, notes, squadProposals: [], feeProposals: [], reminders: [] };
@@ -444,7 +446,7 @@ type Mode = "delete" | "edit" | null;
  *       I ask?" positional tests.
  *   MessageMentions   kept whole: it holds who was tagged, never words.
  */
-async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombstone, c: Copies, out: MessageChangeResult, now: Date, clar: Clarification): Promise<boolean> {
+async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombstone, c: Copies, out: MessageChangeResult, now: Date, clar: Clarification, forms: FormNoteFormat): Promise<boolean> {
   const mode = (storedId: string, storedPhone?: string | null, prefix = ""): Mode => {
     const ref = { storedId, chatId, messageId, prefix, storedPhone };
     if (deletedFor(t, ref)) return "delete";
@@ -507,10 +509,22 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   out.refused += c.notes.length - notesOk.length;
   if (notesOk.length) {
     out.notes += (await tx.formNote.updateMany({ where: { id: { in: notesOk.map((r) => r.id) } }, data: { reason: "" } })).count;
-    // Team generation copies a note's reason into the rating adjustment's
-    // audit row (`team-generation.ts`): that copy goes too, by the note.
     for (const n of notesOk) {
-      await tx.ratingAdjustment.updateMany({ where: { matchId: n.matchId, userId: n.userId, reason: n.reason }, data: { reason: "" } });
+      // Team generation copies the reason into the rating adjustment's audit
+      // row, formatted (`form-note-rules.ts` `formNoteReason`, through
+      // `formNotesWin`): that exact string for that player in that match, and
+      // nothing looser, so the adjuster's own rows are never touched.
+      const copied = forms.formNoteReason({ delta: forms.clampFormDelta(n.delta).delta, reason: n.reason });
+      await tx.ratingAdjustment.updateMany({ where: { matchId: n.matchId, userId: n.userId, reason: copied }, data: { reason: "" } });
+      // MatchTime's acknowledgement ("Noted: -0.5 for Pete Power (tired) ..."),
+      // claimed under the message it answered (`group-reply-claims.ts`): the
+      // note's reason, MatchTime's own copy of that exact string, goes from it.
+      const keys = n.sourceIds.flatMap((id) => [groupReplyKey(n.orgId, id), hqReplyKey(n.orgId, id)]);
+      const acks = await tx.sentNotification.findMany({ where: { key: { in: keys } }, select: { id: true, text: true } });
+      for (const a of acks) {
+        const text = withoutReason(a.text, n.reason);
+        if (text !== a.text) await tx.sentNotification.update({ where: { id: a.id }, data: { text } });
+      }
     }
   }
   // FOR A DELETE ONLY: what MatchTime was about to do because of the message.
@@ -587,6 +601,18 @@ interface Clarification {
   ttlMs: number;
 }
 
+/** How team generation formats a note's reason (`form-note-rules.ts`). */
+interface FormNoteFormat {
+  formNoteReason(note: { delta: number; reason: string }): string;
+  clampFormDelta(raw: number): { delta: number };
+}
+
+/** PURE. MatchTime's own text with a note's reason taken out ("... (tired) in" becomes "... in"). */
+function withoutReason(text: string | null, reason: string): string | null {
+  if (!text || !reason) return text;
+  return text.split(` (${reason})`).join("").split(`(${reason})`).join("").split(reason).join("");
+}
+
 /** One message's change, cleared in one transaction. True when a copy was left for later (see `clearCopies`). */
 async function clearMessage(chatId: string, messageId: string, t: Tombstone, at: Date, out: MessageChangeResult, now: Date): Promise<boolean> {
   const orgIds = await clubsOf(db, chatId);
@@ -595,22 +621,14 @@ async function clearMessage(chatId: string, messageId: string, t: Tombstone, at:
   // stays clear of the pipeline (`admin-group-model-door.source.test.ts`).
   const { GROUP_QUESTION_TTL_MS, STATS_CLARIFICATION_INTENT } = await import("./pipeline/awaiting-answer");
   const clar = { intent: STATS_CLARIFICATION_INTENT, ttlMs: GROUP_QUESTION_TTL_MS };
-  return db.$transaction(async (tx) => clearCopies(tx, chatId, messageId, widened, await copiesOf(tx, chatId, messageId, at, orgIds, hasDelete(widened)), out, now, clar));
+  const forms = await import("./form-note-rules");
+  return db.$transaction(async (tx) => clearCopies(tx, chatId, messageId, widened, await copiesOf(tx, chatId, messageId, at, orgIds, hasDelete(widened)), out, now, clar, forms));
 }
 
 async function markEnforced(chatId: string, messageIds: string[], now: Date): Promise<void> {
   if (messageIds.length === 0) return;
   await db.deletedMessage.updateMany({ where: { chatId, waMessageId: { in: messageIds } }, data: { enforcedAt: now } }).catch(() => {});
 }
-
-/** The most changes kept per message (deletes first). */
-export const MAX_CHANGES_PER_MESSAGE = 20;
-/**
- * SQL: is the change being recorded already in the row (whatever its time)?
- * Then the upsert is a no-op for the record: an outbox retry or an admin
- * re-check never moves `lastChangeAt` on or makes the tombstone due again.
- */
-const SAME_CHANGE_SEEN = `EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE("DeletedMessage"."changes", '[]'::jsonb)) AS seen(e) WHERE seen.e - 'at' = (EXCLUDED."changes"->0) - 'at')`;
 
 /**
  * The recorded change of one message, merged with any earlier one IN ONE
@@ -619,32 +637,13 @@ const SAME_CHANGE_SEEN = `EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE("D
  * unless the same one, whatever its time, is there already, at most
  * MAX_CHANGES_PER_MESSAGE kept with deletes before edits, `lastChangeAt`
  * moved on), so two changes posted at once can never lose each other's
- * values. Committed before any clear. A merge resets `enforcedAt`, so the
- * change is cleared again.
+ * values (`message-change-sql.ts`). Committed before any clear. A NEW
+ * change resets `enforcedAt`, so it is cleared again; the same change again
+ * is a no-op for the record.
  */
 async function recordTombstone(input: MessageChangeInput, now: Date): Promise<Tombstone & { deletedAt: Date }> {
   const rows = (await db.$queryRawUnsafe(
-    `INSERT INTO "DeletedMessage" ("id", "chatId", "waMessageId", "byAdmin", "reason", "senderJids", "senderPhones", "deletedAt", "lastChangeAt", "changes")
-     VALUES ($1, $2, $3, $4, $5, $6::text[], $7::text[], $8, $8, $9::jsonb)
-     ON CONFLICT ("chatId", "waMessageId") DO UPDATE SET
-       "byAdmin" = "DeletedMessage"."byAdmin" OR EXCLUDED."byAdmin",
-       "reason" = CASE WHEN "DeletedMessage"."reason" = 'deleted' OR EXCLUDED."reason" = 'deleted' THEN 'deleted' ELSE 'edited' END,
-       "senderJids" = ARRAY(SELECT DISTINCT x FROM unnest(COALESCE("DeletedMessage"."senderJids", '{}'::text[]) || EXCLUDED."senderJids") AS x),
-       "senderPhones" = ARRAY(SELECT DISTINCT x FROM unnest(COALESCE("DeletedMessage"."senderPhones", '{}'::text[]) || EXCLUDED."senderPhones") AS x),
-       "changes" = (
-         SELECT COALESCE(jsonb_agg(k.e ORDER BY k.o), '[]'::jsonb) FROM (
-           SELECT u.e, u.o FROM (
-             SELECT a.e, a.o, row_number() OVER (PARTITION BY a.e - 'at' ORDER BY a.o) AS n
-             FROM jsonb_array_elements(COALESCE("DeletedMessage"."changes", '[]'::jsonb) || EXCLUDED."changes") WITH ORDINALITY AS a(e, o)
-           ) u
-           WHERE u.n = 1
-           ORDER BY (u.e->>'reason' = 'deleted') DESC, u.o
-           LIMIT ${MAX_CHANGES_PER_MESSAGE}
-         ) k
-       ),
-       "lastChangeAt" = CASE WHEN ${SAME_CHANGE_SEEN} THEN "DeletedMessage"."lastChangeAt" ELSE GREATEST("DeletedMessage"."lastChangeAt", EXCLUDED."lastChangeAt") END,
-       "enforcedAt" = CASE WHEN ${SAME_CHANGE_SEEN} THEN "DeletedMessage"."enforcedAt" ELSE NULL END
-     RETURNING "byAdmin", "reason", "senderJids", "senderPhones", "deletedAt", "changes"`,
+    TOMBSTONE_UPSERT_SQL,
     `dm_${now.getTime().toString(36)}_${Math.random().toString(36).slice(2, 12)}`,
     input.chatId,
     input.messageId,
@@ -671,8 +670,9 @@ async function recordTombstone(input: MessageChangeInput, now: Date): Promise<To
 
 /**
  * Apply a delete or an author's edit: record it, then clear every copy it
- * applies to. Only for a group linked to a club (nothing is stored for any
- * other). Idempotent: a retry finds the same rows already cleared, or none.
+ * applies to. Only for a group linked to a club: the stores cleared here
+ * keep only those groups' messages (the chat captured when MatchTime joins a
+ * group, for setup, is not cleared: the PR's known limits). Idempotent: a retry finds the same rows already cleared, or none.
  * Throws only on a database failure, which the route turns into a 500 the
  * Pi retries.
  */

@@ -69,7 +69,7 @@ function unique(where: Record<string, unknown>): Record<string, unknown> {
 }
 
 /** Test seam: throw from inside a write, to prove a transaction rolls back. */
-export const failures: { beforeWrite?: () => void } = {};
+export const failures: { beforeWrite?: () => void; onTransaction?: (label: string) => void } = {};
 
 export function makeTable(rows: Row[], uniqueKeys: string[][] = []) {
   const order = (list: Row[], orderBy: unknown): Row[] => {
@@ -217,6 +217,7 @@ export function makeDb(T: Record<string, Row[]>, names: string[], uniqueKeys: Re
           return [{ byAdmin: r.byAdmin, reason: r.reason, senderJids: r.senderJids, senderPhones: r.senderPhones, changes: r.changes, deletedAt: r.deletedAt, lastChangeAt: r.lastChangeAt }];
         },
         $transaction: async <R>(fn: (tx: unknown) => Promise<R>): Promise<R> => {
+          failures.onTransaction?.("transaction");
           const snapshot = Object.fromEntries(names.map((n) => [n, (T[n] ?? []).map((r) => ({ ...r }))]));
           try {
             return await fn(t);

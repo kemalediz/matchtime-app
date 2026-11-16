@@ -17,6 +17,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { createGroup, type SimGroup } from "./group";
 import { clearExtractorStub, clearPipelineStubs, clearRouterStub, engineOn, selfIn, selfOut } from "../helpers/stub";
 import { E2E } from "../helpers/env";
+import { TOMBSTONE_UPSERT_SQL } from "../../src/lib/message-change-sql";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 const SECRET = "my door code is 4321, come round after";
@@ -597,6 +598,29 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     const again = await db.one<{ last: Date; done: boolean }>(`SELECT "lastChangeAt" AS last, "enforcedAt" IS NOT NULL AS done FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare]);
     expect(new Date(again!.last).getTime()).toBe(new Date(t!.last).getTime());
     expect(again!.done).toBe(true);
+  });
+
+  test("THE STATEMENT ITSELF on real Postgres: the same change again leaves enforcedAt and lastChangeAt as they were; a new change makes it due", async ({ db }) => {
+    const chat = "120363777000000099@g.us";
+    const bare = bareId();
+    const change = (who: string, byAdmin: boolean, at: Date) =>
+      JSON.stringify([{ reason: "deleted", byAdmin, senderJids: [`${who}@c.us`], senderPhones: [who], at: at.toISOString() }]);
+    const upsert = (who: string, byAdmin: boolean, at: Date) =>
+      db.run(TOMBSTONE_UPSERT_SQL, [`e2e-sql-${bare}-${at.getTime()}`, chat, bare, byAdmin, "deleted", [`${who}@c.us`], [who], at, change(who, byAdmin, at)]);
+    const first = new Date(Date.now() - 60 * 60 * 1000);
+    await upsert("447700900123", false, first);
+    const enforced = new Date(Date.now() - 30 * 60 * 1000);
+    await db.run(`UPDATE "DeletedMessage" SET "enforcedAt" = $3 WHERE "chatId" = $1 AND "waMessageId" = $2`, [chat, bare, enforced]);
+    const row = () => db.one<{ enforced: Date | null; last: Date; n: number }>(`SELECT "enforcedAt" AS enforced, "lastChangeAt" AS last, jsonb_array_length(changes)::int AS n FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [chat, bare]);
+    await upsert("447700900123", false, new Date());
+    const same = await row();
+    expect(new Date(same!.enforced!).getTime()).toBe(enforced.getTime());
+    expect(new Date(same!.last).getTime()).toBe(first.getTime());
+    expect(same!.n).toBe(1);
+    await upsert("447700900124", true, new Date());
+    const fresh = await row();
+    expect(fresh!.enforced).toBeNull();
+    expect(fresh!.n).toBe(2);
   });
 
   test("the server's safety net: a Pi recent-chat line carrying an EDITED message's original words never reaches the model", async ({ request, db }) => {
