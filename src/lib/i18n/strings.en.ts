@@ -1557,6 +1557,15 @@ export const en = {
    *  2026-11-03): the month's regulars are seeded onto every game
    *  (monthly-week.ts), a regular's Out frees the place, and a pay as you go
    *  player's IN takes an open one for that game only. */
+  /** "help payments" for a monthly club whose payments are on without card
+   *  collection (round 2 of the review of #605): the month's payments, from
+   *  month-payment.ts (bank transfer only, D5; the collector confirms, D3;
+   *  a player's "paid" in any words, `handlePlayerPaidDm`). */
+  onbHelpPaymentsMonthly:
+    `💷 *Paying for the month: how it works*\n` +
+    `Once the organisers set the month's price, I post each regular's amount for the month. You pay the money collector by bank transfer: I never handle the money and never send a pay link for the month.\n` +
+    `Paid? Tell me you've paid and the money collector confirms it. I remind anyone who hasn't paid yet.`,
+
   onbHelpAvailabilityMonthly:
     `⚽ *Squad & availability: how it works*\n` +
     `This group plays as a monthly squad. Paid for the month? You're on the month's list and in every game, no need to say anything. Can't make one? Say *Out* and your place opens for someone else.\n` +

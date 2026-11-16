@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const db = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn() },
   match: { findMany: vi.fn() },
-  moMVote: { groupBy: vi.fn() },
+  moMVote: { findMany: vi.fn() },
   sentNotification: { findMany: vi.fn() },
   user: { findMany: vi.fn() },
 }));
@@ -33,6 +33,12 @@ const voted = (id: string, daysAgo: number, ratingWindowHours = 72) => ({
 /** A's rating window (hours): 72 has closed by now (4 days on), 120 has not. */
 let aWindow = 72;
 
+/** One row per voter (who voted is never selected): the player voted for,
+ *  and when the row was recorded. */
+const rows = (matchId: string, playerId: string, n: number, recorded: Date) =>
+  Array.from({ length: n }, () => ({ matchId, playerId, createdAt: recorded }));
+const VOTES = [...rows("B", "u-sait", 4, at(0.5)), ...rows("A", "u-habib", 3, at(3)), ...rows("C", "u-mojib", 5, at(13))];
+
 beforeEach(() => {
   vi.clearAllMocks();
   aWindow = 72;
@@ -44,12 +50,9 @@ beforeEach(() => {
       { id: "A", date: at(4), status: "COMPLETED", activityId: "act-tue", activity: ACT },
     ];
   });
-  db.moMVote.groupBy.mockResolvedValue([
-    { matchId: "B", playerId: "u-sait", _count: { playerId: 4 } },
-    { matchId: "A", playerId: "u-habib", _count: { playerId: 3 } },
-    { matchId: "C", playerId: "u-mojib", _count: { playerId: 5 } },
-  ]);
-  db.sentNotification.findMany.mockResolvedValue([{ key: "C:mom-announcement" }]);
+  db.moMVote.findMany.mockResolvedValue(VOTES);
+  // C's result was posted 9 days after it was played.
+  db.sentNotification.findMany.mockResolvedValue([{ key: "C:mom-announcement", createdAt: at(9) }]);
   db.user.findMany.mockResolvedValue([
     { id: "u-sait", name: "Sait" },
     { id: "u-habib", name: "Habib" },
@@ -70,6 +73,24 @@ describe("loadLastMom", () => {
     const f = await loadLastMom("org-1", NOW);
     expect(f.last!.winners.map((w) => w.name)).toEqual(["Mojib"]);
     expect(f.last!.date.getTime()).toBe(at(14).getTime());
+  });
+
+  // Round 2 of the review of #605: votes recorded after C's announcement
+  // (its window was still open) do not change what is told about it.
+  it("an announced match is told as announced: votes recorded after the post are not counted", async () => {
+    aWindow = 120;
+    db.moMVote.findMany.mockResolvedValue([...VOTES, ...rows("C", "u-habib", 6, at(8.5))]);
+    const f = await loadLastMom("org-1", NOW);
+    expect(f.last!.date.getTime()).toBe(at(14).getTime());
+    expect(f.last!.winners.map((w) => w.name)).toEqual(["Mojib"]);
+    expect(f.last!.tally.map((t) => `${t.name} ${t.votes}`)).toEqual(["Mojib 5"]);
+    expect(f.last!.totalVotes).toBe(5);
+  });
+
+  it("reads the votes one row each, never who voted", async () => {
+    await loadLastMom("org-1", NOW);
+    const select = db.moMVote.findMany.mock.calls[0][0].select;
+    expect(select).toEqual({ matchId: true, playerId: true, createdAt: true });
   });
 
   it("reads the later matches as the scheduler does: this club, not historical, not cancelled, kicked off", async () => {

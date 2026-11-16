@@ -8,7 +8,7 @@
  * the shared winners, the votes, and whether the organisers picked it.
  */
 import { describe, expect, it } from "vitest";
-import { lastMomContextLines, lastMomFacts, type MomMatchRecord } from "../last-mom";
+import { lastMomContextLines, lastMomFacts, momTallyAsAnnounced, type MomMatchRecord } from "../last-mom";
 
 const NOW = new Date("2026-11-10T19:25:00Z");
 const DAY = 24 * 60 * 60 * 1000;
@@ -148,6 +148,8 @@ describe("lastMomFacts", () => {
       const before = lastMomFacts([prev, C], { now: new Date(today.date.getTime() - 60_000), organisersPick: false, fixtures: [fixture(prev), fixture(C), today] });
       expect(before.last!.date.getTime()).toBe(C.date.getTime());
       expect(before.openVoteDate!.getTime()).toBe(prev.date.getTime());
+      // Its 48h window closed: its vote has closed, the result still to come.
+      expect(before.openVoteState).toBe("closed");
     });
 
     it("a cancelled next fixture supersedes nothing: the vote is still open", () => {
@@ -362,5 +364,87 @@ describe("lastMomFacts: recent, every decided Man of the Match, newest first", (
 
   it("no votes at all: an empty list", () => {
     expect(lastMomFacts([], { now: NOW, organisersPick: false }).recent).toEqual([]);
+  });
+});
+
+// Round 2 of the review of #605. What the context says about a match whose
+// result nobody can be told yet must be TRUE: the scheduler may have given
+// up announcing it, its vote may have closed, or the club picks and has no
+// vote at all.
+describe("a match whose result cannot be told yet, worded truthfully", () => {
+  const C = rec({ date: new Date(NOW.getTime() - 14 * DAY), announced: true });
+  const fixture = (r: MomMatchRecord) => ({ id: r.id, date: r.date, status: "COMPLETED", activityId: r.activityId, activity: r.fixture });
+  const text = (f: ReturnType<typeof lastMomFacts>) => lastMomContextLines(f).join("\n");
+  const NO_PROMISE = /announced in the group when the vote closes|still to be announced|still open/;
+
+  it("superseded inside its default window (a next game today, no votes yet): withheld, no promise of an announcement", () => {
+    // Played 3 days ago, the default 120h window still open; the next one
+    // kicked off 2 hours ago (a kickoff moved to an earlier weekday, say).
+    const prev = rec({ date: new Date(NOW.getTime() - 3 * DAY), announced: false, tally: [{ userId: "u-sait", name: "Sait", votes: 4 }] });
+    const today = { id: "m-today", date: new Date(NOW.getTime() - 2 * HOUR), status: "UPCOMING", activityId: "act-tue", activity: TUE };
+    const f = lastMomFacts([prev, C], { now: NOW, organisersPick: false, fixtures: [fixture(prev), fixture(C), today] });
+    expect(f.last!.date.getTime()).toBe(C.date.getTime());
+    expect(f.openVoteDate!.getTime()).toBe(prev.date.getTime());
+    expect(f.openVoteState).toBe("withheld");
+    expect(text(f)).toContain("is not out yet, so nobody can be told it");
+    expect(text(f)).not.toMatch(NO_PROMISE);
+    expect(text(f)).not.toContain("Sait");
+  });
+
+  it("its window closed, not announced yet (waiting for the backstop): the vote has closed, the result is to be announced, nothing of it told", () => {
+    const d = new Date(NOW.getTime() - 4 * DAY);
+    const m = rec({ date: d, announced: false, tally: [{ userId: "u-sait", name: "Sait", votes: 4 }], voteClosesAt: new Date(d.getTime() + 72 * HOUR) });
+    const f = lastMomFacts([m, C], { now: NOW, organisersPick: false, fixtures: [fixture(m), fixture(C)] });
+    expect(f.last!.date.getTime()).toBe(C.date.getTime());
+    expect(f.openVoteState).toBe("closed");
+    expect(text(f)).toContain("has closed and its result is still to be announced in the group");
+    expect(text(f)).not.toContain("is still open");
+    expect(text(f)).not.toContain("Sait");
+  });
+
+  it("its window open, the scheduler still to announce: still open, as before", () => {
+    const m = rec({ date: new Date(NOW.getTime() - 2 * DAY), announced: false, tally: [{ userId: "u-sait", name: "Sait", votes: 4 }] });
+    const f = lastMomFacts([m, C], { now: NOW, organisersPick: false, fixtures: [fixture(m), fixture(C)] });
+    expect(f.openVoteState).toBe("voting");
+    expect(text(f)).toContain("is still open. Its result is announced in the group when the vote closes");
+  });
+
+  describe("an organisers' club: there is no vote, so no vote window", () => {
+    it("a pick on a superseded match is told as before, its window still open", () => {
+      const prev = rec({ date: new Date(NOW.getTime() - 3 * DAY), announced: false, tally: [{ userId: "u-mojib", name: "Mojib", votes: 1 }] });
+      const today = { id: "m-today", date: new Date(NOW.getTime() - 2 * HOUR), status: "UPCOMING", activityId: "act-tue", activity: TUE };
+      const f = lastMomFacts([prev, C], { now: NOW, organisersPick: true, fixtures: [fixture(prev), fixture(C), today] });
+      expect(f.last!.date.getTime()).toBe(prev.date.getTime());
+      expect(f.last!.pickedByOrganisers).toBe(true);
+      expect(f.openVoteDate).toBeNull();
+    });
+
+    it("a pick not announced yet is not out yet, with no word of a vote", () => {
+      const m = rec({ date: new Date(NOW.getTime() - 1 * DAY), announced: false, tally: [{ userId: "u-mojib", name: "Mojib", votes: 1 }] });
+      const f = lastMomFacts([m, C], { now: NOW, organisersPick: true, fixtures: [fixture(m), fixture(C)] });
+      expect(f.openVoteState).toBe("withheld");
+      expect(text(f)).toContain("is not out yet");
+      expect(text(f)).not.toMatch(/The vote for the match/);
+    });
+  });
+});
+
+// Round 2 of the review of #605: an announced result is told as it was
+// announced. The announcement can go out before the vote window closes
+// (everyone voted, or the day-5 backstop), and a vote can still arrive
+// after it. The announcement's tally is not stored, so the votes counted
+// are those recorded at or before its post (`SentNotification.createdAt`,
+// written by the same claim that sends it).
+describe("momTallyAsAnnounced", () => {
+  const POSTED = new Date("2026-11-08T16:00:00Z");
+  const v = (playerId: string, iso: string) => ({ playerId, at: new Date(iso) });
+  const votes = [v("u-mojib", "2026-11-07T10:00:00Z"), v("u-mojib", "2026-11-08T09:00:00Z"), v("u-habib", "2026-11-08T16:00:00Z"), v("u-habib", "2026-11-08T18:00:00Z"), v("u-habib", "2026-11-09T09:00:00Z")];
+
+  it("announced: only the votes recorded at or before the post", () => {
+    expect(Object.fromEntries(momTallyAsAnnounced(votes, POSTED))).toEqual({ "u-mojib": 2, "u-habib": 1 });
+  });
+
+  it("not announced: every vote (it is not told anyway until decided)", () => {
+    expect(Object.fromEntries(momTallyAsAnnounced(votes, null))).toEqual({ "u-mojib": 2, "u-habib": 3 });
   });
 });

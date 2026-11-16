@@ -22,19 +22,30 @@
  * hard stop (`BADGE_FINAL_AFTER_DAYS`, pinned equal to the scheduler's
  * `MOM_ANNOUNCE_MAX_AGE_DAYS`), or the club's next fixture has kicked off
  * (`momAnnouncementSuperseded`, the one rule both read; review
- * 2026-11-15) and its vote window has ended too (votes count until then,
- * whether or not the announcement will come). A vote still open is never told: the group hears its result
- * from the announcement, so a newer match still voting is named by its
- * date only, with no name and no count from it. A match given up on is
- * told with the figures its announcement would have posted.
+ * 2026-11-15) and, for a club that votes, its vote window has ended too
+ * (votes count until then, whether or not the announcement will come). An
+ * organisers' pick has no window. A result nobody can be told yet is never
+ * told: a newer one is named by its date only, worded for where it stands
+ * (`MomPendingState`), and never with a promise the scheduler will not
+ * keep. A match given up on is told with the figures its announcement
+ * would have posted.
+ *
+ * AS ANNOUNCED (round 2 of the review of #605). The announcement can go
+ * out before the vote window closes (everyone voted, or the day-5
+ * backstop), and votes can still arrive after it. The announcement's
+ * winner and tally are not stored (only its words, `SentNotification.text`,
+ * which nothing reads back), so an announced match is counted from the
+ * votes recorded at or before its post (`momTallyAsAnnounced`). A vote
+ * CHANGED after the post keeps its first `createdAt` (MoMVote has no
+ * update time), so that one case can still read as changed.
  *
  * WHAT IS SAID. The match (day, the two teams, the score and who won it),
  * the winner, or every winner of a tie with "shared" (the announcement's own
  * rule: a tie is never broken), the winner's votes out of the votes cast,
  * and every player who got a vote with their count. The announcement
  * already posts that breakdown in the group, so none of it is new to the
- * group. WHO voted for whom is never read: the loader groups by the player
- * voted for, and no voter id reaches this module.
+ * group. WHO voted for whom is never read: the loader reads the player
+ * voted for and when, and no voter id reaches this module.
  *
  * AN ORGANISERS' PICK (`mom-chooser.ts`). A pick is stored as exactly one
  * MoMVote (`mom-pick.ts`), so a count would read "1 of 1 votes". For a club
@@ -92,10 +103,21 @@ export interface LastMom {
   pickedByOrganisers: boolean;
 }
 
+/** Where a newer match's result stands when nobody can be told it yet.
+ *  "voting": its vote is open and the scheduler will still announce it.
+ *  "closed": its vote has closed and its result is still to be announced.
+ *  "withheld": no promise can be made: the scheduler gave up announcing it
+ *  (its next fixture kicked off) while its vote is still open, or the
+ *  organisers pick and have not announced it. */
+export type MomPendingState = "voting" | "closed" | "withheld";
+
 export interface LastMomFacts {
   last: LastMom | null;
-  /** A newer match whose vote is still open, by date only. */
+  /** A newer match whose result cannot be told yet, by date only. */
   openVoteDate: Date | null;
+  /** Where `openVoteDate`'s result stands. Absent on facts made before it
+   *  existed: read as "voting". */
+  openVoteState?: MomPendingState;
   /** Every DECIDED Man of the Match in the records read, newest first
    *  (2026-11-11): "the last 3 weeks' MoMs" needs each match's winners, not
    *  only the last. `last` is the first of these. A vote still open is never
@@ -103,18 +125,38 @@ export interface LastMomFacts {
   recent?: LastMom[];
 }
 
-/** PURE. Decided: posted, or given up on for good by the scheduler (past
- *  the age at which it ever could be, or its next fixture kicked off) AND,
- *  for the next-fixture stop, its vote has closed: the scheduler stops
- *  carrying the announcement, but votes still count until the rating
- *  window ends, so until then its tally is still moving (review of #605).
- *  The age stop needs no such check: the window (up to 168h) ends before
- *  it. */
-function decided(m: MomMatchRecord, now: Date, fixtures: readonly MomFixtureMatch[]): boolean {
-  if (m.announced) return true;
-  if (now.getTime() - m.date.getTime() > BADGE_FINAL_AFTER_DAYS * DAY_MS) return true;
-  if (now.getTime() <= m.voteClosesAt.getTime()) return false;
-  return momAnnouncementSuperseded({ id: m.id, date: m.date, activityId: m.activityId, activity: m.fixture }, fixtures, now);
+/** PURE. Where a match's result stands. Decided: posted, or given up on for
+ *  good by the scheduler (past the age at which it ever could be, or its
+ *  next fixture kicked off) AND, for the next-fixture stop in a club that
+ *  votes, its vote has closed: the scheduler stops carrying the
+ *  announcement, but votes still count until the rating window ends, so
+ *  until then its tally is still moving (review of #605). The age stop
+ *  needs no such check: the window (up to 168h) ends before it. Otherwise
+ *  the `MomPendingState` it is in. */
+function statusOf(m: MomMatchRecord, now: Date, fixtures: readonly MomFixtureMatch[], organisersPick: boolean): "decided" | MomPendingState {
+  if (m.announced) return "decided";
+  if (now.getTime() - m.date.getTime() > BADGE_FINAL_AFTER_DAYS * DAY_MS) return "decided";
+  const superseded = momAnnouncementSuperseded({ id: m.id, date: m.date, activityId: m.activityId, activity: m.fixture }, fixtures, now);
+  // An organisers' pick has no vote and no window (submitMoMVote refuses,
+  // setMatchMom has none): given up on, it is told; otherwise not out yet.
+  if (organisersPick) return superseded ? "decided" : "withheld";
+  const voteOpen = now.getTime() <= m.voteClosesAt.getTime();
+  if (superseded) return voteOpen ? "withheld" : "decided";
+  return voteOpen ? "voting" : "closed";
+}
+
+/**
+ * PURE. The votes an announced result counted: those recorded at or before
+ * its post (see AS ANNOUNCED in the header). Not announced: every vote.
+ * Counts per player voted for; who voted is never given.
+ */
+export function momTallyAsAnnounced(votes: readonly { playerId: string; at: Date }[], announcedAt: Date | null): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const v of votes) {
+    if (announcedAt && v.at.getTime() > announcedAt.getTime()) continue;
+    counts.set(v.playerId, (counts.get(v.playerId) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /** PURE. See the header. `records` in any order. `fixtures`: the club's
@@ -130,15 +172,20 @@ export function lastMomFacts(
     .filter((r) => r.tally.some((t) => t.votes > 0))
     .sort((a, b) => b.date.getTime() - a.date.getTime());
   let openVoteDate: Date | null = null;
+  let openVoteState: MomPendingState | undefined;
   const recent: LastMom[] = [];
   for (const m of withVotes) {
-    if (!decided(m, opts.now, fixtures)) {
+    const status = statusOf(m, opts.now, fixtures, opts.organisersPick);
+    if (status !== "decided") {
       // Only a vote NEWER than the last decided one is named "still open".
       // An older undecided one CAN exist: a club with two weekly fixtures
       // whose Thursday vote was announced early (everyone voted) while
       // Tuesday's still waits for its backstop, Thursday being another
       // fixture. It is skipped, never told, and not named either.
-      if (recent.length === 0) openVoteDate ??= m.date;
+      if (recent.length === 0 && openVoteDate === null) {
+        openVoteDate = m.date;
+        openVoteState = status;
+      }
       continue;
     }
     const tally = m.tally
@@ -155,7 +202,21 @@ export function lastMomFacts(
       pickedByOrganisers: opts.organisersPick && tally.length === 1 && tally[0].votes === 1,
     });
   }
-  return { last: recent[0] ?? null, openVoteDate, recent };
+  return { last: recent[0] ?? null, openVoteDate, ...(openVoteState ? { openVoteState } : {}), recent };
+}
+
+/** PURE. The one line about a newer result nobody can be told yet, true to
+ *  where it stands: no announcement is promised unless the scheduler will
+ *  still make it (round 2 of the review of #605). */
+function pendingLine(date: Date, state: MomPendingState): string {
+  const day = dayLabel("en", date);
+  if (state === "voting") {
+    return `- The vote for the match on ${day} is still open. Its result is announced in the group when the vote closes, so nobody can be told it before then.`;
+  }
+  if (state === "closed") {
+    return `- The vote for the match on ${day} has closed and its result is still to be announced in the group, so nobody can be told it before then.`;
+  }
+  return `- The Man of the Match for the match on ${day} is not out yet, so nobody can be told it.`;
 }
 
 const both = (names: string[]) =>
@@ -169,9 +230,7 @@ const both = (names: string[]) =>
  */
 export function lastMomContextLines(f: LastMomFacts | null | undefined): string[] {
   if (!f) return [];
-  const open = f.openVoteDate
-    ? [`- The vote for the match on ${dayLabel("en", f.openVoteDate)} is still open. Its result is announced in the group when the vote closes, so nobody can be told it before then.`]
-    : [];
+  const open = f.openVoteDate ? [pendingLine(f.openVoteDate, f.openVoteState ?? "voting")] : [];
   const m = f.last;
   if (!m) return [`LAST MAN OF THE MATCH: none decided yet.`, ...open];
   const [red, yellow] = m.teamLabels;
