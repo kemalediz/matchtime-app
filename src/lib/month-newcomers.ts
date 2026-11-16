@@ -76,6 +76,8 @@ export interface JoinResult {
   /** Not added yet (2026-11-16): the line's count did not fit his games, so
    *  he is asked which he will play and joins on his answer. */
   held?: boolean;
+  /** Held, and the player was asked (false: he could not be). */
+  heldAsked?: boolean;
 }
 
 /**
@@ -94,6 +96,9 @@ export async function joinMonthAsOrganiser(p: {
   /** The organiser's own words (his message, or his line): what a question
    *  to the player is read with, and what the organisers' line quotes. */
   words?: string | null;
+  /** False: the caller answers the organiser itself when the player cannot
+   *  be asked (no organisers' line as well). */
+  noteIfUnasked?: boolean;
   now: Date;
 }): Promise<JoinResult> {
   const { applySignup, loadSignupMonth, joinGamesOrHold } = await import("./month-signup");
@@ -106,8 +111,8 @@ export async function joinMonthAsOrganiser(p: {
   let joinGames: number | null = null;
   if (month && !p.line.payg && p.line.games !== null) {
     const by = await db.user.findUnique({ where: { id: p.organiserUserId }, select: { name: true } });
-    const pre = await joinGamesOrHold({ month, userId: p.userId, games: p.line.games, now: p.now, words: p.words ?? `${p.line.games} games`, writtenBy: by?.name ?? null });
-    if (pre.hold) return { ok: true, changed: false, outcome: null, gamesLeft, held: true };
+    const pre = await joinGamesOrHold({ month, userId: p.userId, games: p.line.games, now: p.now, words: p.words ?? `${p.line.games} games`, writtenBy: by?.name ?? null, note: p.noteIfUnasked !== false });
+    if (pre.hold) return { ok: true, changed: false, outcome: null, gamesLeft, held: true, heldAsked: pre.result === "asked" };
     joinGames = pre.games;
   }
   const res = await applySignup({
@@ -423,7 +428,7 @@ export async function applyMonthAdd(p: {
   identify?: import("./pipeline/who-is-who").PersonPicker;
 }): Promise<MonthAddResult> {
   const res = await addToMonth(p);
-  if (p.tellOrganiser && ["month-add-unclear", "month-add-no-month", "month-add-failed"].includes(res.outcome) && res.replyText) {
+  if (p.tellOrganiser && ["month-add-unclear", "month-add-no-month", "month-add-failed", "month-add-held"].includes(res.outcome) && res.replyText) {
     try {
       const u = await db.user.findUnique({ where: { id: p.senderUserId }, select: { phoneNumber: true } });
       if (u?.phoneNumber) await dm(p.orgId, u.phoneNumber, res.replyText, p.now ?? new Date());
@@ -516,9 +521,9 @@ async function addToMonth(p: Parameters<typeof applyMonthAdd>[0]): Promise<Month
   }
   const userId = c.kind === "join" ? c.userId : await createNewcomer(p.orgId, name);
   if (!userId) return { outcome: "month-add-failed", replyText: s.mwk_month_add_unclear({ name }), changed: false };
-  const j = await joinMonthAsOrganiser({ orgId: p.orgId, monthId: month.id, userId, line, organiserUserId: p.senderUserId, weekDay: nextDay, words: p.text ?? null, now });
+  const j = await joinMonthAsOrganiser({ orgId: p.orgId, monthId: month.id, userId, line, organiserUserId: p.senderUserId, weekDay: nextDay, words: p.text ?? null, noteIfUnasked: false, now });
   // His count did not fit: he is asked, and joins on his answer. Nothing more to the organiser.
-  if (j.ok && j.held) return { outcome: "month-add-held", replyText: null, changed: false };
+  if (j.ok && j.held) return { outcome: "month-add-held", replyText: s.mwk_month_add_held({ name, asked: !!j.heldAsked }), changed: false };
   if (!j.ok) return { outcome: "month-add-failed", replyText: s.mwk_month_add_unclear({ name }), changed: false };
   const done = s.mwk_month_add_done({ name, month: label, games: j.gamesLeft, paid: line.paid, payg: line.payg });
   let replyText: string | null = done;

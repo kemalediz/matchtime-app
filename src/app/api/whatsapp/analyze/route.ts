@@ -1675,7 +1675,8 @@ async function handleAnalyzeRequest(request: Request) {
           intent: "month_add",
           action: res.changed ? "month-add:joined" : "none",
           reasoning: `somebody put on the month by a tagged request, read by the monthly reader: ${res.outcome}`,
-          react: res.changed ? "✅" : null,
+          // Held for the player's answer (2026-11-16): ✅, and the organiser is DMed a short line.
+          react: res.changed || res.outcome === "month-add-held" ? "✅" : null,
           reply: null,
         });
         continue;

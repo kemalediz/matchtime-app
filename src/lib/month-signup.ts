@@ -78,7 +78,7 @@ import {
   type SignupPaidClaim,
   type SignupRosterMember,
 } from "./month-signup-rules";
-import { carryFromMonthStart, coverFor, fitGamesCommitted, isBreakMonth, londonMonthStart, monthStartToDate, normaliseSquadMode, type GamesCover, type GamesFit } from "./squad-month-rules";
+import { carryFromMonthStart, commitmentFromCount, coverFor, isBreakMonth, londonMonthStart, monthStartToDate, normaliseSquadMode, type GamesCover, type GamesFit } from "./squad-month-rules";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { dayLabel, monthNameLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
@@ -740,19 +740,11 @@ export async function applySignup(args: {
   if (!member) return { ok: false, error: "not-a-member" };
 
   // A count kept on his bench row (2026-11-16) when he becomes a regular:
-  // his own words now (no count: every game) clear it; an organiser's move
-  // keeps it only when it still fits the games he now covers, else it is
-  // cleared and he is asked (after everything else, below). Never charged
-  // as min(count, cover) on a guess.
-  let keptToAsk: number | null = null;
-  const keptBenchGames = (kept: number | null | undefined, covers: number): { gamesCommitted?: null } => {
-    if (kept == null || args.games != null) return {};
-    if (args.byOrganiser) {
-      if (fitGamesCommitted(kept, covers).kind === "some") return {};
-      keptToAsk = kept;
-    }
-    return { gamesCommitted: null };
-  };
+  // his own words now (no count: every game) clear it. An organiser's move
+  // leaves the row as main always has (a KNOWN LIMIT, in the PR: a stale
+  // count is charged as min(count, cover) until somebody changes it).
+  const keptBenchGames = (kept: number | null | undefined, _covers: number): { gamesCommitted?: null } =>
+    kept == null || args.games != null || args.byOrganiser ? {} : { gamesCommitted: null };
 
   const decision = await db.$transaction(async (tx) => {
     await lockMonth(tx, month.id);
@@ -857,7 +849,7 @@ export async function applySignup(args: {
   }
 
   // A joiner's games (2026-11-16), already checked by the caller against the
-  // games he covers (`fitGamesCommitted`): recorded BEFORE he and the
+  // games he covers (`commitmentFromCount`): recorded BEFORE he and the
   // organisers are told below, so they hear his games, not every game left.
   // On the bench, they are kept on his row (no amount is worked out from
   // them): they apply when he becomes a regular.
@@ -952,13 +944,10 @@ export async function applySignup(args: {
       console.error(`[month-signup] placing ${args.userId} on the week of ${month.id} failed (the poll's sweep reconciles):`, err),
     );
   }
-  // A kept bench count an organiser's move no longer fits: cleared above,
-  // and he is asked which games, LAST (his reply answers the newest DM).
-  const cleared = keptToAsk as number | null;
-  if (cleared !== null && decision.outcome === "regular") {
-    const after = await loadSignupMonth(month.id);
-    if (after) await askOrNote({ month: after, userId: args.userId, now, original: null, originalBy: null, games: cleared, words: `${cleared} games` });
-  }
+  // His row changed another way (joined, out, PAYG, an organiser's move):
+  // an open "which of them?" about his games is closed (2026-11-16), so a
+  // late reply to it can never overwrite what was set.
+  await closeWhichAsks(month, args.userId).catch(() => undefined);
   return { ok: true, changed: true, locked: false, outcome: decision.outcome, unknownDays: decision.unknownDays, ...(gamesSaved ? { gamesSaved } : {}) };
 }
 
@@ -1221,7 +1210,7 @@ export async function handleSignupPaste(args: {
     // his place, and he is asked which games (as the typed door does).
     const fit: GamesFit =
       outcome.self.choice === "in"
-        ? fitGamesCommitted(outcome.self.games, gamesCoveredBy(month, userId, now), regular ? await gamesPlayedBy(month.id, userId, now) : 0)
+        ? commitmentFromCount({ count: outcome.self.games, cover: gamesCoverOf(month, userId, now), played: regular ? await gamesPlayedBy(month.id, userId, now) : 0 })
         : { kind: "all" };
     if (fit.kind === "ask") {
       const r = await askOrNote({ month, userId, now, original, originalBy: null, games: outcome.self.games, words: lineOf(userId) });
@@ -1338,7 +1327,7 @@ export interface SignupMessageResult {
  * we cannot match to a player: the message then goes on exactly as before.
  *
  * HIS GAMES (2026-11-16) are checked against THE GAMES HE COVERS
- * (`gamesCoverOf`, `fitGamesCommitted`), and for a regular never at or
+ * (`gamesCoverOf`, `commitmentFromCount`), and for a regular never at or
  * below the games he has played. The count he already has is never asked
  * about again. A count that does not fit is never stored: he is asked by
  * DM which of them he will play, with no ✅. When it can be neither stored
@@ -1389,7 +1378,7 @@ export async function handleSignupMessage(args: {
   const fit: GamesFit = restated
     ? { kind: "some", games: ask.games! }
     : ask.choice === "in"
-      ? fitGamesCommitted(ask.games, cover.covers, regular ? await gamesPlayedBy(month.id, userId, now) : 0)
+      ? commitmentFromCount({ count: ask.games, cover, played: regular ? await gamesPlayedBy(month.id, userId, now) : 0 })
       : { kind: "all" };
   const hold = async () => held(await askOrNote({ month, userId, now, original: words, originalBy: null, games: ask.games, words }));
   if (fit.kind === "ask") return hold();
@@ -1450,14 +1439,15 @@ export function isRegularMember(m: Pick<SignupMember, "kind" | "out" | "waiting"
 
 /**
  * THE GAMES HE COVERS (2026-11-16), what every count of his is checked
- * against (`coverFor`): a regular's row's games; a leaver who PAID and comes
- * back keeps his row's games (`applySignup` keeps them); anybody else (a
- * newcomer, a pay-as-you-go or bench player) would cover the games still to
- * play, as `applySignup` gives a regular who joins now.
+ * against (`coverFor`), and exactly what the reader is told (THE SENDER
+ * COVERS): a regular's row's games; anybody else (a newcomer, a
+ * pay-as-you-go or bench player, a leaver coming back, one who paid
+ * included) the games still to play from now. A paid leaver is never
+ * checked against one cover and asked about another.
  */
 export function gamesCoverOf(month: SignupMonth, userId: string, now: Date): GamesCover {
   const row = month.members.find((x) => x.userId === userId);
-  const keeps = !!row && (isRegularMember(row) || (row.paid !== "none" && row.gamesCovered > 0));
+  const keeps = !!row && isRegularMember(row);
   return coverFor({ kickoffs: month.kickoffs, rowCovered: keeps ? row!.gamesCovered : null, now });
 }
 
@@ -1505,8 +1495,9 @@ export async function gamesPlayedBy(monthId: string, userId: string, now: Date):
  * BEFORE anybody is joined with a count (an organiser's add or new line,
  * 2026-11-16): the count against the games he would cover. One that does
  * not fit holds him back: he is NOT added until he answers, so no game he
- * was not asked about is ever charged; he is asked which games (or, when he
- * cannot be, the organisers are told, with the organiser's own words). A
+ * was not asked about is ever charged; he is asked which games. When he
+ * cannot be, the organisers are told (with the organiser's own words)
+ * unless the caller answers the organiser itself (`note: false`). A
  * regular already on the month is checked after (`guardedRegularGames`).
  */
 export async function joinGamesOrHold(p: {
@@ -1516,13 +1507,15 @@ export async function joinGamesOrHold(p: {
   now: Date;
   words: string | null;
   writtenBy: string | null;
+  note?: boolean;
 }): Promise<{ hold: true; result: "asked" | "noted" } | { hold: false; games: number | null }> {
   if (p.games === null || p.month.members.some((x) => x.userId === p.userId && isRegularMember(x))) return { hold: false, games: null };
   const cover = gamesCoverOf(p.month, p.userId, p.now);
-  const fit = fitGamesCommitted(p.games, cover.covers);
+  const fit = commitmentFromCount({ count: p.games, cover, played: 0 });
   if (fit.kind !== "ask") return { hold: false, games: fit.kind === "some" ? fit.games : null };
-  const result = await askOrNote({ month: p.month, userId: p.userId, now: p.now, original: p.words, originalBy: p.writtenBy, games: p.games, words: p.words });
-  return { hold: true, result };
+  if (await askWhichGames({ month: p.month, userId: p.userId, now: p.now, original: p.words, originalBy: p.writtenBy, games: p.games })) return { hold: true, result: "asked" };
+  if (p.note !== false) await noteUnrecordedGames({ month: p.month, userId: p.userId, words: p.words, games: p.games, now: p.now });
+  return { hold: true, result: "noted" };
 }
 
 /** The SentNotification kind of an open "join for the games left?" ask. */
@@ -1530,24 +1523,24 @@ export const MONTH_JOIN_ASK_KIND = "month-join-ask";
 export const monthJoinAskKey = (orgId: string, monthId: string, userId: string) => `${signupKeyPrefix(orgId)}join-ask:${monthId}:${userId}`;
 
 /**
- * Ask a player by DM to confirm joining a month under way for the games he
- * would cover (review of #465): the games left, or a paid leaver's own
- * games, with no new amount for those (`tellMidMonthJoin` says the same).
- * Once per month and player. True when asked.
+ * Ask a player by DM to confirm joining a month under way for the games
+ * left (review of #465): the month's games left, the count the reader and
+ * the guard use. A leaver who paid is asked with no new amount (what he is
+ * owed is the organisers', `tellMidMonthJoin`). Once per month and player.
+ * True when asked.
  */
 export async function askToJoinMonth(p: { month: SignupMonth; userId: string; now: Date }): Promise<boolean> {
   const { month, userId, now } = p;
-  const cover = gamesCoverOf(month, userId, now);
-  const games = cover.remaining.length;
+  const games = gamesLeftIn(month, now);
   if (games === 0) return false;
   const user = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
   const phone = user?.phoneNumber?.replace(/^\+/, "");
   if (!phone) return false;
   // No price while the club neither tracks nor collects payments
-  // (2026-11-03, `payment-messages.ts`), nor for games he has paid for.
-  const paidFor = cover.fromRow && month.members.some((x) => x.userId === userId && x.paid !== "none");
+  // (2026-11-03, `payment-messages.ts`), nor for somebody who has paid.
+  const paid = month.members.some((x) => x.userId === userId && x.paid !== "none");
   const flags = await db.organisation.findUnique({ where: { id: month.orgId }, select: PAYMENT_FLAGS_SELECT });
-  const price = !paidFor && month.sharePerGamePence != null && paymentMessagesOn(flags) ? `£${((month.sharePerGamePence * games) / 100).toFixed(2)}` : null;
+  const price = !paid && month.sharePerGamePence != null && paymentMessagesOn(flags) ? `£${((month.sharePerGamePence * games) / 100).toFixed(2)}` : null;
   const text = t(month.language).msu_dm_join_ask({ month: monthNameLabel(month.language, month.firstKickoff), games, price });
   try {
     await db.sentNotification.create({ data: { key: monthJoinAskKey(month.orgId, month.id, userId), kind: MONTH_JOIN_ASK_KIND, targetUser: userId, text } });
@@ -1578,10 +1571,14 @@ export interface WhichAskState {
   /** The games it listed (ISO), all still to play when asked: his answer
    *  is read against these. */
   dates: string[];
-  /** His games come from his row (a regular, or a leaver who paid), rather
-   *  than from joining now. */
+  /** He was a regular on the month when asked (his own games). */
   regular: boolean;
-  /** Games of his row already behind him when asked: added to his answer. */
+  /** His row's commitment when asked: a change since means his games were
+   *  set another way, and the question is closed with no follow-up. */
+  committed?: number | null;
+  /** He had a row on the month (not out) when asked. */
+  onMonth?: boolean;
+  /** Kept for questions asked before 2026-11-16's round 5; unused. */
   pastCovered: number;
   /** What was said that did not fit, word for word: his answer is read with it. */
   original: string | null;
@@ -1609,15 +1606,20 @@ export async function closeWhichAsks(month: Pick<SignupMonth, "id" | "orgId">, u
   });
 }
 
+/** Somebody with no row on the month (or out of it): the organisers add him. */
+const offTheMonth = (month: Pick<SignupMonth, "members">, userId: string) => !month.members.some((x) => x.userId === userId && !x.out);
+
 /**
- * Ask a player by DM which of the games he covers he will play: a count of
- * his (his own, or an organiser's line or add about him) did not fit them.
- * It lists only the games still to play, and for a player whose games come
- * from his row, how many of them are behind him; a leaver who paid is asked
- * as rejoining. Its own question, apart from the join ask: one may be open
- * at a time (a new count while it is open is kept on it, and nothing more
- * is sent), a new one may follow one answered or expired, and at most
- * MONTH_WHICH_MAX a month. True when a question is open for him now.
+ * Ask a player by DM which of the games still to play he will play: a
+ * count of his (his own, or an organiser's line or add about him) did not
+ * fit them. A regular is told the games he is down for (his commitment)
+ * and how many of this month's games he has actually played; a leaver who
+ * paid is asked as rejoining, with the games he paid for. Its own question,
+ * apart from the join ask: one may be open at a time (a new count while it
+ * is open is kept on it, and nothing more is sent), one past 48 hours is
+ * expired first (the organisers told, once), a new one may follow one
+ * answered or expired, and at most MONTH_WHICH_MAX a month. True when a
+ * question is open for him now.
  *
  * Callers that send other DMs in the same handling send this one LAST: a
  * reply answers MatchTime's newest DM (`dm-answering.ts`).
@@ -1637,7 +1639,7 @@ export async function askWhichGames(p: {
   const phone = user?.phoneNumber?.replace(/^\+/, "");
   if (!phone) return false;
   const prefix = monthWhichKeyPrefix(month.orgId, month.id, userId);
-  const asks = await db.sentNotification.findMany({ where: { key: { startsWith: prefix } }, select: { id: true, kind: true, text: true, createdAt: true } });
+  const asks = await db.sentNotification.findMany({ where: { key: { startsWith: prefix } }, select: { id: true, kind: true, text: true, createdAt: true, targetUser: true } });
   const open = asks.find((a) => a.kind === MONTH_JOIN_WHICH_KIND && a.createdAt.getTime() >= now.getTime() - MONTH_WHICH_OPEN_MS);
   if (open) {
     // Already asked: what is said now is what his answer is read with.
@@ -1648,6 +1650,9 @@ export async function askWhichGames(p: {
     }
     return true;
   }
+  // One past its 48 hours that the poll has not swept yet: expired now
+  // (the organisers told once, as the sweep would), before a new one.
+  for (const a of asks) if (a.kind === MONTH_JOIN_WHICH_KIND) await expireWhichAsk(month.orgId, a, now);
   if (asks.length >= MONTH_WHICH_MAX) {
     console.info(`[month-signup] ${userId} was asked about his games for ${month.id} ${asks.length} times already: not asked again`);
     return false;
@@ -1655,19 +1660,24 @@ export async function askWhichGames(p: {
   const strings = t(month.language);
   const name = monthNameLabel(month.language, month.firstKickoff);
   const dates = cover.remaining.map((k) => dayLabel(month.language, k));
-  const out = month.members.some((x) => x.userId === userId && x.out);
-  const dm = !cover.fromRow
-    ? strings.msu_dm_join_which({ month: name, games: dates.length, dates })
-    : out
-      ? strings.msu_dm_rejoin_which({ month: name, games: dates.length, dates })
-      : strings.msu_dm_games_which({ month: name, games: cover.covers, played: cover.pastCovered, dates });
+  const row = month.members.find((x) => x.userId === userId);
+  let dm: string;
+  if (cover.fromRow && row) {
+    dm = strings.msu_dm_games_which({ month: name, games: row.gamesCommitted ?? cover.covers, played: await gamesPlayedBy(month.id, userId, now), dates });
+  } else if (row?.out && row.paid !== "none" && row.gamesCovered > 0) {
+    dm = strings.msu_dm_rejoin_which({ month: name, paid: row.gamesCovered, claimed: row.paid === "claimed", dates });
+  } else {
+    dm = strings.msu_dm_join_which({ month: name, games: dates.length, dates });
+  }
   const state: WhichAskState = {
     dm,
     orgId: month.orgId,
     monthId: month.id,
     dates: cover.remaining.map((k) => k.toISOString()),
     regular: cover.fromRow,
-    pastCovered: cover.pastCovered,
+    committed: row?.gamesCommitted ?? null,
+    onMonth: !offTheMonth(month, userId),
+    pastCovered: 0,
     original: p.original,
     originalBy: p.originalBy ?? null,
     games: p.games,
@@ -1690,10 +1700,11 @@ const quoteWords = (s: string | null): string => {
 /**
  * A count that could not be recorded and no question could be sent: the
  * club's organisers are told ONCE per player, month and count, in their
- * admin channel, with the words it was read from. Never throws.
+ * admin channel, with the words it was read from. For somebody not on the
+ * month, to add him; else to set his games. Never throws.
  */
 export async function noteUnrecordedGames(p: {
-  month: Pick<SignupMonth, "id" | "orgId" | "language" | "firstKickoff">;
+  month: Pick<SignupMonth, "id" | "orgId" | "language" | "firstKickoff" | "members">;
   userId: string;
   words: string | null;
   games: number | null;
@@ -1702,11 +1713,9 @@ export async function noteUnrecordedGames(p: {
   try {
     if (!(await claimOnce(`${signupKeyPrefix(p.month.orgId)}games-unrecorded:${p.month.id}:${p.userId}:${p.games ?? "all"}`, "admin-notice"))) return;
     const user = await db.user.findUnique({ where: { id: p.userId }, select: { name: true } });
-    const line = t(p.month.language).msu_admin_games_unrecorded({
-      name: user?.name ?? "A player",
-      month: monthNameLabel(p.month.language, p.month.firstKickoff),
-      words: quoteWords(p.words),
-    });
+    const s = t(p.month.language);
+    const fill = { name: user?.name ?? "A player", month: monthNameLabel(p.month.language, p.month.firstKickoff), words: quoteWords(p.words) };
+    const line = offTheMonth(p.month, p.userId) ? s.msu_admin_games_unrecorded_add(fill) : s.msu_admin_games_unrecorded(fill);
     await sendAdminNotice({ orgId: p.month.orgId, now: p.now, text: line });
   } catch (err) {
     console.error(`[month-signup] telling the organisers about ${p.userId}'s games for ${p.month.id} failed:`, err);
@@ -1725,30 +1734,45 @@ export async function askOrNote(p: Parameters<typeof askWhichGames>[0] & { words
 }
 
 /**
+ * One question past its 48 hours (2026-11-16): claimed by moving it to
+ * "-expired" (so it is told once, whoever gets there first), then the
+ * organisers are told "<name> didn't say which <month> games" (to add him
+ * when he is not on the month) unless his games were set another way since
+ * it was asked (his commitment changed, or he joined): then nothing is said.
+ * True when the organisers were told.
+ */
+async function expireWhichAsk(orgId: string, a: { id: string; text: string | null; targetUser: string | null; createdAt: Date }, now: Date): Promise<boolean> {
+  if (a.createdAt.getTime() >= now.getTime() - MONTH_WHICH_OPEN_MS) return false;
+  const claimed = await db.sentNotification.updateMany({ where: { id: a.id, kind: MONTH_JOIN_WHICH_KIND }, data: { kind: `${MONTH_JOIN_WHICH_KIND}-expired` } });
+  const state = parseWhichAskState(a.text);
+  if (claimed.count === 0 || !state || !a.targetUser) return false;
+  const month = await loadSignupMonth(state.monthId);
+  if (!month) return false;
+  const row = month.members.find((x) => x.userId === a.targetUser);
+  const settled =
+    (state.committed !== undefined && (row?.gamesCommitted ?? null) !== state.committed) || (!state.regular && !!row && isRegularMember(row));
+  if (settled) return false;
+  const user = await db.user.findUnique({ where: { id: a.targetUser }, select: { name: true } });
+  const s = t(month.language);
+  const fill = { name: user?.name ?? "A player", month: monthNameLabel(month.language, month.firstKickoff) };
+  await sendAdminNotice({ orgId, now, text: offTheMonth(month, a.targetUser) ? s.msu_admin_games_unanswered_add(fill) : s.msu_admin_games_unanswered(fill) });
+  return true;
+}
+
+/**
  * Questions that expired unanswered (2026-11-16): the organisers are told
- * once per question, "<name> didn't say which <month> games". Run by the
- * month's poll (`sweepMonthSignups`); a question is claimed by moving it
- * to "-expired", so two polls tell them once. Never throws.
+ * once per question (`expireWhichAsk`). Run by the month's poll
+ * (`sweepMonthSignups`). Never throws.
  */
 export async function sweepUnansweredWhichAsks(orgId: string, now: Date): Promise<number> {
   let told = 0;
   try {
     const stale = await db.sentNotification.findMany({
       where: { kind: MONTH_JOIN_WHICH_KIND, key: { startsWith: `${signupKeyPrefix(orgId)}join-which:` }, createdAt: { lt: new Date(now.getTime() - MONTH_WHICH_OPEN_MS) } },
-      select: { id: true, text: true, targetUser: true },
+      select: { id: true, text: true, targetUser: true, createdAt: true },
       take: 50,
     });
-    for (const s of stale) {
-      const claimed = await db.sentNotification.updateMany({ where: { id: s.id, kind: MONTH_JOIN_WHICH_KIND }, data: { kind: `${MONTH_JOIN_WHICH_KIND}-expired` } });
-      const state = parseWhichAskState(s.text);
-      if (claimed.count === 0 || !state || !s.targetUser) continue;
-      const month = await loadSignupMonth(state.monthId);
-      if (!month) continue;
-      const user = await db.user.findUnique({ where: { id: s.targetUser }, select: { name: true } });
-      const line = t(month.language).msu_admin_games_unanswered({ name: user?.name ?? "A player", month: monthNameLabel(month.language, month.firstKickoff) });
-      await sendAdminNotice({ orgId, now, text: line });
-      told++;
-    }
+    for (const s of stale) if (await expireWhichAsk(orgId, s, now)) told++;
   } catch (err) {
     console.error(`[month-signup] following up unanswered questions for ${orgId} failed (the next poll retries):`, err);
   }
@@ -1789,7 +1813,7 @@ export async function guardedRegularGames(p: {
   };
   if (row.paid === "confirmed") return note();
   const cover = gamesCoverOf(p.month, p.userId, p.now);
-  const fit = fitGamesCommitted(p.games, cover.covers, await gamesPlayedBy(p.month.id, p.userId, p.now));
+  const fit = commitmentFromCount({ count: p.games, cover, played: await gamesPlayedBy(p.month.id, p.userId, p.now) });
   if (fit.kind === "ask") {
     if (cover.remaining.length === 0) return note();
     return askOrNote({ month: p.month, userId: p.userId, now: p.now, original: p.original ?? p.words, originalBy: p.writtenBy ?? null, games: p.games, words: p.words });
@@ -1830,7 +1854,7 @@ export type GamesSave = "stored" | "unchanged" | "locked" | "fewer-than-played" 
  * The games a regular commits to for the month ("4 only"; null: every
  * game), through the one setter (`month-member-games.ts`), which works out
  * what they owe. The caller has checked the count against the games he
- * covers (`fitGamesCommitted`). Says what became of it: a refusal (a
+ * covers (`commitmentFromCount`). Says what became of it: a refusal (a
  * confirmed payment, fewer than he has played) is never taken for a save.
  */
 export async function commitMonthGamesResult(monthId: string, userId: string, games: number | null): Promise<GamesSave> {

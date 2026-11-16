@@ -10,7 +10,7 @@
  * Pure: no database and no model.
  */
 import { describe, expect, it } from "vitest";
-import { coverFor, fitGamesCommitted } from "../squad-month-rules";
+import { commitmentFromAnswer, commitmentFromCount, coverFor, fitGamesCommitted } from "../squad-month-rules";
 import {
   buildMonthlyReaderUserTurn,
   MONTHLY_READER_SYSTEM,
@@ -67,6 +67,41 @@ describe("fitGamesCommitted: a regular cannot commit to fewer games than he has 
 
   it("no count is every game, whatever he has played", () => {
     expect(fitGamesCommitted(null, 5, 2)).toEqual({ kind: "all" });
+  });
+});
+
+describe("one rule for the games behind him: from now on + actually played, never the kickoffs passed", () => {
+  const K = [2, 9, 16, 23, 30].map((d) => new Date(Date.UTC(2026, 10, d, 20)));
+  const now = new Date(Date.UTC(2026, 10, 12, 12)); // two played, three still to play
+  const full = coverFor({ kickoffs: K, rowCovered: 5, now });
+
+  it("Max and Mia (a full-month regular who played 1 of the 2 behind him) store the same for 'except the last week'", () => {
+    // Max types it: the reader counts 4 of his 5; from now on that is 2.
+    const max = commitmentFromCount({ count: 4, cover: full, played: 1 });
+    // Mia answers "all but the last one" to the question listing the 3 left.
+    const mia = commitmentFromAnswer({ answer: 2, listed: 3, played: 1, covers: 5 });
+    expect(max).toEqual({ kind: "some", games: 3 });
+    expect(mia).toEqual(max);
+  });
+
+  it("nothing from now on (a count no higher than the covered games behind him) is asked about", () => {
+    expect(commitmentFromCount({ count: 2, cover: full, played: 2 })).toEqual({ kind: "ask" });
+    expect(commitmentFromAnswer({ answer: 0, listed: 3, played: 2, covers: 5 })).toEqual({ kind: "ask" });
+  });
+
+  it("every game still to play is every game; at or above his cover is asked about", () => {
+    expect(commitmentFromAnswer({ answer: 3, listed: 3, played: 1, covers: 5 })).toEqual({ kind: "ask" });
+    expect(commitmentFromAnswer({ answer: null, listed: 3, played: 1, covers: 5 })).toEqual({ kind: "all" });
+    expect(commitmentFromCount({ count: 5, cover: full, played: 2 })).toEqual({ kind: "ask" });
+  });
+
+  it("a joiner has nothing behind him: his count as it is", () => {
+    const joiner = coverFor({ kickoffs: K, rowCovered: null, now });
+    expect(commitmentFromCount({ count: 2, cover: joiner, played: 0 })).toEqual({ kind: "some", games: 2 });
+  });
+
+  it("games played beyond his cover (a guest before he joined) cannot be stored: asked", () => {
+    expect(commitmentFromAnswer({ answer: 1, listed: 2, played: 2, covers: 2 })).toEqual({ kind: "ask" });
   });
 });
 
@@ -296,15 +331,36 @@ describe("the one DM question: which of the games he covers will he play (Englis
     );
   });
 
-  it("a leaver who paid and comes back is asked as rejoining, for the games he keeps", () => {
-    expect(t("en").msu_dm_rejoin_which({ month: "November", games: 2, dates: ["Mon 23 Nov", "Mon 30 Nov"] })).toBe(
-      "📋 You're rejoining November for the 2 games you paid for: Mon 23 Nov and Mon 30 Nov. Which of them will you play? Reply and I'll put you back on the list for those.",
+  it("a leaver who paid and comes back is asked as rejoining: the games he paid for, then the games left", () => {
+    expect(t("en").msu_dm_rejoin_which({ month: "November", paid: 2, claimed: false, dates: ["Mon 16 Nov", "Mon 23 Nov", "Mon 30 Nov"] })).toBe(
+      "📋 You're rejoining November: you paid for 2 games. 3 are left: Mon 16 Nov, Mon 23 Nov and Mon 30 Nov. Which of them will you play? Reply and I'll put you back on the list for those.",
     );
-    expect(t("en").msu_dm_rejoin_which({ month: "November", games: 1, dates: ["Mon 30 Nov"] })).toBe(
-      "📋 You're rejoining November for the 1 game you paid for: Mon 30 Nov. Will you play it? Reply and I'll put you back on the list for it.",
+    expect(t("en").msu_dm_rejoin_which({ month: "November", paid: 2, claimed: true, dates: ["Mon 30 Nov"] })).toBe(
+      "📋 You're rejoining November: you say you paid for 2 games. 1 is left: Mon 30 Nov. Will you play it? Reply and I'll put you back on the list for it.",
     );
-    expect(t("tr").msu_dm_rejoin_which({ month: "Kasım", games: 2, dates: ["23 Kasım Pazartesi", "30 Kasım Pazartesi"] })).toBe(
-      "📋 Kasım ayına ödediğin 2 maç için geri dönüyorsun: 23 Kasım Pazartesi ve 30 Kasım Pazartesi. Hangilerinde oynayacaksın? Yanıt ver, seni o maçlar için listeye geri ekleyeyim.",
+    expect(t("tr").msu_dm_rejoin_which({ month: "Kasım", paid: 2, claimed: false, dates: ["16 Kasım Pazartesi", "23 Kasım Pazartesi", "30 Kasım Pazartesi"] })).toBe(
+      "📋 Kasım ayına geri dönüyorsun: 2 maçın ücretini ödedin. Kalan 3 maç: 16 Kasım Pazartesi, 23 Kasım Pazartesi ve 30 Kasım Pazartesi. Hangilerinde oynayacaksın? Yanıt ver, seni o maçlar için listeye geri ekleyeyim.",
     );
+    expect(t("tr").msu_dm_rejoin_which({ month: "Kasım", paid: 2, claimed: true, dates: ["30 Kasım Pazartesi"] })).toBe(
+      "📋 Kasım ayına geri dönüyorsun: 2 maçın ücretini ödediğini söyledin. Kalan 1 maç: 30 Kasım Pazartesi. Oynayacak mısın? Yanıt ver, seni o maç için listeye geri ekleyeyim.",
+    );
+  });
+
+  it("for somebody not on the month, the organisers' lines say to ADD him", () => {
+    expect(t("en").msu_admin_games_unrecorded_add({ name: "Zak", month: "November", words: "3. Zak 4 only" })).toBe(
+      `I couldn't record Zak's November games from "3. Zak 4 only". Add him on the month page.`,
+    );
+    expect(t("tr").msu_admin_games_unrecorded_add({ name: "Zak", month: "Kasım", words: "3. Zak 4 only" })).toBe(
+      `Zak için Kasım maçlarını "3. Zak 4 only" mesajından kaydedemedim. Ay sayfasından onu ekle.`,
+    );
+    expect(t("en").msu_admin_games_unanswered_add({ name: "Zak", month: "November" })).toBe("Zak didn't say which November games; add him on the month page.");
+    expect(t("tr").msu_admin_games_unanswered_add({ name: "Zak", month: "Kasım" })).toBe("Zak hangi Kasım maçlarında oynayacağını söylemedi; ay sayfasından onu ekle.");
+  });
+
+  it("an organiser's add held for the player's answer: a short line back to him", () => {
+    expect(t("en").mwk_month_add_held({ name: "Zak", asked: true })).toBe("Zak isn't on the list yet: I've asked him which games he'll play.");
+    expect(t("en").mwk_month_add_held({ name: "Zak", asked: false })).toBe("Zak isn't on the list yet: I couldn't ask him which games he'll play, so add him on the month page.");
+    expect(t("tr").mwk_month_add_held({ name: "Zak", asked: true })).toBe("Zak henüz listede değil: hangi maçlarda oynayacağını kendisine sordum.");
+    expect(t("tr").mwk_month_add_held({ name: "Zak", asked: false })).toBe("Zak henüz listede değil: hangi maçlarda oynayacağını soramadım, ay sayfasından onu ekle.");
   });
 });

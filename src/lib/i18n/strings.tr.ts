@@ -3482,10 +3482,16 @@ export const tr: Strings = {
   },
   msu_admin_games_unrecorded: (p) => `${p.name} için ${p.month} maçlarını "${p.words}" mesajından kaydedemedim. Ay sayfasından ayarla.`,
   msu_admin_games_unanswered: (p) => `${p.name} hangi ${p.month} maçlarında oynayacağını söylemedi; ay sayfasından ayarla.`,
-  msu_dm_rejoin_which: (p) =>
-    p.games === 1
-      ? `📋 ${p.month} ayına ödediğin 1 maç için geri dönüyorsun: ${p.dates.join(", ")}. Oynayacak mısın? Yanıt ver, seni o maç için listeye geri ekleyeyim.`
-      : `📋 ${p.month} ayına ödediğin ${p.games} maç için geri dönüyorsun: ${p.dates.slice(0, -1).join(", ")} ve ${p.dates.at(-1)}. Hangilerinde oynayacaksın? Yanıt ver, seni o maçlar için listeye geri ekleyeyim.`,
+  msu_dm_rejoin_which: (p) => {
+    const one = p.dates.length === 1;
+    const list = one ? p.dates[0] : `${p.dates.slice(0, -1).join(", ")} ve ${p.dates.at(-1)}`;
+    const paid = p.claimed ? `${p.paid} maçın ücretini ödediğini söyledin` : `${p.paid} maçın ücretini ödedin`;
+    return one
+      ? `📋 ${p.month} ayına geri dönüyorsun: ${paid}. Kalan 1 maç: ${list}. Oynayacak mısın? Yanıt ver, seni o maç için listeye geri ekleyeyim.`
+      : `📋 ${p.month} ayına geri dönüyorsun: ${paid}. Kalan ${p.dates.length} maç: ${list}. Hangilerinde oynayacaksın? Yanıt ver, seni o maçlar için listeye geri ekleyeyim.`;
+  },
+  msu_admin_games_unrecorded_add: (p) => `${p.name} için ${p.month} maçlarını "${p.words}" mesajından kaydedemedim. Ay sayfasından onu ekle.`,
+  msu_admin_games_unanswered_add: (p) => `${p.name} hangi ${p.month} maçlarında oynayacağını söylemedi; ay sayfasından onu ekle.`,
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,
@@ -3540,6 +3546,8 @@ export const tr: Strings = {
     p.payg
       ? `✅ ${p.name}, ${p.month} listesine maç başı ödeyen olarak eklendi.`
       : `✅ ${p.name}, kalan ${p.games} maç için ${p.month} listesine düzenli oyuncu olarak eklendi${p.paid ? ", ödedi olarak işaretlendi" : ""}.`,
+  mwk_month_add_held: (p) =>
+    p.asked ? `${p.name} henüz listede değil: hangi maçlarda oynayacağını kendisine sordum.` : `${p.name} henüz listede değil: hangi maçlarda oynayacağını soramadım, ay sayfasından onu ekle.`,
   mwk_month_add_waiting: (p) =>
     `${p.name} kim, anlayamadım, bu yüzden henüz ${p.month} listesinde değil. Hangi üye olduğunu söylemen için sana özelden mesaj attım.`,
   mwk_month_add_asked: (p) => `${p.name} henüz adını bilmediğim bir üyeyse, hangisi olduğunu söylemen için sana özelden mesaj attım.`,

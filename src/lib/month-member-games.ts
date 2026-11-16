@@ -218,6 +218,17 @@ export async function setMonthMemberGames(args: {
       console.error(`[month-member-games] reconciling ${args.userId}'s credits for ${month.id} failed (the sweep retries):`, err);
     }
   }
+  // His games were set (the months page, his own page, a reader's count):
+  // an open "which of them will you play?" is closed (2026-11-16), so a
+  // late reply to it can never overwrite what was set here.
+  if (res.ok) {
+    try {
+      const { closeWhichAsks } = await import("./month-signup");
+      await closeWhichAsks({ id: month.id, orgId: month.orgId }, args.userId);
+    } catch (err) {
+      console.error(`[month-member-games] closing ${args.userId}'s question for ${month.id} failed:`, err);
+    }
+  }
   return res;
 }
 

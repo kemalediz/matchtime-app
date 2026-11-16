@@ -368,13 +368,19 @@ export async function handleMonthlyPaste(args: {
           failures.push(a.name);
           continue;
         }
-        const j = await joinMonthAsOrganiser({ orgId, monthId: week.monthId, userId, line: a.line, organiserUserId: sender.userId, weekDay, words: args.text ?? null, now });
+        // The organisers' line, if it comes to that, quotes HIS line of the paste.
+        const { pastedLineOf } = await import("./month-signup");
+        const words = pastedLineOf(args.text ?? null, { name: a.name });
+        const j = await joinMonthAsOrganiser({ orgId, monthId: week.monthId, userId, line: a.line, organiserUserId: sender.userId, weekDay, words, now });
         if (!j.ok) {
           failures.push(a.name);
           continue;
         }
         if (j.changed) applied.push(`${a.kind === "new" ? "new-" : ""}${j.outcome}:${a.name}`);
-        if (a.kind === "new") toAsk.push({ name: a.name, userId, line: a.line });
+        // Held for his answer (2026-11-16): he is NOT on the month, so the
+        // who-is-this DM never says he is.
+        if (j.held) applied.push(`games-${j.heldAsked ? "asked" : "noted"}:${a.name}`);
+        else if (a.kind === "new") toAsk.push({ name: a.name, userId, line: a.line });
         continue;
       }
       if (a.kind === "ask") {
@@ -569,12 +575,20 @@ export async function handleMonthlyPaste(args: {
     }
   }
 
+  // Who the names MatchTime does not know by name are, numbered by phone,
+  // to the organiser only.
+  if (toAsk.length > 0 && sender.userId) {
+    const askedWho = await askWhoTheyAre({ orgId, monthId: week.monthId, organiserUserId: sender.userId, sourceRef: args.waMessageId, names: toAsk, now });
+    if (askedWho) applied.push(`asked-who:${toAsk.map((n) => n.name).join("|")}`);
+  }
+
   // "4 only" beside a regular: their own line, or an organiser's paste.
   // Anybody else's note is left alone. The one setter works out the money.
   // Checked against the games HE covers (2026-11-16): one that does not fit
-  // is not recorded, and HE gets the "which of them?" question, after the
-  // other DMs of this paste (a reply answers the newest). The organisers'
-  // line, if it comes to that, quotes his own line, not the whole list.
+  // is not recorded, and HE gets the "which of them?" question, the LAST DM
+  // of this paste, after the who-is-this one too (a reply answers the
+  // newest; a question about games is never answered by mistake). The
+  // organisers' line, if it comes to that, quotes his own line.
   let asked = false;
   const gamesFor = outcome.games.filter((g) => g.self || senderIsAdmin);
   if (gamesFor.length > 0) {
@@ -593,13 +607,8 @@ export async function handleMonthlyPaste(args: {
       }
     }
   }
+  if (applied.some((x) => x.startsWith("games-asked:") || x.startsWith("games-noted:"))) asked = true;
 
-  // LAST of his DMs, so it is the one his reply answers: who the names
-  // MatchTime does not know by name are, numbered by phone, to him only.
-  if (toAsk.length > 0 && sender.userId) {
-    const asked = await askWhoTheyAre({ orgId, monthId: week.monthId, organiserUserId: sender.userId, sourceRef: args.waMessageId, names: toAsk, now });
-    if (asked) applied.push(`asked-who:${toAsk.map((n) => n.name).join("|")}`);
-  }
 
   // The group has just seen this list: when it is the list as MatchTime
   // now has it, record that, so the scheduler does not post it straight

@@ -26,6 +26,7 @@ import { londonAt } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { buildPasteGuestsAddedDm } from "@/lib/monthly-week-copy";
 import { firstKickoffOf, monthKickoffs, nextMonthStart } from "@/lib/month-signup-rules";
+import { commitmentFromCount, coverFor } from "@/lib/squad-month-rules";
 
 test.describe.configure({ mode: "serial" });
 
@@ -211,11 +212,20 @@ test("B2: a guest on a member's paste is added as a new player of the week, neve
   expect((await attendance(db)).filter((r) => r.name === "Luca")).toHaveLength(1);
 });
 
-test("B1: 'Chris 3 only' on his own paste: he commits to 3 games of the month", async ({ request, db }) => {
+test("B1: 'Chris 3 only' on his own paste: he commits to 3 games of the month, counted by the one rule", async ({ request, db }) => {
+  // THE ONE RULE (PR #610, 2026-11-16): a count read against the games he
+  // covers is, from now on, that count less his covered games already
+  // behind him; stored is that plus the games he has ACTUALLY played (here
+  // the month's one game before it was started part-way, a seed). With no
+  // covered game behind him it is 3; on a date where some are behind him
+  // and he has played fewer of them, it is fewer (the analyze route has no
+  // test clock, so the date decides which).
   const body = LIST().replace("3. Chris", "3. Chris 3 only");
   setMonthlyReaderStub({ bodies: { [body]: listAnswer([line(1, "Alex"), line(2, "Bilal"), line(3, "Chris", { games: 3 })]) } });
   await say(request, P.chris, body);
-  expect(await monthRow(db, P.chris)).toMatchObject({ kind: "regular", gamesCommitted: 3 });
+  const cover = coverFor({ kickoffs: monthKickoffs(MONTH_START, WEEKDAY, "20:00"), rowCovered: 4, now: new Date() });
+  const fit = commitmentFromCount({ count: 3, cover, played: 1 });
+  expect(await monthRow(db, P.chris)).toMatchObject({ kind: "regular", gamesCommitted: fit.kind === "some" ? fit.games : null });
 });
 
 test("B1: the same note written by somebody else (not an organiser) changes nothing", async ({ request, db }) => {

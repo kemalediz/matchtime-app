@@ -224,6 +224,40 @@ export function fitGamesCommitted(games: number | null, covers: number, minGames
   return { kind: "ask" };
 }
 
+/**
+ * ONE RULE FOR THE GAMES BEHIND HIM (2026-11-16): what is stored is the
+ * games he says he will play FROM NOW ON plus the games he has ACTUALLY
+ * played this month (`gamesPlayedBy`), never the kickoffs that have passed.
+ *
+ * `commitmentFromCount`: a count read against the games he covers (the
+ * reader's THE SENDER COVERS, those played included): from now on it is
+ * the count less the covered games already behind him. `commitmentFromAnswer`:
+ * his answer to "which of them?", which lists only the games still to play.
+ * Both: nothing from now on, or no game still to play left out, is asked
+ * about; every game still to play is every game; a commitment at or above
+ * the games he covers is asked about (it cannot be stored).
+ */
+export function commitmentFromCount(p: { count: number | null; cover: GamesCover; played: number }): GamesFit {
+  if (p.count === null) return { kind: "all" };
+  if (p.cover.covers === 1 && p.count === 1) return { kind: "all" };
+  if (!isWholeNumber(p.count) || p.count < 1 || p.count >= p.cover.covers) return { kind: "ask" };
+  return fromNow(p.count - p.cover.pastCovered, p.cover.remaining.length, p.played, p.cover.covers);
+}
+
+export function commitmentFromAnswer(p: { answer: number | null; listed: number; played: number; covers: number }): GamesFit {
+  if (p.answer === null) return { kind: "all" };
+  if (p.listed === 1 && p.answer === 1) return { kind: "all" };
+  if (!isWholeNumber(p.answer) || p.answer >= p.listed) return { kind: "ask" };
+  return fromNow(p.answer, p.listed, p.played, p.covers);
+}
+
+function fromNow(games: number, remaining: number, played: number, covers: number): GamesFit {
+  if (games < 1) return { kind: "ask" };
+  if (games >= remaining) return { kind: "all" };
+  const total = games + Math.max(0, played);
+  return total < covers ? { kind: "some", games: total } : { kind: "ask" };
+}
+
 export interface GamesCover {
   /** The games he covers: what his count is checked against. */
   covers: number;

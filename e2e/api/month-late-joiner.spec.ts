@@ -23,7 +23,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { formatInTimeZone } from "date-fns-tz";
 import { tr as trLocale } from "date-fns/locale";
-import { test, expect, resetDb } from "../fixtures";
+import { test, expect, resetDb, signInAs } from "../fixtures";
 import { clearMonthlyReaderStub, engineOn, setMonthlyReaderStub, stubCalls } from "../helpers/stub";
 import { E2E } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
@@ -92,6 +92,8 @@ const SU = club("su", { monthStart: NEXT, status: "open" });
 const FULL = club("full", { monthStart: NEXT, keep: (all) => all.slice(-3), perTeam: 1 });
 // Next month, in sign-up, a regular with "N-1 only" stored (a week is cancelled later).
 const SM = club("sm", { monthStart: NEXT, status: "open" });
+// Next month, running, 3 games left: its week is seeded by the poll, for a WEEK paste.
+const WK = club("wk", { monthStart: NEXT, keep: (all) => all.slice(-3) });
 // THIS month, games already played: the weekday whose games leave the most
 // still to play after at least two played (00:00, so today's counts as played).
 const PLAYED = (() => {
@@ -167,13 +169,28 @@ const P = {
   smi: { id: "e2e-lj-smi", name: "Smi Smith", phone: "+447700940050" },
   own4: { id: "e2e-lj-own4", name: "Owner Four", phone: "+447700940051" },
   bo: { id: "e2e-lj-bo", name: "Bo Bench", phone: "+447700940052" },
+  // Round 5 (2026-11-16).
+  wil: { id: "e2e-lj-wil", name: "Wil Tentative", phone: "+447700940060" },
+  cal: { id: "e2e-lj-cal", name: "Cal Plain", phone: "+447700940061" },
+  poe: { id: "e2e-lj-poe", name: "Poe Pool", phone: "+447700940062" },
+  pay: { id: "e2e-lj-pay", name: "Pay Link", phone: "+447700940063" },
+  oth: { id: "e2e-lj-oth", name: "Oth Club", phone: "+447700940064" },
+  pax: { id: "e2e-lj-pax", name: "Pax Paid", phone: "+447700940065" },
+  pea: { id: "e2e-lj-pea", name: "Pea Paid", phone: "+447700940066" },
+  ede: { id: "e2e-lj-ede", name: "Ede Edge", phone: "+447700940067" },
+  lex: { id: "e2e-lj-lex", name: "Lex Late", phone: "+447700940068" },
+  lum: { id: "e2e-lj-lum", name: "Lum Set", phone: "+447700940069" },
+  max: { id: "e2e-lj-max", name: "Max Missed", phone: "+447700940070" },
+  mia: { id: "e2e-lj-mia", name: "Mia Missed", phone: "+447700940071" },
+  wes: { id: "e2e-lj-wes", name: "Wes Owner", phone: "+447700940072" },
+  nn: { id: "e2e-lj-nn", name: "", phone: "+447700940073" },
 } as const;
 type Person = (typeof P)[keyof typeof P];
 const digits = (phone: string) => phone.replace(/^\+/, "");
 let seq = 0;
 
 /** The EN club's members in the order they are added: p1 is the first. */
-const EN_ORDER: Person[] = [P.rob, P.alex, P.will, P.tom, P.bilal, P.chris, P.dan, P.pat, P.bea, P.olly, P.lee, P.kim, P.mo, P.kit, P.seq, P.zak, P.pam, P.pia, P.lu, P.exa, P.oz, P.pal, P.kay];
+const EN_ORDER: Person[] = [P.rob, P.alex, P.will, P.tom, P.bilal, P.chris, P.dan, P.pat, P.bea, P.olly, P.lee, P.kim, P.mo, P.kit, P.seq, P.zak, P.pam, P.pia, P.lu, P.exa, P.oz, P.pal, P.kay, P.wil, P.cal, P.poe, P.pay, P.oth, P.pax, P.pea, P.ede];
 const refOf = (who: Person) => `p${EN_ORDER.indexOf(who) + 1}`;
 
 async function say(
@@ -273,11 +290,14 @@ const plainAsk = (c: Club, games: number) =>
   t(c.lang).msu_dm_join_ask({ month: monthName(c), games, price: c.priced ? `£${((SHARE * games) / 100).toFixed(2)}` : null });
 /** The organisers' one line in the admin channel (each-admin: a DM to each owner). */
 const hqLine = (c: Club, who: Person, words: string) => t(c.lang).msu_admin_games_unrecorded({ name: who.name, month: monthName(c), words });
+/** ... and for somebody not on the month: to add him. */
+const hqAddLine = (c: Club, who: Person, words: string) => t(c.lang).msu_admin_games_unrecorded_add({ name: who.name, month: monthName(c), words });
 /** ... and when a question about his games expired unanswered. */
 const hqUnanswered = (c: Club, who: Person) => t(c.lang).msu_admin_games_unanswered({ name: who.name, month: monthName(c) });
-/** The question to a leaver who paid and comes back: rejoining for the games he keeps. */
-const rejoinAsk = (c: Club, dates: Date[]) =>
-  t(c.lang).msu_dm_rejoin_which({ month: monthName(c), games: dates.length, dates: dates.map((k) => dayLabel(c.lang, k)) });
+const hqUnansweredAdd = (c: Club, who: Person) => t(c.lang).msu_admin_games_unanswered_add({ name: who.name, month: monthName(c) });
+/** The question to a leaver who paid and comes back: the games he paid for, then the games left. */
+const rejoinAsk = (c: Club, paid: number, claimed: boolean, dates: Date[]) =>
+  t(c.lang).msu_dm_rejoin_which({ month: monthName(c), paid, claimed, dates: dates.map((k) => dayLabel(c.lang, k)) });
 const askRow = (db: TestDb, who: Person) =>
   db.all<{ kind: string }>(`SELECT kind FROM "SentNotification" WHERE kind LIKE 'month-join-which%' AND "targetUser" = $1 ORDER BY "createdAt"`, [who.id]);
 
@@ -404,11 +424,17 @@ test.beforeAll(async () => {
   await onMonth(db, EN, P.pia, { slot: 6, out: true, covered: 2, paid: "confirmed" });
   await onMonth(db, EN, P.lu, { slot: 7, covered: LEFT });
   await onMonth(db, EN, P.pal, { slot: 8, out: true, covered: 2, paid: "claimed" });
+  // Round 5: leavers who say they paid for 2 games; Pea with "1 game" still on her row.
+  await onMonth(db, EN, P.pax, { slot: 9, out: true, covered: 2, paid: "claimed" });
+  await onMonth(db, EN, P.pea, { slot: 10, out: true, covered: 2, paid: "claimed" });
+  await db.run(`UPDATE "SquadMonthMember" SET "gamesCommitted" = 1 WHERE "monthId" = $1 AND "userId" = $2`, [EN.month, P.pea.id]);
 
   await makeClub(db, TR, "Pazartesi Halısaha");
   await person(db, TR, P.emre, "OWNER");
   await person(db, TR, P.ayse);
   await onMonth(db, TR, P.emre, { slot: 1 });
+  // Oth is in this club too: its DMs reach the same phone.
+  await person(db, TR, P.oth);
 
   await makeClub(db, ONE, "One Left FC");
   await person(db, ONE, P.own1, "OWNER");
@@ -425,6 +451,11 @@ test.beforeAll(async () => {
   await person(db, SU, P.sol);
   await person(db, SU, P.cy);
   await onMonth(db, SU, P.cy, { slot: 3, paid: "confirmed" });
+  // Round 5: regulars covering 3 (p6, p7).
+  await person(db, SU, P.lex);
+  await person(db, SU, P.lum);
+  await onMonth(db, SU, P.lex, { slot: 4, covered: 3 });
+  await onMonth(db, SU, P.lum, { slot: 5, covered: 3 });
 
   await makeClub(db, FULL, "Full FC");
   await person(db, FULL, P.fay, "OWNER");
@@ -436,6 +467,13 @@ test.beforeAll(async () => {
   // On the bench with "2 games" kept from an earlier sign-up.
   await onMonth(db, FULL, P.bo, { kind: "payg", waiting: true });
   await db.run(`UPDATE "SquadMonthMember" SET "gamesCommitted" = 2 WHERE "monthId" = $1 AND "userId" = $2`, [FULL.month, P.bo.id]);
+
+  await makeClub(db, WK, "Week FC");
+  await person(db, WK, P.wes, "OWNER");
+  await onMonth(db, WK, P.wes, { slot: 1 });
+  // A member with no name yet: who-is-this numbers him.
+  await person(db, WK, P.nn);
+  await db.run(`UPDATE "User" SET name = NULL WHERE id = $1`, [P.nn.id]);
 
   await makeClub(db, SM, "Smiler FC");
   await person(db, SM, P.own4, "OWNER");
@@ -458,6 +496,19 @@ test.beforeAll(async () => {
     await onMonth(db, PLAYED, P.rae, { slot: 3 });
     await onMonth(db, PLAYED, P.pip, { slot: 4, covered: leftOf(PLAYED).length });
     await db.run(`UPDATE "SquadMonthMember" SET "gamesCommitted" = $3 WHERE "monthId" = $1 AND "userId" = $2`, [PLAYED.month, P.rio.id, pastOf(PLAYED).length - 1]);
+    // Max and Mia: regulars for the whole month who missed the first game played.
+    for (const p of [P.max, P.mia]) {
+      await person(db, PLAYED, p);
+      await onMonth(db, PLAYED, p, { slot: p === P.max ? 5 : 6 });
+      for (const [i] of pastOf(PLAYED).entries()) {
+        if (i === 0) continue;
+        await db.run(`INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt") VALUES ($1, $2, $3, 'CONFIRMED', 1, now())`, [
+          `e2e-lj-${p.id}-att-${i}`,
+          `${PLAYED.org}-played-${i}`,
+          p.id,
+        ]);
+      }
+    }
     for (const p of [P.rex, P.rio, P.rae, P.pip]) {
       for (const [i] of pastOf(PLAYED).entries()) {
         await db.run(`INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt") VALUES ($1, $2, $3, 'CONFIRMED', 1, now())`, [
@@ -520,7 +571,7 @@ test("hole 6: answers that never fit are asked about again, at most 3 times; the
   expect(await dms(db, EN, P.tom)).toEqual([whichAsk(EN, EN.games), whichAsk(EN, EN.games), whichAsk(EN, EN.games)]);
   expect(await dmReply(request, P.tom, "the usual again")).toMatchObject({ handled: "month-join-noted" });
   expect(await monthRow(db, EN, P.tom)).toBeNull();
-  expect((await dms(db, EN, P.rob)).filter((d) => d === hqLine(EN, P.tom, "the usual again"))).toHaveLength(1);
+  expect((await dms(db, EN, P.rob)).filter((d) => d === hqAddLine(EN, P.tom, "the usual again"))).toHaveLength(1);
 });
 
 test("typed, a partial count that fits: stored at once, with ✅, and no question", async ({ request, db }) => {
@@ -650,20 +701,21 @@ test("hole 6: after 3 questions a month a typed count is consumed, never passed 
   for (let i = 0; i < 2; i++) expect(await say(request, EN, P.mo, body)).toMatchObject({ handledBy: "fast-path", intent: "month_signup", react: null });
   expect(await dms(db, EN, P.mo)).toHaveLength(3);
   expect(await monthRow(db, EN, P.mo)).toBeNull();
-  expect((await dms(db, EN, P.rob)).filter((d) => d === hqLine(EN, P.mo, body))).toHaveLength(1);
+  expect((await dms(db, EN, P.rob)).filter((d) => d === hqAddLine(EN, P.mo, body))).toHaveLength(1);
   // A different count is a different line, once too.
   for (let i = 0; i < 2; i++) await say(request, EN, P.mo, other);
-  expect((await dms(db, EN, P.rob)).filter((d) => d === hqLine(EN, P.mo, other))).toHaveLength(1);
+  expect((await dms(db, EN, P.rob)).filter((d) => d === hqAddLine(EN, P.mo, other))).toHaveLength(1);
 });
 
-test("hole 9: an organiser's add with a count that does not fit HIS games: he is not added until he answers (never charged for unasked games), HE is asked, no ✅", async ({ request, db }) => {
+test("hole 9: an organiser's add with a count that does not fit HIS games: he is not added until he answers (never charged for unasked games), HE is asked; the organiser gets ✅ and a short line", async ({ request, db }) => {
   const body = `@Match Time add Zak to the ${monthName(EN)} list, 4 games`;
   setMonthlyReaderStub({ bodies: { [body]: { ...signup(EN, 4), signupFor: "other", signupWho: refOf(P.zak), signupName: "Zak" }, "yes two of them": signup(EN, 2) } });
   const robBefore = (await dms(db, EN, P.rob)).length;
-  expect(await say(request, EN, P.rob, body, { botMentioned: true })).toMatchObject({ react: null });
+  expect(await say(request, EN, P.rob, body, { botMentioned: true })).toMatchObject({ react: "✅" });
   expect(await monthRow(db, EN, P.zak)).toBeNull();
   expect(await dms(db, EN, P.zak)).toEqual([whichAsk(EN, EN.games)]);
-  expect((await dms(db, EN, P.rob)).slice(robBefore)).toEqual([]);
+  // A short line back to him (and ✅ in the group), nothing else.
+  expect((await dms(db, EN, P.rob)).slice(robBefore)).toEqual([t("en").mwk_month_add_held({ name: "Zak", asked: true })]);
   // His answer is read with the organiser's words, and joins him for it.
   expect(await dmReply(request, P.zak, "yes two of them")).toMatchObject({ handled: "month-join-yes" });
   expect(readerTurn("yes two of them")).toContain(`${P.rob.name}: ${body}`);
@@ -674,7 +726,8 @@ test("hole 10: a leaver who paid for 2 games comes back: his count is checked ag
   const body = `In for ${monthName(EN)} again except the last week`;
   setMonthlyReaderStub({ bodies: { [body]: signup(EN, 2), "yes please": signup(EN, 1) } });
   expect(await say(request, EN, P.pam, body)).toMatchObject({ react: null });
-  expect(await dms(db, EN, P.pam)).toEqual([rejoinAsk(EN, EN.games.slice(-2))]);
+  // Checked against the games left (what the reader is told), the games he paid for said.
+  expect(await dms(db, EN, P.pam)).toEqual([rejoinAsk(EN, 2, true, EN.games)]);
   expect(await dmReply(request, P.pam, "yes please")).toMatchObject({ handled: "month-join-yes" });
   expect(await monthRow(db, EN, P.pam)).toMatchObject({ kind: "regular", out: false, gamesCovered: 2, gamesCommitted: 1 });
 });
@@ -683,7 +736,7 @@ test("hole 13: the plain join question to a leaver who paid says the games he ke
   const body = `IN FOR ${monthName(EN).toUpperCase()} once more`;
   setMonthlyReaderStub({ bodies: { [body]: signup(EN, 0) } });
   await say(request, EN, P.pal, body);
-  expect(await dms(db, EN, P.pal)).toEqual([t("en").msu_dm_join_ask({ month: monthName(EN), games: 2, price: null })]);
+  expect(await dms(db, EN, P.pal)).toEqual([t("en").msu_dm_join_ask({ month: monthName(EN), games: 3, price: null })]);
 });
 
 test("hole 8: a which-answer whose save is refused (his payment confirmed since he was asked): never reported stored; the organisers are told", async ({ request, db }) => {
@@ -725,14 +778,16 @@ test("hole 6: a question that expires unanswered: the organisers are told once, 
   await say(request, EN, P.exa, body);
   await db.run(`UPDATE "SentNotification" SET "createdAt" = now() - interval '3 days' WHERE kind = 'month-join-which' AND "targetUser" = $1`, [P.exa.id]);
   for (let i = 0; i < 2; i++) await poll(request, EN);
-  expect((await dms(db, EN, P.rob)).filter((d) => d === hqUnanswered(EN, P.exa))).toHaveLength(1);
+  expect((await dms(db, EN, P.rob)).filter((d) => d === hqUnansweredAdd(EN, P.exa))).toHaveLength(1);
 });
 
-test("hole 5: an unquoted answer reaches the open question even when another DM came after it", async ({ request, db }) => {
+test("hole 1 (round 5): after another DM came, an answer reaches the question only when it QUOTES it", async ({ request, db }) => {
   // Bea was asked above (the bench player). A newer DM since:
   await db.run(`INSERT INTO "BotJob" (id, "orgId", kind, phone, text, "pollOptions") VALUES ('e2e-lj-bea-later', $1, 'dm', $2, '📋 Something else entirely', '{}')`, [EN.org, digits(P.bea.phone)]);
   setMonthlyReaderStub({ bodies: { "yes, the first two": signup(EN, 2) } });
-  expect(await dmReply(request, P.bea, "yes, the first two")).toMatchObject({ handled: "month-join-yes" });
+  expect(String((await dmReply(request, P.bea, "yes, the first two")).handled ?? "")).not.toMatch(/^month-join/);
+  expect(await monthRow(db, EN, P.bea)).toMatchObject({ waiting: true, gamesCommitted: null });
+  expect(await dmReply(request, P.bea, "yes, the first two", { quotedText: whichAsk(EN, EN.games), quotedFromMatchTime: true })).toMatchObject({ handled: "month-join-yes" });
   expect(await monthRow(db, EN, P.bea)).toMatchObject({ kind: "regular", waiting: false, gamesCommitted: 2 });
 });
 
@@ -743,14 +798,14 @@ test("hole 10: a leaver whose payment for 2 games was CONFIRMED: only an organis
   expect(await say(request, EN, P.pia, body)).toMatchObject({ handledBy: "fast-path", intent: "month_signup", react: null });
   expect(await monthRow(db, EN, P.pia)).toMatchObject({ out: true, gamesCommitted: null });
   expect(await dms(db, EN, P.pia)).toEqual([]);
-  expect((await dms(db, EN, P.rob)).filter((d) => d === hqLine(EN, P.pia, body))).toHaveLength(1);
+  expect((await dms(db, EN, P.rob)).filter((d) => d === hqAddLine(EN, P.pia, body))).toHaveLength(1);
 });
 
 test("hole 1: an organiser's list line about a regular covering 3 ('Lea except the last week' read as 4): not stored, LEA is asked, the organiser hears nothing more", async ({ request, db }) => {
   const body = [`List for ${monthName(SU)}:`, "1. Sue Owner", "2. Lea except the last week"].join("\n");
   setMonthlyReaderStub({ bodies: { [body]: monthList(SU, [line(1, "Sue Owner", { member: "p1" }), line(2, "Lea", { member: "p2", games: 4 })]) } });
   const res = await say(request, SU, P.sue, body);
-  expect(readerTurn(body)).toContain(`Games each regular on it covers: ${P.cy.name} (p5) ${SU.games.length}, ${P.lea.name} (p2) 3, ${P.sue.name} (p1) ${SU.games.length}.`);
+  expect(readerTurn(body)).toContain(`Games each regular on it covers: ${P.cy.name} (p5) ${SU.games.length}, ${P.lea.name} (p2) 3, ${P.lex.name} (p6) 3, ${P.lum.name} (p7) 3, ${P.sue.name} (p1) ${SU.games.length}.`);
   expect(res).toMatchObject({ react: null });
   expect(await monthRow(db, SU, P.lea)).toMatchObject({ kind: "regular", gamesCovered: 3, gamesCommitted: null });
   expect(await dms(db, SU, P.lea)).toEqual([gamesAsk(SU, 3, 0, SU.games.slice(-3))]);
@@ -886,7 +941,7 @@ test("hole 8: an answer that would be fewer than the games he has played: never 
   const body = `Pip in for ${monthName(c)}, ${left.length} games`;
   setMonthlyReaderStub({ bodies: { [body]: signup(c, left.length), "just one": signup(c, 1) } });
   expect(await say(request, c, P.pip, body)).toMatchObject({ react: null });
-  expect(await dms(db, c, P.pip)).toEqual([gamesAsk(c, left.length, 0, left)]);
+  expect(await dms(db, c, P.pip)).toEqual([gamesAsk(c, left.length, pastOf(c).length, left)]);
   expect(await dmReply(request, P.pip, "just one")).toMatchObject({ handled: "month-join-asked" });
   expect(await monthRow(db, c, P.pip)).toMatchObject({ gamesCommitted: null });
   expect(await dms(db, c, P.pip)).toHaveLength(2);
@@ -900,8 +955,154 @@ test("hole 6: no game left: a typed count is consumed, never passed on, and the 
   expect(await say(request, c, P.zoe, body)).toMatchObject({ handledBy: "fast-path", intent: "month_signup", react: null });
   expect(await dms(db, c, P.zoe)).toEqual([]);
   expect(await monthRow(db, c, P.zoe)).toBeNull();
-  expect(await dms(db, c, P.own3)).toEqual([hqLine(c, P.zoe, body)]);
+  expect(await dms(db, c, P.own3)).toEqual([hqAddLine(c, P.zoe, body)]);
 });
+
+// ── Round 5 (2026-11-16) ───────────────────────────────────────────────
+
+/** A newer DM from MatchTime to him, after the question (another feature's). */
+const newerDm = (db: TestDb, orgId: string, who: Person, text: string) =>
+  db.run(`INSERT INTO "BotJob" (id, "orgId", kind, phone, text, "pollOptions", "createdAt") VALUES ($1, $2, 'dm', $3, $4, '{}', now() + interval '1 second')`, [
+    `e2e-lj-newer-${who.id}-${++seq}`,
+    orgId,
+    digits(who.phone),
+    text,
+  ]);
+
+for (const c of [
+  { who: P.wil, label: "Will: 'IN mate' after a newer 'IN or OUT for Monday?' (the tentative follow-up)", newer: "🤔 Still on for Monday? Reply IN or OUT.", body: "IN mate" },
+  { who: P.cal, label: "Cal: a plain 'IN' after a newer weekly DM (dm-self-attendance)", newer: "📋 Monday 20:00: 9 in. Say IN to play.", body: "IN" },
+  { who: P.poe, label: "a pool offer 'YES' after a newer pool offer", newer: "🎟 A place for Sunday at another club. Reply YES to take it.", body: "YES" },
+  { who: P.pay, label: "'Paid' after a newer pay link", newer: "💷 £7.50 for Monday: https://matchtime.ai/pay/x", body: "Paid" },
+  { who: P.oth, label: "an answer to ANOTHER club's newer DM", newer: "📋 Pazartesi maçı: VARIM ya da YOKUM yaz.", body: "VARIM" },
+] as const) {
+  test(`hole 1 (round 5): ${c.label}: never taken as the answer to the older which-question; the month and the question untouched`, async ({ request, db }) => {
+    const ask = `${c.who.name.split(" ")[0]} in for ${monthName(EN)} except the last week`;
+    // The steal: the reader reads his words as a sign-up for the month.
+    setMonthlyReaderStub({ bodies: { [ask]: signup(EN, 3), [c.body]: signup(EN, 0) } });
+    await say(request, EN, c.who, ask);
+    expect(await askRow(db, c.who)).toEqual([{ kind: "month-join-which" }]);
+    await newerDm(db, c.who === P.oth ? TR.org : EN.org, c.who, c.newer);
+    const res = await dmReply(request, c.who, c.body);
+    expect(String(res.handled ?? "")).not.toMatch(/^month-join/);
+    expect(await monthRow(db, EN, c.who)).toBeNull();
+    expect(await askRow(db, c.who)).toEqual([{ kind: "month-join-which" }]);
+  });
+}
+
+test("hole 4 (round 5): Max types 'except the last week', Mia answers 'all but the last one': both missed a played game, both store from-now-on + actually played", async ({ request, db }) => {
+  test.skip(!PLAYED || leftOf(PLAYED).length < 2, "needs a month this calendar month with two games played and two still to play");
+  const c = PLAYED!;
+  const [n, played, left] = [c.games.length, pastOf(c).length - 1, leftOf(c)];
+  const max = `Max in for ${monthName(c)} except the last week`;
+  const mia = `Mia in for ${monthName(c)} except the last week`;
+  setMonthlyReaderStub({ bodies: { [max]: signup(c, n - 1), [mia]: signup(c, n), "all but the last one": signup(c, left.length - 1) } });
+  expect(await say(request, c, P.max, max)).toMatchObject({ react: "✅" });
+  expect(await say(request, c, P.mia, mia)).toMatchObject({ react: null });
+  // The question says how many he has ACTUALLY played, and lists only the games left.
+  expect(await dms(db, c, P.mia)).toEqual([gamesAsk(c, n, played, left)]);
+  expect(await dmReply(request, P.mia, "all but the last one")).toMatchObject({ handled: "month-join-yes" });
+  const want = left.length - 1 + played;
+  expect(await monthRow(db, c, P.max)).toMatchObject({ gamesCommitted: want });
+  expect(await monthRow(db, c, P.mia)).toMatchObject({ gamesCommitted: want, amountDuePence: want * SHARE });
+});
+
+test("hole 4 (round 5): Pax, a leaver who says he paid for 2, answers the plain join question 'yes except the last week': checked and saved against the games left he was asked about", async ({ request, db }) => {
+  const body = `IN FOR ${monthName(EN).toUpperCase()} again please`;
+  setMonthlyReaderStub({ bodies: { [body]: signup(EN, 0), "yes except the last week": signup(EN, 2) } });
+  await say(request, EN, P.pax, body);
+  expect(await dms(db, EN, P.pax)).toEqual([plainAsk(EN, 3).replace(/, £\d+\.\d\d/, "")]);
+  expect(await dmReply(request, P.pax, "yes except the last week")).toMatchObject({ handled: "month-join-yes" });
+  // 2 of the 3 left; he keeps the 2 he paid for, so that is every game of his.
+  expect(await monthRow(db, EN, P.pax)).toMatchObject({ kind: "regular", out: false, gamesCovered: 2, gamesCommitted: null });
+  expect(await dms(db, EN, P.pax)).toHaveLength(1);
+});
+
+test("hole 7 (round 5): 'all of them' to the question, from a leaver with an old count on her row: the old count is cleared", async ({ request, db }) => {
+  const body = `Pea in for ${monthName(EN)} again, 3 games`;
+  setMonthlyReaderStub({ bodies: { [body]: signup(EN, 3), "all of them please": signup(EN, 0) } });
+  await say(request, EN, P.pea, body);
+  expect(await dms(db, EN, P.pea)).toEqual([rejoinAsk(EN, 2, true, EN.games)]);
+  expect(await dmReply(request, P.pea, "all of them please")).toMatchObject({ handled: "month-join-yes" });
+  expect(await monthRow(db, EN, P.pea)).toMatchObject({ kind: "regular", out: false, gamesCommitted: null });
+});
+
+test("hole 9 (round 5): a question past 48 hours that the poll has not swept: expired (the organisers told once) before a new one is asked", async ({ request, db }) => {
+  const body = `Ede in for ${monthName(EN)} except the last week`;
+  setMonthlyReaderStub({ bodies: { [body]: signup(EN, 3) } });
+  await say(request, EN, P.ede, body);
+  await db.run(`UPDATE "SentNotification" SET "createdAt" = now() - interval '3 days' WHERE kind = 'month-join-which' AND "targetUser" = $1`, [P.ede.id]);
+  await say(request, EN, P.ede, body);
+  expect(await dms(db, EN, P.ede)).toHaveLength(2);
+  expect((await askRow(db, P.ede)).map((r) => r.kind)).toEqual(["month-join-which-expired", "month-join-which"]);
+  await poll(request, EN);
+  expect((await dms(db, EN, P.rob)).filter((d) => d === hqUnansweredAdd(EN, P.ede))).toHaveLength(1);
+});
+
+test("hole 3 (round 5): Lex sets his games on his own month page while asked: the question closes, his later reply never overwrites them, no 'didn't say' line", async ({ request, db, page }) => {
+  const list = [`List for ${monthName(SU)}:`, "1. Sue Owner", "6. Lex except the last week"].join("\n");
+  setMonthlyReaderStub({ bodies: { [list]: monthList(SU, [line(1, "Sue Owner", { member: "p1" }), line(6, "Lex", { member: "p6", games: 4 })]) }, });
+  await say(request, SU, P.sue, list);
+  expect(await askRow(db, P.lex)).toEqual([{ kind: "month-join-which" }]);
+  const ask = (await dms(db, SU, P.lex)).at(-1)!;
+  // His page: 2 games.
+  await signInAs(page, P.lex.id, "/month");
+  await page.getByTestId("my-games-select").first().selectOption("2");
+  await expect.poll(async () => (await monthRow(db, SU, P.lex))?.gamesCommitted).toBe(2);
+  expect((await askRow(db, P.lex)).map((r) => r.kind)).toEqual(["month-join-which-closed"]);
+  // A late reply quoting the question: not applied.
+  setMonthlyReaderStub({ bodies: { "all of them": signup(SU, 0) } });
+  expect(await dmReply(request, P.lex, "all of them", { quotedText: ask, quotedFromMatchTime: true })).not.toMatchObject({ handled: "month-join-yes" });
+  expect(await monthRow(db, SU, P.lex)).toMatchObject({ gamesCommitted: 2 });
+  await db.run(`UPDATE "SentNotification" SET "createdAt" = now() - interval '3 days' WHERE "targetUser" = $1 AND kind LIKE 'month-join-which%'`, [P.lex.id]);
+  await poll(request, SU);
+  expect((await dms(db, SU, P.sue)).some((d) => d.includes(P.lex.name))).toBe(false);
+});
+
+test("hole 3 (round 5): a question whose player's games changed since it was asked: when it expires, nothing is said", async ({ request, db }) => {
+  const list = [`List for ${monthName(SU)}:`, "1. Sue Owner", "7. Lum except the last week"].join("\n");
+  setMonthlyReaderStub({ bodies: { [list]: monthList(SU, [line(1, "Sue Owner", { member: "p1" }), line(7, "Lum", { member: "p7", games: 4 })]) } });
+  await say(request, SU, P.sue, list);
+  expect(await askRow(db, P.lum)).toEqual([{ kind: "month-join-which" }]);
+  // Set by a door that does not close it (as the reviewers' Lu): the row changed.
+  await db.run(`UPDATE "SquadMonthMember" SET "gamesCommitted" = 1 WHERE "monthId" = $1 AND "userId" = $2`, [SU.month, P.lum.id]);
+  await db.run(`UPDATE "SentNotification" SET "createdAt" = now() - interval '3 days' WHERE "targetUser" = $1 AND kind = 'month-join-which'`, [P.lum.id]);
+  await poll(request, SU);
+  expect((await askRow(db, P.lum)).map((r) => r.kind)).toEqual(["month-join-which-expired"]);
+  expect((await dms(db, SU, P.sue)).some((d) => d.includes(P.lum.name))).toBe(false);
+});
+
+
+test("holes 2 and 5 (round 5): an organiser's WEEK paste with his own misfit line, a new name and a held new name: the question is his LAST DM, the held name is never 'on it now', the organisers' line quotes HIS line", async ({ request, db }) => {
+  await poll(request, WK);
+  const seeded = await db.one<{ rollingSeededAt: Date | null }>(`SELECT "rollingSeededAt" FROM "Match" WHERE id = $1`, [`${WK.org}-match`]);
+  test.skip(!seeded?.rollingSeededAt, "the week was not seeded by the poll");
+  const day = Number(formatInTimeZone(WK.games[0], LONDON, "d"));
+  const body = [`List for ${monthName(WK)} ${day}:`, "1. Wes Owner except the last week", "2. Kip Newman", "3. Ned Nobody 4 only"].join("\n");
+  const weekList = {
+    ...monthList(WK, [
+      line(1, "Wes Owner", { member: "p1", games: 3 }),
+      line(2, "Kip Newman", { guest: true }),
+      line(3, "Ned Nobody", { guest: true, games: 4 }),
+    ]),
+    listOf: "week",
+    gameDay: day,
+  };
+  setMonthlyReaderStub({ bodies: { [body]: weekList } });
+  const res = await say(request, WK, P.wes, body);
+  expect(res).toMatchObject({ intent: "monthly_list", react: null });
+  const texts = await dms(db, WK, P.wes);
+  // The which-question about his own games is the LAST DM he gets.
+  expect(texts.at(-1)).toBe(gamesAsk(WK, 3, 0, WK.games));
+  // Who-is-this names Kip, never the held Ned as "on it now".
+  const who = texts.find((x) => x.includes("Kip Newman"));
+  expect(who).toBeTruthy();
+  expect(who).not.toContain("Ned Nobody");
+  // Ned cannot be asked (no phone): the organisers are told to ADD him, quoting his line.
+  expect(texts).toContain(t("en").msu_admin_games_unrecorded_add({ name: "Ned Nobody", month: monthName(WK), words: "3. Ned Nobody 4 only" }));
+  expect(await db.one(`SELECT 1 FROM "SquadMonthMember" m JOIN "User" u ON u.id = m."userId" WHERE m."monthId" = $1 AND u.name = 'Ned Nobody'`, [WK.month])).toBeNull();
+});
+
 
 test("Turkish: 'son hafta hariç' that does not fit is asked in Turkish, and nothing is stored", async ({ request, db }) => {
   const body = `${monthName(TR)} varım son hafta hariç`;

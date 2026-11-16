@@ -4852,10 +4852,18 @@ export const en = {
   msu_admin_games_unanswered: (p: { name: string; month: string }): string => `${p.name} didn't say which ${p.month} games; set them on the month page.`,
   /** "Which of them?" to a leaver who paid and is coming back: the games he
    *  keeps (2026-11-16). */
-  msu_dm_rejoin_which: (p: { month: string; games: number; dates: string[] }): string =>
-    p.games === 1
-      ? `📋 You're rejoining ${p.month} for the 1 game you paid for: ${p.dates.join(", ")}. Will you play it? Reply and I'll put you back on the list for it.`
-      : `📋 You're rejoining ${p.month} for the ${p.games} games you paid for: ${p.dates.slice(0, -1).join(", ")} and ${p.dates.at(-1)}. Which of them will you play? Reply and I'll put you back on the list for those.`,
+  msu_dm_rejoin_which: (p: { month: string; paid: number; claimed: boolean; dates: string[] }): string => {
+    const one = p.dates.length === 1;
+    const list = one ? p.dates[0] : `${p.dates.slice(0, -1).join(", ")} and ${p.dates.at(-1)}`;
+    const paid = `${p.claimed ? "you say you paid" : "you paid"} for ${p.paid} ${p.paid === 1 ? "game" : "games"}`;
+    return one
+      ? `📋 You're rejoining ${p.month}: ${paid}. 1 is left: ${list}. Will you play it? Reply and I'll put you back on the list for it.`
+      : `📋 You're rejoining ${p.month}: ${paid}. ${p.dates.length} are left: ${list}. Which of them will you play? Reply and I'll put you back on the list for those.`;
+  },
+  /** The organisers' lines for somebody NOT on the month (2026-11-16): add him. */
+  msu_admin_games_unrecorded_add: (p: { name: string; month: string; words: string }): string =>
+    `I couldn't record ${p.name}'s ${p.month} games from "${p.words}". Add him on the month page.`,
+  msu_admin_games_unanswered_add: (p: { name: string; month: string }): string => `${p.name} didn't say which ${p.month} games; add him on the month page.`,
   /** To a member whose paste had more new players than one paste may add. */
   mwk_dm_paste_guests_refused: (p: { names: string[] }): string =>
     `📋 One list can only add a few new players, so I didn't add ${p.names.join(", ")}. An organiser can add them.`,
@@ -4941,6 +4949,11 @@ export const en = {
     p.payg
       ? `✅ ${p.name} is on the ${p.month} list, paying as they go.`
       : `✅ ${p.name} is on the ${p.month} list as a regular for the ${p.games} ${p.games === 1 ? "game" : "games"} left${p.paid ? ", marked as says paid" : ""}.`,
+  /** His games did not fit (2026-11-16): not added yet, he is asked which. */
+  mwk_month_add_held: (p: { name: string; asked: boolean }): string =>
+    p.asked
+      ? `${p.name} isn't on the list yet: I've asked him which games he'll play.`
+      : `${p.name} isn't on the list yet: I couldn't ask him which games he'll play, so add him on the month page.`,
   /** The name could be a member with no name yet: nobody added, he is asked by DM. */
   mwk_month_add_waiting: (p: { name: string; month: string }): string =>
     `I couldn't tell who ${p.name} is, so they are not on the ${p.month} list yet. I've sent you a DM to say which member they are.`,
