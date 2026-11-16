@@ -104,5 +104,18 @@ describe("a new ask re-offers a player whose earlier offer never reached him", (
     await asked();
     expect(tx.poolOffer.create).toHaveBeenCalledTimes(1);
     expect(tx.poolOffer.updateMany).not.toHaveBeenCalled();
+    expect((tx.poolOffer.create.mock.calls as unknown as Array<[{ data: unknown }]>)[0][0].data).toMatchObject({ userId: "u1", staffTest: false });
+  });
+
+  // #607: an offer to a MatchTime staff test is made exactly as any other
+  // (he is a real player in every operational flow); it only carries the
+  // flag, so the owner's offer health (a measurement) can leave it out.
+  it("an offer to a staff test is made as any other, and carries the flag for the offer health", async () => {
+    dbMock.poolProfile.findMany.mockResolvedValue([{ userId: "u1", language: "en", staffTest: true, user: { phoneNumber: "+447700900111" } }]);
+    onMatch([]);
+    await asked();
+    expect(tx.poolOffer.create).toHaveBeenCalledTimes(1);
+    expect(jobs.queuePlatformDm).toHaveBeenCalledTimes(1);
+    expect((tx.poolOffer.create.mock.calls as unknown as Array<[{ data: unknown }]>)[0][0].data).toMatchObject({ userId: "u1", staffTest: true });
   });
 });

@@ -87,6 +87,7 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
       adultLabel: `I am ${f.minAge} or over`,
       consentLabel: `MatchTime may message me on WhatsApp about games near me, at most ${perWeekEn(f.perWeek)}. I can stop this at any time.`,
       consentPolicy: "Read how we use your details in our privacy policy.",
+      staffTestLabel: "This is a test sign-up (MatchTime staff only): left out of the sign-up statistics, everything else works as for anyone",
       submit: "Continue to WhatsApp",
       submitting: "Saving...",
       pausedNote: "Sign-ups are paused for a short while. Please come back later.",

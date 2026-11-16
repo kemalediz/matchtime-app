@@ -26,11 +26,13 @@ import { OPERATOR_COMPANY_NUMBER, OPERATOR_LEGAL_NAME, OPERATOR_REGISTERED_OFFIC
 export const PRIVACY_PATH = "/privacy";
 
 /** Stored with every consent record. A whole number so an Int column holds it. */
-export const PRIVACY_POLICY_VERSION = 3;
+export const PRIVACY_POLICY_VERSION = 4;
 
 /** ISO date the version above took effect. Version 3 (2026-11-13): the
- *  /play visit record, kept 90 days (`src/lib/pool/visit-log-rules.ts`). */
-export const PRIVACY_POLICY_EFFECTIVE_DATE = "2026-11-13";
+ *  /play visit record, kept 90 days. Version 4 (2026-11-16): daily totals
+ *  only, no record of each visit, still 90 days
+ *  (`src/lib/pool/visit-log-rules.ts`). */
+export const PRIVACY_POLICY_EFFECTIVE_DATE = "2026-11-16";
 
 export interface CompanyDetails {
   legalName: string | null;

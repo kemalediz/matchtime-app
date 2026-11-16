@@ -72,6 +72,7 @@ export function PlaySignup({
   gameOffer = null,
   earlyList,
   friend = null,
+  staffSession = false,
 }: {
   source: { campaignCode: string | null; referralCode: string | null };
   paused: boolean;
@@ -89,6 +90,11 @@ export function PlaySignup({
   gameOffer?: string | null;
   /** A friend link (2026-10-31): the game shown at the top, his name filled in. */
   friend?: FriendLinkCard | null;
+  /** The visitor is signed in as MatchTime staff (round 4 of #607): the
+   *  form shows a "This is a test sign-up" tick, ticked by default. Only a
+   *  ticked sign-up is a staff test (the server checks the session again),
+   *  so a real newcomer signed up on a staff phone is a real sign-up. */
+  staffSession?: boolean;
 }) {
   // English only (Kemal, 2026-11-02): no switch, no language field; the
   // server makes every new profile from here English whatever is sent.
@@ -99,6 +105,7 @@ export function PlaySignup({
   const value = form ?? emptyShortForm(friend?.friendName ?? "");
   const [adult, setAdult] = useState(false);
   const [consent, setConsent] = useState(false);
+  const [staffTest, setStaffTest] = useState(true);
   const [errors, setErrors] = useState<PoolFieldErrors>({});
   const [formError, setFormError] = useState<PoolErrorKey | null>(null);
   const [sending, setSending] = useState(false);
@@ -173,6 +180,7 @@ export function PlaySignup({
       consent,
       source: { c: source.campaignCode ?? undefined, ref: source.referralCode ?? undefined },
       ...(friend ? { friendToken: friend.token } : {}),
+      ...(staffSession ? { staffTest } : {}),
     };
     // The same expansion and validator as the server (`validatePublicPoolSignup`).
     const local = validatePoolSignup(expandShortSignup(body));
@@ -264,6 +272,7 @@ export function PlaySignup({
           <div className="space-y-4 border-t border-slate-200 pt-6">
             <Tick checked={adult} onChange={setAdult} label={copy.signup.adultLabel} error={keys.adult ? copy.errors.adult : undefined} />
             <Tick checked={consent} onChange={setConsent} label={copy.signup.consentLabel} error={keys.consent ? copy.errors.consent : undefined} />
+            {staffSession && <Tick checked={staffTest} onChange={setStaffTest} label={copy.signup.staffTestLabel} />}
             <p className="text-sm">
               <PolicyLink className="text-blue-700 underline">{copy.signup.consentPolicy}</PolicyLink>
             </p>

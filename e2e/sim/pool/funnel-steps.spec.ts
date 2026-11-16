@@ -54,6 +54,36 @@ scenarios("the sign-up funnel's server steps", () => {
     expect(await step(pool.db, "_direct", "sent")).toBe(1);
   });
 
+  // Round 3 of #607: the staff cookie is unsigned, so it never makes a
+  // staff test: a sign-up with it alone is an ordinary one and is counted.
+  // (A staff test needs a verified staff session: e2e/web/pool-staff-test-excluded.spec.ts.)
+  scenario("a hand-set staff cookie, with no session, makes an ordinary sign-up: counted as sent", async ({ pool }) => {
+    await pool.db.run(`INSERT INTO "PoolCampaign" (code, source, label) VALUES ($1, 'facebook', 'Funnel e2e') ON CONFLICT DO NOTHING`, [CODE]);
+    await pool.db.run(`DELETE FROM "PoolCampaignVisit" WHERE code IN ($1, '_direct')`, [CODE]);
+    for (const [n, cookie] of [[1, "mt-staff=2"], [2, "mt-staff=1"]] as const) {
+      const form = await pool.signUp({ name: `Cookie Only ${n}`, source: { c: CODE } }, { cookie });
+      expect(form).toMatchObject({ status: 200, ok: true });
+      expect(await pool.pendingByCode(form.code!)).toMatchObject({ staffTest: false, source: "campaign", sourceCode: CODE });
+      expect(await step(pool.db, CODE, "sent")).toBe(n);
+    }
+  });
+
+  // The confirm is a WhatsApp message, with no cookie and no session: the
+  // flag the sign-up stored decides. A staff test still confirms and is
+  // still a pool player (he can be offered games), just not counted.
+  scenario("a staff test confirms as any other on WhatsApp, and is not counted as confirmed", async ({ pool }) => {
+    await pool.db.run(`INSERT INTO "PoolCampaign" (code, source, label) VALUES ($1, 'facebook', 'Funnel e2e') ON CONFLICT DO NOTHING`, [CODE]);
+    await pool.db.run(`DELETE FROM "PoolCampaignVisit" WHERE code IN ($1, '_direct')`, [CODE]);
+    const kemal = await pool.stranger("kemal-test", { name: "Staff Test" });
+    const form = await pool.signUp({ name: "Staff Test", source: { c: CODE } });
+    // As a verified staff session's sign-up stores it (the web spec proves that path).
+    await pool.db.run(`UPDATE "PoolProfile" SET "staffTest" = true WHERE "confirmCode" = $1`, [form.code]);
+    const ex = await kemal.dm(form.prefill!);
+    expect(ex.json).toMatchObject({ handled: "pool-confirm", result: "confirmed" });
+    expect(await pool.db.one(`SELECT status, "staffTest" FROM "PoolProfile" WHERE "sourceCode" = $1 AND "displayName" LIKE 'Staff%'`, [CODE])).toMatchObject({ status: "active", staffTest: true });
+    expect(await step(pool.db, CODE, "confirmed")).toBe(0);
+  });
+
   scenario("the table holds nothing about the person: only the bucket, the day, the step and the count", async ({ pool }) => {
     const cols = await pool.db.all<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'PoolCampaignVisit' ORDER BY column_name`,

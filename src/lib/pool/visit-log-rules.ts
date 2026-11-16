@@ -1,101 +1,110 @@
 /**
- * THE /play VISIT LOG, the pure half (2026-11-13). No database, no clock of
- * its own. The I/O half is `visits.ts` (`recordPoolVisit`,
- * `purgeOldPoolVisitEvents`).
+ * THE /play VISIT BREAKDOWN, the pure half (one row per beacon 2026-11-13;
+ * daily totals only since 2026-11-16). No database, no clock of its own.
+ * The I/O half is `visits.ts` (`recordPoolVisit`, `purgeOldPoolVisitDaily`).
  *
  * WHY. The funnel counters (`visit-rules.ts`) say how many opened and
- * started, per code and day, but not why people left: on 12 November 2026
- * the detail that could have said (how long the page was open, what the
- * visitor did, what browser) was only in the server log, gone in a day. So
- * each beacon also leaves one row, "PoolVisitEvent".
+ * started, per code and day, but not who the opens were: people, or link
+ * scanners. So each open also adds one to a daily total broken down by a
+ * few coarse categories: "PoolVisitDaily".
  *
- * WHAT IS KEPT, on Kemal's conditions (2026-11-13): only what the funnel
- * analysis needs, 90 days, said in the privacy policy. A row is the HOUR,
- * the bucket the counters use (a campaign code, "_direct" or "_referral"),
- * the step, what opened the page, how long it had been on screen, WHETHER a
- * friend's code came with it, and a coarse label read off the user agent
- * here: a browser family, an app's in-app browser, a device class and the
- * scanner flag. Never the IP address, the user agent itself, the friend's
- * code, a user id or a cookie. At most POOL_VISIT_LOG_CAP_PER_HOUR rows per
- * code and hour.
+ * AS LITTLE AS WILL DO (Kemal, 2026-11-16, two rounds of review). From 13
+ * to 16 November each beacon left its own row, with the hour, its time on
+ * screen, a browser family and a device class. At our traffic such a row
+ * can be matched to the one person who signed up that day: on 13 November
+ * the only fb2 sign-up was the only fb2 start, and its row said mobile
+ * Safari, not in an app. What opened the page tells as much: a wheel or a
+ * key comes first only from a computer, a phone's tap starts with
+ * pointerdown. So a total is now only OPENS (starts are already in the
+ * daily counters, and a start is the step just before a sign-up), per
+ * bucket the counters use (a campaign code, "_direct" or "_referral") and
+ * London day, split by whether it was an app's in-app browser and whether
+ * it was a scanner, and a count. Never a browser family or device, what
+ * opened the page, the hour, the time on screen, the IP address, the user
+ * agent itself, the friend's code, a user id or a cookie. At very low
+ * traffic a day's total can still coincide with a single sign-up. Exactly
+ * 90 London days are kept, today included; the privacy policy says so.
  *
- * NEVER LINKED (review of #600): the policy promises the log is never tied
- * to a sign-up or a profile. Only `visits.ts` touches the table, to add,
- * count and delete; `__tests__/visit-log-unlinked.test.ts` keeps it so.
+ * THE SERVER LOG (round 3 of #607) holds nothing per visit: no line for a
+ * counted beacon, only one for a rejected one, its step (if it is one of
+ * ours) and why (`poolBeaconRejectedLogLine`). Never the user agent, the
+ * code, a friend's code or what opened the page. The beacon's trigger is
+ * read only to tell a well-formed open from one that is not
+ * (`readPoolPageBeacon`), never kept.
+ *
+ * Only `visits.ts` touches the table, to add and to delete
+ * (`__tests__/visit-log-unlinked.test.ts`).
  *
  * Reading a user agent into a label is parsing a browser's own string, not
- * understanding people. The lists are short on purpose: a rare browser is
- * "other", so the label alone does not single anyone out.
+ * understanding people. The list is short on purpose.
  */
 import { isLinkPreviewFetcher } from "../link-preview-fetchers";
-import type { PoolPageStep } from "./visit-rules";
+import { poolVisitDay, readPoolPageStep, type PoolPageStep } from "./visit-rules";
 
-// ── What the beacon may add ────────────────────────────────────────────
+// ── What the beacon may say ────────────────────────────────────────────
 
 /** What showed a person was there and so sent "opened" (`app/play/funnel-open.ts`):
- *  a trusted pointerdown, touchstart, keydown, wheel or scroll, 5 seconds on
- *  screen, or a start before any of them. */
-export const POOL_OPEN_TRIGGERS = ["pointer", "touch", "key", "wheel", "scroll", "visible-time", "before-start"] as const;
+ *  a trusted pointerdown, touchstart, keydown, wheel or scroll, or a start
+ *  before any of them. Since 2026-11-16 time on screen opens nothing: on
+ *  15 November 2026 all 4 counted opens were scanners that waited exactly
+ *  5000 ms. */
+export const POOL_OPEN_TRIGGERS = ["pointer", "touch", "key", "wheel", "scroll", "before-start"] as const;
 export type PoolOpenTrigger = (typeof POOL_OPEN_TRIGGERS)[number];
 
-/** A day on screen is as long as a visit is reported; anything above is a day. */
-export const POOL_VISIT_MAX_VISIBLE_MS = 24 * 3600 * 1000;
-/** Visible time is kept to a tenth of a second: enough to read, too coarse to tell visits apart by. */
-const VISIBLE_STEP_MS = 100;
-
-export interface PoolVisitDetail {
-  openedBy: PoolOpenTrigger | null;
-  visibleMs: number | null;
+/** A well-formed beacon. `trigger` (an open's) is for validation only:
+ *  nothing stores or logs it. */
+export interface PoolPageBeacon {
+  step: PoolPageStep;
+  trigger: PoolOpenTrigger | null;
 }
+
+/** Why a beacon counted nothing, for the server log. "not-json" is the
+ *  route's own: a body it could not read. */
+export type PoolBeaconRejection = "not-json" | "server-step" | "unknown-step" | "no-trigger" | "unknown-trigger" | "time-on-screen";
+/** The step a rejected beacon named, only when it is one of ours. */
+export type PoolBeaconStepNamed = "opened" | "started" | "sent" | "confirmed" | "other";
+
+export type PoolPageBeaconRead = { ok: true; beacon: PoolPageBeacon } | { ok: false; step: PoolBeaconStepNamed; reason: PoolBeaconRejection };
 
 /**
- * The detail a beacon body carries, checked: a trigger the gate knows, only
- * on "opened" (a start has none), and the visible time as a whole number of
- * ms from 0 to a day, rounded to a tenth of a second. Anything else is none,
- * so a page cached before the log existed still counts, its detail empty.
+ * The beacon a body is, or why it is not one the page sends (it then
+ * counts nothing):
+ *   opened   (or no step, as since 2026-11-04) only with a trigger the page
+ *            sends, a person's tap, touch, key, wheel or scroll, or a start
+ *            before them; no trigger, "visible-time" or anything else is
+ *            not a well-formed open;
+ *   started  unchanged: counted whatever it carries, no trigger kept;
+ *   "sent", "confirmed": the server's own steps; anything else: nobody's.
  */
-export function readPoolVisitDetail(body: Record<string, unknown>, step: PoolPageStep): PoolVisitDetail {
+export function readPoolPageBeacon(body: Record<string, unknown>): PoolPageBeaconRead {
+  const step = readPoolPageStep(body.step);
+  if (step === "started") return { ok: true, beacon: { step, trigger: null } };
+  if (step !== "opened") {
+    const server = body.step === "sent" || body.step === "confirmed";
+    return { ok: false, step: server ? (body.step as "sent" | "confirmed") : "other", reason: server ? "server-step" : "unknown-step" };
+  }
   const t = body.trigger;
-  const openedBy = step === "opened" && typeof t === "string" && (POOL_OPEN_TRIGGERS as readonly string[]).includes(t) ? (t as PoolOpenTrigger) : null;
-  const v = body.visibleMs;
-  const visibleMs =
-    typeof v === "number" && Number.isFinite(v)
-      ? Math.min(Math.max(Math.round(v / VISIBLE_STEP_MS) * VISIBLE_STEP_MS, 0), POOL_VISIT_MAX_VISIBLE_MS)
-      : null;
-  return { openedBy, visibleMs };
+  if (typeof t === "string" && (POOL_OPEN_TRIGGERS as readonly string[]).includes(t)) return { ok: true, beacon: { step, trigger: t as PoolOpenTrigger } };
+  const reason: PoolBeaconRejection = t === undefined || t === null ? "no-trigger" : t === "visible-time" ? "time-on-screen" : "unknown-trigger";
+  return { ok: false, step: "opened", reason };
 }
 
-// ── The coarse browser label ───────────────────────────────────────────
+// ── The coarse label ───────────────────────────────────────────────────
 
-export const POOL_BROWSERS = ["chrome", "safari", "firefox", "edge", "samsung", "other"] as const;
 export const POOL_IN_APPS = ["facebook", "instagram", "nextdoor", "whatsapp", "other", "none"] as const;
-/** "other": not a browser's user agent at all (a fetcher, a script, none). */
-export const POOL_DEVICES = ["mobile", "tablet", "desktop", "other"] as const;
 
-export interface PoolBrowserLabel {
-  browser: (typeof POOL_BROWSERS)[number];
+export interface PoolVisitLabel {
+  /** An app's own browser, or "none". */
   inApp: (typeof POOL_IN_APPS)[number];
-  device: (typeof POOL_DEVICES)[number];
   /** A link preview fetcher or scripted browser (`isLinkPreviewFetcher`, the
-   *  counters' own check): its visit is logged, never counted. */
+   *  counters' own check): added to the breakdown, never counted. */
   scanner: boolean;
-}
-
-function browserOf(ua: string): PoolBrowserLabel["browser"] {
-  if (/SamsungBrowser\//.test(ua)) return "samsung";
-  if (/\bEdg(e|A|iOS)?\//.test(ua)) return "edge";
-  if (/\bOPR\/|Opera/.test(ua)) return "other";
-  if (/Firefox\/|FxiOS\//.test(ua)) return "firefox";
-  if (/Chrome\/|CriOS\//.test(ua)) return "chrome";
-  // Safari, and every app's web view on an iPhone or iPad (all WebKit).
-  if (/Safari\//.test(ua) || /\((iPhone|iPad|iPod|Macintosh)\b.*AppleWebKit\//.test(ua)) return "safari";
-  return "other";
 }
 
 /** An app's own browser. Nextdoor's in-app user agent is not confirmed: it
  *  is matched on the name. WhatsApp opens links in the phone's browser, so
  *  its name is normally its preview fetcher (a scanner). */
-function inAppOf(ua: string): PoolBrowserLabel["inApp"] {
+function inAppOf(ua: string): PoolVisitLabel["inApp"] {
   if (/\bFBAN\/|\bFBAV\/|\bFB_IAB\//.test(ua)) return "facebook";
   if (/\bInstagram\b/.test(ua)) return "instagram";
   if (/nextdoor/i.test(ua)) return "nextdoor";
@@ -107,81 +116,54 @@ function inAppOf(ua: string): PoolBrowserLabel["inApp"] {
   return "none";
 }
 
-function deviceOf(ua: string): PoolBrowserLabel["device"] {
-  if (!/^Mozilla\//.test(ua)) return "other";
-  if (/\biPad\b|Tablet|Kindle|Silk\//.test(ua) || (/Android/.test(ua) && !/Mobile/.test(ua))) return "tablet";
-  if (/Mobi|iPhone|iPod|Android/.test(ua)) return "mobile";
-  return "desktop";
-}
-
-/** The label a user agent is kept as. The user agent itself is never kept. */
-export function poolBrowserLabel(userAgent: string | null | undefined): PoolBrowserLabel {
+/** The label a user agent is kept as: two fields. The user agent itself,
+ *  its browser family and its device are never kept. */
+export function poolVisitLabel(userAgent: string | null | undefined): PoolVisitLabel {
   const ua = (userAgent ?? "").trim();
-  const scanner = isLinkPreviewFetcher(ua);
-  if (!ua) return { browser: "other", inApp: "none", device: "other", scanner };
-  return { browser: browserOf(ua), inApp: inAppOf(ua), device: deviceOf(ua), scanner };
+  return { inApp: ua ? inAppOf(ua) : "none", scanner: isLinkPreviewFetcher(ua) };
 }
 
-// ── The row ────────────────────────────────────────────────────────────
+// ── The daily total ────────────────────────────────────────────────────
 
-/** The visit's time, to the HOUR (review of #600): a minute plus the code
- *  could be matched to a sign-up made a minute later with the same code,
- *  tying a named person to his browser. An hour cannot single one out as
- *  easily, and the funnel analysis needs no more. */
-export function poolVisitHour(now: Date): Date {
-  return new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000);
-}
-
-/** At most this many rows per code and hour (review of #600): anyone can
- *  post the beacon, so a flood must not fill the table for 90 days. Real
- *  traffic is far below it (the 24 opens of 4 November 2026 were a whole
- *  day). Above it the visit still counts; only its row is skipped. */
-export const POOL_VISIT_LOG_CAP_PER_HOUR = 200;
-
-/** May one more row go in, with `rowsThisHour` already in the code's hour? */
-export function poolVisitLogHasRoom(rowsThisHour: number): boolean {
-  return rowsThisHour < POOL_VISIT_LOG_CAP_PER_HOUR;
-}
-
-export interface PoolVisitEventRow extends PoolVisitDetail, PoolBrowserLabel {
-  at: Date;
+/** The key of the daily total one open adds one to: every column of
+ *  "PoolVisitDaily" but the count, and no other. */
+export interface PoolVisitDailyKey extends PoolVisitLabel {
   code: string;
-  step: PoolPageStep;
-  hasRef: boolean;
+  /** The London day, "yyyy-MM-dd", as the funnel counters use. */
+  day: string;
 }
 
-/** One beacon as its row: every field the table has, and no other. The
- *  friend's code and the user agent go in and do not come out. */
-export function poolVisitEventRow(a: {
-  code: string;
-  step: PoolPageStep;
-  now: Date;
-  detail: PoolVisitDetail;
-  referralCode: string | null;
-  userAgent: string | null;
-}): PoolVisitEventRow {
-  const label = poolBrowserLabel(a.userAgent);
-  return {
-    at: poolVisitHour(a.now),
-    code: a.code,
-    step: a.step,
-    openedBy: a.detail.openedBy,
-    visibleMs: a.detail.visibleMs,
-    hasRef: !!a.referralCode,
-    browser: label.browser,
-    inApp: label.inApp,
-    device: label.device,
-    scanner: label.scanner,
-  };
+/** Opens only: a start is counted by the daily counters and added to no
+ *  breakdown. What opened the page is not part of it. */
+export function poolVisitDailyKey(a: { code: string; now: Date; userAgent: string | null }): PoolVisitDailyKey {
+  const label = poolVisitLabel(a.userAgent);
+  return { code: a.code, day: poolVisitDay(a.now), inApp: label.inApp, scanner: label.scanner };
+}
+
+// ── The server log ─────────────────────────────────────────────────────
+
+/** A beacon that counted nothing: its step, if it is one of ours, and why.
+ *  The only per-beacon line there is, so a page or scanner sending the
+ *  wrong thing can still be diagnosed.
+ *   [pool-funnel] beacon rejected step=opened reason=time-on-screen */
+export function poolBeaconRejectedLogLine(a: { step: PoolBeaconStepNamed; reason: PoolBeaconRejection }): string {
+  return `[pool-funnel] beacon rejected step=${a.step} reason=${a.reason}`;
 }
 
 // ── Retention ──────────────────────────────────────────────────────────
 
-/** Kemal, 2026-11-13: a visit's detail is kept 90 days, then deleted by the
- *  daily cron (`purgeOldPoolVisitEvents`). The privacy policy says so. */
+/** Kemal, 2026-11-13, kept for the daily totals on 2026-11-16: the
+ *  breakdown is kept 90 days, then deleted by the daily cron
+ *  (`purgeOldPoolVisitDaily`). The privacy policy says so. The plain
+ *  counters ("PoolCampaignVisit", no category) are not part of it. */
 export const POOL_VISIT_RETENTION_DAYS = 90;
 
-/** Rows from before this instant are deleted. */
-export function poolVisitPurgeBefore(now: Date): Date {
-  return new Date(now.getTime() - POOL_VISIT_RETENTION_DAYS * 24 * 3600 * 1000);
+/** The oldest London day kept ("yyyy-MM-dd"); totals for any day before it
+ *  are deleted. Exactly POOL_VISIT_RETENTION_DAYS (90) days are kept, today
+ *  included (round 4 of #607): on 13 November the oldest kept is 16 August,
+ *  and 15 August goes. Calendar arithmetic, so a clock change never shifts it. */
+export function poolVisitPurgeBeforeDay(now: Date): string {
+  const d = new Date(`${poolVisitDay(now)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - (POOL_VISIT_RETENTION_DAYS - 1));
+  return d.toISOString().slice(0, 10);
 }

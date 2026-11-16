@@ -158,50 +158,91 @@ describe("the policy in English and Turkish", () => {
     expect(sectionText(copy, "how-long")).toMatch(/90/);
   });
 
-  // Review of #600: the sentence matches the code exactly (src/lib/pool/
-  // visit-log-rules.ts), and claims no more than is true: the hour plus the
-  // code is not "nothing that identifies", so it says what is NOT kept and
-  // that the record is never linked to a sign-up.
-  it("English names exactly what a join page visit keeps, and what it does not", () => {
+  // 2026-11-16 (Kemal, after review of #607): daily totals only, no browser
+  // or device details. The sentence matches the code exactly
+  // (src/lib/pool/visit-log-rules.ts) and claims no more than is true: it
+  // says what is kept and that nothing in it names a person, never "we
+  // never link them", and never that scanners are never counted.
+  it("English names exactly what join page visits keep, daily totals only, and what they do not", () => {
     const held = sectionText(privacyPolicy("en"), "what-we-hold").toLowerCase();
     for (const item of [
       "page for joining the player pool",
-      "for 90 days",
-      "the hour of the visit",
-      "which of our links",
+      "daily totals for each of our links",
+      "not a record of each visit",
+      "no browser or device details",
       "friend's link",
-      "started filling in the form",
-      "how long the page was on screen",
-      "what they first did",
-      "general browser type",
-      "inside an app such as facebook or nextdoor",
-      "type of device",
+      "after a tap, a scroll or a key press",
+      "we do not keep whether it was a tap, a scroll or a key press",
+      // Round 3 of #607: the table keeps WHICH app, so the policy says so.
+      "which app's own browser it was opened in, if any (facebook, instagram, nextdoor, whatsapp or another app)",
       "automatic link preview rather than a person",
-      "no ip address, no full browser details and no friend's code",
-      "does not on its own show who the visitor was",
-      "never link it to sign-ups or profiles",
+      "nothing in these totals names a person",
+      "no time of day",
+      "no ip address",
+      "no friend's code",
       "deleted automatically after 90 days",
+      "started filling in the form",
+      "the plain counts per link are kept as statistics",
+      // Round 2 of #607: true and plain about the hosting provider's logs.
+      "our hosting provider keeps short-lived technical logs of requests",
+      "we do not use them to identify visitors",
     ]) {
       expect(held).toContain(item);
     }
-    expect(held).not.toContain("nothing that identifies");
+    for (const gone of ["never link", "general browser type", "type of device", "the hour of the visit", "how long the page was on screen", "nothing that identifies", "what first showed", "whether the page was opened inside an app"]) {
+      expect(held).not.toContain(gone);
+    }
+  });
+
+  // Round 2 of #607: only the detailed totals go after 90 days; the plain
+  // daily counts per link ("PoolCampaignVisit") are never deleted.
+  it("English says precisely what goes after 90 days and what is kept as statistics", () => {
+    const howLong = sectionText(privacyPolicy("en"), "how-long").toLowerCase();
+    expect(howLong).toContain("the detailed daily totals of visits to the page for joining the player pool (which app's own browser the page was opened in, if any, and whether it was an automatic link preview) are deleted automatically after 90 days");
+    expect(howLong).toContain("the plain daily counts per link (opened, started, sent, confirmed) are kept as statistics");
+    expect(howLong).not.toContain("the daily totals of visits to the page for joining the player pool are deleted");
+  });
+
+  it("Turkish says the same about what goes after 90 days and what is kept", () => {
+    const howLong = sectionText(privacyPolicy("tr"), "how-long");
+    expect(howLong).toContain("ayrıntılı günlük toplamları (sayfanın, varsa, hangi uygulamanın kendi tarayıcısında açıldığı ve otomatik bir bağlantı önizlemesi olup olmadığı) 90 gün sonra otomatik olarak silinir");
+    expect(howLong).toContain("Bağlantı başına sade günlük sayılar (açılan, başlanan, gönderilen, onaylanan) istatistik olarak saklanır");
   });
 
   it.each(COPIES)("%s says why the join page visits are kept: our legitimate interest in improving the page", (_lang, copy) => {
     expect(sectionText(copy, "why")).toMatch(/legitimate interest.*improving it|iyileştirmekte meşru menfaatimiz/);
   });
 
-  it("Turkish says the same: the hour, never linked, and no claim of identifying nothing", () => {
+  it("Turkish says the same: daily totals per link, no browser or device details, nothing that names a person", () => {
     const held = sectionText(privacyPolicy("tr"), "what-we-hold");
-    for (const item of ["hangi saatte", "formu doldurmaya başlayıp başlamadığı", "Facebook ya da Nextdoor", "otomatik bir bağlantı önizlemesi", "IP adresi", "hiçbir zaman", "90 gün sonra otomatik olarak silinir"]) {
+    for (const item of [
+      "bağlantılarımızın her biri için günlük toplamlar",
+      "her ziyaretin ayrı bir kaydını tutmayız",
+      "tarayıcı ya da cihaz ayrıntısı",
+      "hangi uygulamanın kendi tarayıcısında açıldığına (Facebook, Instagram, Nextdoor, WhatsApp ya da başka bir uygulama)",
+      "otomatik bir bağlantı önizlemesi",
+      "kimseyi adıyla göstermez",
+      "günün saati",
+      "IP adresi",
+      "90 gün sonra otomatik olarak silinir",
+      "formu doldurmaya başlayanların",
+      "dokunma mı, kaydırma mı, tuşa basma mı olduğunu saklamayız",
+      "bağlantı başına sade sayılar istatistik olarak saklanır",
+      "Barındırma sağlayıcımız",
+      "kısa süreli teknik kayıtlarını",
+      "ziyaretçileri tanımlamak için kullanmayız",
+    ]) {
       expect(held).toContain(item);
     }
-    expect(held).not.toContain("kişiyi tanımlayan hiçbir bilgi");
+    // The old v3 phrases, as they really read ("cihaz türü (örneğin ..."): none is left.
+    for (const gone of ["hiçbir zaman havuz başvurularıyla", "genel bir tarayıcı türü", "cihaz türü (", "hangi saatte", "ekranda ne kadar süre", "kişiyi tanımlayan hiçbir bilgi", "ilk neyin gösterdiğine"]) {
+      expect(held).not.toContain(gone);
+    }
   });
 
-  it("the version moved on with the new visit record, and the date with it", () => {
-    expect(PRIVACY_POLICY_VERSION).toBe(3);
-    expect(PRIVACY_POLICY_EFFECTIVE_DATE).toBe("2026-11-13");
+  it("the version moved on with the daily totals (2026-11-16), and the date with it", () => {
+    expect(PRIVACY_POLICY_VERSION).toBe(4);
+    expect(PRIVACY_POLICY_EFFECTIVE_DATE).toBe("2026-11-16");
   });
 
   it.each(COPIES)("%s says a reply comes within one month and names the ICO", (_lang, copy) => {

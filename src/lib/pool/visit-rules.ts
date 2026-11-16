@@ -27,16 +27,23 @@
  * WHAT COUNTS AS A PERSON. A link preview fetcher (Facebook, Nextdoor,
  * WhatsApp, X) reads the HTML and runs no script, so it never sends the
  * beacon; the user-agent check below is the second guard, for fetchers and
- * scripted browsers that do run script. A scanner that runs script under a
- * browser's user agent still counts as opened, but it no longer counts as
- * started unless it really enters something, and every beacon's user agent
- * is logged on the server (`visits.ts`) so such a scanner can be named.
+ * scripted browsers that do run script. Since 2026-11-16 a scanner counts
+ * as opened only if it taps, touches, presses a key, wheels or scrolls (or
+ * enters something first; time on screen counts nothing,
+ * `app/play/funnel-open.ts`), and as started only if it really enters
+ * something. Real interactions only, so most scanners are excluded, not
+ * all. The user agent is read, never stored or logged, and nothing per
+ * visit is logged (`visits.ts`, round 3 of #607).
  *
- * THE VISIT LOG (2026-11-13) keeps a little more per beacon for 90 days:
- * no address, no user agent, no friend's code, the time to the hour, and
- * never linked to a sign-up (`visit-log-rules.ts`).
+ * THE BREAKDOWN (2026-11-13; daily totals of opens only since 2026-11-16)
+ * adds each open to a daily total per code, split by in-app browser and
+ * scanner flag, kept 90 days: nothing per visit, no browser, device,
+ * interaction type or time of day, no address, no user agent, no friend's
+ * code (`visit-log-rules.ts`). At very low traffic a day's total can still
+ * coincide with a single sign-up.
  */
 import { formatInTimeZone } from "date-fns-tz";
+import { AUTH_SESSION_MAX_AGE_SECONDS } from "../auth-session";
 import { isLinkPreviewFetcher } from "../link-preview-fetchers";
 import type { PoolProfileSource } from "./vocab";
 
@@ -106,29 +113,72 @@ export function poolVisitDay(now: Date): string {
 /**
  * OUR OWN VISITS ARE NOT VISITS (2026-11-12). Kemal's tests and QA checks
  * of /play were counted as people opening and starting it. So a browser
- * that has loaded an /admin page as an owner or admin carries this cookie
- * (set by `StaffMark` in the admin layout, a year long, so a staff phone is
- * known on /play even when signed out), and the beacon counts nothing for
- * it, nor for a request that carries an owner's or admin's session.
- * Nothing about the person is stored either way.
+ * that has loaded an /admin page as MatchTime staff carries this cookie
+ * (set by the server, `POST /admin/staff-mark`, which the admin layout's
+ * `StaffMark` calls on every admin page, so a staff phone is known on /play
+ * even when signed out), and the beacon counts nothing for
+ * it, nor for a request that carries a staff session. The cookie is
+ * unsigned: forged, it only hides that browser's own visits. A STAFF TEST
+ * sign-up (`PoolProfile.staffTest`, 2026-11-16), which the pool's
+ * measurements leave out (#607), needs a verified staff session,
+ * never the cookie (round 3 of #607, `staff-request.ts`). Nothing about
+ * the person is stored either way.
+ *
+ * STAFF MEANS MATCHTIME STAFF (Kemal, 2026-11-16): `User.isSuperadmin`,
+ * the platform owner's own check, not every club's owner or admin. Until
+ * then any club organiser who opened /admin got the cookie with "1"; the
+ * value is now "2", so those year-long cookies count like none at all
+ * (they say nothing about whose browser they are in), and the same server
+ * route clears the cookie for an organiser who is not staff.
  */
 export const POOL_STAFF_COOKIE = "mt-staff";
-const POOL_STAFF_COOKIE_VALUE = "1";
-const POOL_STAFF_COOKIE_MAX_AGE = 365 * 24 * 3600;
+const POOL_STAFF_COOKIE_VALUE = "2";
+/** No longer than a staff session (round 7 of #607; a year until then):
+ *  renewed on every admin page a staff member loads, so a browser whose
+ *  session simply ran out stops hiding its visits too. */
+const POOL_STAFF_COOKIE_MAX_AGE = AUTH_SESSION_MAX_AGE_SECONDS;
 
-/** Is this beacon from our own staff? `adminSession`: the request's session
- *  passes the admin pages' own check (`getUserOrg` + `isOrgAdmin`). */
-export function isPoolStaffVisit(a: { staffCookie: string | null | undefined; adminSession: boolean }): boolean {
-  return a.staffCookie === POOL_STAFF_COOKIE_VALUE || a.adminSession;
+/** Is this request from our own staff? `staffSession`: the request's
+ *  session is a MatchTime staff account (`User.isSuperadmin`). */
+export function isPoolStaffVisit(a: { staffCookie: string | null | undefined; staffSession: boolean }): boolean {
+  return a.staffCookie === POOL_STAFF_COOKIE_VALUE || a.staffSession;
 }
 
-/** The staff cookie as `document.cookie` takes it. First-party, the whole
- *  site, Lax so it is sent when /play is opened from a link elsewhere, and
- *  Secure on https (every deployment; plain http is only `next dev`). */
-export function poolStaffCookie(o: { secure: boolean }): string {
-  const parts = [`${POOL_STAFF_COOKIE}=${POOL_STAFF_COOKIE_VALUE}`, `Max-Age=${POOL_STAFF_COOKIE_MAX_AGE}`, "Path=/", "SameSite=Lax"];
-  if (o.secure) parts.push("Secure");
-  return parts.join("; ");
+/** Does the cookie alone say staff, with no session to look up? */
+export function hasPoolStaffCookie(staffCookie: string | null | undefined): boolean {
+  return staffCookie === POOL_STAFF_COOKIE_VALUE;
+}
+
+export interface PoolStaffCookieOptions {
+  name: typeof POOL_STAFF_COOKIE;
+  value: string;
+  maxAge: number;
+  path: "/";
+  sameSite: "lax";
+  secure: boolean;
+  httpOnly: true;
+}
+
+/** The staff cookie as the SERVER sets it (`/admin/staff-mark`, 2026-11-16:
+ *  WebKit caps a cookie a page script sets at 7 days, a server-set one keeps
+ *  its full life, a session's length since round 7 of #607). First-party, the whole site, Lax so it is sent when /play is
+ *  opened from a link elsewhere, Secure on https (every deployment; plain
+ *  http is only `next dev`), and HttpOnly: only the server reads it. */
+export function poolStaffCookieOptions(o: { secure: boolean }): PoolStaffCookieOptions {
+  return { name: POOL_STAFF_COOKIE, value: POOL_STAFF_COOKIE_VALUE, maxAge: POOL_STAFF_COOKIE_MAX_AGE, path: "/", sameSite: "lax", secure: o.secure, httpOnly: true };
+}
+
+/** The staff cookie deleted, for an organiser who is not MatchTime staff. */
+export function poolStaffCookieClearedOptions(o: { secure: boolean }): PoolStaffCookieOptions {
+  return { ...poolStaffCookieOptions(o), value: "", maxAge: 0 };
+}
+
+/** The same deletion as a Set-Cookie header, for a response built outside
+ *  `cookies()`: signing out (round 2 of #607), so a staff member who signs
+ *  in once on someone else's device does not leave it marked as staff. */
+export function poolStaffCookieClearedHeader(o: { secure: boolean }): string {
+  const c = poolStaffCookieClearedOptions(o);
+  return [`${c.name}=`, `Max-Age=${c.maxAge}`, `Path=${c.path}`, "SameSite=Lax", "HttpOnly", ...(c.secure ? ["Secure"] : [])].join("; ");
 }
 
 // ── The owner's view ───────────────────────────────────────────────────

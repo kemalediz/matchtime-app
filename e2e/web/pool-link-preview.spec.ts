@@ -12,7 +12,7 @@
  *     sign-ups all time (the other steps: pool-funnel-steps.spec.ts).
  * No model anywhere: $0.
  */
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 import { test, expect, resetDb, signInAs, U } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { poolLinkPreviewCopy } from "@/lib/i18n/pool-link-preview";
@@ -44,6 +44,21 @@ async function headTags(request: APIRequestContext, path: string, ua = FACEBOOK)
 
 const visits = async (db: TestDb, code: string) =>
   Number((await db.one<{ n: string | null }>(`SELECT sum(count)::text AS n FROM "PoolCampaignVisit" WHERE code = $1 AND step = 'opened'`, [code]))?.n ?? 0);
+
+/** A person scrolls once the sign-up has hydrated: since 2026-11-16 an open
+ *  needs a tap, key or scroll (pool-funnel-steps.spec.ts has the rule). */
+async function scrollOnce(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const form = document.querySelector("form");
+    return !!form && Object.keys(form).some((k) => k.startsWith("__reactProps"));
+  });
+  await page.mouse.wheel(0, 300);
+}
+
+async function openAsPerson(page: Page, path: string): Promise<void> {
+  await page.goto(path);
+  await scrollOnce(page);
+}
 
 test.describe("the preview a fetcher reads", () => {
   test("/play: the player's card in the head, og:url /play, canonical /play", async ({ request }) => {
@@ -109,19 +124,20 @@ test.describe("visits", () => {
   });
 
   test("a person opening the campaign link counts once per tab session, under the code", async ({ page, db }) => {
-    await page.goto(`/play?src=${CODE}`);
+    await openAsPerson(page, `/play?src=${CODE}`);
     await expect.poll(() => visits(db, CODE), { timeout: 15_000 }).toBe(1);
     await page.reload();
+    await scrollOnce(page);
     await page.waitForLoadState("networkidle");
     await new Promise((r) => setTimeout(r, 1000));
     expect(await visits(db, CODE)).toBe(1);
   });
 
   test("plain /play counts as direct, a switched-off code too", async ({ page, db }) => {
-    await page.goto("/play");
+    await openAsPerson(page, "/play");
     await expect.poll(() => visits(db, "_direct"), { timeout: 15_000 }).toBe(1);
     await db.run(`INSERT INTO "PoolCampaign" (code, source, label, active) VALUES ('e2e-off', 'nextdoor', 'off', false) ON CONFLICT DO NOTHING`);
-    await page.goto("/play?src=e2e-off");
+    await openAsPerson(page, "/play?src=e2e-off");
     await expect.poll(() => visits(db, "_direct"), { timeout: 15_000 }).toBe(2);
     expect(await visits(db, "e2e-off")).toBe(0);
   });

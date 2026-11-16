@@ -53,7 +53,8 @@ async function funnelSince(fromDay: string): Promise<Map<string, PoolFunnelCount
 export async function listPoolCampaigns(fromDay: string): Promise<Array<PoolCampaignRow & PoolWayInNumbers>> {
   const [campaigns, grouped, funnel] = await Promise.all([
     db.poolCampaign.findMany({ orderBy: { createdAt: "desc" } }),
-    db.poolProfile.groupBy({ by: ["sourceCode", "status"], where: { source: "campaign" }, _count: { _all: true } }),
+    // A MatchTime staff test sign-up (2026-11-16) is in no owner-facing count.
+    db.poolProfile.groupBy({ by: ["sourceCode", "status"], where: { source: "campaign", staffTest: false }, _count: { _all: true } }),
     funnelSince(fromDay),
   ]);
   const counts = campaignSignupCounts(grouped.map((g) => ({ sourceCode: g.sourceCode, status: g.status, count: g._count._all })));
@@ -77,7 +78,7 @@ export async function listPoolCampaigns(fromDay: string): Promise<Array<PoolCamp
  */
 export async function poolWaysInWithoutCode(fromDay: string): Promise<{ direct: PoolWayInNumbers; referral: PoolWayInNumbers }> {
   const [grouped, funnel] = await Promise.all([
-    db.poolProfile.groupBy({ by: ["source", "status"], where: { source: { in: ["web", "referral"] } }, _count: { _all: true } }),
+    db.poolProfile.groupBy({ by: ["source", "status"], where: { source: { in: ["web", "referral"] }, staffTest: false }, _count: { _all: true } }),
     funnelSince(fromDay),
   ]);
   const counts = campaignSignupCounts(grouped.map((g) => ({ sourceCode: g.source, status: g.status, count: g._count._all })));

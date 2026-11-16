@@ -1,28 +1,28 @@
 /**
- * The /play visit log's pure rules (2026-11-13). The daily counters could
- * not say why visitors left on 12 November, and the beacon's detail lived
- * only in the server log for a day. Kemal approved keeping a visit's detail
- * for 90 days on three conditions: only what the funnel analysis needs (no
- * address, no raw user agent, no referral code, no id, no cookie, the time
- * only to the hour), deleted automatically after 90 days,
- * and said in the privacy notice. These pin the first two.
+ * The /play visit breakdown's pure rules. 2026-11-13: one row per beacon,
+ * kept 90 days. 2026-11-16 (Kemal, after two rounds of review): DAILY
+ * TOTALS OF OPENS ONLY, per code and London day, counted by whether it was
+ * an app's in-app browser and whether it was a scanner. No browser family
+ * or device class (on 13 November the only fb2 sign-up was the only fb2
+ * start, and its row said mobile Safari), no interaction type (a wheel or
+ * key comes first only from a computer), no starts (the daily counters
+ * count them), no hour, no time on screen, no friend's code, no address,
+ * no user agent. At very low traffic a day's total can still coincide with
+ * a single sign-up. Deleted after 90 days. The server log keeps the same
+ * categories, never the raw user agent.
  */
 import { describe, expect, it } from "vitest";
 import {
-  POOL_BROWSERS,
-  POOL_DEVICES,
   POOL_IN_APPS,
   POOL_OPEN_TRIGGERS,
-  POOL_VISIT_MAX_VISIBLE_MS,
   POOL_VISIT_RETENTION_DAYS,
-  poolBrowserLabel,
-  poolVisitEventRow,
-  POOL_VISIT_LOG_CAP_PER_HOUR,
-  poolVisitHour,
-  poolVisitLogHasRoom,
-  poolVisitPurgeBefore,
-  readPoolVisitDetail,
+  poolBeaconRejectedLogLine,
+  poolVisitDailyKey,
+  poolVisitLabel,
+  poolVisitPurgeBeforeDay,
+  readPoolPageBeacon,
 } from "../visit-log-rules";
+
 
 const FB_IPHONE =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBAV/476.0.0.40.110;FBBV/628734212;FBDV/iPhone15,2;FBMD/iPhone;FBSN/iOS;FBSV/17.5;FBSS/3;FBID/phone;FBLC/en_GB;FBOP/5;FBRV/630011223]";
@@ -55,125 +55,129 @@ const IOS_WEBVIEW = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Appl
 const HEADLESS =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/130.0.0.0 Safari/537.36";
 
-describe("poolBrowserLabel: a coarse label, never the user agent", () => {
+
+describe("poolVisitLabel: an app's in-app browser and the scanner flag, nothing finer", () => {
   it.each([
-    ["Facebook's in-app browser on an iPhone", FB_IPHONE, { browser: "safari", inApp: "facebook", device: "mobile", scanner: false }],
-    ["Facebook's in-app browser on Android", FB_ANDROID, { browser: "chrome", inApp: "facebook", device: "mobile", scanner: false }],
-    ["Instagram's in-app browser on an iPhone", INSTAGRAM_IPHONE, { browser: "safari", inApp: "instagram", device: "mobile", scanner: false }],
-    ["Nextdoor's app", NEXTDOOR_IPHONE, { browser: "safari", inApp: "nextdoor", device: "mobile", scanner: false }],
-    ["Chrome on Android", CHROME_ANDROID, { browser: "chrome", inApp: "none", device: "mobile", scanner: false }],
-    ["Safari on a Mac", SAFARI_MAC, { browser: "safari", inApp: "none", device: "desktop", scanner: false }],
-    ["Safari on an iPhone", SAFARI_IPHONE, { browser: "safari", inApp: "none", device: "mobile", scanner: false }],
-    ["Safari on an iPad", SAFARI_IPAD, { browser: "safari", inApp: "none", device: "tablet", scanner: false }],
-    ["Chrome on an iPhone", CHROME_IPHONE, { browser: "chrome", inApp: "none", device: "mobile", scanner: false }],
-    ["an Android tablet", ANDROID_TABLET, { browser: "chrome", inApp: "none", device: "tablet", scanner: false }],
-    ["Samsung Internet", SAMSUNG, { browser: "samsung", inApp: "none", device: "mobile", scanner: false }],
-    ["Edge on Windows", EDGE_WINDOWS, { browser: "edge", inApp: "none", device: "desktop", scanner: false }],
-    ["Firefox on Windows", FIREFOX_WINDOWS, { browser: "firefox", inApp: "none", device: "desktop", scanner: false }],
-    ["another app's web view on Android", ANDROID_WEBVIEW, { browser: "chrome", inApp: "other", device: "mobile", scanner: false }],
-    ["another app's web view on an iPhone", IOS_WEBVIEW, { browser: "safari", inApp: "other", device: "mobile", scanner: false }],
+    ["Facebook's in-app browser on an iPhone", FB_IPHONE, { inApp: "facebook", scanner: false }],
+    ["Facebook's in-app browser on Android", FB_ANDROID, { inApp: "facebook", scanner: false }],
+    ["Instagram's in-app browser on an iPhone", INSTAGRAM_IPHONE, { inApp: "instagram", scanner: false }],
+    ["Nextdoor's app", NEXTDOOR_IPHONE, { inApp: "nextdoor", scanner: false }],
+    ["Chrome on Android", CHROME_ANDROID, { inApp: "none", scanner: false }],
+    ["Safari on a Mac", SAFARI_MAC, { inApp: "none", scanner: false }],
+    ["Safari on an iPhone", SAFARI_IPHONE, { inApp: "none", scanner: false }],
+    ["Safari on an iPad", SAFARI_IPAD, { inApp: "none", scanner: false }],
+    ["Chrome on an iPhone", CHROME_IPHONE, { inApp: "none", scanner: false }],
+    ["an Android tablet", ANDROID_TABLET, { inApp: "none", scanner: false }],
+    ["Samsung Internet", SAMSUNG, { inApp: "none", scanner: false }],
+    ["Edge on Windows", EDGE_WINDOWS, { inApp: "none", scanner: false }],
+    ["Firefox on Windows", FIREFOX_WINDOWS, { inApp: "none", scanner: false }],
+    ["another app's web view on Android", ANDROID_WEBVIEW, { inApp: "other", scanner: false }],
+    ["another app's web view on an iPhone", IOS_WEBVIEW, { inApp: "other", scanner: false }],
   ])("%s", (_name, ua, label) => {
-    expect(poolBrowserLabel(ua)).toEqual(label);
+    expect(poolVisitLabel(ua)).toEqual(label);
   });
 
   it("Facebook's link scanner is a scanner, not Facebook's in-app browser", () => {
-    expect(poolBrowserLabel("facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)")).toEqual({
-      browser: "other",
-      inApp: "none",
-      device: "other",
-      scanner: true,
-    });
+    expect(poolVisitLabel("facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)")).toEqual({ inApp: "none", scanner: true });
   });
 
   it("WhatsApp's preview fetcher, a headless browser and no user agent at all are scanners", () => {
-    expect(poolBrowserLabel("WhatsApp/2.23.20.0 A")).toEqual({ browser: "other", inApp: "whatsapp", device: "other", scanner: true });
-    expect(poolBrowserLabel(HEADLESS)).toMatchObject({ device: "desktop", scanner: true });
-    for (const none of [null, undefined, "", "   "]) {
-      expect(poolBrowserLabel(none)).toEqual({ browser: "other", inApp: "none", device: "other", scanner: true });
-    }
+    expect(poolVisitLabel("WhatsApp/2.23.20.0 A")).toEqual({ inApp: "whatsapp", scanner: true });
+    expect(poolVisitLabel(HEADLESS)).toEqual({ inApp: "none", scanner: true });
+    for (const none of [null, undefined, "", "   "]) expect(poolVisitLabel(none)).toEqual({ inApp: "none", scanner: true });
   });
 
-  it("whatever it is given, every value comes from a short fixed list", () => {
+  it("whatever it is given, it is the two fields, each from a short fixed list", () => {
     for (const ua of [FB_IPHONE, SAFARI_MAC, "x".repeat(5000), "Mozilla/5.0 (Kemal's phone; +44 7700 900123)", "Opera/9.80 OPR/100", null]) {
-      const l = poolBrowserLabel(ua);
-      expect(POOL_BROWSERS).toContain(l.browser);
+      const l = poolVisitLabel(ua);
+      expect(Object.keys(l).sort()).toEqual(["inApp", "scanner"]);
       expect(POOL_IN_APPS).toContain(l.inApp);
-      expect(POOL_DEVICES).toContain(l.device);
       expect(typeof l.scanner).toBe("boolean");
     }
   });
 });
 
-describe("readPoolVisitDetail: what the beacon may add, checked and clamped", () => {
-  it("opened: what first showed a person, and the visible time rounded to a tenth of a second", () => {
-    expect(readPoolVisitDetail({ trigger: "scroll", visibleMs: 5234.6 }, "opened")).toEqual({ openedBy: "scroll", visibleMs: 5200 });
+describe("readPoolPageBeacon: only a well-formed beacon counts (2026-11-16)", () => {
+  it("the page sends opened only after a real tap, touch, key, wheel or scroll, or a start before them", () => {
+    expect([...POOL_OPEN_TRIGGERS]).toEqual(["pointer", "touch", "key", "wheel", "scroll", "before-start"]);
     for (const trigger of POOL_OPEN_TRIGGERS) {
-      expect(readPoolVisitDetail({ trigger, visibleMs: 0 }, "opened").openedBy).toBe(trigger);
+      expect(readPoolPageBeacon({ src: "fb", step: "opened", trigger })).toEqual({ ok: true, beacon: { step: "opened", trigger } });
     }
   });
 
-  it("the triggers are the gate's own, and only those", () => {
-    expect([...POOL_OPEN_TRIGGERS]).toEqual(["pointer", "touch", "key", "wheel", "scroll", "visible-time", "before-start"]);
+  // 15 November 2026: all 4 counted opens were scanners that waited exactly
+  // 5000 ms. Time on screen no longer opens anything, so a beacon saying so
+  // is not one the page sends.
+  it("an opened beacon opened by time on screen, or with no trigger, counts nothing, and says why", () => {
+    expect(readPoolPageBeacon({ src: "fb", step: "opened", trigger: "visible-time", visibleMs: 5000 })).toEqual({ ok: false, step: "opened", reason: "time-on-screen" });
+    expect(readPoolPageBeacon({ src: "fb", step: "opened" })).toEqual({ ok: false, step: "opened", reason: "no-trigger" });
+    expect(readPoolPageBeacon({ src: "fb" })).toEqual({ ok: false, step: "opened", reason: "no-trigger" });
+    expect(readPoolPageBeacon({})).toEqual({ ok: false, step: "opened", reason: "no-trigger" });
   });
 
-  it("a trigger it does not know, or of the wrong type, is none", () => {
-    for (const trigger of ["click", "SCROLL", "", 3, null, {}, ["key"]]) {
-      expect(readPoolVisitDetail({ trigger, visibleMs: 100 }, "opened").openedBy).toBeNull();
+  it("a trigger it does not know, or of the wrong type, counts nothing", () => {
+    for (const trigger of ["click", "SCROLL", "", 3, {}, ["key"], "none"]) {
+      expect(readPoolPageBeacon({ step: "opened", trigger })).toEqual({ ok: false, step: "opened", reason: "unknown-trigger" });
+    }
+    expect(readPoolPageBeacon({ step: "opened", trigger: null })).toEqual({ ok: false, step: "opened", reason: "no-trigger" });
+  });
+
+  it("no step is opened, as before: it still needs its trigger", () => {
+    expect(readPoolPageBeacon({ src: "fb", trigger: "touch" })).toEqual({ ok: true, beacon: { step: "opened", trigger: "touch" } });
+  });
+
+  it("started is unchanged: it counts whatever trigger it carries, and keeps none", () => {
+    for (const trigger of [undefined, null, "key", "visible-time", "<script>"]) {
+      expect(readPoolPageBeacon({ step: "started", trigger })).toEqual({ ok: true, beacon: { step: "started", trigger: null } });
     }
   });
 
-  it("started never carries a trigger: only opened has one", () => {
-    expect(readPoolVisitDetail({ trigger: "key", visibleMs: 12_000 }, "started")).toEqual({ openedBy: null, visibleMs: 12_000 });
-  });
-
-  it("visible time: a whole number from 0 to 24 hours; anything that is not a finite number is none", () => {
-    expect(readPoolVisitDetail({ visibleMs: -5 }, "opened").visibleMs).toBe(0);
-    expect(readPoolVisitDetail({ visibleMs: 1e12 }, "opened").visibleMs).toBe(POOL_VISIT_MAX_VISIBLE_MS);
-    expect(POOL_VISIT_MAX_VISIBLE_MS).toBe(24 * 3600 * 1000);
-    for (const visibleMs of ["5000", null, undefined, Number.NaN, Number.POSITIVE_INFINITY, true, {}]) {
-      expect(readPoolVisitDetail({ visibleMs }, "opened").visibleMs).toBeNull();
+  it("sent and confirmed are the server's; anything else is nobody's. The step is named only when it is one of ours", () => {
+    expect(readPoolPageBeacon({ step: "sent", trigger: "touch" })).toEqual({ ok: false, step: "sent", reason: "server-step" });
+    expect(readPoolPageBeacon({ step: "confirmed" })).toEqual({ ok: false, step: "confirmed", reason: "server-step" });
+    for (const step of ["paid", 3, null, "<script>"]) {
+      expect(readPoolPageBeacon({ step, trigger: "touch" })).toEqual({ ok: false, step: "other", reason: "unknown-step" });
     }
   });
 
-  it("a page cached before the log existed sends neither: both none", () => {
-    expect(readPoolVisitDetail({ src: "fb", step: "opened" }, "opened")).toEqual({ openedBy: null, visibleMs: null });
+});
+
+describe("poolVisitDailyKey: the daily total an open adds one to, and nothing finer (round 2 of #607)", () => {
+  const NOW = new Date("2026-11-13T12:34:56.789Z");
+
+  it("holds exactly the bucket, the London day, the in-app browser and the scanner flag: not what opened the page", () => {
+    const key = poolVisitDailyKey({ code: "_referral", now: NOW, userAgent: FB_IPHONE });
+    expect(key).toEqual({ code: "_referral", day: "2026-11-13", inApp: "facebook", scanner: false });
+    const stored = JSON.stringify(key);
+    for (const secret of ["iPhone", "FBAN", "safari", "mobile", "12:34", "12:00", "touch", "wheel", "key", "opened"]) expect(stored).not.toContain(secret);
+  });
+
+  // "wheel" and "key" come first only from a computer, and a phone's tap
+  // starts with pointerdown: the interaction type would tell a computer
+  // from a phone on a day with one sign-up. So it is never part of the key.
+  it("people on different phones, browsers and computers, whatever they did first, add to the same total", () => {
+    const keys = [SAFARI_IPHONE, CHROME_ANDROID, SAFARI_MAC, EDGE_WINDOWS].map((userAgent) => poolVisitDailyKey({ code: "fb", now: NOW, userAgent }));
+    for (const k of keys) expect(k).toEqual(keys[0]);
+  });
+
+  it("the day is London's: 00:30 in summer time is the next day", () => {
+    expect(poolVisitDailyKey({ code: "_direct", now: new Date("2026-07-01T23:30:00Z"), userAgent: SAFARI_IPHONE }).day).toBe("2026-07-02");
+  });
+
+  it("no user agent: a scanner", () => {
+    expect(poolVisitDailyKey({ code: "_direct", now: NOW, userAgent: null })).toMatchObject({ scanner: true, inApp: "none" });
   });
 });
 
-describe("poolVisitEventRow: the row, and no address, user agent or friend's code", () => {
-  const NOW = new Date("2026-11-13T12:34:56.789Z");
-
-  it("holds exactly the hour, the bucket, the step, the detail, whether a friend's link was used and the coarse label", () => {
-    const row = poolVisitEventRow({
-      code: "_referral",
-      step: "opened",
-      now: NOW,
-      detail: { openedBy: "touch", visibleMs: 900 },
-      referralCode: "AB12cd",
-      userAgent: FB_IPHONE,
-    });
-    expect(row).toEqual({
-      at: new Date("2026-11-13T12:00:00.000Z"),
-      code: "_referral",
-      step: "opened",
-      openedBy: "touch",
-      visibleMs: 900,
-      hasRef: true,
-      browser: "safari",
-      inApp: "facebook",
-      device: "mobile",
-      scanner: false,
-    });
-    const stored = JSON.stringify(row);
-    expect(stored).not.toContain("AB12cd");
-    expect(stored).not.toContain("iPhone");
-    expect(stored).not.toContain("FBAN");
+describe("the server log: only a rejected beacon, its step and why (round 3 of #607)", () => {
+  it("no line is made for a counted beacon: nothing per visit reaches the log", async () => {
+    const rulesModule = await import("../visit-log-rules");
+    expect(Object.keys(rulesModule)).not.toContain("poolBeaconLogLine");
   });
 
-  it("no friend's code: hasRef false", () => {
-    expect(
-      poolVisitEventRow({ code: "_direct", step: "started", now: NOW, detail: { openedBy: null, visibleMs: null }, referralCode: null, userAgent: null }),
-    ).toMatchObject({ hasRef: false, scanner: true, openedBy: null, visibleMs: null });
+  it("a rejected beacon: its step, if it is one of ours, and why; nothing it sent", () => {
+    expect(poolBeaconRejectedLogLine({ step: "opened", reason: "time-on-screen" })).toBe("[pool-funnel] beacon rejected step=opened reason=time-on-screen");
+    expect(poolBeaconRejectedLogLine({ step: "other", reason: "not-json" })).toBe("[pool-funnel] beacon rejected step=other reason=not-json");
   });
 });
 
@@ -182,28 +186,14 @@ describe("retention: 90 days, then deleted", () => {
     expect(POOL_VISIT_RETENTION_DAYS).toBe(90);
   });
 
-  it("deletes every row from before 90 days ago", () => {
-    expect(poolVisitPurgeBefore(new Date("2026-11-13T06:00:00Z"))).toEqual(new Date("2026-08-15T06:00:00Z"));
-  });
-
-  // Review of #600: a minute plus the code could be matched to a sign-up
-  // made a minute later with the same code. An hour does not single one out so easily.
-  it("keeps the time to the hour only", () => {
-    expect(poolVisitHour(new Date("2026-11-13T12:34:56.789Z"))).toEqual(new Date("2026-11-13T12:00:00.000Z"));
-    expect(poolVisitHour(new Date("2026-11-13T12:59:59.999Z"))).toEqual(new Date("2026-11-13T12:00:00.000Z"));
-    expect(poolVisitHour(new Date("2026-11-13T13:00:00.000Z"))).toEqual(new Date("2026-11-13T13:00:00.000Z"));
-  });
-});
-
-describe("the volume cap: at most 200 rows per code and hour", () => {
-  it("is 200, generous for real traffic (the 24 opens of 4 November 2026 were a whole day)", () => {
-    expect(POOL_VISIT_LOG_CAP_PER_HOUR).toBe(200);
-  });
-
-  it("has room until the bucket's hour holds 200 rows, then none", () => {
-    expect(poolVisitLogHasRoom(0)).toBe(true);
-    expect(poolVisitLogHasRoom(199)).toBe(true);
-    expect(poolVisitLogHasRoom(200)).toBe(false);
-    expect(poolVisitLogHasRoom(5_000)).toBe(false);
+  // Round 4 of #607: exactly 90 London days are kept, today included; the
+  // 91st day back goes. On 13 November the oldest day kept is 16 August.
+  it("keeps exactly 90 London days, today included, and deletes the day before them", () => {
+    const keepFrom = poolVisitPurgeBeforeDay(new Date("2026-11-13T06:00:00Z"));
+    expect(keepFrom).toBe("2026-08-16");
+    const days = (Date.parse("2026-11-13T00:00:00Z") - Date.parse(`${keepFrom}T00:00:00Z`)) / 86_400_000 + 1;
+    expect(days).toBe(POOL_VISIT_RETENTION_DAYS);
+    // 00:30 London on 1 July is still 30 June in UTC: 1 July counts as today.
+    expect(poolVisitPurgeBeforeDay(new Date("2026-06-30T23:30:00Z"))).toBe("2026-04-03");
   });
 });

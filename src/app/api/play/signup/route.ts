@@ -15,9 +15,24 @@
  * .test.ts` names both): only after a valid, rate-limited sign-up, never in
  * the page, a bundle or the sitemap. A stranger has to be able to write to
  * MatchTime; that is the whole point of the pool's WhatsApp-first sign-up.
+ *
+ * STAFF TESTS (2026-11-16, #607). A sign-up TICKED as a test (`staffTest:
+ * true`, the box /play and a friend link show only a MatchTime staff
+ * session) and made with a VERIFIED MatchTime staff session
+ * (`User.isSuperadmin`: `isPoolStaffSession`) is made and answered exactly
+ * as any other, and stored with `PoolProfile.staffTest`: it is then left
+ * out of the pool's MEASUREMENTS only (the funnel's sent and confirmed, the
+ * codes page's "All time", the pool funnel page, the offer health), and
+ * the answer says `staffTest: true` so the page counts no analytics
+ * sign-up. Everywhere operational he is a player like any other. Never
+ * from the staff cookie: it is unsigned, and the statistics must not be
+ * hideable by hand. A real newcomer signed up on a staff phone with the
+ * tick taken off, or signed out, is a real sign-up. Asked only for a form
+ * that is valid.
  */
 import { NextResponse } from "next/server";
 import { poolRequestIp } from "@/lib/pool/request-ip";
+import { isPoolStaffSession } from "@/lib/pool/staff-request";
 import { matchtimeWaNumber } from "@/lib/club-connect";
 import { waMeLink } from "@/lib/club-connect-rules";
 import { poolConfirmPrefill } from "@/lib/pool/confirm-rules";
@@ -51,12 +66,18 @@ export async function POST(request: Request) {
     if (!opened || opened.state !== "open") return NextResponse.json({ ok: false, reason: "link-closed" }, { status: 409 });
     friendLink = { id: opened.id, issuedByUserId: opened.issuedByUserId, kickoff: opened.facts.kickoff };
   }
+  // A staff test only when TICKED as one (the box /play shows a MatchTime
+  // staff session, round 4 of #607) AND from a verified staff session:
+  // never from the (unsigned) staff cookie, and never a real newcomer a
+  // staff member signs up at the pitch with the tick taken off.
+  const staffTest = body.staffTest === true && (await isPoolStaffSession());
   const res = await createPoolSignup({
     fields: valid.value,
     ip: poolRequestIp(request),
     source,
     earlyList: !(await poolOpenForApiRequest(request)),
     friendLink,
+    staffTest,
   });
   if (!res.ok) {
     const status = res.reason === "busy" ? 429 : 422;
@@ -74,5 +95,7 @@ export async function POST(request: Request) {
     // own sign-up can be asked about, and only "waiting", "done" or "gone".
     statusToken: poolSignupStatusToken(res.id, res.code),
     expiresAt: res.expiresAt.toISOString(),
+    // The page then counts no analytics sign-up (`send-signup.ts`).
+    ...(staffTest ? { staffTest: true } : {}),
   });
 }

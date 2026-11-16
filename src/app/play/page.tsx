@@ -8,12 +8,15 @@ import { loadCampaignGame } from "@/lib/pool/campaign-game-line-loader";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import { readSignupSource } from "@/lib/pool/profile-fields";
 import { poolPlaySharePath, poolShareMetadata } from "@/lib/pool/share-meta";
+import { isPoolStaffSession } from "@/lib/pool/staff-request";
 import { PlaySignup } from "./play-signup";
 import { PoolFunnelBeacon } from "./funnel-beacon";
 
 /**
- * /play: join the local player pool (slice L2). Public, no session data,
- * and never the MatchTime number: that comes back only in the sign-up
+ * /play: join the local player pool (slice L2). Public. The session is
+ * read only to show MatchTime staff the "This is a test sign-up" tick
+ * (round 4 of #607); nothing about it reaches the page otherwise. Never the
+ * MatchTime number: that comes back only in the sign-up
  * route's answer (src/app/api/play/signup/route.ts). The page is English
  * only (2026-11-02): no switch, no language field. `?src=` (a campaign,
  * `?c=` too; a bare `?nd` is `src=nd`, as Nextdoor rewrites the link) and
@@ -49,7 +52,8 @@ export async function generateMetadata({ searchParams }: Search): Promise<Metada
 
 export default async function PlayPage({ searchParams }: Search) {
   const source = readSignupSource(await searchParams);
-  const [paused, poolEnv] = await Promise.all([poolSignupPausedForPage(), poolEnvForRequest()]);
+  // A MatchTime staff session sees the test sign-up tick (round 4 of #607).
+  const [paused, poolEnv, staffSession] = await Promise.all([poolSignupPausedForPage(), poolEnvForRequest(), isPoolStaffSession()]);
   // Paused: no form, so no game to name; the game is not even loaded.
   const [invitedBy, game] = await Promise.all([
     poolInvitedByName(source.referralCode).catch(() => null),
@@ -64,6 +68,7 @@ export default async function PlayPage({ searchParams }: Search) {
         gameLine={game?.line ?? null}
         gameOffer={game?.offer ?? null}
         earlyList={signupGoesOnEarlyList(poolEnv)}
+        staffSession={staffSession}
       />
     </PoolFunnelBeacon>
   );

@@ -1,165 +1,87 @@
 /**
- * When the /play funnel counts "opened" (2026-11-12): once the visitor shows
- * a person is there, by a trusted tap, key, wheel or scroll, or by the page
- * having been on screen for 5 seconds in all. Link scanners that run script
- * under a browser's user agent opened the page in bursts 24 to 44 seconds
- * after a Facebook comment went up, and never touched it.
+ * When the /play funnel counts "opened" (2026-11-12; 2026-11-16): only once
+ * the visitor shows a person is there, by a trusted tap, touch, key, wheel
+ * or scroll, or by entering something in the form first. Time on screen no
+ * longer counts: on 15 November 2026 all 4 counted opens were scanners that
+ * waited exactly 5000 ms, the old visible-time rule, and never touched the
+ * page.
  */
 import { describe, expect, it } from "vitest";
-import {
-  POOL_OPEN_PERSON_SIGNALS,
-  POOL_OPEN_VISIBLE_MS,
-  openGateNext,
-  openGateStart,
-  openGateWait,
-  openTriggerOf,
-  visibleClockNext,
-  visibleClockStart,
-  visibleSoFar,
-  type OpenGate,
-} from "../funnel-open";
-import { POOL_OPEN_TRIGGERS } from "@/lib/pool/visit-log-rules";
+import { POOL_OPEN_PERSON_SIGNALS, openGateNext, openGateStart, openTriggerOf, type OpenGate, type OpenGateInput } from "../funnel-open";
+import { POOL_OPEN_TRIGGERS, readPoolPageBeacon } from "@/lib/pool/visit-log-rules";
+import * as gate from "../funnel-open";
 
 const signal = (type: string, isTrusted = true) => ({ kind: "signal" as const, type, isTrusted });
-const visibility = (visible: boolean, now: number) => ({ kind: "visibility" as const, visible, now });
-const tick = (now: number) => ({ kind: "tick" as const, now });
 
 /** Feed the inputs in order; which of them opened. */
-function run(start: OpenGate, inputs: Parameters<typeof openGateNext>[1][]): { gate: OpenGate; opened: number[] } {
-  let gate = start;
+function run(start: OpenGate, inputs: OpenGateInput[]): { gate: OpenGate; opened: number[] } {
+  let g = start;
   const opened: number[] = [];
   inputs.forEach((input, i) => {
-    const r = openGateNext(gate, input);
-    gate = r.gate;
+    const r = openGateNext(g, input);
+    g = r.gate;
     if (r.open) opened.push(i);
   });
-  return { gate, opened };
+  return { gate: g, opened };
 }
 
 describe("a person's signal", () => {
   it("a trusted tap, touch, key, wheel or scroll opens at once", () => {
     expect([...POOL_OPEN_PERSON_SIGNALS].sort()).toEqual(["keydown", "pointerdown", "scroll", "touchstart", "wheel"]);
     for (const type of POOL_OPEN_PERSON_SIGNALS) {
-      expect(openGateNext(openGateStart(0, true), signal(type)).open).toBe(true);
+      expect(openGateNext(openGateStart(), signal(type)).open).toBe(true);
     }
   });
 
   it("a script's own event (untrusted) opens nothing", () => {
     for (const type of POOL_OPEN_PERSON_SIGNALS) {
-      expect(openGateNext(openGateStart(0, true), signal(type, false)).open).toBe(false);
+      expect(openGateNext(openGateStart(), signal(type, false)).open).toBe(false);
     }
   });
 
-  it("other events open nothing, trusted or not: a mouse passing over, a focus, a load", () => {
-    for (const type of ["mousemove", "pointermove", "focus", "load", "resize", "click"]) {
-      expect(openGateNext(openGateStart(0, true), signal(type)).open).toBe(false);
+  it("other events open nothing, trusted or not: a mouse passing over, a focus, a load, the page being shown", () => {
+    for (const type of ["mousemove", "pointermove", "focus", "load", "resize", "click", "visibilitychange"]) {
+      expect(openGateNext(openGateStart(), signal(type)).open).toBe(false);
     }
-  });
-
-  it("a signal while the page is hidden still opens: a person did it", () => {
-    expect(openGateNext(openGateStart(0, false), signal("keydown")).open).toBe(true);
   });
 });
 
-describe("5 visible seconds", () => {
-  it("opens once the page has been on screen for 5 seconds, not before", () => {
-    const g = openGateStart(1_000, true);
-    expect(openGateNext(g, tick(1_000 + POOL_OPEN_VISIBLE_MS - 1)).open).toBe(false);
-    expect(openGateNext(g, tick(1_000 + POOL_OPEN_VISIBLE_MS)).open).toBe(true);
+describe("time on screen opens nothing (2026-11-16)", () => {
+  it("the gate has no clock: no visible-time rule, no wait, no timer to schedule", () => {
+    expect(Object.keys(gate).sort()).toEqual(["POOL_OPEN_PERSON_SIGNALS", "openGateNext", "openGateStart", "openTriggerOf"]);
+    expect(openGateStart()).toEqual({ opened: false });
   });
 
-  it("hidden time does not count: a tab opened in the background waits until it is looked at", () => {
-    const { opened } = run(openGateStart(0, false), [tick(60_000), visibility(true, 60_000), tick(64_999), tick(65_000)]);
-    expect(opened).toEqual([3]);
-  });
-
-  it("visible time adds up across stretches, and the time hidden between them is left out", () => {
-    // 3 s on screen, 10 s away, 1.9 s back: 4.9 s. Then 0.1 s more: 5 s.
-    const { opened } = run(openGateStart(0, true), [
-      visibility(false, 3_000),
-      tick(13_000),
-      visibility(true, 13_000),
-      tick(14_900),
-      tick(15_000),
-    ]);
-    expect(opened).toEqual([4]);
-  });
-
-  it("a stretch that reached 5 seconds opens when it is noticed on hiding, if the clock was late", () => {
-    const { opened } = run(openGateStart(0, true), [visibility(false, 7_000)]);
-    expect(opened).toEqual([0]);
-  });
-
-  it("being shown again while already visible does not restart the count", () => {
-    const { opened } = run(openGateStart(0, true), [visibility(true, 4_000), tick(5_000)]);
-    expect(opened).toEqual([1]);
+  it("a page left open, shown and hidden, with no tap, key or scroll, never opens", () => {
+    const { opened } = run(openGateStart(), [signal("visibilitychange"), signal("focus"), signal("mousemove"), signal("load")]);
+    expect(opened).toEqual([]);
   });
 });
 
 describe("once only", () => {
-  it("opens one time, whatever follows: more signals, more time, a start", () => {
-    const { opened, gate } = run(openGateStart(0, true), [
-      signal("scroll"),
-      signal("keydown"),
-      tick(10_000),
-      visibility(false, 11_000),
-      visibility(true, 12_000),
-      { kind: "started" },
-    ]);
+  it("opens one time, whatever follows: more signals, a start", () => {
+    const { opened, gate: g } = run(openGateStart(), [signal("scroll"), signal("keydown"), { kind: "started" }, signal("pointerdown")]);
     expect(opened).toEqual([0]);
-    expect(gate.opened).toBe(true);
+    expect(g.opened).toBe(true);
   });
 
   it("a start before any signal opens first, so a start never exists without an open", () => {
-    const { opened } = run(openGateStart(0, true), [{ kind: "started" }, signal("keydown"), tick(9_000)]);
+    const { opened } = run(openGateStart(), [{ kind: "started" }, signal("keydown")]);
     expect(opened).toEqual([0]);
   });
 });
 
-describe("how long to wait for 5 visible seconds", () => {
-  it("the visible time still missing while on screen", () => {
-    expect(openGateWait(openGateStart(1_000, true), 1_000)).toBe(POOL_OPEN_VISIBLE_MS);
-    expect(openGateWait(openGateStart(1_000, true), 3_500)).toBe(2_500);
-    const back = run(openGateStart(0, true), [visibility(false, 2_000), visibility(true, 9_000)]).gate;
-    expect(openGateWait(back, 9_000)).toBe(3_000);
-  });
-
-  it("nothing to wait for while hidden or once opened", () => {
-    expect(openGateWait(openGateStart(0, false), 0)).toBeNull();
-    expect(openGateWait(openGateNext(openGateStart(0, true), signal("wheel")).gate, 0)).toBeNull();
-  });
-
-  it("never negative when the clock ran late", () => {
-    expect(openGateWait(openGateStart(0, true), 9_000)).toBe(0);
-  });
-});
-
-describe("what opened it, sent with the beacon (2026-11-13)", () => {
-  it("names the signal, the clock or the start; every name is one the server keeps", () => {
+describe("what opened it, sent with the beacon", () => {
+  it("names the signal or the start; every name is one the server accepts as a well-formed open", () => {
     expect(openTriggerOf(signal("pointerdown"))).toBe("pointer");
     expect(openTriggerOf(signal("touchstart"))).toBe("touch");
     expect(openTriggerOf(signal("keydown"))).toBe("key");
     expect(openTriggerOf(signal("wheel"))).toBe("wheel");
     expect(openTriggerOf(signal("scroll"))).toBe("scroll");
-    expect(openTriggerOf(tick(5_000))).toBe("visible-time");
-    expect(openTriggerOf(visibility(false, 7_000))).toBe("visible-time");
     expect(openTriggerOf({ kind: "started" })).toBe("before-start");
-    for (const type of POOL_OPEN_PERSON_SIGNALS) expect(POOL_OPEN_TRIGGERS).toContain(openTriggerOf(signal(type)));
-  });
-});
-
-describe("the page's visible clock, for the time on screen each beacon reports", () => {
-  it("adds up the time on screen and leaves out the time hidden", () => {
-    let c = visibleClockStart(0, true);
-    expect(visibleSoFar(c, 3_000)).toBe(3_000);
-    c = visibleClockNext(c, false, 3_000);
-    expect(visibleSoFar(c, 13_000)).toBe(3_000);
-    c = visibleClockNext(c, true, 13_000);
-    c = visibleClockNext(c, true, 14_000);
-    expect(visibleSoFar(c, 15_000)).toBe(5_000);
-  });
-
-  it("starts at nothing in a background tab", () => {
-    expect(visibleSoFar(visibleClockStart(0, false), 60_000)).toBe(0);
+    expect(openTriggerOf(signal("mousemove"))).toBeNull();
+    const sent = [...POOL_OPEN_PERSON_SIGNALS.map((type) => openTriggerOf(signal(type))), openTriggerOf({ kind: "started" })];
+    expect(new Set(sent)).toEqual(new Set(POOL_OPEN_TRIGGERS));
+    for (const trigger of sent) expect(readPoolPageBeacon({ step: "opened", trigger })).toEqual({ ok: true, beacon: { step: "opened", trigger } });
   });
 });

@@ -13,7 +13,7 @@ import { CONNECT_FOCUS_HOME, PATHNAME_HEADER, connectFocusAdminView } from "@/li
 import { connectFocusFor } from "@/lib/connect-focus-server";
 import { ConnectFocusGate } from "@/components/club-connect/connect-focus-gate";
 import { guestPlayersTabShown } from "@/lib/pool/guest-report-loader";
-import { StaffMark } from "./staff-mark";
+import { StaffMark } from "./staff-mark/staff-mark";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -54,7 +54,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto">
-      {/* Our own staff's /play visits are not counted (2026-11-12). */}
+      {/* MatchTime staff's /play visits and sign-ups are not counted: the server sets the mark for superadmins only (2026-11-12; 2026-11-16). */}
       <StaffMark />
       {banner && (
         <div

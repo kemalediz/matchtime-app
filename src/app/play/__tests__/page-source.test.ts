@@ -24,6 +24,7 @@ vi.mock("@/lib/pool/switch-env", async () => {
 });
 vi.mock("../play-signup", () => ({ PlaySignup: () => null }));
 vi.mock("../funnel-beacon", () => ({ PoolFunnelBeacon: () => null }));
+vi.mock("@/lib/pool/staff-request", () => ({ isPoolStaffSession: async () => false }));
 
 import PlayPage from "../page";
 

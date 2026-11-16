@@ -8,6 +8,14 @@
  * town, sport keys, source and early-list mark, and only the ids and
  * results of his games. Never a name, a number, an area or a distance
  * (`__tests__/funnel-loader.test.ts` pins the selects).
+ *
+ * STAFF TESTS (#607): this page is a MEASUREMENT, so a sign-up ticked as a
+ * test from a verified MatchTime staff session (`PoolProfile.staffTest`)
+ * is left out of every count here, and the offer health leaves out offers
+ * made to staff tests by the offer's own flag (`PoolOffer.staffTest`),
+ * except in the platform cap hits: that cap is shared, so their offers take
+ * room there like any other (round 7 of #607). Operationally a staff test is a player like any other (offers, rounds,
+ * places, posts, pages): nothing outside the measurements leaves him out.
  */
 import { db } from "../db";
 import { ORDINARY_MEMBER_WHERE } from "../guest-membership";
@@ -31,6 +39,7 @@ const CAP_LOOKBACK_MS = 26 * HOUR_MS;
 
 async function loadProfiles(): Promise<FunnelProfileFact[]> {
   const profiles = await db.poolProfile.findMany({
+    where: { staffTest: false },
     select: { userId: true, createdAt: true, status: true, consentAt: true, town: true, source: true, sourceCode: true, earlyList: true, sports: { select: { sport: true } } },
   });
   const userIds = profiles.map((p) => p.userId).filter((id): id is string => !!id);
@@ -89,19 +98,39 @@ async function loadProfiles(): Promise<FunnelProfileFact[]> {
   }));
 }
 
+/** The offers made to MatchTime staff tests (rounds 3 to 5 of #607), read
+ *  off the offer's own flag (`PoolOffer.staffTest`), so an erased staff-test
+ *  profile never comes back into the offer health. Their jobs are found by
+ *  the job's own `refId` (the offer's id): an offer reset for a new ask
+ *  loses its `platformJobId`, but every job it ever had still names it. */
+async function staffTestOfferIds(): Promise<string[]> {
+  const offers = await db.poolOffer.findMany({ where: { staffTest: true }, select: { id: true } });
+  return offers.map((o) => o.id);
+}
+
 async function loadOfferHealthFacts(q: FunnelQuery): Promise<OfferHealthFacts> {
   const { start, end } = rangeInstants(q);
+  const staffOfferIds = await staffTestOfferIds();
   const [offerJobs, delivered, paused] = await Promise.all([
     db.platformJob.findMany({
-      where: { purpose: POOL_OFFER_PURPOSE, OR: [{ createdAt: { gte: start, lt: end } }, { failedAt: { gte: start, lt: end } }] },
+      where: {
+        purpose: POOL_OFFER_PURPOSE,
+        OR: [{ createdAt: { gte: start, lt: end } }, { failedAt: { gte: start, lt: end } }],
+        ...(staffOfferIds.length ? { NOT: { refId: { in: staffOfferIds } } } : {}),
+      },
       select: { createdAt: true, sendAfter: true, failReason: true, failedAt: true },
     }),
-    db.poolOffer.findMany({ where: { sentAt: { gte: new Date(start.getTime() - CAP_LOOKBACK_MS), lt: end } }, select: { sentAt: true } }),
-    db.poolProfile.findMany({ where: { status: "paused", pausedReason: "ignored" }, select: { pausedAt: true } }),
+    db.poolOffer.findMany({
+      // Every offer, a staff test's too: the platform cap is shared.
+      where: { sentAt: { gte: new Date(start.getTime() - CAP_LOOKBACK_MS), lt: end } },
+      select: { sentAt: true, staffTest: true },
+    }),
+    db.poolProfile.findMany({ where: { status: "paused", pausedReason: "ignored", staffTest: false }, select: { pausedAt: true } }),
   ]);
   return {
     offerJobs,
-    delivered: delivered.map((o) => o.sentAt).filter((d): d is Date => !!d),
+    delivered: delivered.flatMap((o) => (o.sentAt && !o.staffTest ? [o.sentAt] : [])),
+    staffDelivered: delivered.flatMap((o) => (o.sentAt && o.staffTest ? [o.sentAt] : [])),
     ignoredPausedAt: paused.map((p) => p.pausedAt).filter((d): d is Date => !!d),
   };
 }

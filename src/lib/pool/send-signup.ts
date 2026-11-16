@@ -1,7 +1,8 @@
 /**
  * The client side of POST /api/play/signup, kept out of the component so it
  * can be tested. On a successful sign-up it counts one `pool_signup` event
- * in Vercel Web Analytics, with no properties: no name, phone or postcode.
+ * in Vercel Web Analytics, with no properties: no name, phone or postcode,
+ * and none for a MatchTime staff test (the server says `staffTest`).
  * Analytics can never break a sign-up: a failure there is swallowed.
  */
 import { track } from "@vercel/analytics";
@@ -43,7 +44,7 @@ export function countPoolSignup(source?: "partner-invite"): void {
 }
 
 export async function sendPoolSignup(body: unknown, fetchImpl: typeof fetch = (input, init) => fetch(input, init)): Promise<PoolSignupResult> {
-  let data: Partial<Omit<PoolSignupConfirm, "expiresAt">> & { expiresAt?: unknown; ok?: boolean; reason?: string; errors?: PoolFieldErrors };
+  let data: Partial<Omit<PoolSignupConfirm, "expiresAt">> & { expiresAt?: unknown; ok?: boolean; reason?: string; errors?: PoolFieldErrors; staffTest?: boolean };
   try {
     const res = await fetchImpl("/api/play/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     data = (await res.json().catch(() => ({}))) as typeof data;
@@ -51,7 +52,8 @@ export async function sendPoolSignup(body: unknown, fetchImpl: typeof fetch = (i
     return { kind: "error", reason: "generic" };
   }
   if (data.ok && data.code && data.waLink && data.prefill) {
-    countPoolSignup();
+    // A MatchTime staff test (2026-11-16) is in no count, this one included.
+    if (data.staffTest !== true) countPoolSignup();
     const expiresAt = typeof data.expiresAt === "string" ? Date.parse(data.expiresAt) : NaN;
     return {
       kind: "ok",

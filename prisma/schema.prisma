@@ -3488,6 +3488,15 @@ model PoolProfile {
   /// The friend link (FriendLink.id) this sign-up came from, when a member
   /// vouched for him for one match (2026-10-31). Source "friend".
   friendLinkId      String?
+  /// A staff test (2026-11-16, #607): a sign-up TICKED as a test on /play
+  /// or a friend link and made with a verified MatchTime staff session
+  /// (`isPoolStaffSession`), never from the staff cookie. Left out of the
+  /// pool's MEASUREMENTS only (the funnel's sent and confirmed, the codes
+  /// page's "All time", the pool funnel page and its CSV); a player like
+  /// any other everywhere operational. Its offers carry the flag for the
+  /// offer health (`PoolOffer.staffTest`). Migration
+  /// 20261116120100_pool_profile_staff_test.
+  staffTest         Boolean   @default(false)
   /// His own share code for matchtime.ai/p/<code> (G1).
   shareCode         String?   @unique
   /// "Keep my badges and 'Brought by' private" OFF: shown. The manage page
@@ -3637,6 +3646,11 @@ model PoolOffer {
   wave          Int       @default(1)
   /// The PlatformJob carrying the offer DM.
   platformJobId String?
+  /// Made to a MatchTime staff test (#607): copied from his profile when the
+  /// offer is made, so the owner's offer health (a measurement) leaves it
+  /// out, even after the profile is erased. Nothing operational reads it.
+  /// Migration 20261116120100_pool_profile_staff_test.
+  staffTest     Boolean   @default(false)
   sentAt        DateTime?
   expiresAt     DateTime
   /// vocab.ts POOL_OFFER_OUTCOMES; NULL while open.
@@ -3781,47 +3795,36 @@ model PoolCampaignVisit {
   @@id([code, day, step])
 }
 
-/// The /play visit log (2026-11-13, src/lib/pool/visit-log-rules.ts): one
-/// row per page beacon (opened, started), so drop-off can be explained
-/// after the server log has gone. Only what the funnel analysis needs: NO
-/// IP address, NO user agent (only the coarse label below), NO friend's
-/// share code (only `hasRef`), no user id, no cookie, and the time only to
-/// the hour. NEVER joined to a sign-up or a profile (the privacy policy
-/// promises it; `visit-log-unlinked.test.ts`). At most 200 rows per code
-/// and hour (POOL_VISIT_LOG_CAP_PER_HOUR). Link preview fetchers are logged
-/// with `scanner` and never counted in "PoolCampaignVisit". Migration
-/// 20261113120000_pool_visit_events.
-/// RETENTION 90 days from `at`: deleted by the daily 06:00 cron
-/// (`purgeOldPoolVisitEvents`, POOL_VISIT_RETENTION_DAYS).
-model PoolVisitEvent {
-  id        String   @id @default(cuid())
-  /// When, to the hour.
-  at        DateTime
+/// The /play visit breakdown, DAILY TOTALS OF OPENS ONLY (2026-11-16, Kemal;
+/// src/lib/pool/visit-log-rules.ts). Each open adds one to the total for its
+/// bucket and London day, split by in-app browser and scanner flag, so link
+/// scanners can be told from people after the server log has gone. Nothing
+/// per visit (the per-visit "PoolVisitEvent" of 2026-11-13 is dropped): no
+/// browser, device, time of day or interaction type, no starts (the daily
+/// counters count them), no time on screen, NO IP address, NO user agent,
+/// NO friend's share code, no user id, no cookie. At very low traffic a
+/// day's total can still coincide with a single sign-up. Link preview
+/// fetchers are added with `scanner` and never counted in
+/// "PoolCampaignVisit". Only `visits.ts` touches it
+/// (`visit-log-unlinked.test.ts`). Migrations
+/// 20261116120000_pool_visit_daily (the table) and
+/// 20261116120200_pool_visit_daily_backfill (the per-visit opens added up).
+/// RETENTION exactly 90 London days, today included: older days deleted by the daily 06:00 cron
+/// (`purgeOldPoolVisitDaily`, POOL_VISIT_RETENTION_DAYS).
+model PoolVisitDaily {
   /// The bucket the counters use: a campaign code, "_direct" or "_referral".
-  code      String
-  /// "opened" or "started".
-  step      String
-  /// What opened the page (opened only): pointer, touch, key, wheel,
-  /// scroll, visible-time or before-start. Null on started, or from a page
-  /// that did not say.
-  openedBy  String?
-  /// Time on screen when the beacon was sent (ms, to a tenth of a second,
-  /// at most a day).
-  visibleMs Int?
-  /// Whether a friend's share code came with the visit (never the code).
-  hasRef    Boolean  @default(false)
-  /// chrome, safari, firefox, edge, samsung or other.
-  browser   String
+  code    String
+  /// The London day, as "PoolCampaignVisit".
+  day     DateTime @db.Date
   /// An app's in-app browser: facebook, instagram, nextdoor, whatsapp,
   /// other or none.
-  inApp     String
-  /// mobile, tablet, desktop or other (not a browser).
-  device    String
+  inApp   String
   /// A link preview fetcher or scripted browser.
-  scanner   Boolean  @default(false)
+  scanner Boolean
+  count   Int      @default(0)
 
-  @@index([at])
-  @@index([code, at])
+  @@id([code, day, inApp, scanner])
+  @@index([day])
 }
 
 /// A member vouched for a friend for ONE match (friend link, 2026-10-31,

@@ -4,7 +4,8 @@
  * friend's link), the four steps of the sign-up counted in the chosen
  * period (opened, started, sent, confirmed), so the step people stop at
  * shows. Next to them, all time, the sign-ups the code brought (from the
- * profiles, as before). Counts only.
+ * profiles, as before). Counts only. A MatchTime staff test sign-up
+ * (`PoolProfile.staffTest`, 2026-11-16) is in none of them.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -63,6 +64,8 @@ describe("listPoolCampaigns", () => {
       { code: "nd-cheam", funnel: { opened: 0, started: 0, sent: 0, confirmed: 0 }, allTime: { signups: 0, confirmed: 0, waiting: 0 } },
     ]);
     expect(rows[0].url).toBe("https://matchtime.ai/play?src=fb-sutton");
+    // A MatchTime staff test sign-up (2026-11-16) is in no owner-facing count.
+    expect(dbMock.db.poolProfile.groupBy).toHaveBeenCalledWith({ by: ["sourceCode", "status"], where: { source: "campaign", staffTest: false }, _count: { _all: true } });
     expect(dbMock.db.poolCampaignVisit.groupBy).toHaveBeenCalledWith({ by: ["code", "step"], ...since, _sum: { count: true } });
   });
 });
@@ -73,7 +76,7 @@ describe("poolWaysInWithoutCode", () => {
       direct: { funnel: { opened: 24, started: 6, sent: 0, confirmed: 0 }, allTime: { signups: 5, confirmed: 4, waiting: 1 } },
       referral: { funnel: { opened: 9, started: 0, sent: 0, confirmed: 0 }, allTime: { signups: 2, confirmed: 2, waiting: 0 } },
     });
-    expect(dbMock.db.poolProfile.groupBy).toHaveBeenCalledWith({ by: ["source", "status"], where: { source: { in: ["web", "referral"] } }, _count: { _all: true } });
+    expect(dbMock.db.poolProfile.groupBy).toHaveBeenCalledWith({ by: ["source", "status"], where: { source: { in: ["web", "referral"] }, staffTest: false }, _count: { _all: true } });
     expect(dbMock.db.poolCampaignVisit.groupBy).toHaveBeenCalledWith({ by: ["code", "step"], ...since, _sum: { count: true } });
   });
 });

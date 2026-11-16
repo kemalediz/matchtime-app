@@ -5,10 +5,12 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "./db";
 import { verifyMagicLinkToken } from "./magic-link";
 import { gateSignIn } from "./google-signin-gate";
+import { AUTH_SESSION_MAX_AGE_SECONDS } from "./auth-session";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
-  session: { strategy: "jwt" },
+  // Auth.js's default length, stated so the /play staff cookie can match it.
+  session: { strategy: "jwt", maxAge: AUTH_SESSION_MAX_AGE_SECONDS },
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,

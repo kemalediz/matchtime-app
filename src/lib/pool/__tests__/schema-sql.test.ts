@@ -358,58 +358,179 @@ describe("the funnel steps migration (2026-11-04)", () => {
   });
 });
 
-describe("the visit log migration (2026-11-13): one row per beacon, kept 90 days", () => {
-  const EVENTS = "prisma/migrations/20261113120000_pool_visit_events/migration.sql";
-  const sql = code(read(EVENTS));
-  const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "PoolVisitEvent"'));
-  const cols = table.slice(0, table.indexOf(");"));
+const additiveOneTransaction = (sql: string) => {
+  const dropped = [...sql.matchAll(/DROP CONSTRAINT IF EXISTS "([^"]+)"/g)].map((m) => m[1]);
+  const added = new Set([...sql.matchAll(/ADD CONSTRAINT "([^"]+)"/g)].map((m) => m[1]));
+  for (const name of dropped) expect(added.has(name), name).toBe(true);
+  expect(sql).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
+  expect(sql).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
+  expect(sql).not.toMatch(/ADD COLUMN (?!IF NOT EXISTS)/);
+  expect(sql).toMatch(/^\s*BEGIN;/m);
+  expect(sql).toMatch(/^\s*SET LOCAL lock_timeout = '5s';/m);
+  expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
+  expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
+};
 
-  it("holds exactly the columns the funnel analysis needs", () => {
+describe("the per-visit log migration of 2026-11-13, now history", () => {
+  const EVENTS = "prisma/migrations/20261113120000_pool_visit_events/migration.sql";
+  it("is left as it was applied: the file 20261116120300 drops its table", () => {
+    const sql = code(read(EVENTS));
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "PoolVisitEvent"');
+    expect(sql).not.toMatch(/DROP\s+TABLE/i);
+  });
+  it("the schema no longer has the model, and the CHECK file no longer names its table", () => {
+    expect(read("prisma/schema.prisma")).not.toMatch(/model PoolVisitEvent\b/);
+    expect(code(read(CHECKS))).not.toContain('"PoolVisitEvent"');
+  });
+});
+
+describe("the daily breakdown migration (2026-11-16): daily totals of opens only, kept 90 days", () => {
+  const DAILY = "prisma/migrations/20261116120000_pool_visit_daily/migration.sql";
+  const sql = code(read(DAILY));
+  const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "PoolVisitDaily"'));
+  const cols = table.slice(0, table.indexOf(");"));
+  const KEY = ["code", "day", "inApp", "scanner"];
+
+  it("holds the bucket, the London day, the in-app browser, the scanner flag and a count, and nothing else", () => {
     const names = [...cols.matchAll(/^\s*"([^"]+)" [A-Z]/gm)].map((m) => m[1]);
-    expect(names).toEqual(["id", "at", "code", "step", "openedBy", "visibleMs", "hasRef", "browser", "inApp", "device", "scanner"]);
-    expect(cols).toMatch(/PRIMARY KEY \("id"\)/);
+    expect(names).toEqual([...KEY, "count"]);
+    expect(cols).toMatch(/"day" DATE NOT NULL/);
+    expect(cols).toContain(`PRIMARY KEY (${KEY.map((k) => `"${k}"`).join(", ")})`);
   });
-  it("keeps nothing that identifies a person: no address, user agent, referral code, user id or cookie", () => {
-    expect(cols).not.toMatch(/\bip\b|address|agent|"ua"|userId|"ref"|referralCode|cookie|session|phone|name"/i);
+  it("keeps nothing per visit or about a person: no hour, time on screen, address, user agent, friend's code, user id or cookie", () => {
+    expect(cols).not.toMatch(/"at"|hour|visible|TIMESTAMP|\bip\b|address|agent|"ua"|userId|"ref"|hasRef|referralCode|cookie|session|phone|name"|"id"/i);
+    // Review of #607: a browser family or device class could single out the
+    // one person who signed up that day (13 November, fb2: mobile Safari).
+    expect(cols).not.toMatch(/browser|device/i);
+    // Round 2: what opened the page tells a computer from a phone (a wheel or
+    // key comes first only from a computer), so it is not kept; nor the step,
+    // since only opens are.
+    expect(cols).not.toMatch(/trigger|openedBy|"step"/i);
   });
-  it("each label column is one of its values, pinned to the TypeScript, in the migration and the CHECK file alike", () => {
+  it("each category is one of its values, pinned to the TypeScript, in the migration and the CHECK file alike", () => {
     const checks = [
-      inList("step", ["opened", "started"]),
-      nullOrIn("openedBy", L.POOL_OPEN_TRIGGERS),
-      inList("browser", L.POOL_BROWSERS),
       inList("inApp", L.POOL_IN_APPS),
-      inList("device", L.POOL_DEVICES),
-      `CHECK ("visibleMs" IS NULL OR ("visibleMs" >= 0 AND "visibleMs" <= ${L.POOL_VISIT_MAX_VISIBLE_MS}))`,
+      `CHECK ("count" >= 0)`,
       `CHECK ("code" IN ('_direct', '_referral') OR ("code" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length("code") <= 32))`,
     ];
-    for (const f of [EVENTS, CHECKS]) for (const c of checks) expect(code(read(f)), `${f}: ${c}`).toContain(c);
+    for (const f of [DAILY, CHECKS]) for (const c of checks) expect(code(read(f)), `${f}: ${c}`).toContain(c);
+    for (const f of [DAILY, CHECKS]) expect(code(read(f)), f).not.toMatch(/PoolVisitDaily_(step|trigger|started_trigger|browser|device)_check/);
   });
-  it("is indexed by time, for the daily deletion, and by code and hour, for the volume cap", () => {
-    expect(sql).toContain(`CREATE INDEX IF NOT EXISTS "PoolVisitEvent_at_idx" ON "PoolVisitEvent"("at");`);
-    expect(sql).toContain(`CREATE INDEX IF NOT EXISTS "PoolVisitEvent_code_at_idx" ON "PoolVisitEvent"("code", "at");`);
-    expect(read("prisma/schema.prisma")).toMatch(/model PoolVisitEvent \{[^}]*@@index\(\[code, at\]\)/);
+  it("its header claims no more than is true: at very low traffic a day's total can still coincide with a single sign-up", () => {
+    expect(read(DAILY).replace(/\n--\s*/g, " ")).toMatch(/at very low traffic a day's total can still coincide with a single sign-up/i);
   });
-  it("says the time is kept to the hour, and the cap", () => {
-    expect(read(EVENTS)).toMatch(/to the HOUR/);
-    expect(read(EVENTS)).toMatch(/200 rows per code and hour/);
+  it("is indexed by day, for the daily deletion", () => {
+    expect(sql).toContain(`CREATE INDEX IF NOT EXISTS "PoolVisitDaily_day_idx" ON "PoolVisitDaily"("day");`);
+  });
+  it("states its retention, exactly 90 days today included, and its place in the order of four", () => {
+    expect(read(DAILY)).toMatch(/RETENTION: 90 DAYS/);
+    expect(read(DAILY).replace(/\n--\s*/g, " ")).toMatch(/Exactly 90 London days are kept, today included: on 13 November the oldest day kept is 16 August/);
+    expect(read(DAILY)).toMatch(/BEFORE the deploy[\s\S]*BEFORE the deploy[\s\S]*AFTER the deploy[\s\S]*LATER/);
   });
   it("is additive, idempotent and one transaction with no session-level SET and no data written", () => {
     expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
-    const dropped = [...sql.matchAll(/DROP CONSTRAINT IF EXISTS "([^"]+)"/g)].map((m) => m[1]);
-    const added = new Set([...sql.matchAll(/ADD CONSTRAINT "([^"]+)"/g)].map((m) => m[1]));
-    for (const name of dropped) expect(added.has(name), name).toBe(true);
-    expect(sql).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
-    expect(sql).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
+    additiveOneTransaction(sql);
+  });
+  it("the schema has the model, keyed by every category and indexed by day", () => {
+    const schema = read("prisma/schema.prisma");
+    expect(schema).toMatch(/model PoolVisitDaily \{[^}]*@@id\(\[code, day, inApp, scanner\]\)/);
+    expect(schema).not.toMatch(/model PoolVisitDaily \{[^}]*\n\s+(browser|device|step|trigger)\s/);
+    expect(schema.replace(/\n\/\/\/\s*/g, " ")).toMatch(/at very low traffic a day's total can still coincide with a single sign-up/i);
+    expect(schema).toMatch(/model PoolVisitDaily \{[^}]*day\s+DateTime\s+@db\.Date/);
+    expect(schema).toMatch(/model PoolVisitDaily \{[^}]*@@index\(\[day\]\)/);
+  });
+});
+
+describe("the staff test migration (2026-11-16)", () => {
+  const STAFF = "prisma/migrations/20261116120100_pool_profile_staff_test/migration.sql";
+  const sql = code(read(STAFF));
+  it("its header says plainly what fails without it: every PoolProfile insert and every update that returns the row", () => {
+    expect(read(STAFF)).toMatch(/EVERY insert into "PoolProfile"/);
+    expect(read(STAFF)).toMatch(/every update of a "PoolProfile" that returns the row/i);
+  });
+  // #607, final scope: a staff test is a player like any other in every
+  // operational flow; only the MEASUREMENTS leave him out. The profile's
+  // flag serves the funnel steps, the codes page and the pool funnel page;
+  // the offer's flag serves the offer health. Nothing else carries it.
+  it("adds the flag to the profile and to its offers only, false for every existing row", () => {
+    expect([...sql.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN IF NOT EXISTS "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`)).toEqual(["PoolProfile.staffTest", "PoolOffer.staffTest"]);
+    for (const t of ["PoolProfile", "PoolOffer"]) {
+      expect(sql).toContain(`ALTER TABLE "${t}" ADD COLUMN IF NOT EXISTS "staffTest" BOOLEAN NOT NULL DEFAULT false;`);
+      expect(read("prisma/schema.prisma")).toMatch(new RegExp(`model ${t} \\{[^}]*staffTest\\s+Boolean\\s+@default\\(false\\)`));
+    }
+    expect(read("prisma/schema.prisma")).not.toMatch(/model GuestPlace \{[^}]*staffTest/);
+    expect(sql).not.toContain("GuestPlace");
+    expect(read(STAFF)).toMatch(/EVERY insert into "PoolOffer"/);
+  });
+  it("is additive, idempotent and one transaction with no data written", () => {
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+    expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
+    additiveOneTransaction(sql);
+  });
+});
+
+describe("the backfill migration (2026-11-16): the per-visit rows added up, nothing deleted", () => {
+  const BACKFILL = "prisma/migrations/20261116120200_pool_visit_daily_backfill/migration.sql";
+  const sql = code(read(BACKFILL));
+  it("adds to the totals, never replaces them: the new code's own counts survive", () => {
+    expect(sql).toMatch(/INSERT INTO "PoolVisitDaily"[\s\S]*FROM "PoolVisitEvent"[\s\S]*DO UPDATE SET "count" = "PoolVisitDaily"\."count" \+ EXCLUDED\."count"/);
+  });
+  // Round 3 of #607: only opens the new rule would count, a real tap,
+  // touch, key, wheel or scroll, or a start first: not the old 5-second
+  // rule ("visible-time"), and not an open that did not say what opened it.
+  const REAL = `"openedBy" IN (${L.POOL_OPEN_TRIGGERS.map((t) => `'${t}'`).join(", ")})`;
+  it("only real-interaction opens, by London day; the browser, the device, the hour and the time on screen left behind", () => {
+    expect(sql).toContain(`(("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date`);
+    expect(sql).toMatch(/FROM "PoolVisitEvent"\s+WHERE "step" = 'opened'/);
+    expect(sql).toContain(REAL);
+    expect(REAL).not.toContain("visible-time");
+    expect(sql).toContain(`INSERT INTO "PoolVisitDaily" ("code", "day", "inApp", "scanner", "count")`);
+    expect(sql).not.toMatch(/"trigger"|"visibleMs"|"hasRef"|"browser"|"device"/);
+  });
+  it("its header's dry run, checks and rollback use the same rule", () => {
+    const header = read(BACKFILL).replace(/\n--\s*/g, " ");
+    expect(header.split(REAL).length - 1).toBeGreaterThanOrEqual(3);
+    expect(header).toMatch(/skipped/i);
+  });
+  it("once only: it renames the old table in the same transaction, and does nothing when it is gone", () => {
+    expect(sql).toMatch(/IF to_regclass\('"PoolVisitEvent"'\) IS NULL THEN[\s\S]*RETURN;/);
+    expect(sql).toContain(`ALTER TABLE "PoolVisitEvent" RENAME TO "PoolVisitEventBackfilled";`);
+  });
+  it("deletes nothing, and is one transaction with no session-level SET", () => {
+    expect(sql).not.toMatch(/\bDROP\b|\bDELETE\b|\bTRUNCATE\b/i);
     expect(sql).toMatch(/^\s*BEGIN;/m);
     expect(sql).toMatch(/^\s*SET LOCAL lock_timeout = '5s';/m);
     expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
     expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
-    expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
   });
-  it("states its retention in its header", () => {
-    expect(read(EVENTS)).toMatch(/RETENTION: 90 DAYS/);
+  it("its header says to apply it after the deploy, and how to check it against the counters", () => {
+    expect(read(BACKFILL)).toMatch(/APPLY AFTER THE DEPLOY/);
+    expect(read(BACKFILL)).toMatch(/FULL JOIN counters/);
   });
-  it("the schema has the model, indexed by time", () => {
-    expect(read("prisma/schema.prisma")).toMatch(/model PoolVisitEvent \{[^}]*@@index\(\[at\]\)/);
+  // Review of #607: both sides of the "every old row was added" check count
+  // only days before the deploy day, so the deploy day raises no false alarm.
+  it("the after-check compares old rows and added totals on the same days", () => {
+    const header = read(BACKFILL);
+    expect(header).toMatch(/FROM "PoolVisitEventBackfilled"[\s-]+WHERE "step" = 'opened' AND "openedBy" IN \([^)]*\)[\s-]+AND \(\("at" AT TIME ZONE 'UTC'\) AT TIME ZONE 'Europe\/London'\)::date < '<deploy day>'/);
+    expect(header).toMatch(/FROM "PoolVisitDaily" WHERE "day" < '<deploy day>'/);
+  });
+});
+
+describe("the drop migration (2026-11-16): separate, later, and only after the backfill", () => {
+  const DROP = "prisma/migrations/20261116120300_drop_pool_visit_events/migration.sql";
+  const sql = code(read(DROP));
+  it("drops only the renamed old table", () => {
+    expect([...sql.matchAll(/DROP TABLE IF EXISTS "([^"]+)"/g)].map((m) => m[1])).toEqual(["PoolVisitEventBackfilled"]);
+    expect(sql).not.toMatch(/DROP TABLE (IF EXISTS )?"PoolVisitDaily"|DROP TABLE (IF EXISTS )?"PoolCampaignVisit"/);
+  });
+  it("refuses to run while the old table was never added up", () => {
+    expect(sql).toMatch(/IF to_regclass\('"PoolVisitEvent"'\) IS NOT NULL THEN\s*RAISE EXCEPTION/);
+  });
+  it("is one transaction with no session-level SET", () => {
+    expect(sql).toMatch(/^\s*BEGIN;/m);
+    expect(sql).toMatch(/^\s*SET LOCAL lock_timeout = '5s';/m);
+    expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
+    expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
   });
 });

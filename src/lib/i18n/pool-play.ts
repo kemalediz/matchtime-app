@@ -127,6 +127,10 @@ export interface PoolPlayCopy {
     adultLabel: string;
     consentLabel: string;
     consentPolicy: string;
+    /** #607: the tick a MatchTime staff session sees on /play and a friend
+     *  link, ticked by default; only a ticked sign-up is a staff test, which
+     *  only keeps it out of the sign-up statistics. */
+    staffTestLabel: string;
     submit: string;
     submitting: string;
     pausedNote: string;
