@@ -58,6 +58,46 @@ test.afterAll(async ({ db }) => {
   await db.run(`UPDATE "User" SET "isSuperadmin" = false WHERE id = $1`, [U.admin]);
 });
 
+// Round 3 of #607: the staff cookie is unsigned. Only a VERIFIED MatchTime
+// staff session makes a staff test; a hand-set cookie alone never does.
+const SIGNUP = (name: string) => ({
+  name,
+  area: { kind: "district", district: "SM1" },
+  maxMiles: 3,
+  availability: [{ day: 2, from: "19:00", to: "22:00" }],
+  sports: [{ sport: "football", formats: [7] }],
+  language: "en",
+  adult: true,
+  consent: true,
+  source: { c: CODE },
+});
+
+test("a sign-up with a hand-set staff cookie and no session is an ordinary one", async ({ browser, baseURL, db }) => {
+  const context = await browser.newContext();
+  await context.addCookies([{ name: "mt-staff", value: "2", url: baseURL! }]);
+  const res = await context.request.post("/api/play/signup", { data: SIGNUP("Cookie Only"), headers: { "x-forwarded-for": "198.51.100.201" } });
+  expect(res.status()).toBe(200);
+  const answer = (await res.json()) as { code: string; staffTest?: boolean };
+  expect(answer.staffTest).toBeUndefined();
+  expect(await db.one(`SELECT "staffTest" FROM "PoolProfile" WHERE "confirmCode" = $1`, [answer.code])).toEqual({ staffTest: false });
+  await db.run(`DELETE FROM "PoolProfile" WHERE "confirmCode" = $1`, [answer.code]);
+  await context.close();
+});
+
+test("a sign-up with a MatchTime staff session (no cookie needed) is a staff test", async ({ browser, db }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await signInAs(page, U.admin, "/play");
+  await context.clearCookies({ name: "mt-staff" });
+  const res = await context.request.post("/api/play/signup", { data: SIGNUP("Staff Session"), headers: { "x-forwarded-for": "198.51.100.202" } });
+  expect(res.status()).toBe(200);
+  const answer = (await res.json()) as { code: string; staffTest?: boolean };
+  expect(answer.staffTest).toBe(true);
+  expect(await db.one(`SELECT "staffTest" FROM "PoolProfile" WHERE "confirmCode" = $1`, [answer.code])).toEqual({ staffTest: true });
+  await db.run(`DELETE FROM "PoolProfile" WHERE "confirmCode" = $1`, [answer.code]);
+  await context.close();
+});
+
 test("the source codes page counts only the ordinary sign-ups, all time", async ({ page, db }) => {
   expect(await db.one(`SELECT count(*)::int AS n FROM "PoolProfile" WHERE "sourceCode" = $1 AND "staffTest"`, [CODE])).toEqual({ n: 2 });
   await signInAs(page, U.admin, "/admin/pool/campaigns");

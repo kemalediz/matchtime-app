@@ -33,13 +33,11 @@
  * the same for opens, plus the in-app browser and the scanner flag. No id, no address, no cookie, no friend's code, no
  * browser or device, no time of day, and never the user agent itself: it
  * is read to skip link preview fetchers and to make that label, and never
- * stored or logged (the log line holds the same categories, 2026-11-16).
+ * stored or logged. No line is logged per visit (round 3 of #607).
  */
 import { db } from "../db";
 import {
-  poolBeaconLogLine,
   poolVisitDailyKey,
-  poolVisitLabel,
   poolVisitPurgeBeforeDay,
   POOL_VISIT_RETENTION_DAYS,
   type PoolVisitDailyKey,
@@ -100,7 +98,8 @@ async function addToDailyTotal(k: PoolVisitDailyKey): Promise<void> {
  * daily breakdown with the scanner flag (2026-11-13), so a burst of
  * scanners on a new post can be told from people. A start is added to no
  * breakdown. A failed count still adds the total, and a failed total never
- * fails the count. One server log line each, the kept categories only.
+ * fails the count. Nothing per visit is logged (round 3 of #607); a
+ * failure is a warning with its error only.
  */
 export async function recordPoolVisit(a: {
   source: { campaignCode: string | null; referralCode: string | null };
@@ -110,14 +109,11 @@ export async function recordPoolVisit(a: {
 }): Promise<string | null> {
   const step = a.step;
   const fetcher = isLinkPreviewFetcher(a.userAgent);
-  const log = (bucket: string | null, result: "counted" | "fetcher" | "failed") =>
-    console.info(poolBeaconLogLine({ step, bucket, label: poolVisitLabel(a.userAgent), result }));
   let code: string;
   try {
     code = await pageStepBucket(a.source);
   } catch (err) {
     warn(step, err);
-    log(null, fetcher ? "fetcher" : "failed");
     return null;
   }
   let counted = false;
@@ -130,7 +126,6 @@ export async function recordPoolVisit(a: {
     }
   }
   if (step === "opened") await addToDailyTotal(poolVisitDailyKey({ code, now: a.now, userAgent: a.userAgent }));
-  log(code, fetcher ? "fetcher" : counted ? "counted" : "failed");
   return counted ? code : null;
 }
 

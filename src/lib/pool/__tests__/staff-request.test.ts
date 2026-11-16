@@ -12,7 +12,7 @@ vi.mock("@/lib/auth", () => session);
 const org = vi.hoisted(() => ({ isSuperadmin: vi.fn(), isOrgAdmin: vi.fn(), getUserOrg: vi.fn() }));
 vi.mock("@/lib/org", () => org);
 
-import { isPoolStaffRequest } from "../staff-request";
+import { isPoolStaffRequest, isPoolStaffSession } from "../staff-request";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -60,5 +60,26 @@ describe("isPoolStaffRequest", () => {
     expect(warn).toHaveBeenCalledTimes(2);
     expect(String(warn.mock.calls[0][0])).toContain("[pool-funnel]");
     warn.mockRestore();
+  });
+});
+
+// Round 3 of #607: what a staff TEST sign-up needs. The cookie is unsigned,
+// so it never decides this; only a verified superadmin session does.
+describe("isPoolStaffSession", () => {
+  it("a MatchTime staff session: staff", async () => {
+    session.auth.mockResolvedValue({ user: { id: "u-kemal" } });
+    org.isSuperadmin.mockResolvedValue(true);
+    expect(await isPoolStaffSession()).toBe(true);
+  });
+
+  it("no session, a club organiser, or a check that fails: not staff, and no cookie is ever read", async () => {
+    expect(await isPoolStaffSession()).toBe(false);
+    session.auth.mockResolvedValue({ user: { id: "u-organiser" } });
+    expect(await isPoolStaffSession()).toBe(false);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    session.auth.mockRejectedValue(new Error("db down"));
+    expect(await isPoolStaffSession()).toBe(false);
+    warn.mockRestore();
+    expect(isPoolStaffSession.length).toBe(0);
   });
 });

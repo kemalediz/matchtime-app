@@ -250,9 +250,15 @@ test.describe("the page's steps", () => {
     // Set in a response header, never by page script (WebKit caps those at 7 days).
     expect(cookie.httpOnly).toBe(true);
     expect(await page.evaluate(() => document.cookie)).not.toContain("mt-staff");
+    // Round 3 of #607: the SESSION alone, the cookie taken away first (the
+    // cookie alone is the "a browser with the staff cookie" case above).
+    await staff.clearCookies({ name: "mt-staff" });
+    const beacons = await watchBeacons(page);
     await page.goto(`/play?src=${CODE}`);
     await hydrated(page);
     await page.mouse.wheel(0, 300);
+    await expect.poll(() => beacons(), { timeout: 5_000 }).toEqual(["opened"]);
+    expect((await staff.cookies()).find((c) => c.name === "mt-staff")).toBeUndefined();
     await page.waitForLoadState("networkidle");
     await settle();
     expect(await count(db, CODE, "opened")).toBe(0);

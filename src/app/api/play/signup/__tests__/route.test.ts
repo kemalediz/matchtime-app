@@ -15,8 +15,12 @@ vi.mock("@/lib/club-connect", () => ({ matchtimeWaNumber: () => "447700900555" }
 vi.mock("@/lib/pool/request-ip", () => ({ poolRequestIp: () => "203.0.113.9" }));
 vi.mock("@/lib/pool/signup-status-token", () => ({ poolSignupStatusToken: () => "tok" }));
 vi.mock("@/lib/friend-link/page", () => ({ openFriendLink: async () => null }));
-const staff = vi.hoisted(() => ({ isPoolStaffRequest: vi.fn() }));
-vi.mock("@/lib/pool/staff-request", () => staff);
+// The real staff check (src/lib/pool/staff-request.ts), with the session
+// and the account stubbed: the cookie must never decide a staff test.
+const session = vi.hoisted(() => ({ auth: vi.fn() }));
+vi.mock("@/lib/auth", () => session);
+const org = vi.hoisted(() => ({ isSuperadmin: vi.fn() }));
+vi.mock("@/lib/org", () => org);
 const jar = vi.hoisted(() => ({ cookies: new Map<string, string>() }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: (name: string) => (jar.cookies.has(name) ? { name, value: jar.cookies.get(name) } : undefined) }) }));
 
@@ -28,7 +32,8 @@ const SHORT = { name: "Ali K", area: { kind: "district", district: "sm1" }, days
 beforeEach(() => {
   vi.clearAllMocks();
   jar.cookies.clear();
-  staff.isPoolStaffRequest.mockResolvedValue(false);
+  session.auth.mockResolvedValue(null);
+  org.isSuperadmin.mockResolvedValue(false);
   signup.createPoolSignup.mockResolvedValue({ ok: true, id: "p1", code: "ABCDE", expiresAt: new Date("2026-11-07T12:00:00Z"), earlyList: true });
 });
 
@@ -73,25 +78,46 @@ describe("the short form", () => {
   });
 });
 
-describe("a sign-up from a MatchTime staff browser is a staff test (2026-11-16)", () => {
-  it("is made exactly as any other, marked staffTest, so it is counted as neither sent nor confirmed", async () => {
-    staff.isPoolStaffRequest.mockResolvedValue(true);
-    jar.cookies.set("mt-staff", "2");
+// Round 3 of #607: the staff cookie is unsigned, so anyone could set it by
+// hand. A staff test hides a profile from the club's Guest players page, so
+// it is set only for a VERIFIED MatchTime staff session (User.isSuperadmin),
+// never from the cookie.
+describe("a staff test sign-up needs a verified MatchTime staff session (2026-11-16)", () => {
+  it("a superadmin's session: made exactly as any other, and marked staffTest", async () => {
+    session.auth.mockResolvedValue({ user: { id: "u-kemal" } });
+    org.isSuperadmin.mockResolvedValue(true);
     const res = await post(SHORT);
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, code: "ABCDE", waLink: expect.stringContaining("wa.me/447700900555") });
-    expect(staff.isPoolStaffRequest).toHaveBeenCalledWith("2");
+    expect(await res.json()).toMatchObject({ ok: true, code: "ABCDE", waLink: expect.stringContaining("wa.me/447700900555"), staffTest: true });
+    expect(org.isSuperadmin).toHaveBeenCalledWith("u-kemal");
     expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: true });
   });
 
-  it("anybody else's is not", async () => {
-    await post(SHORT);
-    expect(staff.isPoolStaffRequest).toHaveBeenCalledWith(null);
+  it("a hand-set staff cookie with no session: an ordinary sign-up", async () => {
+    jar.cookies.set("mt-staff", "2");
+    const res = await post(SHORT);
     expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: false });
+    expect(await res.json()).not.toHaveProperty("staffTest");
+  });
+
+  it("the staff cookie with a session that is not MatchTime staff: an ordinary sign-up", async () => {
+    jar.cookies.set("mt-staff", "2");
+    session.auth.mockResolvedValue({ user: { id: "u-organiser" } });
+    await post(SHORT);
+    expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: false });
+  });
+
+  it("a session check that fails: an ordinary sign-up, made all the same", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    session.auth.mockRejectedValue(new Error("db down"));
+    const res = await post(SHORT);
+    expect(res.status).toBe(200);
+    expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: false });
+    warn.mockRestore();
   });
 
   it("a refused form never asks", async () => {
     await post({ ...SHORT, days: [] });
-    expect(staff.isPoolStaffRequest).not.toHaveBeenCalled();
+    expect(session.auth).not.toHaveBeenCalled();
   });
 });

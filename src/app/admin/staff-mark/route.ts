@@ -13,9 +13,11 @@
  *                                          club organiser got until then too)
  *   nobody signed in, or a failed check    left as it is
  *
- * Always 204, nothing in the body. The cookie holds no secret: a visitor
- * who set it by hand would only hide his own /play visit and sign-up from
- * the counts (`visit-rules.ts`).
+ * Always 204, nothing in the body. The cookie is unsigned and holds no
+ * secret: a visitor who set it by hand would only hide his own /play
+ * visits from the counts (`visit-rules.ts`). It never makes a sign-up a
+ * staff test: that needs a verified staff session (round 3 of #607,
+ * `/api/play/signup`). Signing out clears it (`/api/auth/signout`).
  */
 import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";

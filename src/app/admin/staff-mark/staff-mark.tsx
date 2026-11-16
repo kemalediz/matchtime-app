@@ -8,7 +8,8 @@
  * `/admin/staff-mark` (`route.ts` next to this file), which decides from
  * the session: staff get the year-long staff cookie, any other organiser
  * has it cleared. The /play beacon then counts nothing for a staff browser,
- * signed in or not, and a sign-up from it is a staff test.
+ * signed in or not. (A staff TEST sign-up needs the staff session itself,
+ * never this cookie.)
  *
  * Not set from script any more: WebKit caps a cookie a page script sets at
  * 7 days, so Kemal's iPhone lost the mark every week. Fire and forget: a

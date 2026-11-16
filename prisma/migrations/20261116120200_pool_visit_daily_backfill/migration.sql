@@ -2,7 +2,7 @@
 -- into the daily totals ("PoolVisitDaily"), 2026-11-16. Third of four (see
 -- 20261116120000_pool_visit_daily). Nothing is deleted here: the old table
 -- is RENAMED to "PoolVisitEventBackfilled", kept until the totals have been
--- checked against the daily counters, and dropped by file 4.
+-- checked, and dropped by file 4.
 --
 --   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261116120200_pool_visit_daily_backfill/migration.sql
 --
@@ -19,31 +19,49 @@
 -- nothing (a NOTICE says so), so nothing can be counted twice. On a
 -- database that never had "PoolVisitEvent" it does nothing too.
 --
--- HOW A ROW BECOMES A TOTAL. Only opens: the old "started" rows are left
--- out (the daily counters already count starts). One row is one open. Its
--- day is the London day of "at" ("at" is UTC, floored to the hour; London
--- is a whole number of hours off UTC, so the hour never moves the day).
--- "inApp" and "scanner" are copied. What opened the page ("openedBy"),
--- "browser", "device", "visibleMs", "hasRef" and the hour are left behind.
+-- WHICH OLD ROWS COUNT (round 3 of #607): only the opens the new rule would
+-- count, those opened by a real tap, touch, key, wheel or scroll, or by a
+-- start first:
+--   "step" = 'opened' AND "openedBy" IN ('pointer', 'touch', 'key', 'wheel', 'scroll', 'before-start')
+-- SKIPPED: the old "started" rows (the daily counters count starts), every
+-- open by the old 5-second rule ("openedBy" = 'visible-time': on 15
+-- November all 4 counted opens were scanners waiting exactly 5000 ms), and
+-- every open that did not say what opened it ("openedBy" NULL, a page
+-- cached before the log). Skipped rows are not lost: they stay in the
+-- renamed table until file 4.
+--
+-- HOW A ROW BECOMES A TOTAL. One row is one open. Its day is the London
+-- day of "at" ("at" is UTC, floored to the hour; London is a whole number
+-- of hours off UTC, so the hour never moves the day). "inApp" and
+-- "scanner" are copied. What opened the page, "browser", "device",
+-- "visibleMs", "hasRef" and the hour are left behind.
 --
 --   INSERT INTO "PoolVisitDaily" ("code", "day", "inApp", "scanner", "count")
 --   SELECT "code", (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date, "inApp", "scanner", count(*)::int
---   FROM "PoolVisitEvent" WHERE "step" = 'opened' GROUP BY 1, 2, 3, 4
+--   FROM "PoolVisitEvent" WHERE "step" = 'opened' AND "openedBy" IN ('pointer', 'touch', 'key', 'wheel', 'scroll', 'before-start')
+--   GROUP BY 1, 2, 3, 4
 --   ON CONFLICT ("code", "day", "inApp", "scanner") DO UPDATE SET "count" = "PoolVisitDaily"."count" + EXCLUDED."count";
 --
--- DRY RUN FIRST (read only; the opens that will be added, per day):
+-- DRY RUN FIRST (read only): every old open, per day, what opened it, and
+-- whether it will be added or skipped.
 --   BEGIN READ ONLY;
---   SELECT (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date AS day, "scanner", count(*)
---   FROM "PoolVisitEvent" WHERE "step" = 'opened' GROUP BY 1, 2 ORDER BY 1, 2;
+--   SELECT (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date AS day, coalesce("openedBy", '(none)') AS opened_by, "scanner",
+--          CASE WHEN "openedBy" IN ('pointer', 'touch', 'key', 'wheel', 'scroll', 'before-start') THEN 'added' ELSE 'skipped' END AS backfill,
+--          count(*)
+--   FROM "PoolVisitEvent" WHERE "step" = 'opened' GROUP BY 1, 2, 3, 4 ORDER BY 1, 2, 3;
 --   ROLLBACK;
 --
--- CHECK AFTER APPLYING, BEFORE FILE 4. (a) The opens without scanners
--- against the daily counters, per code and day, from the first day the
--- breakdown holds. Every row should agree, except: the first day (the
--- per-visit log began part way through it), an hour over the old cap of
--- 200 rows per code, and a write that failed (each is in the server log as
--- "[pool-funnel] ... visit not logged" or "... not added to the daily
--- breakdown"). Staff and scanners are in neither.
+-- CHECK AFTER APPLYING, BEFORE FILE 4.
+-- (a) The breakdown without scanners against the daily counters, per code
+-- and day, from the first day the breakdown holds. On days before the
+-- deploy the breakdown is LOWER by the skipped opens (the counters counted
+-- every open then), so compare it with the counters minus those: run the
+-- dry run's 'skipped' non-scanner rows for the same day. From the deploy
+-- day on the two should agree. Other expected differences: the first day
+-- (the per-visit log began part way through it), an hour over the old cap
+-- of 200 rows per code, and a write that failed (each is in the server log
+-- as "[pool-funnel] ... visit not logged" or "... not added to the daily
+-- breakdown"). Staff are in neither.
 --   BEGIN READ ONLY;
 --   WITH breakdown AS (
 --     SELECT "code", "day", sum("count")::int AS n FROM "PoolVisitDaily" WHERE NOT "scanner" GROUP BY 1, 2
@@ -57,12 +75,14 @@
 --   ORDER BY 2, 1;
 --   ROLLBACK;
 -- (Drop the WHERE line to see every row.)
--- (b) Every old open was added. Both sides count only the London days
--- before the deploy day: on the deploy day itself the new code adds opens
--- of its own, so comparing that day would be a false alarm. Put the deploy
--- day's date (yyyy-mm-dd, London) in both places; expect two equal numbers.
+-- (b) Every old open that counts was added. Both sides count only the
+-- London days before the deploy day (on the deploy day itself the new code
+-- adds opens of its own, so comparing that day would be a false alarm),
+-- and the old side only the opens this file adds. Put the deploy day's
+-- date (yyyy-mm-dd, London) in both places; expect two equal numbers.
 --   SELECT (SELECT count(*) FROM "PoolVisitEventBackfilled"
---           WHERE "step" = 'opened' AND (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date < '<deploy day>') AS old_opens,
+--           WHERE "step" = 'opened' AND "openedBy" IN ('pointer', 'touch', 'key', 'wheel', 'scroll', 'before-start')
+--             AND (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date < '<deploy day>') AS old_opens,
 --          (SELECT coalesce(sum("count"), 0) FROM "PoolVisitDaily" WHERE "day" < '<deploy day>') AS added_before_deploy_day;
 --
 -- WHAT APPLYING THIS DOES TO A LIVE DATABASE
@@ -81,7 +101,8 @@
 --   BEGIN;
 --   WITH old AS (SELECT "code", (("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date AS "day",
 --                       "inApp", "scanner", count(*)::int AS n
---                FROM "PoolVisitEventBackfilled" WHERE "step" = 'opened' GROUP BY 1, 2, 3, 4)
+--                FROM "PoolVisitEventBackfilled" WHERE "step" = 'opened' AND "openedBy" IN ('pointer', 'touch', 'key', 'wheel', 'scroll', 'before-start')
+--                GROUP BY 1, 2, 3, 4)
 --   UPDATE "PoolVisitDaily" d SET "count" = d."count" - old.n FROM old
 --   WHERE (d."code", d."day", d."inApp", d."scanner") = (old."code", old."day", old."inApp", old."scanner");
 --   DELETE FROM "PoolVisitDaily" WHERE "count" = 0;
@@ -106,7 +127,7 @@ BEGIN
          "inApp", "scanner",
          count(*)::int
   FROM "PoolVisitEvent"
-  WHERE "step" = 'opened'
+  WHERE "step" = 'opened' AND "openedBy" IN ('pointer', 'touch', 'key', 'wheel', 'scroll', 'before-start')
   GROUP BY 1, 2, 3, 4
   ON CONFLICT ("code", "day", "inApp", "scanner")
   DO UPDATE SET "count" = "PoolVisitDaily"."count" + EXCLUDED."count";

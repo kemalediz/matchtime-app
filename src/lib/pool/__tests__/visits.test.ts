@@ -194,48 +194,23 @@ describe("purgeOldPoolVisitDaily: the daily cron deletes the totals after 90 day
   });
 });
 
-describe("recordPoolVisit: one server log line per beacon, the kept categories only (2026-11-06, 2026-11-16)", () => {
-  const lines = () => info.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[pool-funnel] beacon "));
-
-  it("counted: the step, the bucket, the in-app browser, the scanner flag; never the user agent", async () => {
+describe("recordPoolVisit: nothing per visit in the server log (round 3 of #607)", () => {
+  it("a counted visit, a fetcher, a friend's link or a user agent with a line break: no info line at all", async () => {
     await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW, step: "started" });
-    expect(lines()).toEqual(["[pool-funnel] beacon step=started code=fb-sutton inApp=none scanner=no result=counted"]);
-    for (const secret of ["Mozilla", "iPhone", "Safari", "ua="]) expect(lines()[0]).not.toContain(secret);
-  });
-
-  it("a link preview fetcher: filtered, as a scanner, and nothing counted", async () => {
     await recordPoolVisit({ source: { campaignCode: "fb", referralCode: null }, userAgent: "facebookexternalhit/1.1", now: NOW, step: "opened" });
-    expect(lines()).toEqual(["[pool-funnel] beacon step=opened code=fb inApp=none scanner=yes result=fetcher"]);
-    expect(counterCalls()).toHaveLength(0);
-  });
-
-  it("no user agent at all, plain /play: filtered as a scanner", async () => {
-    await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: null, now: NOW, step: "opened" });
-    expect(lines()).toEqual(["[pool-funnel] beacon step=opened code=_direct inApp=none scanner=yes result=fetcher"]);
-  });
-
-  it("a friend's link: only its bucket, never the code itself", async () => {
     await recordPoolVisit({ source: { campaignCode: null, referralCode: "AB12cd" }, userAgent: PERSON, now: NOW, step: "opened" });
-    expect(lines()).toEqual(["[pool-funnel] beacon step=opened code=_referral inApp=none scanner=no result=counted"]);
+    await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: 'Evil "x"\nnext', now: NOW, step: "opened" });
+    expect(info).not.toHaveBeenCalled();
   });
 
-  it("a failed count is logged as failed; a failed lookup has no bucket", async () => {
+  it("a failure is still a warning, with the error and no visitor detail", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     dbMock.db.$executeRaw.mockRejectedValue(new Error("pool down"));
-    await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: PERSON, now: NOW, step: "opened" });
-    dbMock.db.poolCampaign.findFirst.mockRejectedValue(new Error("pool down"));
-    await recordPoolVisit({ source: { campaignCode: "fb", referralCode: null }, userAgent: PERSON, now: NOW, step: "opened" });
-    expect(lines()).toEqual([
-      "[pool-funnel] beacon step=opened code=_direct inApp=none scanner=no result=failed",
-      "[pool-funnel] beacon step=opened code=- inApp=none scanner=no result=failed",
-    ]);
+    await recordPoolVisit({ source: { campaignCode: null, referralCode: "AB12cd" }, userAgent: PERSON, now: NOW, step: "opened" });
+    const logged = warn.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    expect(logged).toContain("pool down");
+    expect(logged).not.toMatch(/AB12cd|Mozilla|iPhone/);
     warn.mockRestore();
-  });
-
-  it("a user agent with quotes or a line break never reaches the log", async () => {
-    await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: 'Evil "x"\nnext', now: NOW, step: "opened" });
-    expect(lines()).toHaveLength(1);
-    expect(lines()[0]).not.toMatch(/Evil|next|\n/);
   });
 });
 

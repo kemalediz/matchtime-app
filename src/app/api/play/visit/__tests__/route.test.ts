@@ -137,14 +137,15 @@ describe("POST /api/play/visit", () => {
   });
 
   describe("our own staff: MatchTime staff only (2026-11-12, 2026-11-16)", () => {
-    it("the staff cookie: 204 as ever, nothing counted, one log line, no session looked up", async () => {
+    it("the staff cookie: 204 as ever, nothing counted, no log line, no session looked up", async () => {
       jar.cookies.set("mt-staff", "2");
       const log = vi.spyOn(console, "info").mockImplementation(() => {});
       expect((await POST(req(JSON.stringify({ src: "fb-sutton", step: "started" })))).status).toBe(204);
       await later.tasks[0]();
       expect(visits.recordPoolVisit).not.toHaveBeenCalled();
       expect(session.auth).not.toHaveBeenCalled();
-      expect(log).toHaveBeenCalledWith("[pool-funnel] skipped staff visit step=started");
+      // Round 3 of #607: nothing per visit in the log, a staff visit included.
+      expect(log).not.toHaveBeenCalled();
       log.mockRestore();
     });
 

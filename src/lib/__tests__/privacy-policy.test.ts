@@ -173,7 +173,8 @@ describe("the policy in English and Turkish", () => {
       "friend's link",
       "after a tap, a scroll or a key press",
       "we do not keep whether it was a tap, a scroll or a key press",
-      "inside an app such as facebook or nextdoor",
+      // Round 3 of #607: the table keeps WHICH app, so the policy says so.
+      "which app's own browser it was opened in, if any (facebook, instagram, nextdoor, whatsapp or another app)",
       "automatic link preview rather than a person",
       "nothing in these totals names a person",
       "no time of day",
@@ -188,7 +189,7 @@ describe("the policy in English and Turkish", () => {
     ]) {
       expect(held).toContain(item);
     }
-    for (const gone of ["never link", "general browser type", "type of device", "the hour of the visit", "how long the page was on screen", "nothing that identifies", "what first showed"]) {
+    for (const gone of ["never link", "general browser type", "type of device", "the hour of the visit", "how long the page was on screen", "nothing that identifies", "what first showed", "whether the page was opened inside an app"]) {
       expect(held).not.toContain(gone);
     }
   });
@@ -197,14 +198,14 @@ describe("the policy in English and Turkish", () => {
   // daily counts per link ("PoolCampaignVisit") are never deleted.
   it("English says precisely what goes after 90 days and what is kept as statistics", () => {
     const howLong = sectionText(privacyPolicy("en"), "how-long").toLowerCase();
-    expect(howLong).toContain("the detailed daily totals of visits to the page for joining the player pool (whether it was opened inside an app, and whether it was an automatic link preview) are deleted automatically after 90 days");
+    expect(howLong).toContain("the detailed daily totals of visits to the page for joining the player pool (which app's own browser the page was opened in, if any, and whether it was an automatic link preview) are deleted automatically after 90 days");
     expect(howLong).toContain("the plain daily counts per link (opened, started, sent, confirmed) are kept as statistics");
     expect(howLong).not.toContain("the daily totals of visits to the page for joining the player pool are deleted");
   });
 
   it("Turkish says the same about what goes after 90 days and what is kept", () => {
     const howLong = sectionText(privacyPolicy("tr"), "how-long");
-    expect(howLong).toContain("ayrıntılı günlük toplamları (sayfanın bir uygulamanın içinde açılıp açılmadığı ve otomatik bir bağlantı önizlemesi olup olmadığı) 90 gün sonra otomatik olarak silinir");
+    expect(howLong).toContain("ayrıntılı günlük toplamları (sayfanın, varsa, hangi uygulamanın kendi tarayıcısında açıldığı ve otomatik bir bağlantı önizlemesi olup olmadığı) 90 gün sonra otomatik olarak silinir");
     expect(howLong).toContain("Bağlantı başına sade günlük sayılar (açılan, başlanan, gönderilen, onaylanan) istatistik olarak saklanır");
   });
 
@@ -218,7 +219,7 @@ describe("the policy in English and Turkish", () => {
       "bağlantılarımızın her biri için günlük toplamlar",
       "her ziyaretin ayrı bir kaydını tutmayız",
       "tarayıcı ya da cihaz ayrıntısı",
-      "Facebook ya da Nextdoor",
+      "hangi uygulamanın kendi tarayıcısında açıldığına (Facebook, Instagram, Nextdoor, WhatsApp ya da başka bir uygulama)",
       "otomatik bir bağlantı önizlemesi",
       "kimseyi adıyla göstermez",
       "günün saati",

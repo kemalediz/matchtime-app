@@ -466,11 +466,22 @@ describe("the backfill migration (2026-11-16): the per-visit rows added up, noth
   it("adds to the totals, never replaces them: the new code's own counts survive", () => {
     expect(sql).toMatch(/INSERT INTO "PoolVisitDaily"[\s\S]*FROM "PoolVisitEvent"[\s\S]*DO UPDATE SET "count" = "PoolVisitDaily"\."count" \+ EXCLUDED\."count"/);
   });
-  it("opens only, by London day; what opened the page, the browser, the device, the hour and the time on screen left behind", () => {
+  // Round 3 of #607: only opens the new rule would count, a real tap,
+  // touch, key, wheel or scroll, or a start first: not the old 5-second
+  // rule ("visible-time"), and not an open that did not say what opened it.
+  const REAL = `"openedBy" IN (${L.POOL_OPEN_TRIGGERS.map((t) => `'${t}'`).join(", ")})`;
+  it("only real-interaction opens, by London day; the browser, the device, the hour and the time on screen left behind", () => {
     expect(sql).toContain(`(("at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date`);
     expect(sql).toMatch(/FROM "PoolVisitEvent"\s+WHERE "step" = 'opened'/);
+    expect(sql).toContain(REAL);
+    expect(REAL).not.toContain("visible-time");
     expect(sql).toContain(`INSERT INTO "PoolVisitDaily" ("code", "day", "inApp", "scanner", "count")`);
-    expect(sql).not.toMatch(/"openedBy"|"trigger"|"visibleMs"|"hasRef"|"browser"|"device"/);
+    expect(sql).not.toMatch(/"trigger"|"visibleMs"|"hasRef"|"browser"|"device"/);
+  });
+  it("its header's dry run, checks and rollback use the same rule", () => {
+    const header = read(BACKFILL).replace(/\n--\s*/g, " ");
+    expect(header.split(REAL).length - 1).toBeGreaterThanOrEqual(3);
+    expect(header).toMatch(/skipped/i);
   });
   it("once only: it renames the old table in the same transaction, and does nothing when it is gone", () => {
     expect(sql).toMatch(/IF to_regclass\('"PoolVisitEvent"'\) IS NULL THEN[\s\S]*RETURN;/);
@@ -491,7 +502,7 @@ describe("the backfill migration (2026-11-16): the per-visit rows added up, noth
   // only days before the deploy day, so the deploy day raises no false alarm.
   it("the after-check compares old rows and added totals on the same days", () => {
     const header = read(BACKFILL);
-    expect(header).toMatch(/FROM "PoolVisitEventBackfilled"[\s-]+WHERE "step" = 'opened' AND \(\("at" AT TIME ZONE 'UTC'\) AT TIME ZONE 'Europe\/London'\)::date < '<deploy day>'/);
+    expect(header).toMatch(/FROM "PoolVisitEventBackfilled"[\s-]+WHERE "step" = 'opened' AND "openedBy" IN \([^)]*\)[\s-]+AND \(\("at" AT TIME ZONE 'UTC'\) AT TIME ZONE 'Europe\/London'\)::date < '<deploy day>'/);
     expect(header).toMatch(/FROM "PoolVisitDaily" WHERE "day" < '<deploy day>'/);
   });
 });

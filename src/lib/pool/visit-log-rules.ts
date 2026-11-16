@@ -25,10 +25,12 @@
  * traffic a day's total can still coincide with a single sign-up. Deleted
  * 90 days after its day; the privacy policy says so.
  *
- * The server log (`poolBeaconLogLine`) carries the same categories and
- * nothing more: never the raw user agent, nor what opened the page. The
- * beacon's trigger is read only to tell a well-formed open from one that
- * is not (`readPoolPageBeacon`), never kept.
+ * THE SERVER LOG (round 3 of #607) holds nothing per visit: no line for a
+ * counted beacon, only one for a rejected one, its step (if it is one of
+ * ours) and why (`poolBeaconRejectedLogLine`). Never the user agent, the
+ * code, a friend's code or what opened the page. The beacon's trigger is
+ * read only to tell a well-formed open from one that is not
+ * (`readPoolPageBeacon`), never kept.
  *
  * Only `visits.ts` touches the table, to add and to delete
  * (`__tests__/visit-log-unlinked.test.ts`).
@@ -140,19 +142,9 @@ export function poolVisitDailyKey(a: { code: string; now: Date; userAgent: strin
 
 // ── The server log ─────────────────────────────────────────────────────
 
-/**
- * One server log line per beacon (2026-11-06, to tell scanners from
- * people), holding only what the breakdown keeps (2026-11-16): the step,
- * the bucket, the in-app browser, the scanner flag and what became of it
- * (counted; fetcher, not counted; failed). Never the raw user agent, what
- * opened the page, the code as sent, a friend's code or an address.
- *   [pool-funnel] beacon step=opened code=fb inApp=facebook scanner=no result=counted
- */
-export function poolBeaconLogLine(a: { step: PoolPageStep; bucket: string | null; label: PoolVisitLabel; result: "counted" | "fetcher" | "failed" }): string {
-  return `[pool-funnel] beacon step=${a.step} code=${a.bucket ?? "-"} inApp=${a.label.inApp} scanner=${a.label.scanner ? "yes" : "no"} result=${a.result}`;
-}
-
 /** A beacon that counted nothing: its step, if it is one of ours, and why.
+ *  The only per-beacon line there is, so a page or scanner sending the
+ *  wrong thing can still be diagnosed.
  *   [pool-funnel] beacon rejected step=opened reason=time-on-screen */
 export function poolBeaconRejectedLogLine(a: { step: PoolBeaconStepNamed; reason: PoolBeaconRejection }): string {
   return `[pool-funnel] beacon rejected step=${a.step} reason=${a.reason}`;

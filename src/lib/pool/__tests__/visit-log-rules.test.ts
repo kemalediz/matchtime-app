@@ -16,7 +16,6 @@ import {
   POOL_IN_APPS,
   POOL_OPEN_TRIGGERS,
   POOL_VISIT_RETENTION_DAYS,
-  poolBeaconLogLine,
   poolBeaconRejectedLogLine,
   poolVisitDailyKey,
   poolVisitLabel,
@@ -170,20 +169,10 @@ describe("poolVisitDailyKey: the daily total an open adds one to, and nothing fi
   });
 });
 
-describe("the server log line: the kept categories, never the user agent or what opened the page (2026-11-16)", () => {
-  it("a counted open: the step, the bucket, the in-app browser, the scanner flag and the result", () => {
-    const line = poolBeaconLogLine({ step: "opened", bucket: "fb", label: poolVisitLabel(FB_IPHONE), result: "counted" });
-    expect(line).toBe("[pool-funnel] beacon step=opened code=fb inApp=facebook scanner=no result=counted");
-    for (const secret of ["Mozilla", "iPhone", "FBAN", "ua=", "trigger"]) expect(line).not.toContain(secret);
-  });
-
-  it("a fetcher and a failed lookup", () => {
-    expect(poolBeaconLogLine({ step: "started", bucket: "_direct", label: poolVisitLabel("facebookexternalhit/1.1"), result: "fetcher" })).toBe(
-      "[pool-funnel] beacon step=started code=_direct inApp=none scanner=yes result=fetcher",
-    );
-    expect(poolBeaconLogLine({ step: "opened", bucket: null, label: poolVisitLabel(SAFARI_IPHONE), result: "failed" })).toBe(
-      "[pool-funnel] beacon step=opened code=- inApp=none scanner=no result=failed",
-    );
+describe("the server log: only a rejected beacon, its step and why (round 3 of #607)", () => {
+  it("no line is made for a counted beacon: nothing per visit reaches the log", async () => {
+    const rulesModule = await import("../visit-log-rules");
+    expect(Object.keys(rulesModule)).not.toContain("poolBeaconLogLine");
   });
 
   it("a rejected beacon: its step, if it is one of ours, and why; nothing it sent", () => {

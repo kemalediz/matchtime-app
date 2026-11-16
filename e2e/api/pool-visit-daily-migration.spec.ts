@@ -8,7 +8,8 @@
  *     bad row;
  *   - 20261116120200 (the backfill) adds the per-visit OPENS of
  *     "PoolVisitEvent" up by London day, in-app browser and scanner flag
- *     (no browser, device, interaction type or starts), ON TOP of the totals
+ *     (no browser, device, interaction type or starts), only the opens the
+ *     new rule counts (never "visible-time" or none), ON TOP of the totals
  *     the new code has already written, renames the old table, deletes
  *     nothing, and does nothing on a second run; its after-check (b) agrees
  *     on the deploy day;
@@ -55,7 +56,7 @@ async function oldRow(
       r.at,
       r.code ?? "fb",
       r.step ?? "opened",
-      r.openedBy === undefined ? "visible-time" : r.openedBy,
+      r.openedBy === undefined ? "touch" : r.openedBy,
       r.visibleMs ?? 5000,
       r.browser ?? "safari",
       r.inApp ?? "none",
@@ -112,41 +113,53 @@ test("the table and the staff test column: both re-run cleanly, and the CHECKs r
   await db.run(`DELETE FROM "PoolVisitDaily"`);
 });
 
-test("the backfill adds the per-visit opens up by London day, in-app browser and scanner flag, on top of the new code's totals, then renames the old table; a second run does nothing", async ({ db }) => {
+test("the backfill adds up only the real-interaction opens, by London day, in-app browser and scanner flag, on top of the new code's totals, then renames the old table; a second run does nothing", async ({ db }) => {
   await clean(db);
   await db.run(OLD_LOG);
-  // 14 November: three opens, by the old 5-second rule, a key press and a
-  // wheel, on three different browsers and devices (one total: no browser,
-  // device or interaction type), one scroll in Facebook's app, one start
-  // (left out), one scanner.
-  await oldRow(db, { at: "2026-11-14 09:00:00" });
+  // 14 November. Added: a key press and a wheel on two different browsers
+  // and devices (one total: no browser, device or interaction type), a
+  // scroll in Facebook's app, a scanner's tap. Skipped: two opens by the old
+  // 5-second rule, an open that did not say, and a start.
   await oldRow(db, { at: "2026-11-14 09:00:00", browser: "chrome", device: "desktop", openedBy: "key" });
   await oldRow(db, { at: "2026-11-14 21:00:00", browser: "samsung", device: "tablet", openedBy: "wheel" });
   await oldRow(db, { at: "2026-11-14 10:00:00", openedBy: "scroll", visibleMs: 1200, inApp: "facebook" });
+  await oldRow(db, { at: "2026-11-14 10:00:00", openedBy: "touch", browser: "other", device: "other", scanner: true });
+  await oldRow(db, { at: "2026-11-14 11:00:00", openedBy: "visible-time" });
+  await oldRow(db, { at: "2026-11-14 11:00:00", openedBy: "visible-time", scanner: true });
+  await oldRow(db, { at: "2026-11-14 12:00:00", openedBy: null });
   await oldRow(db, { at: "2026-11-14 10:00:00", step: "started", openedBy: null });
-  await oldRow(db, { at: "2026-11-14 10:00:00", openedBy: null, browser: "other", device: "other", scanner: true });
   // 16 November, the deploy day: one old open before the deploy, and the
   // new code's own total for the same key after it.
   await oldRow(db, { at: "2026-11-16 08:00:00", openedBy: "touch", visibleMs: 300 });
   await db.run(`INSERT INTO "PoolVisitDaily" (code, day, "inApp", scanner, count) VALUES ('fb', '2026-11-16', 'none', false, 2)`);
 
+  // The header's dry run, read only: what will be added and what skipped.
+  const dryRun = BACKFILL.slice(BACKFILL.indexOf("--   SELECT (("), BACKFILL.indexOf("--   ROLLBACK;", BACKFILL.indexOf("--   SELECT ((")))
+    .split("\n")
+    .map((l) => l.replace(/^--\s?/, ""))
+    .join("\n");
+  const plan = await db.all<{ backfill: string; count: string }>(`SELECT backfill, sum(count)::text AS count FROM (${dryRun.replace(/;\s*$/, "")}) d GROUP BY 1 ORDER BY 1`);
+  expect(plan).toEqual([
+    { backfill: "added", count: "5" },
+    { backfill: "skipped", count: "3" },
+  ]);
+
   await db.run(BACKFILL);
   const after = await totals(db);
   expect(after).toEqual([
     { code: "fb", day: "2026-11-14", inApp: "facebook", scanner: false, count: 1 },
-    { code: "fb", day: "2026-11-14", inApp: "none", scanner: false, count: 3 },
+    { code: "fb", day: "2026-11-14", inApp: "none", scanner: false, count: 2 },
     { code: "fb", day: "2026-11-14", inApp: "none", scanner: true, count: 1 },
     { code: "fb", day: "2026-11-16", inApp: "none", scanner: false, count: 3 },
   ]);
-  // Nothing deleted: the old rows are all there, under the new name, the start among them.
+  // Nothing deleted: every old row is there, under the new name, the skipped ones among them.
   expect(await tableOf(db, "PoolVisitEvent")).toBeNull();
-  expect(await db.one(`SELECT count(*)::int AS n FROM "PoolVisitEventBackfilled"`)).toEqual({ n: 7 });
-  expect(after.reduce((n, r) => n + r.count, 0)).toBe(6 + 2);
+  expect(await db.one(`SELECT count(*)::int AS n FROM "PoolVisitEventBackfilled"`)).toEqual({ n: 9 });
+  expect(after.reduce((n, r) => n + r.count, 0)).toBe(5 + 2);
 
-  // The header's after-check (b), deploy day 16 November: the old opens
-  // before it and the totals before it agree, though the new code wrote on
-  // the deploy day itself.
-  expect(await db.one(afterCheck("2026-11-16"))).toEqual({ old_opens: "5", added_before_deploy_day: "5" });
+  // The header's after-check (b), deploy day 16 November: the counted old
+  // opens before it and the totals before it agree.
+  expect(await db.one(afterCheck("2026-11-16"))).toEqual({ old_opens: "4", added_before_deploy_day: "4" });
 
   // Once only.
   await db.run(BACKFILL);

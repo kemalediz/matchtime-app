@@ -17,14 +17,17 @@
  * nothing. Anything else in the body (a time on screen from a page cached
  * before 2026-11-16) is ignored. The user agent decides whether this is a
  * link preview fetcher (`recordPoolVisit`); it is never stored or logged:
- * the daily breakdown and the one log line per beacon keep only the
- * in-app browser and the scanner flag read off it (2026-11-16). A beacon
- * that counts nothing is logged in one short line, its step and why. No
- * address, cookie or user id is passed on.
+ * the daily breakdown keeps only the in-app browser and the scanner flag
+ * read off it (2026-11-16). Nothing per visit is logged (round 3 of #607);
+ * a beacon that counts nothing is logged in one short line, its step and
+ * why. No address, cookie or user id is passed on.
  *
  * OUR OWN STAFF (2026-11-12; MatchTime staff only since 2026-11-16): a
  * beacon carrying the staff cookie, or a session for a `User.isSuperadmin`
- * account, gets the same 204 and counts nothing (`isPoolStaffRequest`). A
+ * account, gets the same 204 and counts nothing (`isPoolStaffRequest`).
+ * The cookie is unsigned: forged, it only hides that browser's own visits,
+ * so here it may decide. (A staff TEST sign-up needs a verified session,
+ * never the cookie: `/api/play/signup`.) A
  * club's owner or admin is not staff, and the cookie every organiser got
  * until 2026-11-16 ("1") no longer counts as staff, signed in or not. The
  * session is looked up after the answer, and only when there is no current
@@ -60,10 +63,8 @@ export async function POST(request: Request) {
   const now = new Date();
   const staffCookie = (await cookies()).get(POOL_STAFF_COOKIE)?.value ?? null;
   after(async () => {
-    if (await isPoolStaffRequest(staffCookie)) {
-      console.info(`[pool-funnel] skipped staff visit step=${beacon.step}`);
-      return;
-    }
+    // Our own staff count nothing, and leave no line (nothing per visit is logged).
+    if (await isPoolStaffRequest(staffCookie)) return;
     await recordPoolVisit({ source, userAgent, now, step: beacon.step });
   });
   return new Response(null, { status: 204 });

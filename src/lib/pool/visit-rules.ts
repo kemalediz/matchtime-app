@@ -32,8 +32,8 @@
  * enters something first; time on screen counts nothing,
  * `app/play/funnel-open.ts`), and as started only if it really enters
  * something. Real interactions only, so most scanners are excluded, not
- * all. The user agent is read, never stored or logged: the server log line
- * per beacon (`visits.ts`) holds only the in-app browser and scanner flag.
+ * all. The user agent is read, never stored or logged, and nothing per
+ * visit is logged (`visits.ts`, round 3 of #607).
  *
  * THE BREAKDOWN (2026-11-13; daily totals of opens only since 2026-11-16)
  * adds each open to a daily total per code, split by in-app browser and
@@ -116,9 +116,11 @@ export function poolVisitDay(now: Date): string {
  * (set by the server, `POST /admin/staff-mark`, which the admin layout's
  * `StaffMark` calls, a year long, so a staff phone is known on /play even
  * when signed out), and the beacon counts nothing for
- * it, nor for a request that carries a staff session. A sign-up from such
- * a browser is a staff test: it works as any other, and is not counted as
- * sent or confirmed (`PoolProfile.staffTest`, 2026-11-16). Nothing about
+ * it, nor for a request that carries a staff session. The cookie is
+ * unsigned: forged, it only hides that browser's own visits. A STAFF TEST
+ * sign-up (`PoolProfile.staffTest`, 2026-11-16), which no number counts
+ * and the Guest players page leaves out, needs a verified staff session,
+ * never the cookie (round 3 of #607, `staff-request.ts`). Nothing about
  * the person is stored either way.
  *
  * STAFF MEANS MATCHTIME STAFF (Kemal, 2026-11-16): `User.isSuperadmin`,

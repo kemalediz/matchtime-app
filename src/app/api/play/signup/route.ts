@@ -16,17 +16,20 @@
  * the page, a bundle or the sitemap. A stranger has to be able to write to
  * MatchTime; that is the whole point of the pool's WhatsApp-first sign-up.
  *
- * STAFF TESTS (2026-11-16). A sign-up from a MatchTime staff browser (the
- * staff cookie, or a `User.isSuperadmin` session: `isPoolStaffRequest`) is
- * made and answered exactly as any other, and stored with
- * `PoolProfile.staffTest`, so the /play funnel counts it as neither sent
- * nor confirmed (`visits.ts`). Asked only for a form that is valid.
+ * STAFF TESTS (2026-11-16; round 3 of #607). A sign-up made with a
+ * VERIFIED MatchTime staff session (`User.isSuperadmin`:
+ * `isPoolStaffSession`) is made and answered exactly as any other, and
+ * stored with `PoolProfile.staffTest`, so it is in none of the owner's or
+ * clubs' numbers, and the answer says `staffTest: true` so the page counts
+ * no analytics sign-up for it. NEVER from the staff cookie: it is unsigned,
+ * and a staff test also hides the profile from a club's Guest players page.
+ * A real person signing up on a staff phone signed out is an ordinary
+ * sign-up. Asked only for a form that is valid. Staff tests still receive
+ * offers, so the whole path can be tested; they are just not counted.
  */
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { poolRequestIp } from "@/lib/pool/request-ip";
-import { isPoolStaffRequest } from "@/lib/pool/staff-request";
-import { POOL_STAFF_COOKIE } from "@/lib/pool/visit-rules";
+import { isPoolStaffSession } from "@/lib/pool/staff-request";
 import { matchtimeWaNumber } from "@/lib/club-connect";
 import { waMeLink } from "@/lib/club-connect-rules";
 import { poolConfirmPrefill } from "@/lib/pool/confirm-rules";
@@ -60,9 +63,9 @@ export async function POST(request: Request) {
     if (!opened || opened.state !== "open") return NextResponse.json({ ok: false, reason: "link-closed" }, { status: 409 });
     friendLink = { id: opened.id, issuedByUserId: opened.issuedByUserId, kickoff: opened.facts.kickoff };
   }
-  // A MatchTime staff browser's sign-up (2026-11-16) is made as any other,
-  // and marked so the funnel counts it as neither sent nor confirmed.
-  const staffTest = await isPoolStaffRequest((await cookies()).get(POOL_STAFF_COOKIE)?.value ?? null);
+  // A verified MatchTime staff session's sign-up is made as any other, and
+  // marked so no number counts it. Never from the (unsigned) staff cookie.
+  const staffTest = await isPoolStaffSession();
   const res = await createPoolSignup({
     fields: valid.value,
     ip: poolRequestIp(request),
@@ -87,5 +90,7 @@ export async function POST(request: Request) {
     // own sign-up can be asked about, and only "waiting", "done" or "gone".
     statusToken: poolSignupStatusToken(res.id, res.code),
     expiresAt: res.expiresAt.toISOString(),
+    // The page then counts no analytics sign-up (`send-signup.ts`).
+    ...(staffTest ? { staffTest: true } : {}),
   });
 }

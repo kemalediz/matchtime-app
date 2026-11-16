@@ -41,6 +41,14 @@ describe("sendPoolSignup: the /play form's POST /api/play/signup", () => {
     expect(track).toHaveBeenCalledWith("pool_signup");
   });
 
+  // Round 3 of #607: a MatchTime staff test sign-up is in no count, the
+  // analytics event included. It still confirms as any other.
+  it("a staff test sign-up confirms as any other, and counts no pool_signup event", async () => {
+    const r = await sendPoolSignup(BODY, fakeFetch(200, { ok: true, code: "AB12", prefill: "JOIN AB12", waLink: "https://wa.me/x", earlyList: false, staffTest: true }));
+    expect(r).toMatchObject({ kind: "ok", confirm: { code: "AB12" } });
+    expect(track).not.toHaveBeenCalled();
+  });
+
   it("does not count an event when the server returns field errors", async () => {
     const r = await sendPoolSignup(BODY, fakeFetch(400, { ok: false, errors: { name: "required" } }));
     expect(r).toEqual({ kind: "fields", errors: { name: "required" } });
