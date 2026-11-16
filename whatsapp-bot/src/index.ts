@@ -58,6 +58,7 @@ import {
   postBotRemoved,
   postAdminGroupMessage,
   postAdminGroupLink,
+  postMessageChange,
 } from "./api.js";
 import {
   ackReply,
@@ -69,7 +70,10 @@ import {
   isRecoverySweepRunning,
   startBatchFlushTimer,
   stopBatchFlushTimer,
+  applyMessageChangeLocally,
+  whenFlushIdle,
 } from "./smart-analysis.js";
+import { handleMessageChange } from "./message-change.js";
 import { config } from "./config.js";
 import { resolveWaMessageId } from "./message-id.js";
 import { dmSenderExtras, type DmSenderExtras } from "./dm-identity.js";
@@ -763,11 +767,16 @@ async function main() {
       }
 
       // Context buffer the analyser reads for nuanced classification.
-      recordHistory(head.from, {
-        authorName: authorName ?? null,
-        body: effectiveBody,
-        timestamp: new Date(head.timestampSec * 1000).toISOString(),
-      });
+      recordHistory(
+        head.from,
+        {
+          authorName: authorName ?? null,
+          body: effectiveBody,
+          timestamp: new Date(head.timestampSec * 1000).toISOString(),
+        },
+        // So a delete or an edit can find this line (2026-11-15).
+        resolveWaMessageId(msg).waMessageId,
+      );
 
       await enqueueForAnalysis(driver, msg);
     } catch (err) {
@@ -781,6 +790,21 @@ async function main() {
   // /admin/health. Never a DM: it is a routine ops alert.
   driver.onUndecryptable?.(() => {
     recordDegradedCapability("message-decryption");
+  });
+
+  // A message deleted for everyone, or edited (2026-11-15, Baileys only).
+  // HOUSEKEEPING ONLY: its words leave the Pi's batch and recent chat and
+  // every store the server keeps, or an edit's replace them. Nothing is
+  // analysed, sent, replied to or reacted to (message-change.ts).
+  driver.onMessageChange?.(async (change) => {
+    await handleMessageChange(change, {
+      isTrackedGroup: (chatId) => isMonitoredGroup(chatId) || isAdminGroup(chatId),
+      applyLocally: applyMessageChangeLocally,
+      whenFlushIdle: (groupId) => whenFlushIdle(groupId),
+      post: postMessageChange,
+      log: (l) => console.log(l),
+      error: (l) => console.error(l),
+    });
   });
 
   // Reactions on any tracked message (bench-prompt 👍/👎). Forward to server

@@ -161,6 +161,7 @@ import type {
   InboundMessage,
   InboundPollVote,
   JoinHistoryMessage,
+  MessageChangeEvent,
   WaDriver,
 } from "../driver.js";
 import type { ReactionOutcome } from "../react-with-id.js";
@@ -197,6 +198,7 @@ import {
 import { createRetryCounterCache } from "../baileys/retry-cache.js";
 import { createReplayBuffer, type ReplayBuffer } from "../baileys/replay.js";
 import { mapInboundMessage, skipReason, toNumber } from "../baileys/inbound.js";
+import { readMessageChange } from "../baileys/message-change.js";
 import {
   JOIN_WATCH_MS,
   createJoinWatch,
@@ -627,6 +629,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   const joinHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
   const leaveHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
   const undecryptableHandlers: Array<(e: UndecryptableEvent) => void | Promise<void>> = [];
+  const changeHandlers: Array<(c: MessageChangeEvent) => void | Promise<void>> = [];
   // Slice L5a: account warnings for the DM pacer. Fired synchronously.
   const warningHandlers: Array<(w: AccountWarning) => void> = [];
   const fireWarning = (w: AccountWarning | null) => {
@@ -1225,6 +1228,48 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       await receivePollVote(m);
       return;
     }
+    // A delete for everyone, or an edit (2026-11-15): handed up on its own
+    // event so the words can leave what MatchTime stored, and NEVER as a
+    // chat message, so an edit is not analysed again. Our own edits are not
+    // a member's words; our own deletes may be (an admin on the bot's
+    // phone), so they go up. The log line carries ids, never the text.
+    const change = readMessageChange(m);
+    if (change) {
+      const what = change.kind === "revoke" ? "a delete for everyone" : "an edit";
+      if (change.kind === "edit" && key.fromMe) {
+        log(`${line} ${what} of ${change.targetId} by MatchTime itself, not handed up`);
+        tally(`${what} (ours)`);
+        return;
+      }
+      const isGroup = isGroupJid(change.chatJid);
+      const senderJids = [
+        ...new Set(
+          (isGroup ? [key.participant, key.participantAlt] : [key.remoteJid, key.remoteJidAlt])
+            .map((j) => legacyJid(j))
+            .filter((j): j is string => !!j),
+        ),
+      ];
+      let senderPhone: string | null = null;
+      if (!key.fromMe) {
+        const who = await senderPhoneOf(key);
+        senderPhone = who.phone;
+      }
+      const event: MessageChangeEvent = {
+        kind: change.kind,
+        chatId: isGroup ? change.chatJid : (legacyJid(change.chatJid) ?? change.chatJid),
+        isGroup,
+        messageId: change.targetId,
+        senderJids,
+        senderPhone,
+        fromMe: key.fromMe === true,
+      };
+      // Set, not spread: this is an edit's words, not a text we send.
+      if (change.kind === "edit") event.text = change.text;
+      log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} handed up as a change`);
+      tally(what);
+      hand(changeHandlers, event, "onMessageChange");
+      return;
+    }
     const mapped = mapInboundMessage(m);
     if (!mapped) {
       stats.skipped++;
@@ -1804,6 +1849,11 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
 
     onUndecryptable(handler) {
       undecryptableHandlers.push(handler);
+    },
+
+    onMessageChange(handler) {
+      requireConnection("onMessageChange");
+      changeHandlers.push(handler);
     },
 
     onGroupJoin(handler) {

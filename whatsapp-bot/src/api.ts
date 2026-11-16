@@ -519,6 +519,51 @@ export async function postGroupPostability(body: {
   }
 }
 
+// ─────────────── Deletes and edits (2026-11-15) ───────────────────────
+
+/** A group message deleted for everyone, or edited (message-change.ts). */
+export type MessageChangeBody =
+  | { kind: "revoke"; chatId: string; messageId: string }
+  | { kind: "edit"; chatId: string; messageId: string; text: string; senderJids: string[]; senderPhone: string | null };
+
+/** Counts only: the server never sends the words back. */
+export interface MessageChangeResponse {
+  ok: boolean;
+  analyzed?: number;
+  archived?: number;
+  hq?: number;
+  mentions?: number;
+  editsRefused?: number;
+}
+
+/**
+ * Housekeeping only: the server takes the message's words out of what it
+ * stored, or puts an edit's in their place. Null on any failure (a 404 from
+ * a server older than the route included). Never throws, and never logs
+ * the body, which can hold an edit's text.
+ */
+export async function postMessageChange(body: MessageChangeBody): Promise<MessageChangeResponse | null> {
+  try {
+    const res = await apiFetch(`${config.apiUrl}/api/whatsapp/message-change`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (res.status === 404) {
+      console.error("message-change post failed: 404 (the server predates /api/whatsapp/message-change)");
+      return null;
+    }
+    if (!res.ok) {
+      console.error(`message-change post failed: ${res.status}`);
+      return null;
+    }
+    return (await res.json().catch(() => null)) as MessageChangeResponse | null;
+  } catch (err) {
+    console.error("message-change post failed:", err instanceof Error ? err.message : "failed");
+    return null;
+  }
+}
+
 // ─────────────── Admin groups (slice 2a, 2026-09-30) ──────────────────
 
 /** What the Pi forwards from an admin group or a link command. */

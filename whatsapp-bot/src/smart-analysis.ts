@@ -50,6 +50,7 @@ import {
 import { describeReactionFailure, planReaction } from "./react-with-id.js";
 import { isOnboardingGroup, removeOnboardingGroup } from "./handlers.js";
 import { requestOrgRefresh } from "./org-refresh.js";
+import { editIsByAuthor, isIdOfMessage, type LocalMessageChange } from "./message-change.js";
 
 const HISTORY_PER_GROUP = 15;
 // Ten-minute batches are the cost control: the system prompt and the
@@ -307,7 +308,10 @@ function safeGroupId(msg: InboundMessage): string | null {
 }
 
 // ─── In-memory state ────────────────────────────────────────────────
-const historyByGroup = new Map<string, AnalyzeInboundHistory[]>();
+/** A recent-chat line, with the id of the message it is (when known), so a
+ *  delete or an edit can find it. The id never leaves the Pi (`getHistory`). */
+type HistoryEntry = AnalyzeInboundHistory & { waMessageId?: string };
+const historyByGroup = new Map<string, HistoryEntry[]>();
 const bufferByGroup = new Map<string, Pending[]>();
 const nextKickoffMsByGroup = new Map<string, number | null>();
 const inFlightFlush = new Set<string>(); // prevent two flushes running in parallel per group
@@ -322,7 +326,14 @@ let flushTimer: NodeJS.Timeout | null = null;
 let sharedDriver: WaDriver | null = null;
 
 // ─── History buffer ─────────────────────────────────────────────────
-export function recordHistory(groupId: string, entry: AnalyzeInboundHistory) {
+export function recordHistory(groupId: string, entry: AnalyzeInboundHistory, waMessageId?: string) {
+  // A copy of a message already deleted for everyone stays out; one
+  // already edited carries the new words (2026-11-15).
+  if (waMessageId) {
+    const changed = changedMessage(groupId, waMessageId, null);
+    if (changed === "drop") return;
+    if (changed) entry = { ...entry, body: changed.text };
+  }
   const arr = historyByGroup.get(groupId) ?? [];
   // The same line, once. The live `message` handler and the restart
   // catch-up can both see one message (WhatsApp delivers the offline
@@ -340,13 +351,108 @@ export function recordHistory(groupId: string, entry: AnalyzeInboundHistory) {
   ) {
     return;
   }
-  arr.push(entry);
+  arr.push(waMessageId ? { ...entry, waMessageId } : entry);
   if (arr.length > HISTORY_PER_GROUP) arr.shift();
   historyByGroup.set(groupId, arr);
 }
 
 function getHistory(groupId: string): AnalyzeInboundHistory[] {
-  return historyByGroup.get(groupId) ?? [];
+  return (historyByGroup.get(groupId) ?? []).map(({ authorName, body, timestamp }) => ({ authorName, body, timestamp }));
+}
+
+// ─── Deletes and edits (2026-11-15) ─────────────────────────────────
+/**
+ * The deletes and edits seen in this process, so a copy of the message
+ * that turns up AFTER its change (a reconnect's replay, a requeued batch,
+ * content that arrived late) is held to it too. Bounded; the oldest go.
+ */
+const MAX_REMEMBERED_CHANGES = 500;
+const changedMessages = new Map<string, LocalMessageChange>();
+const changeKey = (groupId: string, messageId: string) => `${groupId}|${messageId}`;
+
+/**
+ * What a remembered change says about one copy of a message: "drop" (it was
+ * deleted, or edited by somebody who is not its author, whose words must
+ * never replace the author's), the edited text, or null (no change).
+ */
+function changedMessage(groupId: string, waMessageId: string, authorPhone: string | null): "drop" | { text: string } | null {
+  for (const change of changedMessages.values()) {
+    if (change.groupId !== groupId || !isIdOfMessage(waMessageId, groupId, change.messageId)) continue;
+    if (change.kind === "edit" && change.text && editIsByAuthor(waMessageId, authorPhone, change)) return { text: change.text };
+    return "drop";
+  }
+  return null;
+}
+
+/**
+ * HOUSEKEEPING ONLY: a message deleted for everyone leaves the batch still
+ * waiting to be analysed and the recent chat posted with it; an edit puts
+ * its new words there instead (read once, when the batch is, never
+ * re-analysed). Flushes nothing, posts nothing. Returns how many copies
+ * changed, for the log.
+ */
+export function applyMessageChangeLocally(change: LocalMessageChange): { buffered: number; history: number } {
+  const key = changeKey(change.groupId, change.messageId);
+  changedMessages.delete(key);
+  changedMessages.set(key, change);
+  while (changedMessages.size > MAX_REMEMBERED_CHANGES) {
+    const oldest = changedMessages.keys().next().value;
+    if (oldest === undefined) break;
+    changedMessages.delete(oldest);
+  }
+
+  let buffered = 0;
+  const pending = bufferByGroup.get(change.groupId);
+  if (pending) {
+    const kept: Pending[] = [];
+    for (const p of pending) {
+      const changed = changedMessage(change.groupId, p.waMessageId, p.authorPhone || null);
+      if (changed) buffered++;
+      if (changed === "drop") continue;
+      kept.push(changed ? { ...p, body: changed.text } : p);
+    }
+    bufferByGroup.set(change.groupId, kept);
+  }
+
+  let history = 0;
+  const lines = historyByGroup.get(change.groupId);
+  if (lines) {
+    const kept: HistoryEntry[] = [];
+    for (const h of lines) {
+      const changed = h.waMessageId ? changedMessage(change.groupId, h.waMessageId, null) : null;
+      if (changed) history++;
+      if (changed === "drop") continue;
+      kept.push(changed ? { ...h, body: changed.text } : h);
+    }
+    historyByGroup.set(change.groupId, kept);
+  }
+  return { buffered, history };
+}
+
+/** A batch as a change has left it: deleted copies out, edited ones rewritten. */
+function afterChanges(groupId: string, batch: Pending[]): Pending[] {
+  if (changedMessages.size === 0) return batch;
+  return batch.flatMap((p) => {
+    const changed = changedMessage(groupId, p.waMessageId, p.authorPhone || null);
+    if (changed === "drop") return [];
+    return [changed ? { ...p, body: changed.text } : p];
+  });
+}
+
+/**
+ * Resolves true once no analysis of the group is running (at once when
+ * none is), false when `timeoutMs` passes first. The server stores a batch
+ * only after answering it, so a delete posted while one runs would find
+ * nothing to delete.
+ */
+export async function whenFlushIdle(groupId: string, opts: { pollMs?: number; timeoutMs?: number } = {}): Promise<boolean> {
+  const pollMs = opts.pollMs ?? 500;
+  const deadline = Date.now() + (opts.timeoutMs ?? 5 * 60 * 1000);
+  while (inFlightFlush.has(groupId)) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  return true;
 }
 
 // ─── Phone helper ───────────────────────────────────────────────────
@@ -503,6 +609,15 @@ export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage):
     ...(await quotedAuthorFields(driver, msg)),
     attempts: 0,
   };
+
+  // A copy of a message already deleted for everyone is not queued; one
+  // already edited is queued with its new words (2026-11-15).
+  const changed = changedMessage(groupId, waMessageId, authorPhone || null);
+  if (changed === "drop") {
+    console.log(`[smart] ${waMessageId} in ${groupId} was deleted for everyone; not queued`);
+    return;
+  }
+  if (changed) pending.body = changed.text;
 
   const arr = bufferByGroup.get(groupId) ?? [];
   arr.push(pending);
@@ -883,7 +998,10 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
       // will never be recorded, which is why the server treats any non-zero
       // value as critical.
       inboundStats.flushFailures++;
-      const { requeue, dropped } = planFlushRetry(pending, MAX_FLUSH_ATTEMPTS);
+      const planned = planFlushRetry(pending, MAX_FLUSH_ATTEMPTS);
+      // Deleted while this batch was being posted: not put back (2026-11-15).
+      const requeue = afterChanges(groupId, planned.requeue);
+      const { dropped } = planned;
       inboundStats.droppedMessages += dropped.length;
       if (requeue.length > 0) {
         bufferByGroup.set(groupId, [...requeue, ...(bufferByGroup.get(groupId) ?? [])]);
@@ -1253,11 +1371,15 @@ export async function recoverGroupMessages(
           // without an injected-page call so a broken build cannot strip
           // it. `recordHistory` drops an exact duplicate, so a message the
           // live handler already recorded is not shown to the model twice.
-          recordHistory(gid, {
-            authorName: readNotifyName(m),
-            body: readMessageBody(m),
-            timestamp: new Date(safeTimestampSec(m) * 1000).toISOString(),
-          });
+          recordHistory(
+            gid,
+            {
+              authorName: readNotifyName(m),
+              body: readMessageBody(m),
+              timestamp: new Date(safeTimestampSec(m) * 1000).toISOString(),
+            },
+            replayId,
+          );
           await enqueueForAnalysis(driver, m); // server dedupes on waMessageId
           queued++;
         }
@@ -1377,6 +1499,7 @@ export function _test_getInboundStats(): BotCounters {
 export function _test_reset(): void {
   historyByGroup.clear();
   bufferByGroup.clear();
+  changedMessages.clear();
   nextKickoffMsByGroup.clear();
   inFlightFlush.clear();
   reflushAfterInFlight.clear();

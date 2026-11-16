@@ -66,6 +66,26 @@ export interface InboundMessage {
   mentionedIds?: string[];
 }
 
+/**
+ * A delete for everyone, or an edit, of a message in a chat (2026-11-15).
+ * `messageId` is the BARE WhatsApp id of the message deleted or edited
+ * (not the notice's own id). The sender fields name whoever sent the
+ * notice: for a delete in a group that can be an admin, not the author.
+ */
+export interface MessageChangeEvent {
+  kind: "revoke" | "edit";
+  /** The chat, spelled as `InboundMessage.from` is: a group JID, or a DM's `@c.us`/`@lid`. */
+  chatId: string;
+  isGroup: boolean;
+  messageId: string;
+  /** An edit's new text or caption. Never logged. */
+  text?: string;
+  /** Every spelling of the notice's sender we know, `@c.us`/`@lid`. */
+  senderJids: string[];
+  senderPhone: string | null;
+  fromMe: boolean;
+}
+
 /** A group this account is a member of. */
 export interface GroupSummary {
   /** The group JID, e.g. "447525334985-1607872139@g.us". */
@@ -273,6 +293,14 @@ export interface WaDriver {
   onUndecryptable?(
     handler: (event: { id: string; chat: string; sender: string | null; reason: string }) => void | Promise<void>,
   ): void;
+
+  /**
+   * A message was deleted for everyone, or edited (2026-11-15). Never
+   * handed to `onMessage`: an edit is not analysed again. `index.ts` uses
+   * it to take the words out of what MatchTime stored
+   * (`message-change.ts`). Optional because only Baileys implements it.
+   */
+  onMessageChange?(handler: (change: MessageChangeEvent) => void | Promise<void>): void;
 
   /**
    * Somebody (possibly the bot) was added to a group.
