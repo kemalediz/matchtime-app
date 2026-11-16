@@ -329,20 +329,26 @@ export async function changedListNotice(args: {
   senderUserId: string | null;
   quoted?: { fromMatchTime?: boolean; text?: string | null; messageId?: string | null } | null;
 }): Promise<PasteReply | null> {
-  const p = await db.adminSquadProposal.findFirst({
+  // Every list dropped by a delete in the last day, newest first: a quote
+  // may be of an older one's question.
+  const dropped = await db.adminSquadProposal.findMany({
     where: { orgId: args.orgId, outcome: "source-deleted", resolvedAt: { gte: new Date(args.now.getTime() - EXPIRED_ANSWER_WINDOW_MS) } },
     orderBy: { resolvedAt: "desc" },
+    take: 10,
     select: { id: true, waMessageId: true, proposedByUserId: true, createdAt: true },
   });
-  if (!p) return null;
+  if (dropped.length === 0) return null;
+  let p = dropped[0];
   const qid = args.quoted?.messageId?.trim() || null;
   const qtext = args.quoted?.text?.trim() || "";
   if (qid || qtext) {
-    // A quote: about this list only if it is MatchTime's question for it.
+    // A quote: about a dropped list only if it is MatchTime's question for it.
     if (!args.quoted?.fromMatchTime) return null;
-    const asked = await db.sentNotification.findFirst({ where: { key: hqReplyKey(args.orgId, p.waMessageId) }, select: { text: true, waMessageId: true } });
-    const quotesIt = qid ? !!asked?.waMessageId && sameWhatsAppMessage(qid, asked.waMessageId) : !!asked?.text && asked.text.trim() === qtext;
-    if (!quotesIt) return null;
+    const asked = await db.sentNotification.findMany({ where: { key: { in: dropped.map((d) => hqReplyKey(args.orgId, d.waMessageId)) } }, select: { key: true, text: true, waMessageId: true } });
+    const quotes = (a: { text: string | null; waMessageId: string | null }) => (qid ? !!a.waMessageId && sameWhatsAppMessage(qid, a.waMessageId) : !!a.text && a.text.trim() === qtext);
+    const hit = dropped.find((d) => asked.some((a) => a.key === hqReplyKey(args.orgId, d.waMessageId) && quotes(a)));
+    if (!hit) return null;
+    p = hit;
   } else {
     // No quote: the paster's own YES, with no newer list since.
     if (!args.senderUserId || args.senderUserId !== p.proposedByUserId) return null;

@@ -36,6 +36,9 @@ import {
   parseMessageChangeInput,
   storedIdForms,
   sweepRecentTombstones,
+  SWEEP_NEVER_MAX,
+  SWEEP_RECHECK_MAX,
+  SWEEP_RECHECK_MS,
   withoutDeletedQuotes,
   withoutChangedHistory,
 } from "../message-change";
@@ -231,13 +234,13 @@ describe("an edit purges the TEXT and keeps the FACTS (round 8)", () => {
   for (const how of ["delete", "edit"] as const) {
     const change = (bare: string) => (how === "delete" ? { ...byAuthor, messageId: bare } : { ...editBy(SAM), messageId: bare });
 
-    it(`${how}: a later note REPLACED the reason (A, then B): changing A clears every copy of A's words; B's reason stays`, async () => {
+    it(`${how}: ONE RULE: a later note replaced the reason (A, then B); a change to A clears the note's reason (B's too: over-clearing only loses words), every copy, every ack; the amount stays`, async () => {
       T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -1, reason: "knee", sourceMessageId: B_ID, reasonSourceMessageId: B_ID, reasonMessageIds: [A_ID, B_ID], createdAt: ago(9), updatedAt: ago(2) }));
       // Team generation copied A's reason while it stood.
       T.ratingAdjustment.push(adj("u-sam", "Form note in the chat: tired legs"));
       T.sentNotification.push(ack(A_ID, "Noted: -1 for Dan Dee (tired legs) in Tuesday's game."), ack(B_ID, "Changed: -1 for Dan Dee (knee) in Tuesday's game."), ack("false_other", "Noted: -1 for Ali (tired legs)."));
       await applyMessageChange(change(A_BARE), NOW);
-      expect(T.formNote[0]).toMatchObject({ reason: "knee", delta: -1 });
+      expect(T.formNote[0]).toMatchObject({ reason: "", delta: -1 });
       expect(T.ratingAdjustment[0].reason).toBe("");
       // The WHOLE ack goes, never a garbled half; another member's is untouched.
       expect(T.sentNotification.map((n) => n.text)).toEqual([null, null, "Noted: -1 for Ali (tired legs)."]);
@@ -254,6 +257,36 @@ describe("an edit purges the TEXT and keeps the FACTS (round 8)", () => {
       expect(T.sentNotification[0].text).toBeNull();
     });
   }
+
+  it("a note recorded under the author's LID id, and a delete naming only their phone: matched through the stored copy's phone", async () => {
+    const LID_ID = `false_${G}_${A_BARE}_${SAM_LID}@lid`;
+    T.analyzedMessage.push(row({ waMessageId: LID_ID, orgId: "org-a", groupId: G, authorPhone: SAM_PN, body: "go easy, I'm tired", handledBy: "engine", createdAt: ago(9) }));
+    T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -1, reason: "tired", sourceMessageId: LID_ID, reasonSourceMessageId: LID_ID, reasonMessageIds: [LID_ID], createdAt: ago(9), updatedAt: ago(2) }));
+    await applyMessageChange({ ...byAuthor, messageId: A_BARE }, NOW);
+    expect(T.formNote[0].reason).toBe("");
+  });
+
+  it("two players' notes in one club: a change to one player's message leaves the other's note and its copies untouched", async () => {
+    const ALI_MSG = `false_${G}_ALINOTE00001_${ALI_PN}@c.us`;
+    T.formNote.push(
+      row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -1, reason: "tired", sourceMessageId: A_ID, reasonSourceMessageId: A_ID, reasonMessageIds: [A_ID], createdAt: ago(9), updatedAt: ago(2) }),
+      row({ orgId: "org-a", matchId: "m2", userId: "u-ali", delta: 1, reason: "fresh legs", sourceMessageId: ALI_MSG, reasonSourceMessageId: ALI_MSG, reasonMessageIds: [ALI_MSG], createdAt: ago(9), updatedAt: ago(2) }),
+    );
+    T.ratingAdjustment.push(adj("u-sam", "Form note in the chat: tired"), adj("u-ali", "Form note in the chat: fresh legs"));
+    T.sentNotification.push(ack(A_ID, "Noted: -1 for Sam (tired)."), ack(ALI_MSG, "Noted: +1 for Ali (fresh legs)."));
+    await applyMessageChange({ ...byAuthor, messageId: A_BARE }, NOW);
+    expect(T.formNote.map((n) => n.reason)).toEqual(["", "fresh legs"]);
+    expect(T.ratingAdjustment.map((r) => r.reason)).toEqual(["", "Form note in the chat: fresh legs"]);
+    expect(T.sentNotification.map((n) => n.text)).toEqual([null, "Noted: +1 for Ali (fresh legs)."]);
+  });
+
+  it("an ADMIN's delete of a message a note does not record matches no note", async () => {
+    T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -1, reason: "tired", sourceMessageId: A_ID, reasonSourceMessageId: A_ID, reasonMessageIds: [A_ID], createdAt: ago(9), updatedAt: ago(2) }));
+    T.ratingAdjustment.push(adj("u-sam", "Form note in the chat: tired"));
+    await applyMessageChange({ ...byAuthor, ...ALI, byAdmin: true, messageId: "UNRELATED001" }, NOW);
+    expect(T.formNote[0].reason).toBe("tired");
+    expect(T.ratingAdjustment[0].reason).toBe("Form note in the chat: tired");
+  });
 
   it("the adjuster's own row for the same player and match is left alone (only formNoteReason writes the prefix)", async () => {
     T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -1, reason: "tired", sourceMessageId: A_ID, reasonSourceMessageId: A_ID, reasonMessageIds: [A_ID], createdAt: ago(9), updatedAt: ago(2) }));
@@ -405,14 +438,16 @@ describe("a quote of a deleted or edited message: stripped only when its author 
 });
 
 describe("the safety sweep (hourly, on /api/cron/bot-health)", () => {
-  it("enforces a tombstone a request never cleared for, then not again once it is past the re-check window", async () => {
+  it("enforces a tombstone a request never cleared for, then re-checks it for 48 hours after its latest change, and not after", async () => {
     T.deletedMessage.push(tomb({ chatId: G, waMessageId: ID, byAdmin: false, reason: "deleted", senderJids: [`${SAM_PN}@c.us`], senderPhones: [SAM_PN], deletedAt: ago(10 * 60), enforcedAt: null }));
     seed(ago(9 * 60)); // written by a request that died before its own clear
     expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 1, cleared: 1, pruned: 0 });
     expect(words()).not.toContain("4321");
     expect(T.deletedMessage[0].enforcedAt).toEqual(NOW);
-    // Enforced and older than the re-check window: not taken again.
-    expect(await sweepRecentTombstones(new Date(NOW.getTime() + 60 * 60 * 1000))).toMatchObject({ checked: 0 });
+    // Within 48 hours of its change: re-checked (30 hours on).
+    expect(await sweepRecentTombstones(new Date(NOW.getTime() + 20 * 60 * 60 * 1000))).toMatchObject({ checked: 1 });
+    // Enforced and past the 48-hour re-check window: not taken again.
+    expect(await sweepRecentTombstones(new Date(NOW.getTime() + 39 * 60 * 60 * 1000))).toMatchObject({ checked: 0 });
   });
 
   it("a recent one is re-checked every run for late writers, even once enforced", async () => {
@@ -423,9 +458,9 @@ describe("the safety sweep (hourly, on /api/cron/bot-health)", () => {
   });
 
   it("the SAME change posted again (an outbox retry, an admin re-check): a no-op for the record, so its re-check window is not moved on", async () => {
-    await applyMessageChange(byAuthor, ago(7 * 60));
+    await applyMessageChange(byAuthor, ago(49 * 60));
     await applyMessageChange(byAuthor, NOW);
-    expect(T.deletedMessage[0]).toMatchObject({ lastChangeAt: ago(7 * 60) });
+    expect(T.deletedMessage[0]).toMatchObject({ lastChangeAt: ago(49 * 60) });
     expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 0 });
   });
 
@@ -483,10 +518,29 @@ describe("the safety sweep (hourly, on /api/cron/bot-health)", () => {
       T.deletedMessage.push(tomb({ chatId: G, waMessageId: bare, byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: at, enforcedAt: null }));
       T.analyzedMessage.push(row({ waMessageId: `false_${G}_${bare}_${SAM_PN}@c.us`, orgId: "org-a", groupId: G, authorPhone: SAM_PN, body: `secret ${i}`, handledBy: "none", createdAt: at }));
     }
-    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 500, cleared: 500 });
-    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 100, cleared: 100 });
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ cleared: 500 });
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ cleared: 100 });
     expect(T.analyzedMessage.filter((r) => r.body !== null)).toEqual([]);
-    expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 0 });
+    expect(await sweepRecentTombstones(NOW)).toMatchObject({ cleared: 0 });
+  });
+
+  it("a backlog of never-enforced tombstones never starves the re-checks: each has its own cap, the re-checks oldest-checked first", async () => {
+    // 40 enforced tombstones whose late writers need re-checking, checked at different times.
+    for (let i = 0; i < 40; i++) {
+      const bare = `RECHECK${String(i).padStart(5, "0")}`;
+      T.deletedMessage.push(tomb({ chatId: G, waMessageId: bare, byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: ago(30 * 60), enforcedAt: ago(40 - i) }));
+      // A late writer for each.
+      T.analyzedMessage.push(row({ waMessageId: `false_${G}_${bare}_${SAM_PN}@c.us`, orgId: "org-a", groupId: G, authorPhone: SAM_PN, body: `late ${i}`, handledBy: "none", createdAt: ago(5) }));
+    }
+    // And a backlog far over the never-enforced cap.
+    for (let i = 0; i < SWEEP_NEVER_MAX + 50; i++) {
+      T.deletedMessage.push(tomb({ chatId: G, waMessageId: `NEVER${String(i).padStart(7, "0")}`, byAdmin: true, reason: "deleted", senderJids: [], senderPhones: [], deletedAt: ago(60), enforcedAt: null }));
+    }
+    const r = await sweepRecentTombstones(NOW);
+    expect(r.checked).toBe(SWEEP_NEVER_MAX + Math.min(40, SWEEP_RECHECK_MAX));
+    // The late writers were cleared, despite the backlog.
+    expect(T.analyzedMessage.filter((x) => typeof x.body === "string" && x.body.startsWith("late"))).toEqual([]);
+    expect(SWEEP_RECHECK_MS).toBe(48 * 60 * 60 * 1000);
   });
 
   it("prunes tombstones older than the retention, and never applies a change that does not apply", async () => {
@@ -549,12 +603,22 @@ describe("the other stores a message's words reach", () => {
       row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "Your month: Door Code Dave", aboutKey: `month-seed-of:${SAM_ID}`, sentAt: ago(1), createdAt: ago(5) }),
       row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "⏰ Reminder: an old one", aboutKey: `asked-reminder:false_${G}_OTHERID999_${SAM_PN}@c.us`, sentAt: null, createdAt: ago(5) }),
     );
+    // Their dispatch claims (`due-posts` writes `botjob-<id>` with the DM's words), one acked, one claimed but not acked yet.
+    const [unsent, sent, seedDraft, other] = T.botJob;
+    T.sentNotification.push(
+      row({ key: `botjob-${sent.id}`, kind: "dm", text: sent.text, waMessageId: "true_x_3EB0SENT", createdAt: ago(2) }),
+      row({ key: `botjob-${seedDraft.id}`, kind: "dm", text: seedDraft.text, waMessageId: "true_x_3EB0SEED", createdAt: ago(2) }),
+      row({ key: `botjob-${unsent.id}`, kind: "dm", text: unsent.text, waMessageId: null, createdAt: ago(1) }),
+      row({ key: `botjob-${other.id}`, kind: "dm", text: other.text, waMessageId: null, createdAt: ago(1) }),
+    );
     await applyMessageChange(byAuthor, NOW);
     expect(T.botJob.map((j) => [j.text, j.sentAt !== null])).toEqual([
       ["", true],
       ["", true],
       ["⏰ Reminder: an old one", false],
     ]);
+    expect(T.sentNotification.map((n) => n.text)).toEqual([null, null, null, "⏰ Reminder: an old one"]);
+    expect(JSON.stringify([T.botJob, T.sentNotification])).not.toContain("4321");
   });
 
   it("an EDIT leaves the reminder DMs, sent or not, as they are (MatchTime acted on what it read)", async () => {

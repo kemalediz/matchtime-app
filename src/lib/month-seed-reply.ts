@@ -16,6 +16,7 @@
  * indexed query for everybody else). Fail safe: a failed or unsure read is
  * "other", which changes nothing.
  */
+import { MONTH_SEED_ABOUT_PREFIX } from "./message-change";
 import { db } from "./db";
 import { t } from "./i18n/t";
 import { monthNameLabel } from "./i18n/dates";
@@ -315,8 +316,12 @@ async function reply(input: Parameters<typeof handleMonthSeedDmReply>[0]): Promi
   console.info(`[${LABEL}] user=${userId} proposal=${proposal.id} answer=${answer.kind}${answer.kind === "other" ? ` why=${answer.why}` : ""}`);
   if (answer.kind === "other") return null;
 
+  // Every DM about this draft carries the pasted message it came from, as
+  // the first draft does: a delete of that message cancels an unsent one and
+  // blanks a sent one (`message-change.ts`, round 12).
+  const aboutKey = `${MONTH_SEED_ABOUT_PREFIX}${proposal.waMessageId}`;
   const send = async (text: string) => {
-    if (input.replyPhone) await db.botJob.create({ data: { orgId: proposal.orgId, kind: "dm", phone: input.replyPhone, text } });
+    if (input.replyPhone) await db.botJob.create({ data: { orgId: proposal.orgId, kind: "dm", phone: input.replyPhone, text, aboutKey } });
   };
   const month = monthNameLabel(lang, new Date(`${proposal.monthStart}T12:00:00.000Z`));
 

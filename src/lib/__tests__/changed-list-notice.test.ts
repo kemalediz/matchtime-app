@@ -74,6 +74,14 @@ describe("changedListNotice", () => {
     expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-ali", quoted: { fromMatchTime: true, messageId: "3EB0QUESTION0001", text: QUESTION } })).toMatchObject({ replyText: CHANGED });
   });
 
+  it("two lists deleted: a YES quoting the OLDER one's question is told about that one (not only the newest)", async () => {
+    T.adminSquadProposal.push(row({ orgId: "org-a", waMessageId: "paste-2", proposedByUserId: "u-sam", resolvedAt: ago(2), outcome: "source-deleted", createdAt: ago(4) }));
+    T.sentNotification.push(row({ key: "hqreply:org-a:paste-2", kind: "admin-group-reply", text: "Adding: Ian Innes. Say YES.", waMessageId: "3EB0QUESTION0002", createdAt: ago(4) }));
+    expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-ali", quoted: { fromMatchTime: true, messageId: "3EB0QUESTION0001", text: "" } })).toMatchObject({ replyText: CHANGED });
+    expect(T.adminSquadProposal.find((p) => p.waMessageId === "paste-1")!.outcome).toBe("source-deleted-told");
+    expect(T.adminSquadProposal.find((p) => p.waMessageId === "paste-2")!.outcome).toBe("source-deleted");
+  });
+
   it("a list re-pasted (and applied) since: a later YES from the paster is not about the dropped one", async () => {
     T.adminSquadProposal.push(row({ orgId: "org-a", waMessageId: "paste-2", proposedByUserId: "u-sam", resolvedAt: ago(1), outcome: "applied", createdAt: ago(3) }));
     expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-sam" })).toBeNull();

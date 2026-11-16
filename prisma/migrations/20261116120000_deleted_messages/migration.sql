@@ -30,11 +30,14 @@
 -- RETENTION: 14 DAYS from "lastChangeAt", pruned by the sweep
 -- (DELETED_MESSAGE_RETENTION_DAYS in src/lib/message-change.ts). Ids and
 -- phones only, never a word of the message. "enforcedAt" is when every copy
--- was last cleared; the sweep takes the rows never cleared yet, plus a short
--- re-check window (six hours after each row's latest change) for late
--- writers. Recorded only for a group linked to a club.
+-- was last cleared: NULL while never cleared (or a new change came in), and
+-- moved to now each time the sweep checks it. The sweep takes the NULL rows
+-- first, then re-checks each row for 48 hours after its latest change, for
+-- late writers. Recorded only for a group linked to a club.
 --
--- ORDER: APPLY THIS BEFORE DEPLOYING THE SERVER. Deployed without it,
+-- ORDER: APPLY THIS BEFORE DEPLOYING THE SERVER. Without it EVERY form-note
+-- write fails, for every club (the form-note store writes the two new
+-- "FormNote" columns), not only the message-change route. Deployed without it,
 -- /api/whatsapp/message-change answers 500 (the Pi keeps the change in its
 -- durable outbox and retries with backoff, so nothing is lost), the doors
 -- read "no tombstone" and change nothing, and the sweep logs and does

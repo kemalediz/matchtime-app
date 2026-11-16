@@ -32,7 +32,7 @@
  *   - an hourly sweep (`sweepRecentTombstones`, on /api/cron/bot-health)
  *     enforces every tombstone never enforced yet, for a request that died
  *     before its own clear (a function time limit), and re-checks each for
- *     six hours after its latest change (a late writer).
+ *     48 hours after its latest change (a late writer).
  *
  * WHO, PER CHANGE (round 6): every change is kept on its own (`changes`:
  * reason, sender, byAdmin, time; the same change once, at most 20), and
@@ -106,8 +106,10 @@ import { heldQuestionOf, isTextFree, sameJson, textFreeTrace, withHeldQuestion }
 
 export const DELETED_MESSAGE_RETENTION_DAYS = 14;
 const WINDOW_MS = DELETED_MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-/** The most tombstones one sweep enforces (newest first). */
-const SWEEP_MAX = 500;
+/** The most never-enforced tombstones one sweep run takes (oldest first). */
+export const SWEEP_NEVER_MAX = 500;
+/** The most enforced tombstones one run re-checks for late writers (the longest unchecked first), on their own cap. */
+export const SWEEP_RECHECK_MAX = 200;
 
 /** A group JID: digits (and an old-style "-"), or a sandbox spelling; never "_" or a second "@". */
 const GROUP_JID = /^[0-9A-Za-z-]{3,64}@g\.us$/;
@@ -328,7 +330,7 @@ interface Copies {
   archived: Array<{ id: string; waMessageId: string; senderPhone: string | null }>;
   hq: Array<{ id: string; waMessageId: string; prefix: string; text: string; pipelineTrace: unknown }>;
   mentions: Array<{ id: string; waMessageId: string }>;
-  notes: Array<{ id: string; orgId: string; matched: string; current: boolean; heldIds: string[]; matchId: string; userId: string; reason: string }>;
+  notes: Array<{ id: string; orgId: string; matched: string; matchedPhone: string | null; heldIds: string[]; matchId: string; userId: string; reason: string }>;
   squadProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
   feeProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
   reminders: Array<{ id: string; storedId: string; sent: boolean }>;
@@ -391,13 +393,18 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
       select: { id: true, orgId: true, sourceMessageId: true, reasonSourceMessageId: true, reasonMessageIds: true, matchId: true, userId: true, reason: true },
     })
   ).flatMap((r) => {
-    const held = [...new Set([r.sourceMessageId, r.reasonSourceMessageId, ...(r.reasonMessageIds ?? [])].filter((x): x is string => !!x))];
+    // ONE RULE (round 12): the note's recorded messages, or for an older note
+    // with none recorded, its two source ids.
+    const held = [...new Set((r.reasonMessageIds?.length ? r.reasonMessageIds : [r.sourceMessageId, r.reasonSourceMessageId]).filter((x): x is string => !!x))];
     const matched = held.find((x) => isStoredIdOf(x, chatId, messageId));
-    if (!matched) return [];
-    // Its CURRENT reason is this message's words when this message set the note last or wrote that reason.
-    const current = [r.sourceMessageId, r.reasonSourceMessageId].some((x) => !!x && isStoredIdOf(x, chatId, messageId));
-    return [{ id: r.id, orgId: r.orgId, matched, current, heldIds: held, matchId: r.matchId, userId: r.userId, reason: r.reason }];
+    return matched ? [{ id: r.id, orgId: r.orgId, matched, matchedPhone: null as string | null, heldIds: held, matchId: r.matchId, userId: r.userId, reason: r.reason }] : [];
   });
+  // Who wrote the matched message: its stored copy's phone, as the
+  // AnalyzedMessage clear uses (an id stored under a LID, a delete naming
+  // only the phone JID).
+  for (const n of notes) {
+    n.matchedPhone = analyzed.find((a) => a.waMessageId === n.matched)?.authorPhone ?? null;
+  }
   // What MatchTime was about to do because of the message: only a delete cancels it.
   if (!withMade) return { analyzed, archived, hq, mentions, notes, squadProposals: [], feeProposals: [], reminders: [] };
   const proposalWhere = { orgId: { in: orgIds }, createdAt: { gte: since }, OR: idWhere(chatId, messageId) };
@@ -512,13 +519,16 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   // Form notes (round 11), each by the messages it records. Idempotent: the
   // request's own clear-after-write and the sweep run it again, so a copy
   // team generation writes after the purge is cleaned at the next run.
+  //
+  // ONE RULE (round 12): a change to ANY message the note records clears its
+  // written reason and every copy; the amount stays. Over-clearing a reason
+  // that is still valid only loses words.
   for (const n of c.notes) {
-    if (!applies(n.matched)) {
+    if (!applies(n.matched, n.matchedPhone)) {
       if (n.reason !== "") out.refused++;
       continue;
     }
-    // The note's reason, when it is this message's words.
-    if (n.current && n.reason !== "") {
+    if (n.reason !== "") {
       out.notes += (await tx.formNote.updateMany({ where: { id: n.id, NOT: { reason: "" } }, data: { reason: "" } })).count;
     }
     // EVERY copy team generation made of a note's reason for that player in
@@ -573,6 +583,11 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   if (asked.length) await tx.sentNotification.updateMany({ where: { key: { in: [...new Set(asked)] } }, data: { text: null } });
   const remindersOk = c.reminders.filter((r) => cancels(r.storedId));
   out.refused += c.reminders.length - remindersOk.length;
+  // Their dispatch claims first (`due-posts` writes `botjob-<id>` with the
+  // DM's words, acked or not): the words go, for a cancelled one too.
+  if (remindersOk.length) {
+    await tx.sentNotification.updateMany({ where: { key: { in: remindersOk.map((r) => `botjob-${r.id}`) }, NOT: { text: null } }, data: { text: null } });
+  }
   const unsent = remindersOk.filter((r) => !r.sent).map((r) => r.id);
   if (unsent.length) await tx.botJob.deleteMany({ where: { id: { in: unsent }, sentAt: null } });
   // Sent already: the row stays (the reply and ack history), its words go.
@@ -877,33 +892,33 @@ export async function dropExpiredHeldQuestions(orgId: string, now: Date = new Da
   }
 }
 
-/** How long after a change the sweep keeps re-checking it for late writers. */
-export const SWEEP_RECHECK_MS = 6 * 60 * 60 * 1000;
+/** How long after a change the sweep keeps re-checking it for late writers (team generation, a slow handler). */
+export const SWEEP_RECHECK_MS = 48 * 60 * 60 * 1000;
 
 /**
- * THE SAFETY SWEEP (hourly, /api/cron/bot-health). The tombstones never
- * enforced yet (`enforcedAt` null: a request that died before its own
- * clear), oldest first, then the ones changed in the last six hours again
- * (a late writer; by the LATEST change, so a second change is re-checked as
- * the first was), at most SWEEP_MAX a run, each marked enforced; then the
- * ones 14 days past their latest change pruned. A backlog is worked through run by
- * run. Idempotent; each message is a handful of indexed reads. Never throws.
+ * THE SAFETY SWEEP (hourly, /api/cron/bot-health). First the tombstones
+ * never enforced yet (`enforcedAt` null: a request that died before its own
+ * clear, a held clarification question), oldest first, at most
+ * SWEEP_NEVER_MAX; THEN, on their own cap (SWEEP_RECHECK_MAX, so a backlog
+ * can never starve them), the enforced ones changed in the last 48 hours,
+ * the longest unchecked first, for late writers (by the LATEST change, so a
+ * second change is re-checked as the first was). Each is marked enforced
+ * (`enforcedAt` moves to now; it is never made due again by a re-check).
+ * Then the ones 14 days past their latest change are pruned. Idempotent;
+ * each message is a handful of indexed reads. Never throws.
  */
 export async function sweepRecentTombstones(now: Date = new Date()): Promise<{ checked: number; cleared: number; pruned: number }> {
   try {
     const since = new Date(now.getTime() - WINDOW_MS);
     const pruned = (await db.deletedMessage.deleteMany({ where: { lastChangeAt: { lt: since } } })).count;
     const select = { chatId: true, waMessageId: true, byAdmin: true, reason: true, senderJids: true, senderPhones: true, changes: true, deletedAt: true } as const;
-    const never = await db.deletedMessage.findMany({ where: { enforcedAt: null, lastChangeAt: { gte: since } }, orderBy: { lastChangeAt: "asc" }, take: SWEEP_MAX, select });
-    const recent =
-      never.length < SWEEP_MAX
-        ? await db.deletedMessage.findMany({
-            where: { enforcedAt: { not: null }, lastChangeAt: { gte: new Date(now.getTime() - SWEEP_RECHECK_MS) } },
-            orderBy: { lastChangeAt: "desc" },
-            take: SWEEP_MAX - never.length,
-            select,
-          })
-        : [];
+    const never = await db.deletedMessage.findMany({ where: { enforcedAt: null, lastChangeAt: { gte: since } }, orderBy: { lastChangeAt: "asc" }, take: SWEEP_NEVER_MAX, select });
+    const recent = await db.deletedMessage.findMany({
+      where: { enforcedAt: { not: null }, lastChangeAt: { gte: new Date(now.getTime() - SWEEP_RECHECK_MS) } },
+      orderBy: { enforcedAt: "asc" },
+      take: SWEEP_RECHECK_MAX,
+      select,
+    });
     const rows = [...never, ...recent];
     let cleared = 0;
     for (const r of rows) {

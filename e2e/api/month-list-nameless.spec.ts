@@ -187,6 +187,11 @@ test("3. 'Craig is 1, steff is 2' by DM: both on the draft with their lines and 
   const dms = await dmsToOwner();
   expect(dms).toHaveLength(2);
   expect(dms[1].text).toContain("4 players (Davide, Nabz (3), Craig, steff)");
+  // The revised draft carries the pasted list's message, as the first does,
+  // so a delete of that message cancels or blanks it (PR #606).
+  const about = await db.all<{ aboutKey: string | null }>(`SELECT "aboutKey" FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2 ORDER BY "createdAt"`, [ORG, digits(owner.phone)]);
+  expect(about[0].aboutKey).toMatch(/^month-seed-of:/);
+  expect(about[1].aboutKey).toBe(about[0].aboutKey);
   expect(dms[1].text).not.toContain("couldn't match");
 
   expect(await dm(request, "yes go ahead")).toMatchObject({ handled: "month-seed-started", monthStart: NEXT_START });

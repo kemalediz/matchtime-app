@@ -2753,12 +2753,14 @@ model DeletedMessage {
   changes      Json     @default("[]")
   /// The FIRST change: the start of the 14 days of copies looked at.
   deletedAt    DateTime @default(now())
-  /// The LATEST change: the sweep re-checks late writers for six hours after
+  /// The LATEST change: the sweep re-checks late writers for 48 hours after
   /// it, and the row is kept 14 days after it.
   lastChangeAt DateTime @default(now())
   /// When every copy was last cleared for it (the live clear or the sweep).
-  /// NULL: never yet, or changed since (a merge resets it). The sweep takes
-  /// the NULL ones, oldest first, plus a short re-check window for late writers.
+  /// NULL: never yet, a NEW change since (the same change again leaves it),
+  /// or a held clarification question still waiting for its hour. The sweep
+  /// takes the NULL ones first, then re-checks the rest for 48 hours, moving
+  /// this to now each time; a re-check never makes it NULL again.
   enforcedAt   DateTime?
 
   @@unique([chatId, waMessageId])
