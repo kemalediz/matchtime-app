@@ -66,7 +66,14 @@ import { anthropicModel } from "../src/lib/pipeline/llm";
 import { extractorStubFromEnv } from "../src/lib/pipeline/extractor-stub";
 import type { Member } from "../src/lib/pipeline/types";
 import { modelPersonPicker, PERSON_PICKER_STUB_ENV, refKey, stubSeamAllowed, type PersonPicker, type PersonPicks } from "../src/lib/pipeline/who-is-who";
-import { DEV_KEY_ENV, DevApiKeyMissingError, requireDevApiKey } from "../e2e/helpers/dev-api-key";
+import { assertProductionKeyForgotten, DEV_KEY_ENV, DevApiKeyMissingError, forgetProductionApiKey, requireDevApiKey } from "../e2e/helpers/dev-api-key";
+
+const HARNESS = "scripts/set-match-result.ts (who-is-who, for --mom and --by)";
+/** The documented way to run this script, for the re-run it prints. */
+const INVOCATION = "node --env-file=.env ./node_modules/.bin/tsx scripts/set-match-result.ts";
+
+/** One shell word, whatever it holds: single quotes, a ' written as '\''. */
+const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
 function arg(name: string): string | null {
   const i = process.argv.indexOf(`--${name}`);
@@ -92,21 +99,29 @@ function parseScoreArg(text: string, labels: readonly [string, string]): { red: 
 }
 
 /**
- * Who-is-who's picker. A real call goes on the DEVELOPER's key, handed to
- * the client directly (`requireDevApiKey`): this script never reads
- * ANTHROPIC_API_KEY (`e2e/helpers/no-production-key-in-harnesses.test.ts`).
- * With a test seam set (the stubbed e2e suite; never in production,
- * `stubSeamAllowed`) it is the stand-in `personPickerFor` would choose,
- * and needs no key. Throws `DevApiKeyMissingError` when a real call would
- * be needed and there is no key.
+ * Who-is-who's picker, and whether it is the real model. A real call goes
+ * on the DEVELOPER's key, handed to the client directly
+ * (`requireDevApiKey`); `main()` has already dropped the production key
+ * from the process, and `assertProductionKeyForgotten` refuses to build a
+ * client if it has not, so no client here can fall back to it. This script
+ * never reads ANTHROPIC_API_KEY (`e2e/helpers/no-production-key-in-
+ * harnesses.test.ts`). With a test seam set (the stubbed e2e suite; never
+ * in production, `stubSeamAllowed`) it is the stand-in `personPickerFor`
+ * would choose, and needs no key. Throws `DevApiKeyMissingError` when a
+ * real call would be needed and there is no key.
  */
-function whoIsWhoPicker(): PersonPicker {
+function whoIsWhoPicker(): { picker: PersonPicker; model: boolean } {
   const seam = stubSeamAllowed() && (process.env[PERSON_PICKER_STUB_ENV] === "1" || extractorStubFromEnv() !== null);
-  if (seam) return personPickerFor();
-  return modelPersonPicker(anthropicModel({ apiKey: requireDevApiKey("scripts/set-match-result.ts (who-is-who, for --mom and --by)") }));
+  if (seam) return { picker: personPickerFor(), model: false };
+  const apiKey = requireDevApiKey(HARNESS);
+  assertProductionKeyForgotten(HARNESS);
+  return { picker: modelPersonPicker(anthropicModel({ apiKey })), model: true };
 }
 
 async function main() {
+  // FIRST: `node --env-file=.env` may have loaded the product's key too.
+  // Gone before anything can build a client (MDs/dev-vs-production-api-keys.md).
+  forgetProductionApiKey();
   const matchId = arg("match");
   const scoreText = arg("score");
   const momText = arg("mom");
@@ -115,7 +130,7 @@ async function main() {
 
   // FAIL FAST: a name to look up and no key to look it up with is refused
   // before anything is read. No name, no picker and no call.
-  let picker: PersonPicker | null = null;
+  let picker: { picker: PersonPicker; model: boolean } | null = null;
   if (momText || byText) {
     try {
       picker = whoIsWhoPicker();
@@ -182,15 +197,19 @@ async function main() {
       organiserIds.has(m.userId) ? { ...m, note: m.note ? `${m.note}; an organiser` : "an organiser" } : m,
     );
     const said = [momText ? `Man of the Match: ${momText}` : null, byText ? `Recorded by: ${byText}` : null].filter(Boolean).join("\n");
-    ({ people } = await identifyRefs({
-      picker,
+    const who = await identifyRefs({
+      picker: picker.picker,
       refs,
       body: said,
       author: null,
       senderUserId: null,
       roster: club,
       where: "a match result the club's organisers gave, recorded by hand",
-    }));
+    });
+    people = who.people;
+    // What it cost, on every run that asks the model, dry runs included
+    // (a failed call answers nothing and is billed nothing: 0 calls).
+    if (picker.model) console.log(`  who-is-who: ${who.calls} call${who.calls === 1 ? "" : "s"}, $${who.costUsd.toFixed(4)} on the dev key (${DEV_KEY_ENV})`);
     clubNameOf = new Map(club.map((m) => [m.userId, m.name || (m.aliases ?? [])[0] || "?"]));
     // No answer to be had (the call failed, the daily cap refused it, the
     // answer could not be read): say THAT, not "ambiguous" or "not one
@@ -243,11 +262,12 @@ async function main() {
     } catch (err) {
       // Not one transaction with the score (see the header): say exactly
       // what is in the database now, and how to finish.
-      const again = `--mom "${momText}"${byText ? ` --by "${byText}"` : ""} --apply`;
+      // The whole command, copy-pasteable: every value one shell word.
+      const again = [INVOCATION, "--match", shellQuote(match.id), "--mom", shellQuote(momText!), ...(byText ? ["--by", shellQuote(byText)] : []), "--apply"].join(" ");
       console.error(
         scoreWritten
           ? `PARTLY WRITTEN: the score IS recorded (${scoreWritten}; the match is COMPLETED), but the Man of the Match (${mom.name}) was NOT written. ` +
-              `Re-run with ${again} (and no --score) to record him. The error follows.`
+              `To record him, run this (no --score: the score stays as it is):\n  ${again}\nThe error follows.`
           : `FAILED: the Man of the Match (${mom.name}) was not written, and nothing else was either. The error follows.`,
       );
       console.error(err);

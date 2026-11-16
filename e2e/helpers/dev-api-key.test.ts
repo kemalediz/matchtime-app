@@ -20,6 +20,8 @@ import {
   DEV_KEY_ENV,
   PROD_KEY_ENV,
   DevApiKeyMissingError,
+  ProductionKeyInProcessError,
+  assertProductionKeyForgotten,
   forgetProductionApiKey,
   readDevApiKey,
   requireDevApiKey,
@@ -140,5 +142,20 @@ describe("forgetProductionApiKey", () => {
     const env: MutableEnv = {};
     expect(() => forgetProductionApiKey(env)).not.toThrow();
     expect(env[PROD_KEY_ENV]).toBeUndefined();
+  });
+});
+
+describe("assertProductionKeyForgotten", () => {
+  it("refuses while the production key is still in the process, naming the harness and the fix", () => {
+    const env: MutableEnv = { [PROD_KEY_ENV]: "sk-ant-prod", [DEV_KEY_ENV]: "sk-ant-dev" };
+    expect(() => assertProductionKeyForgotten(HARNESS, env)).toThrow(ProductionKeyInProcessError);
+    expect(() => assertProductionKeyForgotten(HARNESS, env)).toThrow(/scripts\/example-harness\.ts[\s\S]*ANTHROPIC_API_KEY[\s\S]*forgetProductionApiKey/);
+  });
+
+  it("passes once it is forgotten, and when it is blank (a stubbed e2e run pins it empty)", () => {
+    const env: MutableEnv = { [PROD_KEY_ENV]: "sk-ant-prod" };
+    forgetProductionApiKey(env);
+    expect(() => assertProductionKeyForgotten(HARNESS, env)).not.toThrow();
+    expect(() => assertProductionKeyForgotten(HARNESS, { [PROD_KEY_ENV]: "  " })).not.toThrow();
   });
 });
