@@ -1459,6 +1459,8 @@ export const tr: Strings = {
   match_cancel_use_admin_group: `Maçı iptal etmek ya da yeniden açmak yönetici grubunuzdan yapılıyor. Orada beni etiketleyin, ben yaparım.`,
   hq_not_understood: `Ne yapmamı istediğinizi anlayamadım.`,
   group_not_understood: `Ne yapmamı istediğinizi anlayamadım. Neler yapabildiğimi görmek için *@Match Time yardım* yazın.`,
+  group_already_there: (p) =>
+    `${p.names} zaten ${p.status === "CONFIRMED" ? "kadroda" : p.status === "BENCH" ? "yedekte" : "kadroda değil"}.`,
   hq_only_organisers: (p) => {
     const who = p.names || "kulübün organizatörleri";
     switch (p.kind ?? "other") {

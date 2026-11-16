@@ -1471,6 +1471,13 @@ export function decide(input: EngineInput): EngineResult {
               continue;
             }
           }
+          // Already exactly where the claim puts him (Vets, 2026-11-16):
+          // a typed fact, so a tagged sender is told so rather than "I
+          // didn't catch that".
+          const already = t.userId ? alreadyExactly(c.polarity, statusBefore) : null;
+          if (already && t.userId && !(out.alreadyThere ?? []).some((a) => a.userId === t.userId)) {
+            (out.alreadyThere ??= []).push({ userId: t.userId, name: t.name, status: already });
+          }
           out.reasons.push(`no change for ${t.name}`);
           continue;
         }
@@ -3595,6 +3602,19 @@ function alreadyWhereClaimed(
   if (polarity === "out") return status === "DROPPED" ? "DROPPED" : null;
   if (polarity === "in") return status === "CONFIRMED" || status === "BENCH" ? status : null;
   if (polarity === "bench") return status === "BENCH" ? "BENCH" : null;
+  return null;
+}
+
+/** The status a claim asks for, when the row is already exactly there:
+ *  IN and CONFIRMED, bench and BENCH, OUT and DROPPED. (Unlike
+ *  `alreadyWhereClaimed`, IN on the bench is not "already in".) */
+function alreadyExactly(
+  polarity: Claim["polarity"],
+  status: AttendanceRow["status"] | undefined,
+): "CONFIRMED" | "BENCH" | "DROPPED" | null {
+  if (polarity === "in") return status === "CONFIRMED" ? "CONFIRMED" : null;
+  if (polarity === "bench") return status === "BENCH" ? "BENCH" : null;
+  if (polarity === "out") return status === "DROPPED" ? "DROPPED" : null;
   return null;
 }
 

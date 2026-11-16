@@ -399,6 +399,7 @@ const SAMPLES: SampleArgs = {
   match_cancel_use_admin_group: null,
   hq_not_understood: null,
   group_not_understood: null,
+  group_already_there: { names: "Luca", many: false, status: "CONFIRMED" },
   hq_only_organisers: { names: "Hamzah or Raihan" },
   hq_score_saved: { redLabel: "Red", red: 4, yellow: 7, yellowLabel: "Yellow" },
   hq_score_changed: { redLabel: "Red", yellowLabel: "Yellow", oldRed: 4, oldYellow: 7, red: 5, yellow: 7 },

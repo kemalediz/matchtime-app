@@ -1784,6 +1784,13 @@ export const en = {
    *  no write, nothing queued). Decided from the outcome
    *  (`tagged-silence.ts`), never from the words. */
   group_not_understood: `I didn't catch what you'd like me to do. Type *@Match Time help* to see what I can do.`,
+  /** A member tagged MatchTime to put people where they ALREADY are (Vets,
+   *  2026-11-16: "move Luca to the main list" when Luca was already in).
+   *  Nothing changed; said instead of `group_not_understood`. `names` is
+   *  joined ("Luca and Dean"); `many` when more than one. From the engine's
+   *  typed outcome (`MessageOutcome.alreadyThere`), never the words. */
+  group_already_there: (p: { names: string; many: boolean; status: "CONFIRMED" | "BENCH" | "DROPPED" }): string =>
+    `${p.names} ${p.many ? "are" : "is"} already ${p.status === "CONFIRMED" ? "in the squad" : p.status === "BENCH" ? "on the bench" : "out"}.`,
   /** Someone who is not an owner or admin of the club asked MatchTime for
    *  something only they may do (2026-10-16). `names` is the club's owners
    *  and admins, joined ("Hamzah or Raihan"); empty when it has none on
