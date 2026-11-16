@@ -17,6 +17,8 @@
  *     the scenario parser, the clock driver, the transcript.
  *   - `e2e/sim/pool/**\/*.test.ts`: the pool scenario DSL's pure half:
  *     who was sent what, the expectation matcher, the leak finder.
+ *   - `scripts/**\/*.test.ts`: the ops scripts' pure rules (arguments,
+ *     limits, guards), no database and no network.
  * Every file runs behind `e2e/helpers/unit-model-guard.setup.ts`: no
  * model call is possible unless MT_UNIT_LIVE_LLM=1, whatever keys the
  * environment or `.env` hold.
@@ -37,6 +39,8 @@ export default defineConfig({
       "e2e/replay/**/*.test.ts",
       "e2e/rehearsal/**/*.test.ts",
       "e2e/sim/pool/**/*.test.ts",
+      // The pure rules of the ops scripts (scripts/set-match-result-rules.ts).
+      "scripts/**/*.test.ts",
     ],
     environment: "node",
     // No unit test reaches a model unless MT_UNIT_LIVE_LLM=1. Pins every

@@ -157,3 +157,29 @@ export function spendDevApiKeyOrExit(harness: string, env: MutableEnv = process.
 export function forgetProductionApiKey(env: MutableEnv = process.env): void {
   delete env[PROD_KEY_ENV];
 }
+
+/** The production key is still in a harness's process when it builds a client. */
+export class ProductionKeyInProcessError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductionKeyInProcessError";
+  }
+}
+
+/**
+ * For a script that hands the dev key to a client itself
+ * (`requireDevApiKey`) and also loaded `.env` (2026-11-16, review of #609):
+ * refuse to build that client while the production key is still in this
+ * process. The key it is handed is the dev one, but a library client built
+ * without a key (or a later edit that drops the argument) reads
+ * `PROD_KEY_ENV` and would bill production. `forgetProductionApiKey()` as
+ * the first statement of `main()` is what makes this pass. Blank counts as
+ * gone: a stubbed e2e run pins the variable empty.
+ */
+export function assertProductionKeyForgotten(harness: string, env: MutableEnv = process.env): void {
+  if ((env[PROD_KEY_ENV] ?? "").trim() === "") return;
+  throw new ProductionKeyInProcessError(
+    `REFUSING to build a model client. ${harness}: ${PROD_KEY_ENV} is still set in this process.\n` +
+      `  Call forgetProductionApiKey() first thing in main(), so no client can reach the product's key. See ${SPEND_DOC}.`,
+  );
+}

@@ -36,6 +36,7 @@ import {
   lastMondayKickoff,
   london,
   londonDay,
+  nextMondayKickoff,
   monthListText,
   readMeter,
   say,
@@ -91,7 +92,13 @@ scenario.describe("the Vets sandbox", () => {
 
   // ── A ──────────────────────────────────────────────────────────────
   scenario("A. a monthly club with no month: no weekly 'Say IN to join', the monthly copy instead, and no chase posts", async ({ pool }) => {
-    const v = await vetsClub(pool, "vets", { month: "none" });
+    // The announcement goes out in the 09:00 to 13:00 London window, more
+    // than 24 hours before kick-off (bot-scheduler.ts). The next Monday
+    // after tomorrow 13:00 always leaves this morning's window more than a
+    // day ahead; plain "next Monday" is TONIGHT on a Monday, and then no
+    // poll could announce it (failed Mon 16 Nov 2026).
+    const kickoff = nextMondayKickoff(new Date(london(londonDay(new Date()), "13:00").getTime() + 86_400_000));
+    const v = await vetsClub(pool, "vets", { month: "none", kickoff });
     // The Pi polls every 30 s; here every 30 minutes, from this morning
     // 09:00 (the incident tick) to an hour after kickoff, claiming as the
     // Pi does so each post is handed out once.
@@ -738,7 +745,10 @@ scenario.describe("the Vets sandbox", () => {
     expect(changed).toHaveLength(1);
     expectWeekListShape(changed[0].text ?? "", v.kickoff, 12, 2);
     expect(changed[0].text).toMatch(/\n\n\*Can't play:\*\n1\. Steve(?:\n|$)/);
-    expect(changed[0].text).not.toMatch(/^8\. /m);
+    // The squad closes up: the twelve others in the same order, counted 1
+    // to 12 with no gap where Steve was (#560, Kemal 2026-11-07).
+    const squadAfter = (changed[0].text ?? "").split("\n").slice(3, 3 + 12);
+    expect(squadAfter).toEqual(["Davide", "Nabz", "Steff", "Craig", "Dan", "Ben", "Kerem", "Andrew", "Jon", "Shane", "CJ", "Oumesh"].map((n, i) => `${i + 1}. ${n}`));
     expect(listOf(await schedulerPoll(pool, v, new Date(t0.getTime() + 93 * 60_000)))).toEqual([]);
   });
 
