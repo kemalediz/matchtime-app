@@ -12,6 +12,12 @@
  * campaigns and a switched-off code shows nothing; this week's game is
  * still named once its teams are made; and while sign-ups are paused
  * (the page's MT_TEST_MODE cookie, `flags-page.ts`) neither shows.
+ *
+ * The pool switch (2026-11-16): the game is named only while an ask could
+ * go out for the club, so Sutton FC has its pool flag on and every test
+ * opens the platform switch with the pool's existing test cookie
+ * (`mt-test-pool-open`, honoured only under MT_TEST_MODE=1); two cases turn
+ * each half off.
  * No model anywhere: $0.
  */
 import type { Page } from "@playwright/test";
@@ -19,6 +25,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { U } from "../helpers/constants";
 import { E2E_BASE_URL } from "../helpers/env";
 import { POOL_SIGNUP_PAUSED_TEST_COOKIE } from "@/lib/pool/flags";
+import { POOL_OPEN_TEST_COOKIE } from "@/lib/pool/flags-request";
 import type { TestDb } from "../helpers/test-db";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import { campaignGameClub, campaignGameLine } from "@/lib/pool/campaign-game-line";
@@ -29,13 +36,17 @@ const MATCH_ID = "e2e-fb-sutton-match";
 
 test.use({ locale: "en-GB" });
 test.describe.configure({ mode: "serial" });
-test.beforeEach(() => resetDb());
+test.beforeEach(async ({ page }) => {
+  await resetDb();
+  await page.context().addCookies([{ name: POOL_OPEN_TEST_COOKIE, value: "1", url: E2E_BASE_URL }]);
+});
 test.afterAll(() => resetDb());
 
 const GAME_CODES = ["fb", "fb1", "fb2", "nd"] as const;
 
-/** Sutton FC with one match three days out, 7-a-side (upcoming unless
- *  `status` says otherwise), and fb, fb1, fb2 and nd as live campaigns. */
+/** Sutton FC (its pool flag on) with one match three days out, 7-a-side
+ *  (upcoming unless `status` says otherwise), and fb, fb1, fb2 and nd as
+ *  live campaigns. */
 async function seedSutton(db: TestDb, o: { status?: "UPCOMING" | "TEAMS_GENERATED" } = {}): Promise<Date> {
   for (const code of GAME_CODES) {
     await db.run(
@@ -45,7 +56,7 @@ async function seedSutton(db: TestDb, o: { status?: "UPCOMING" | "TEAMS_GENERATE
   }
   const date = new Date(Date.now() + 3 * 24 * 3600_000);
   date.setUTCSeconds(0, 0);
-  await db.run(`INSERT INTO "Organisation" (id, name, slug, "inviteCode", "updatedAt") VALUES ($1, 'Sutton Football Club', 'e2e-sutton-fc', 'e2e-sutton-invite', now())`, [SUTTON.orgId]);
+  await db.run(`INSERT INTO "Organisation" (id, name, slug, "inviteCode", "featurePlayerPool", "updatedAt") VALUES ($1, 'Sutton Football Club', 'e2e-sutton-fc', 'e2e-sutton-invite', true, now())`, [SUTTON.orgId]);
   await db.run(
     `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt") VALUES ('e2e-sutton-sport', $1, 'Football 7-a-side', 7, ARRAY['GK','DEF','MID','FWD'], ARRAY['Red','Yellow'], now())`,
     [SUTTON.orgId],
@@ -147,4 +158,27 @@ test("sign-ups paused: the paused note, and no line and no offer", async ({ page
     await expect(line(page)).toHaveCount(0);
     await expect(offer(page)).toHaveCount(0);
   }
+});
+
+test("the platform pool switch off: no line and no offer, and the early-list note", async ({ page, db }) => {
+  await seedSutton(db);
+  await page.context().addCookies([{ name: POOL_OPEN_TEST_COOKIE, value: "0", url: E2E_BASE_URL }]);
+  for (const src of ["fb1", "nd"]) {
+    await page.goto(`/play?src=${src}`);
+    await expect(page.getByText(EN.signup.earlyShort)).toBeVisible();
+    await expect(line(page)).toHaveCount(0);
+    await expect(offer(page)).toHaveCount(0);
+  }
+});
+
+test("the club's own pool flag off: no line and no offer", async ({ page, db }) => {
+  const date = await seedSutton(db);
+  // Named while the club's pool is on, so the flag is what takes it away.
+  await page.goto("/play?src=fb1");
+  await expect(line(page)).toHaveText(expectedLine(date));
+  await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = false WHERE id = $1`, [SUTTON.orgId]);
+  await page.goto("/play?src=fb1");
+  await expect(page.getByRole("heading", { level: 1, name: EN.signup.heading })).toBeVisible();
+  await expect(line(page)).toHaveCount(0);
+  await expect(offer(page)).toHaveCount(0);
 });

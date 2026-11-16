@@ -28,42 +28,62 @@
  * month's week counts its own way). When the match is full or past its
  * cut-off the line is gone; the week after is not offered.
  *
+ * THE POOL SWITCH (2026-11-16): nor is anything named while no ask could go
+ * out for the club at all: the platform switch (as the caller resolved it
+ * for this request, `poolEnvForRequest`) and the club's own pool flag,
+ * `poolOffersOpenForClub`, the one rule `requestPoolAsk` and `sweepPool`
+ * refuse by ("pool-closed"). A switch the request could not read reads
+ * closed, as it does for sending.
+ *
  * The candidate matches are the org's from two days back, as the partner
- * ask's own next-match check reads them (`partner-ask.ts` isNextMatch).
+ * ask's own next-match check reads them (`partner-ask.ts` isNextMatch), of
+ * a club that is not dormant. The campaign and the matches are read at
+ * once, then the cut-off and the open places, so a slow database delays the
+ * page by two round trips, not four. Any failure rejects; the page catches
+ * it and shows no line.
  */
 import { db } from "../db";
 import type { Lang } from "../i18n/lang";
 import { askPlacesOpen } from "../monthly-week-asks";
 import { isNextUpcomingForPosting } from "../next-upcoming-match";
 import { campaignGameClub, campaignGameForClub, type CampaignGame } from "./campaign-game-line";
+import { poolOffersOpenForClub } from "./flags";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
 import { poolAskCutoffOf } from "./round";
 
 const LOOKBACK_MS = 2 * 24 * 3600_000;
 const LIVE: ReadonlySet<string> = new Set(OPEN_MATCH_STATUSES);
 
-export async function loadCampaignGame(code: string | null, lang: Lang, now: Date = new Date()): Promise<CampaignGame | null> {
+export async function loadCampaignGame(
+  code: string | null,
+  lang: Lang,
+  opts: { env: Record<string, string | undefined>; now?: Date },
+): Promise<CampaignGame | null> {
+  const now = opts.now ?? new Date();
   const club = campaignGameClub(code);
   if (!club || !code) return null;
-  const campaign = await db.poolCampaign.findFirst({ where: { code, active: true }, select: { code: true } });
+  const [campaign, candidates] = await Promise.all([
+    db.poolCampaign.findFirst({ where: { code, active: true }, select: { code: true } }),
+    db.match.findMany({
+      where: { activity: { orgId: club.orgId, org: { dormantAt: null } }, isHistorical: false, date: { gte: new Date(now.getTime() - LOOKBACK_MS) } },
+      select: {
+        id: true,
+        date: true,
+        status: true,
+        activityId: true,
+        isHistorical: true,
+        maxPlayers: true,
+        activity: { select: { orgId: true, venue: true, dayOfWeek: true, org: { select: { featurePlayerPool: true } } } },
+      },
+    }),
+  ]);
   if (!campaign) return null;
-  const candidates = await db.match.findMany({
-    where: { activity: { orgId: club.orgId, org: { dormantAt: null } }, isHistorical: false, date: { gte: new Date(now.getTime() - LOOKBACK_MS) } },
-    select: {
-      id: true,
-      date: true,
-      status: true,
-      activityId: true,
-      isHistorical: true,
-      maxPlayers: true,
-      activity: { select: { orgId: true, venue: true, dayOfWeek: true } },
-    },
-  });
   const match = candidates
     .filter((m) => LIVE.has(m.status) && m.date.getTime() > now.getTime())
     .sort((a, b) => a.date.getTime() - b.date.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
-  if (!match || !isNextUpcomingForPosting(candidates, match, now)) return null;
-  if (now.getTime() >= (await poolAskCutoffOf(club.orgId, match.date)).getTime()) return null;
-  const placesOpen = await askPlacesOpen(match.id);
+  if (!match || !poolOffersOpenForClub(match.activity.org, opts.env)) return null;
+  if (!isNextUpcomingForPosting(candidates, match, now)) return null;
+  const [cutoff, placesOpen] = await Promise.all([poolAskCutoffOf(club.orgId, match.date), askPlacesOpen(match.id)]);
+  if (now.getTime() >= cutoff.getTime()) return null;
   return campaignGameForClub({ club, match: { date: match.date, maxPlayers: match.maxPlayers, venue: match.activity.venue, placesOpen }, now, lang });
 }
