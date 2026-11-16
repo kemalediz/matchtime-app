@@ -56,7 +56,7 @@ import { buildOrganiserRelay } from "./organisers-list-copy";
 import { sendAdminNotice } from "./admin-channel";
 import { loadPlayerNames } from "./player-display-name";
 import { ROSTER_SHOWN_KIND, rosterShownKey, squadFingerprint } from "./roster-shown";
-import { formatUpSettledKey, planResize, playerRange, sideAllowed, sidesInRange, type ResizeRow } from "./flex-format-rules";
+import { formatListAboutKey, formatUpSettledKey, planResize, playerRange, sideAllowed, sidesInRange, type ResizeRow } from "./flex-format-rules";
 
 export type ResizeOutcome =
   | "format-switched"
@@ -353,36 +353,31 @@ export async function previewResize(matchId: string, perSide: number): Promise<{
 }
 
 /**
- * The list after a switch, held through the club's quiet hours (as the DMs
- * are). A monthly club: the month's week list once its regulars are on the
- * match, and nothing before (its list is the month's, and goes out when
- * they are). A weekly club: the roster, with the marker the chases read so
- * the same squad is not listed again inside three hours; and the
- * `squad-locked` claim set when the squad is full now (so the "Squad
- * complete" post does not repeat this list) or cleared when it is not (so
- * the next fill is announced), as the rolling squad's seed does.
+ * The list text after a switch, read from the database now, and the
+ * bookkeeping that records the group has seen it. Null when there is
+ * nothing to post (a monthly club whose regulars are not on the match yet).
+ * Used when the list is queued AND again when the queued job is sent
+ * (`freshFormatListText`), so the group sees the squad as it is then.
  */
-async function postNewList(a: {
+async function renderNewList(a: {
   matchId: string;
   orgId: string;
   day: string;
   perSide: number;
   places: number;
   lang: "en" | "tr";
-  listAnnouncer: string | null;
   monthly: boolean;
-  sendAfter: Date | null;
   now: Date;
   renderWeekList: typeof import("./monthly-week").renderWeekList;
   recordWeekListShown: typeof import("./monthly-week").recordWeekListShown;
   loadMonthlyWeek: typeof import("./monthly-week").loadMonthlyWeek;
-}): Promise<void> {
+}): Promise<{ text: string; after: (() => Promise<void>) | null } | null> {
   const c = flexFormatCopy(a.lang);
   let text: string;
   let after: (() => Promise<void>) | null = null;
   if (a.monthly) {
     const week = await a.loadMonthlyWeek(a.matchId);
-    if (!week || !week.seeded) return;
+    if (!week || !week.seeded) return null;
     const r = await a.renderWeekList(week);
     text = r.text;
     // The group has seen this list: the scheduler does not post it again.
@@ -414,10 +409,132 @@ async function postNewList(a: {
       await db.sentNotification.create({ data: { key: rosterShownKey(a.matchId, fingerprint, a.now), kind: ROSTER_SHOWN_KIND, matchId: a.matchId } });
     };
   }
+  return { text, after };
+}
+
+/**
+ * The list after a switch, held through the club's quiet hours (as the DMs
+ * are). A monthly club: the month's week list once its regulars are on the
+ * match, and nothing before (its list is the month's, and goes out when
+ * they are). A weekly club: the roster, with the marker the chases read so
+ * the same squad is not listed again inside three hours; and the
+ * `squad-locked` claim set when the squad is full now (so the "Squad
+ * complete" post does not repeat this list) or cleared when it is not (so
+ * the next fill is announced), as the rolling squad's seed does.
+ */
+async function postNewList(a: {
+  matchId: string;
+  orgId: string;
+  day: string;
+  perSide: number;
+  places: number;
+  lang: "en" | "tr";
+  listAnnouncer: string | null;
+  monthly: boolean;
+  sendAfter: Date | null;
+  now: Date;
+  renderWeekList: typeof import("./monthly-week").renderWeekList;
+  recordWeekListShown: typeof import("./monthly-week").recordWeekListShown;
+  loadMonthlyWeek: typeof import("./monthly-week").loadMonthlyWeek;
+}): Promise<void> {
+  const built = await renderNewList(a);
+  if (!built) return;
+  const { text, after } = built;
   if (organisersAnnounce({ listAnnouncer: a.listAnnouncer })) {
     await sendAdminNotice({ orgId: a.orgId, text: buildOrganiserRelay(text, a.lang) });
     return;
   }
-  await db.botJob.create({ data: { orgId: a.orgId, kind: "group", text, matchId: a.matchId, ...(a.sendAfter ? { sendAfter: a.sendAfter } : {}) } });
+  // Marked (`aboutKey`) so the scheduler renders it again when it is sent:
+  // the squad can change while the job waits (Vets, 2026-11-16).
+  await db.botJob.create({
+    data: { orgId: a.orgId, kind: "group", text, matchId: a.matchId, aboutKey: formatListAboutKey(a.matchId), ...(a.sendAfter ? { sendAfter: a.sendAfter } : {}) },
+  });
   await after?.().catch((err) => console.error(`[format-resize] list bookkeeping for ${a.matchId} failed:`, err));
+}
+
+/**
+ * HOTFIX (Vets, 2026-11-16): the list a switch queued, as it is NOW. The
+ * job waits for the Pi (and through quiet hours); a player moved in the
+ * meantime made it go out with him still on the bench and a place "open".
+ * Rendered again from the database with the same renderer, the stored text
+ * updated to what goes out, and the "list shown" bookkeeping recorded for
+ * it. Any failure, or nothing to render, sends the text as queued. A job
+ * already handed to the Pi (its `botjob-<id>` claim row exists) is left
+ * exactly as it went: the group sees that text, not a later one.
+ */
+export async function freshFormatListText(
+  job: { id: string; text: string; matchId: string | null },
+  now: Date,
+): Promise<string> {
+  if (!job.matchId) return job.text;
+  try {
+    if (await botJobClaimed(job.id)) return job.text;
+    const match = await db.match.findUnique({
+      where: { id: job.matchId },
+      select: { id: true, date: true, maxPlayers: true, activity: { select: { orgId: true, org: { select: { language: true, squadMode: true } } } } },
+    });
+    if (!match || !(match.maxPlayers > 0)) return job.text;
+    const lang = normaliseLang(match.activity.org?.language);
+    const { loadMonthlyWeek, renderWeekList, recordWeekListShown } = await import("./monthly-week");
+    const built = await renderNewList({
+      matchId: match.id,
+      orgId: match.activity.orgId,
+      day: weekdayLabel(lang, match.date),
+      perSide: Math.floor(match.maxPlayers / 2),
+      places: match.maxPlayers,
+      lang,
+      monthly: match.activity.org?.squadMode === "monthly",
+      now,
+      renderWeekList,
+      recordWeekListShown,
+      loadMonthlyWeek,
+    });
+    if (!built || built.text === job.text) return job.text;
+    const { count } = await db.botJob.updateMany({ where: { id: job.id, sentAt: null }, data: { text: built.text } });
+    if (count === 0) return job.text;
+    await built.after?.().catch((err) => console.error(`[format-resize] list bookkeeping for ${match.id} at send failed:`, err));
+    console.log(`[format-resize] list job ${job.id}: rendered again at send time (the squad changed since it was queued)`);
+    return built.text;
+  } catch (err) {
+    console.error(`[format-resize] list job ${job.id}: not rendered again, sent as queued:`, err instanceof Error ? err.message : "failed");
+    return job.text;
+  }
+}
+
+/** Whether a BotJob has been handed to the Pi: its `botjob-<id>` claim row. */
+async function botJobClaimed(jobId: string): Promise<boolean> {
+  const row = await db.sentNotification.findUnique({ where: { key: `botjob-${jobId}` }, select: { key: true } });
+  return !!row;
+}
+
+/**
+ * Two lists queued for one match (two switches before the Pi sent the
+ * first): only the NEWEST goes out, so the group never gets two identical
+ * lists (both are rendered at send time). An older one not yet handed to
+ * the Pi is closed as the scheduler closes a team sheet it will not send
+ * (`sentAt` set, never emitted) and its `aboutKey` says why. True when this
+ * job is not to be sent. Fails open: any error sends it.
+ */
+export async function formatListJobSuperseded(
+  job: { id: string; orgId: string; createdAt: Date; aboutKey: string | null },
+  now: Date,
+): Promise<boolean> {
+  if (!job.aboutKey) return false;
+  try {
+    const newer = await db.botJob.findFirst({
+      where: { orgId: job.orgId, kind: "group", sentAt: null, aboutKey: job.aboutKey, createdAt: { gt: job.createdAt } },
+      select: { id: true },
+    });
+    if (!newer) return false;
+    if (await botJobClaimed(job.id)) return false;
+    const { count } = await db.botJob.updateMany({
+      where: { id: job.id, sentAt: null },
+      data: { sentAt: now, aboutKey: `${job.aboutKey}:superseded` },
+    });
+    if (count > 0) console.log(`[format-resize] list job ${job.id}: a newer list (${newer.id}) for the same match is queued, not sent`);
+    return true;
+  } catch (err) {
+    console.error(`[format-resize] list job ${job.id}: newer-list check failed, sending:`, err instanceof Error ? err.message : "failed");
+    return false;
+  }
 }

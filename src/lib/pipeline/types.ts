@@ -2015,6 +2015,14 @@ export interface MessageOutcome {
    */
   refused?: "admin_only";
   /**
+   * HOTFIX (Vets, 2026-11-16): the people this message's claims named who
+   * were ALREADY where the claim puts them (IN and already CONFIRMED,
+   * bench and already BENCH, OUT and already DROPPED), so nothing changed.
+   * The analyze route tells a tagged sender so instead of "I didn't catch
+   * that" (`tagged-silence.ts` `alreadyThere`). Absent or empty: none.
+   */
+  alreadyThere?: Array<{ userId: string; name: string; status: "CONFIRMED" | "BENCH" | "DROPPED" }>;
+  /**
    * The engine decided this message's SENDER gets their personal stats
    * link by DM (`QuestionTopic.my_stats`, 2026-09-17). A boolean on
    * purpose: it names no recipient, so nothing a model extracts can

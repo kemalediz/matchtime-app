@@ -1507,6 +1507,16 @@ export async function runAttendanceEngineBatch(args: {
 
     const senderOwnRowMoved = landed.some((w) => w.userId === m.senderUserId);
 
+    // Everyone it named was already where it put them, and nothing was
+    // written (Vets, 2026-11-16): a typed fact for the route, which tells a
+    // tagged sender so rather than "I didn't catch that".
+    if (engineOutcome?.alreadyThere?.length && writes.length === 0 && !degraded) {
+      args.silence?.alreadyThere.set(
+        m.waMessageId,
+        engineOutcome.alreadyThere.map((a) => ({ name: a.name, status: a.status })),
+      );
+    }
+
     outcomes.set(m.waMessageId, {
       waMessageId: m.waMessageId,
       route: m.route as Route,

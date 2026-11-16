@@ -22,6 +22,8 @@
  * typed fact (`SilenceFacts`).
  */
 import type { Route } from "./pipeline/types";
+import { t as strings } from "./i18n/t";
+import { joinList } from "./i18n/text";
 
 /**
  * What the owners report about the silences they chose (2026-10-30), so
@@ -46,10 +48,31 @@ export interface SilenceFacts {
   readFailed: Set<string>;
   squadPostAnswers: Set<string>;
   monthNotStarted: Set<string>;
+  /** HOTFIX (Vets, 2026-11-16): a message whose claims named people who
+   *  were ALREADY where it put them, and nothing was written for it (the
+   *  engine's `MessageOutcome.alreadyThere`). A tagged sender is told so
+   *  (`alreadyThereLine`) instead of "I didn't catch that". */
+  alreadyThere: Map<string, Array<{ name: string; status: "CONFIRMED" | "BENCH" | "DROPPED" }>>;
 }
 
 export function newSilenceFacts(): SilenceFacts {
-  return { refused: new Set(), readFailed: new Set(), squadPostAnswers: new Set(), monthNotStarted: new Set() };
+  return { refused: new Set(), readFailed: new Set(), squadPostAnswers: new Set(), monthNotStarted: new Set(), alreadyThere: new Map() };
+}
+
+/**
+ * The line for a tagged message that asked to put people where they
+ * already are: one sentence per status, in the order first named
+ * ("Luca and Dean are already in the squad."). Null when there is none.
+ */
+export function alreadyThereLine(
+  people: ReadonlyArray<{ name: string; status: "CONFIRMED" | "BENCH" | "DROPPED" }> | undefined,
+  lang: string | null | undefined,
+): string | null {
+  if (!people || people.length === 0) return null;
+  const byStatus = new Map<"CONFIRMED" | "BENCH" | "DROPPED", string[]>();
+  for (const p of people) byStatus.set(p.status, [...(byStatus.get(p.status) ?? []), p.name]);
+  const s = strings(lang);
+  return [...byStatus].map(([status, names]) => s.group_already_there({ names: joinList(lang, names), many: names.length > 1, status })).join(" ");
 }
 
 /** The intents a result carries when nothing was written, queued or said. */

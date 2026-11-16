@@ -125,6 +125,20 @@ export function formatUpSettledKey(matchId: string, places: number): string {
   return `${matchId}:format-up:${places}`;
 }
 
+/**
+ * The `BotJob.aboutKey` of the list a switch queues for the group
+ * (format-resize.ts). The scheduler renders such a job again when it sends
+ * it, so the list shows the squad as it is then (Vets, 2026-11-16).
+ */
+export function formatListAboutKey(matchId: string): string {
+  return `${matchId}:format-list`;
+}
+
+/** Whether a queued BotJob is the list a format switch queued. */
+export function isFormatListJob(job: { kind: string; matchId: string | null; aboutKey: string | null }): boolean {
+  return job.kind === "group" && !!job.matchId && job.aboutKey === formatListAboutKey(job.matchId);
+}
+
 /** One suggestion of a size, in one episode. */
 export function formatUpKey(matchId: string, places: number, episode: number): string {
   return `${matchId}:format-up:${places}:e${episode}`;

@@ -170,7 +170,7 @@ import { isBillingPaused } from "./club-billing-rules";
 import { isClubSettingUp } from "./club-setup-rules";
 import { minimumToPlay, type GameFormat } from "./min-players";
 import { isSquadShort } from "./squad-short";
-import { decideBenchSuggestion, formatUpOffered, planFormatUp, playerRange } from "./flex-format-rules";
+import { decideBenchSuggestion, formatUpOffered, isFormatListJob, planFormatUp, playerRange } from "./flex-format-rules";
 import { flexFormatCopy } from "./i18n/flex-format";
 import { joinAdminNames } from "./seed-nudge-rules";
 import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
@@ -784,13 +784,22 @@ export async function computeDuePosts(
           text: job.text,
         });
       } else if (job.kind === "group") {
+        // Two lists queued for one match: only the newest goes out (Vets,
+        // 2026-11-16); the older is closed, never sent.
+        if (isFormatListJob(job) && (await (await import("./format-resize")).formatListJobSuperseded(job, now))) continue;
         out.push({
           kind: "group-message",
           key,
           // A partner club's ask going out on a later day than it was
           // queued is rendered again now, so "tomorrow" is never a day late
-          // (review of #612, `freshAskPostText`). Every other job as queued.
-          text: partnerAskPostJobIds.has(job.id) ? await (await import("./partner-ask")).freshAskPostText(job, now) : job.text,
+          // (review of #612, `freshAskPostText`). The list a format switch
+          // queued is rendered again from the squad as it is now (Vets,
+          // 2026-11-16, `freshFormatListText`). Every other job as queued.
+          text: partnerAskPostJobIds.has(job.id)
+            ? await (await import("./partner-ask")).freshAskPostText(job, now)
+            : isFormatListJob(job)
+              ? await (await import("./format-resize")).freshFormatListText(job, now)
+              : job.text,
           // Real tags (2026-11-03): "@<phone>" in the text, the phones here.
           ...(job.mentions?.length ? { mentions: [...job.mentions] } : {}),
         });

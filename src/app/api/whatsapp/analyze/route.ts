@@ -313,7 +313,7 @@ import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "@/lib/i18n/dates";
 import { CANCELLED_NOTICE_LOOKBACK_MS, SAME_FIXTURE_MS, cancelledMatchToMention } from "@/lib/cancelled-match-notice";
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageAddressesBot, messageTagsBot, piMentionsBot } from "@/lib/interaction-contract";
-import { newSilenceFacts, taggedSilence } from "@/lib/tagged-silence";
+import { alreadyThereLine, newSilenceFacts, taggedSilence } from "@/lib/tagged-silence";
 import { offerCalloffIfCalled } from "@/lib/calloff-offer";
 import { mergeRecruitReply } from "@/lib/recruit-request";
 import {
@@ -4315,6 +4315,22 @@ async function handleAnalyzeRequest(request: Request) {
       result: { reply: r.reply ?? null, react: r.react ?? null, intent: r.intent ?? "noise", handledBy: r.handledBy },
     });
     if (!silent) continue;
+    // Asked to put people where they already are (Vets, 2026-11-16): say
+    // so, from the engine's typed outcome, instead of "I didn't catch that".
+    const already = alreadyThereLine(silence.alreadyThere.get(m.waMessageId), org.language);
+    if (already) {
+      r.reply = already;
+      r.intent = "already_there";
+      r.handledBy = "fast-path";
+      console.log(`[analyze] ${m.waMessageId}: tagged to MatchTime, everyone named already there: said so`);
+      await augmentAnalysis({
+        waMessageId: m.waMessageId,
+        action: "already-there",
+        reasoningSuffix: "tagged to MatchTime, everyone named was already there: said so",
+        intent: "already_there",
+      });
+      continue;
+    }
     r.reply = strings(org.language).group_not_understood;
     r.intent = "not_understood";
     r.handledBy = "fast-path";
