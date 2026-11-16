@@ -153,7 +153,7 @@ describe("requestPartnerAsk", () => {
     expect(told).toEqual(["fnf", "sutton"]);
   });
 
-  it("2026-11-16 (Kemal): the short post: reply IN or tap the link carrying the ask's code; tonight; no price; his number stays private", async () => {
+  it("2026-11-16 (Kemal): the short post: reply IN or tap the link carrying the ask's code; tonight; the guest fee; his number stays private", async () => {
     vi.stubEnv("MATCHTIME_WA_NUMBER", "447700900555");
     try {
       dbMock.clubPartnership.findUnique.mockResolvedValue({ ...PARTNERSHIP, partnerApproval: "standing" });
@@ -168,12 +168,13 @@ describe("requestPartnerAsk", () => {
           "⚽ *FNF* are *1 short* for tonight!",
           "🗓 Fri 16 Oct, 20:30",
           "📍 Goals Sutton, 9-a-side",
+          // The activity's £8 fee, as the old post showed it.
+          "💷 £8 a game",
           `🙋 Fancy it? Reply *IN* to this message, or tap 👉 ${link}`,
           "🔒 MatchTime confirms with you by DM. Your number stays private.",
         ].join("\n"),
       );
-      // Never a price (the match has an £8 fee) and no organiser messaging him.
-      expect(text).not.toMatch(/£|their organisers will confirm/);
+      expect(text).not.toMatch(/their organisers will confirm/);
     } finally {
       vi.unstubAllEnvs();
     }

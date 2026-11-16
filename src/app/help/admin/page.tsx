@@ -204,7 +204,7 @@ export default async function AdminGuidePage() {
 
       <p>
         Schedule changes are made on the dashboard. Open{" "}
-        <strong>Admin</strong> in the menu; the tabs along the top take you to
+        <strong>Admin</strong>{" "}in the menu; the tabs along the top take you to
         each screen. A game&apos;s day or time can also be changed by tagging
         MatchTime (see <a href="#move-game">Move a game</a> below).
       </p>
@@ -279,7 +279,7 @@ export default async function AdminGuidePage() {
         <li>Press <strong>Create block</strong>.</li>
       </ol>
       <p>
-        <em>What the group is told:</em> Nothing is posted. MatchTime carries
+        <em>What the group is told:</em>{" "}Nothing is posted. MatchTime carries
         on announcing only the next match that&apos;s on.
       </p>
 
@@ -306,7 +306,7 @@ export default async function AdminGuidePage() {
         </li>
       </ol>
       <p>
-        <em>What the group is told:</em> Nothing, unless you ticked Announce
+        <em>What the group is told:</em>{" "}Nothing, unless you ticked Announce
         to the group. Then MatchTime posts one &quot;❌ Schedule update&quot;
         message listing the dates that are off. Restoring is always silent.
       </p>
@@ -329,7 +329,7 @@ export default async function AdminGuidePage() {
         </li>
       </ol>
       <p>
-        <em>What the group is told:</em> MatchTime posts
+        <em>What the group is told:</em>{" "}MatchTime posts
         &quot;❌ Match cancelled&quot; with the date and time, saying there
         aren&apos;t enough players this week. Reminders and DMs for that match stop, and
         there are no ratings or Man of the Match that week.
@@ -352,7 +352,7 @@ export default async function AdminGuidePage() {
         <li>Press <strong>Confirm switch</strong>.</li>
       </ol>
       <p>
-        <em>What the group is told:</em> MatchTime posts
+        <em>What the group is told:</em>{" "}MatchTime posts
         &quot;🔁 Match switched&quot; with the new format, who&apos;s playing and who&apos;s on
         the bench. If the smaller format kicks off at a different time, the
         match moves to that time and the post says so.
@@ -368,12 +368,12 @@ export default async function AdminGuidePage() {
           a name, and a phone number so they get DMs.
         </li>
         <li>
-          <strong>They post in the group.</strong> Someone MatchTime
+          <strong>They post in the group.</strong>{" "}Someone MatchTime
           doesn&apos;t know yet is added straight away (so their In
           isn&apos;t lost) and flagged <strong>NEW</strong> for you to check.
         </li>
         <li>
-          <strong>A player brings a friend</strong> (&quot;my friend Ali is
+          <strong>A player brings a friend</strong>{" "}(&quot;my friend Ali is
           coming&quot;). MatchTime reacts ✉️ and DMs that player a friend
           link to forward. The friend is added only once they open it, fill
           in their details and send the WhatsApp code: then they are booked
@@ -390,8 +390,8 @@ export default async function AdminGuidePage() {
       <h3>Checking new players</h3>
       <p>
         New players show with a <strong>NEW</strong> badge and a banner at the
-        top of the Players page. Press <strong>Confirm</strong> once
-        you&apos;re happy, or <strong>Remove</strong> if they shouldn&apos;t be
+        top of the Players page. Press <strong>Confirm</strong>{" "}once
+        you&apos;re happy, or <strong>Remove</strong>{" "}if they shouldn&apos;t be
         there. Removing someone keeps their past games and ratings but takes
         them off future matches. While anyone is waiting, you get one DM a day
         reminding you.
@@ -495,7 +495,7 @@ export default async function AdminGuidePage() {
         members it has no name for, numbered and shown by phone (only to
         you). Tell it who is who in your own words, for example
         &quot;Craig is 3&quot;, or pick each one on the{" "}
-        <strong>Months</strong> page. They go on the month with what your
+        <strong>Months</strong>{" "}page. They go on the month with what your
         list says (paid, &quot;4 only&quot;, pay as you go), and MatchTime
         knows them by that name from then on, on the rate page and the team
         sheet too. Reply yes and the month starts.
@@ -508,7 +508,7 @@ export default async function AdminGuidePage() {
         organisers&apos; group or by DM, in your own words, for example{" "}
         <code>@Match Time add Tom to the November list, he&apos;s paid</code>.
         He becomes a regular of the month for the games that are left, as
-        &quot;Add a player&quot; on the <strong>Months</strong> page does,
+        &quot;Add a player&quot; on the <strong>Months</strong>{" "}page does,
         with what you wrote (paid, &quot;4 only&quot;, pay as you go), and he
         is on the next game&apos;s squad. Only an organiser can add somebody
         this way: a player who tries is told to ask an organiser.
@@ -550,7 +550,7 @@ export default async function AdminGuidePage() {
           bench.
         </li>
         <li>
-          <strong>Every day at 17:00</strong> MatchTime posts the squad so far,
+          <strong>Every day at 17:00</strong>{" "}MatchTime posts the squad so far,
           with a call for players if you&apos;re short. Once the squad is
           full it keeps posting the squad and the bench, and asks for
           benchers, until there are 3 on the bench. Then it stops, and
@@ -699,7 +699,7 @@ export default async function AdminGuidePage() {
       {/* ───────────────────────────────────────────────── */}
       <h2 id="payments">8. Payments (optional)</h2>
       <p>
-        Switch on <strong>Collect match fees</strong> in Settings, choose who
+        Switch on <strong>Collect match fees</strong>{" "}in Settings, choose who
         collects the money and connect their bank. After each game players
         get a pay link: card, Apple Pay, Google Pay or pay by bank. Players
         who haven&apos;t paid are reminded by DM. Players can also choose to
@@ -775,7 +775,7 @@ export default async function AdminGuidePage() {
       </p>
       <p>
         Or tag MatchTime in your admin group: <code>@Match Time swap Tom for
-        Ben</code> brings Ben up from the bench and puts Tom on it. If you say
+        Ben</code>{" "}brings Ben up from the bench and puts Tom on it. If you say
         Tom can&apos;t play, he is taken out instead.
       </p>
 

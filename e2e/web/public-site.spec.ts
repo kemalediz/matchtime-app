@@ -145,6 +145,31 @@ test("the player guide explains the friend link and the real tag (2026-10-31)", 
   expect(await guide.innerText()).not.toMatch(/[—–]|waiting list/i);
 });
 
+// 2026-11-16: Next's compiler dropped the space after a highlighted word in
+// a multi-line sentence holding an &apos; ("OUTon its own"). See
+// src/app/__tests__/jsx-entity-space.test.ts.
+test("the guides keep the space after a highlighted word", async ({ page }) => {
+  const text = async (path: string) => {
+    await page.goto(path);
+    return ((await page.locator("article").textContent()) ?? "").replace(/\s+/g, " ");
+  };
+  const player = await text("/help/player");
+  for (const s of [
+    "MatchTime picks up IN and OUT on its own,",
+    "@Match Time in your message.",
+    "turn on Play elsewhere too on your profile.",
+    "Daily update at 17:00. The squad so far",
+    "One message is enough. No need to say",
+  ]) {
+    expect(player).toContain(s);
+  }
+  const admin = await text("/help/admin");
+  expect(admin).toContain("What the group is told: Nothing is posted.");
+  expect(admin).toContain("Switch on Collect match fees in Settings");
+  const overview = await text("/help");
+  expect(overview).toContain("OUT as normal.");
+});
+
 test("the guides say a partner club's ask is answered by replying IN to it or tapping its link (2026-11-16)", async ({ page }) => {
   await page.goto("/help/player");
   const player = page.locator("article");

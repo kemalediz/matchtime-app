@@ -6,8 +6,10 @@
  * is relative to today ("tonight", "tomorrow", the day), and tells players
  * they can REPLY IN to it as well as tap the private link (a quoted reply
  * has always been routed to the ask by the post it quotes; see
- * pipeline/__tests__/engine-partner-ask.test.ts). No price, no phone number
- * but the wa.me link, in English and Turkish.
+ * pipeline/__tests__/engine-partner-ask.test.ts). The guest fee on its own
+ * line whenever there is one, as the old post showed it, so nobody is
+ * surprised after saying IN. No phone number but the wa.me link, in English
+ * and Turkish.
  */
 import { describe, expect, it } from "vitest";
 import { t } from "../i18n/t";
@@ -23,6 +25,7 @@ const base = {
   day: "Tue 17 Nov, 21:30",
   venue: "Goals North Cheam",
   format: "7-a-side",
+  fee: null as string | null,
   link: LINK,
   prefill: "IN (ref PJ7E)",
 };
@@ -77,9 +80,27 @@ describe("the post in English", () => {
     expect(text).not.toContain("wa.me");
   });
 
-  it("never a price, never 'bot', never a phone number outside the link", () => {
-    const text = en.xask_post({ ...base, places: 3, when: { kind: "tomorrow" } });
-    expect(text).not.toMatch(/£|\bbot\b/i);
+  it("a fee: its own line under the venue", () => {
+    expect(en.xask_post({ ...base, places: 6, fee: "£5", when: { kind: "tomorrow" } })).toBe(
+      [
+        "⚽ *Sutton FC* are *6 short* for tomorrow!",
+        "🗓 Tue 17 Nov, 21:30",
+        "📍 Goals North Cheam, 7-a-side",
+        "💷 £5 a game",
+        `🙋 Fancy it? Reply *IN* to this message, or tap 👉 ${LINK}`,
+        "🔒 MatchTime confirms with you by DM. Your number stays private.",
+      ].join("\n"),
+    );
+    expect(en.xask_post({ ...base, places: 1, fee: "£7.50", when: { kind: "tonight" } })).toContain("\n💷 £7.50 a game\n");
+  });
+
+  it("no fee: no money line at all", () => {
+    expect(en.xask_post({ ...base, places: 2, when: { kind: "tomorrow" } })).not.toMatch(/💷|£/);
+  });
+
+  it("never 'bot', never a phone number outside the link", () => {
+    const text = en.xask_post({ ...base, places: 3, fee: "£5", when: { kind: "tomorrow" } });
+    expect(text).not.toMatch(/\bbot\b/i);
     expect(text.replace(LINK, "")).not.toMatch(/\d{7,}/);
   });
 });
@@ -106,6 +127,14 @@ describe("the post in Turkish", () => {
 
   it("a later day names it", () => {
     expect(tr.xask_post({ ...trBase, places: 2, when: { kind: "day", label: "Salı" } }).split("\n")[0]).toBe("⚽ *Sutton FC* Salı günü *2 kişi eksik*!");
+  });
+
+  it("a fee: its own line under the venue", () => {
+    expect(tr.xask_post({ ...trBase, places: 6, fee: "£5", when: { kind: "tomorrow" } }).split("\n").slice(2, 4)).toEqual([
+      "📍 Goals North Cheam, 7'ye 7",
+      "💷 Maç başı £5",
+    ]);
+    expect(tr.xask_post({ ...trBase, places: 6, when: { kind: "tomorrow" } })).not.toMatch(/💷|£/);
   });
 
   it("without MatchTime's number: the coded word to send privately", () => {

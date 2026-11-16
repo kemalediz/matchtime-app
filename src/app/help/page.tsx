@@ -57,7 +57,7 @@ export default function HelpLandingPage() {
       <ul>
         <li>
           <strong>Tracks who&apos;s in.</strong> Players say <code>IN</code> or{" "}
-          <code>OUT</code> as normal. MatchTime reacts ✅ when you&apos;re in the
+          <code>OUT</code>{" "}as normal. MatchTime reacts ✅ when you&apos;re in the
           squad, 🪑 when you&apos;re on the bench and 👋 when you&apos;ve dropped.
         </li>
         <li>

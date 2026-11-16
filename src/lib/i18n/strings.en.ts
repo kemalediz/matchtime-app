@@ -5896,7 +5896,9 @@ export const en = {
   // send then. `when` is the game's day relative to the post
   // (`askPostDay`), `day` its full date and time. Short and catchy
   // (2026-11-16): four asks in the old three-sentence form drew nobody.
-  // Never a price. His number never goes to the asking club (D7).
+  // `fee` is what a guest pays (`feeLabel`, "£5"), shown as its own line
+  // whenever the old post showed it, so nobody is surprised after saying
+  // IN; null, no line. His number never goes to the asking club (D7).
   xask_post: (p: {
     asker: string;
     places: number;
@@ -5904,6 +5906,7 @@ export const en = {
     day: string;
     venue: string;
     format: string | null;
+    fee: string | null;
     link: string | null;
     prefill: string;
   }) => {
@@ -5913,6 +5916,7 @@ export const en = {
       `⚽ *${p.asker}* are *${p.places} short* for ${when}!`,
       `🗓 ${p.day}`,
       `📍 ${p.venue}${p.format ? `, ${p.format}` : ""}`,
+      ...(p.fee ? [`💷 ${p.fee} a game`] : []),
       `🙋 Fancy it? Reply *IN* to this message, or ${how}`,
       `🔒 MatchTime confirms with you by DM. Your number stays private.`,
     ].join("\n");

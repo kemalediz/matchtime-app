@@ -276,7 +276,7 @@ describe("landing content: every claim is present", () => {
     const chat = spotlight("short-of-players").chat;
     expect(chat?.lines.some((l) => /Your number stays private/.test(l.text))).toBe(true);
     expect(chat?.lines.some((l) => /Reply IN to this message, or tap the link/.test(l.text))).toBe(true);
-    // Never a price in the example (the post itself never has one).
+    // The example club charges no fee, so its ask has no fee line.
     expect(chat?.lines.some((l) => /£/.test(l.text))).toBe(false);
   });
 

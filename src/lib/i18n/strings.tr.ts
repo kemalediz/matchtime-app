@@ -4301,6 +4301,7 @@ export const tr: Strings = {
       `⚽ *${p.asker}* ${when} *${p.places} kişi eksik*!`,
       `🗓 ${p.day}`,
       `📍 ${p.venue}${p.format ? `, ${p.format}` : ""}`,
+      ...(p.fee ? [`💷 Maç başı ${p.fee}`] : []),
       `🙋 Oynamak ister misin? Bu mesajı yanıtlayıp *VARIM* yaz ya da ${how}`,
       `🔒 MatchTime sana özelden dönecek. Numaran gizli kalır.`,
     ].join("\n");
