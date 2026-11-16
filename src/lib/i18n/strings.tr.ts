@@ -1329,7 +1329,7 @@ export const tr: Strings = {
     const one: Record<HqMenuTopic, string> = {
       squad: "kim var, kim yok, kim yedekte",
       teams: "takımları kurmak ve değiştirmek",
-      players: "eksik kaldığınızda oyuncu bulmak",
+      players: p.squad ? "eksik kaldığınızda oyuncu bulmak" : "oyuncular aylık kadronuza nasıl katılır",
       game: p.squad ? "bir maçı iptal etmek, formatını ya da saatini değiştirmek" : "bir maçın formatını ya da saatini değiştirmek",
       settings: "sessiz saatler, oyuncu sayıları ve ayarlar sayfası",
       graphics: "poster ve takım listesi görseli",

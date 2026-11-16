@@ -15,11 +15,15 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const TUE = { orgId: "org-1", venue: "Goals Sutton", dayOfWeek: 2 };
 
+const HOUR = 60 * 60 * 1000;
+
 function rec(o: Partial<MomMatchRecord> & { date: Date }): MomMatchRecord {
   return {
     id: `m-${o.date.toISOString()}`,
     activityId: "act-tue",
     fixture: TUE,
+    // The default rating window (Activity.ratingWindowHours, 120h).
+    voteClosesAt: new Date(o.date.getTime() + 120 * HOUR),
     teamLabels: ["Red", "Yellow"],
     redScore: 7,
     yellowScore: 9,
@@ -87,23 +91,28 @@ describe("lastMomFacts", () => {
 
   // Review 2026-11-15. The scheduler gives up on an announcement for good
   // once the next fixture kicks off (bot-scheduler.ts, 6e), so a match can
-  // be undecided-looking, never announced, and still be final well before
-  // day 9. B (1 day ago, vote open), A (4 days ago, never announced and
-  // superseded by B), C (14 days ago, announced): A is the last one.
+  // be never announced and still final well before day 9. But its vote
+  // stays open until its rating window ends (actions/ratings.ts,
+  // `ratingWindowHours`, 120h by default, up to 168h), whatever the
+  // scheduler does (review of #605): a superseded match is decided only once
+  // that window has ended too, or the answer would tell a tally still moving.
+  // B (1 day ago, vote open), A (4 days ago, never announced, superseded by
+  // B), C (14 days ago, announced).
   describe("a match whose announcement the scheduler gave up on (the next fixture kicked off)", () => {
     const B = rec({ date: new Date(NOW.getTime() - 1 * DAY), announced: false, tally: [{ userId: "u-sait", name: "Sait", votes: 4 }] });
-    const A = rec({
-      date: new Date(NOW.getTime() - 4 * DAY),
-      announced: false,
-      tally: [
-        { userId: "u-habib", name: "Habib", votes: 3 },
-        { userId: "u-mojib", name: "Mojib", votes: 1 },
-      ],
-    });
+    const A_DATE = new Date(NOW.getTime() - 4 * DAY);
+    const A_TALLY = [
+      { userId: "u-habib", name: "Habib", votes: 3 },
+      { userId: "u-mojib", name: "Mojib", votes: 1 },
+    ];
+    // A club with a 72h window: A's vote closed a day ago.
+    const A = rec({ date: A_DATE, announced: false, tally: A_TALLY, voteClosesAt: new Date(A_DATE.getTime() + 72 * HOUR) });
+    // The default 120h window: A's vote is still open for another day.
+    const A_OPEN = rec({ date: A_DATE, announced: false, tally: A_TALLY });
     const C = rec({ date: new Date(NOW.getTime() - 14 * DAY), announced: true });
     const fixture = (r: MomMatchRecord) => ({ id: r.id, date: r.date, status: "COMPLETED", activityId: r.activityId, activity: r.fixture });
 
-    it("is decided: it is the answer, and the newer open vote is named by date only", () => {
+    it("its vote closed: it is decided, it is the answer, and the newer open vote is named by date only", () => {
       const f = lastMomFacts([B, A, C], { now: NOW, organisersPick: false, fixtures: [B, A, C].map(fixture) });
       expect(f.last!.date.getTime()).toBe(A.date.getTime());
       expect(f.last!.winners.map((w) => w.name)).toEqual(["Habib"]);
@@ -113,10 +122,24 @@ describe("lastMomFacts", () => {
       expect(lastMomContextLines(f).join("\n")).not.toContain("Sait");
     });
 
+    it("its vote still open: nothing of it is told; the last decided one (C) is the answer", () => {
+      const f = lastMomFacts([B, A_OPEN, C], { now: NOW, organisersPick: false, fixtures: [B, A_OPEN, C].map(fixture) });
+      expect(f.last!.date.getTime()).toBe(C.date.getTime());
+      expect(f.recent.map((m) => m.date.getTime())).toEqual([C.date.getTime()]);
+      const text = lastMomContextLines(f).join("\n");
+      expect(text).not.toContain("Habib");
+      expect(text).not.toContain("Sait");
+      // The moment its window ends, it is told.
+      const later = lastMomFacts([B, A_OPEN, C], { now: new Date(A_OPEN.voteClosesAt.getTime() + 60_000), organisersPick: false, fixtures: [B, A_OPEN, C].map(fixture) });
+      expect(later.last!.date.getTime()).toBe(A_DATE.getTime());
+    });
+
     it("a next game today with no votes supersedes the one before it, as it stops its announcement", () => {
-      // Played 3 days ago, never announced; the next one kicked off 2 hours
-      // ago and has no votes yet (so it is no record, only a fixture).
-      const prev = rec({ date: new Date(NOW.getTime() - 3 * DAY), announced: false, tally: [{ userId: "u-sait", name: "Sait", votes: 4 }] });
+      // Played 3 days ago, never announced, its 48h vote closed; the next one
+      // kicked off 2 hours ago and has no votes yet (so it is no record, only
+      // a fixture).
+      const prevDate = new Date(NOW.getTime() - 3 * DAY);
+      const prev = rec({ date: prevDate, announced: false, tally: [{ userId: "u-sait", name: "Sait", votes: 4 }], voteClosesAt: new Date(prevDate.getTime() + 48 * HOUR) });
       const today = { id: "m-today", date: new Date(NOW.getTime() - 2 * 60 * 60 * 1000), status: "UPCOMING", activityId: "act-tue", activity: TUE };
       const f = lastMomFacts([prev, C], { now: NOW, organisersPick: false, fixtures: [fixture(prev), fixture(C), today] });
       expect(f.last!.date.getTime()).toBe(prev.date.getTime());

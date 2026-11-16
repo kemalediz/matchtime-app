@@ -147,7 +147,13 @@ export function buildHqTopicLines(topic: HqHelpTopic, p: HqHelpGates & { lang: s
  * (its settings could not be read): the HQ topics and payments, no marker.
  */
 export function buildHqHelp(p: HqHelpGates & { lang: string | null | undefined; features?: HelpFeatures }): string {
-  const hqTopics = HQ_HELP_TOPICS.filter((tp) => tp !== "payments" && buildHqTopicLines(tp, p) !== "");
+  // A monthly club's "help players" always has lines: how players join the
+  // month (`hqHelpTopicReply`, review of #605), so the menu lists it. With
+  // its settings unread, the gates say it (`squad` is off only for monthly).
+  const monthly = p.features ? p.features.monthly === true : !p.squad;
+  const hqTopics = HQ_HELP_TOPICS.filter(
+    (tp) => tp !== "payments" && (buildHqTopicLines(tp, p) !== "" || (tp === "players" && monthly)),
+  );
   const askable: readonly HelpTopic[] = p.features ? helpTopicsAskable(p.features) : ["payments"];
   const off = new Set(p.features ? helpTopicsOff(p.features) : []);
   const more = HQ_MORE_TOPICS.filter((tp) => askable.includes(tp));

@@ -16,7 +16,8 @@
  *     the pool is open for the club.
  */
 import { describe, expect, it } from "vitest";
-import { hqHelpTopicReply } from "@/lib/admin-group-help";
+import { buildHqHelp, hqHelpTopicReply } from "@/lib/admin-group-help";
+import { helpFeaturesFrom } from "@/lib/onboarding-conversation";
 import type { OrgFeatures } from "@/lib/org-features";
 import type { HelpClubFacts } from "@/lib/help-club-facts";
 
@@ -45,6 +46,34 @@ const POOL_SHUT: HelpClubFacts = { pool: { open: false, platformOpen: true, club
 
 const ask = (lang: string, features: OrgFeatures, club: HelpClubFacts, gates = MONTHLY_GATES) =>
   hqHelpTopicReply({ orgId: "org-vets", lang, gates, req: { topic: "find_players" }, features: { ...features, language: lang } as OrgFeatures, club });
+
+// Review of #605: the HQ menu lists only topics with lines of their own, so
+// a monthly club without organiser picks never saw "players" and could not
+// find the answer above.
+describe("the HQ menu of a monthly club lists the players topic", () => {
+  const helpFeats = (over: Partial<OrgFeatures> = {}) => helpFeaturesFrom(orgFeatures(over), POOL_SHUT);
+  const wordsOf = (menu: string) => [...menu.matchAll(/^\S+ \*([^*]+)\*: /gmu)].map((m) => m[1]);
+
+  it("no organiser picks: listed, as how players join the month", () => {
+    const menu = buildHqHelp({ lang: "en", ...MONTHLY_GATES, features: helpFeats() });
+    expect(wordsOf(menu)).toContain("players");
+    expect(menu).toContain(`📣 *players*: how players join your monthly squad\n`);
+  });
+
+  it("Turkish", () => {
+    const menu = buildHqHelp({ lang: "tr", ...MONTHLY_GATES, features: helpFeats({ language: "tr" }) });
+    expect(menu).toContain(`*oyuncu bulma*: oyuncular aylık kadronuza nasıl katılır\n`);
+  });
+
+  it("its settings unread: still listed (the answer always has the add line)", () => {
+    expect(wordsOf(buildHqHelp({ lang: "en", ...MONTHLY_GATES }))).toContain("players");
+  });
+
+  it("a weekly club's menu is as before", () => {
+    const menu = buildHqHelp({ lang: "en", ...MONTHLY_GATES, squad: true, paid: false, features: helpFeats({ squadMode: "weekly" }) });
+    expect(menu).toContain(`📣 *players*: finding players when you're short\n`);
+  });
+});
 
 describe("help players in a monthly club's admin group", () => {
   it("says how players join, not only the way back to the menu", async () => {

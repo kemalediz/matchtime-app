@@ -22,7 +22,8 @@
  * hard stop (`BADGE_FINAL_AFTER_DAYS`, pinned equal to the scheduler's
  * `MOM_ANNOUNCE_MAX_AGE_DAYS`), or the club's next fixture has kicked off
  * (`momAnnouncementSuperseded`, the one rule both read; review
- * 2026-11-15). A vote still open is never told: the group hears its result
+ * 2026-11-15) and its vote window has ended too (votes count until then,
+ * whether or not the announcement will come). A vote still open is never told: the group hears its result
  * from the announcement, so a newer match still voting is named by its
  * date only, with no name and no count from it. A match given up on is
  * told with the figures its announcement would have posted.
@@ -64,6 +65,9 @@ export interface MomMatchRecord {
   activityId: string;
   /** Its activity's recurring fixture, for the next-fixture stop. */
   fixture: RecurringFixtureKey;
+  /** When its vote closes: kickoff plus the activity's `ratingWindowHours`,
+   *  the window `submitMoMVote` (actions/ratings.ts) accepts votes in. */
+  voteClosesAt: Date;
   /** The match's own team names (`resolveTeamLabels`), red first. */
   teamLabels: [string, string];
   redScore: number | null;
@@ -100,10 +104,16 @@ export interface LastMomFacts {
 }
 
 /** PURE. Decided: posted, or given up on for good by the scheduler (past
- *  the age at which it ever could be, or its next fixture kicked off). */
+ *  the age at which it ever could be, or its next fixture kicked off) AND,
+ *  for the next-fixture stop, its vote has closed: the scheduler stops
+ *  carrying the announcement, but votes still count until the rating
+ *  window ends, so until then its tally is still moving (review of #605).
+ *  The age stop needs no such check: the window (up to 168h) ends before
+ *  it. */
 function decided(m: MomMatchRecord, now: Date, fixtures: readonly MomFixtureMatch[]): boolean {
   if (m.announced) return true;
   if (now.getTime() - m.date.getTime() > BADGE_FINAL_AFTER_DAYS * DAY_MS) return true;
+  if (now.getTime() <= m.voteClosesAt.getTime()) return false;
   return momAnnouncementSuperseded({ id: m.id, date: m.date, activityId: m.activityId, activity: m.fixture }, fixtures, now);
 }
 

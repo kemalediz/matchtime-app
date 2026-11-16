@@ -147,7 +147,7 @@ export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFact
         yellowScore: true,
         teamLabels: true,
         activityId: true,
-        activity: { select: { orgId: true, venue: true, dayOfWeek: true, sport: { select: { teamLabels: true } } } },
+        activity: { select: { orgId: true, venue: true, dayOfWeek: true, ratingWindowHours: true, sport: { select: { teamLabels: true } } } },
       },
     }),
   ]);
@@ -177,6 +177,8 @@ export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFact
     date: m.date,
     activityId: m.activityId,
     fixture: { orgId: m.activity.orgId, venue: m.activity.venue, dayOfWeek: m.activity.dayOfWeek },
+    // The window submitMoMVote accepts votes in (actions/ratings.ts).
+    voteClosesAt: new Date(m.date.getTime() + m.activity.ratingWindowHours * 60 * 60 * 1000),
     teamLabels: resolveTeamLabels({ teamLabels: m.teamLabels }, org, m.activity.sport, org?.language),
     redScore: m.redScore,
     yellowScore: m.yellowScore,

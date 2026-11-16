@@ -177,9 +177,12 @@ describe("(a) the HQ menu is a list of topics (Kemal, 2026-11-10: \"only one lin
     );
   });
 
-  it("a monthly club: no squad, teams or finding-players topic, the game without cancelling, and the example is a listed topic", () => {
+  // Review of #605: the players topic is listed for a monthly club too, as
+  // how players join the month (hq-help-players-monthly.test.ts).
+  it("a monthly club: no squad or teams topic, players as how they join the month, the game without cancelling, and the example is a listed topic", () => {
     const menu = buildHqHelp({ lang: "en", squad: false, graphics: true, picks: false, paid: true, free: true, features: MONTHLY });
-    expect(topicLines(menu).map(wordOf)).toEqual(["game", "settings", "graphics", "payments", "partners", "pool", "mom", "ratings", "reminders"]);
+    expect(topicLines(menu).map(wordOf)).toEqual(["players", "game", "settings", "graphics", "payments", "partners", "pool", "mom", "ratings", "reminders"]);
+    expect(menu).toContain(`📣 *players*: how players join your monthly squad`);
     expect(menu).toContain(`🗓️ *game*: resize or move a game`);
     expect(menu).toContain(`e.g. *@Match Time help game*`);
     expect(buildHqHelp({ lang: "tr", squad: false, graphics: true, picks: false, paid: true, features: MONTHLY })).toContain(

@@ -21,21 +21,24 @@ const DAY = 24 * 60 * 60 * 1000;
 const ACT = { orgId: "org-1", venue: "Goals Sutton", dayOfWeek: 2 };
 const at = (daysAgo: number) => new Date(NOW.getTime() - daysAgo * DAY);
 
-const voted = (id: string, daysAgo: number) => ({
+const voted = (id: string, daysAgo: number, ratingWindowHours = 72) => ({
   id,
   date: at(daysAgo),
   redScore: 5,
   yellowScore: 3,
   teamLabels: null,
   activityId: "act-tue",
-  activity: { ...ACT, sport: { teamLabels: null } },
+  activity: { ...ACT, ratingWindowHours, sport: { teamLabels: null } },
 });
+/** A's rating window (hours): 72 has closed by now (4 days on), 120 has not. */
+let aWindow = 72;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  aWindow = 72;
   db.organisation.findUnique.mockResolvedValue({ teamLabels: null, language: "en", momChosenBy: "players" });
   db.match.findMany.mockImplementation(async (args: { where: Record<string, unknown> }) => {
-    if ("momVotes" in args.where) return [voted("B", 1), voted("A", 4), voted("C", 14)];
+    if ("momVotes" in args.where) return [voted("B", 1), voted("A", 4, aWindow), voted("C", 14)];
     return [
       { id: "B", date: at(1), status: "COMPLETED", activityId: "act-tue", activity: ACT },
       { id: "A", date: at(4), status: "COMPLETED", activityId: "act-tue", activity: ACT },
@@ -55,11 +58,18 @@ beforeEach(() => {
 });
 
 describe("loadLastMom", () => {
-  it("a match superseded by its next fixture is the last MoM; the open vote is named by date only", async () => {
+  it("a match superseded by its next fixture, its vote window over, is the last MoM; the open vote is named by date only", async () => {
     const f = await loadLastMom("org-1", NOW);
     expect(f.last!.winners.map((w) => w.name)).toEqual(["Habib"]);
     expect(f.last!.date.getTime()).toBe(at(4).getTime());
     expect(f.openVoteDate!.getTime()).toBe(at(1).getTime());
+  });
+
+  it("its vote window (the activity's ratingWindowHours) still open: not told; the announced one is", async () => {
+    aWindow = 120;
+    const f = await loadLastMom("org-1", NOW);
+    expect(f.last!.winners.map((w) => w.name)).toEqual(["Mojib"]);
+    expect(f.last!.date.getTime()).toBe(at(14).getTime());
   });
 
   it("reads the later matches as the scheduler does: this club, not historical, not cancelled, kicked off", async () => {

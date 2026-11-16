@@ -1599,7 +1599,7 @@ export const en = {
     const one: Record<HqMenuTopic, string> = {
       squad: "who's in, out or on the bench",
       teams: "making and changing the teams",
-      players: "finding players when you're short",
+      players: p.squad ? "finding players when you're short" : "how players join your monthly squad",
       game: p.squad ? "cancel, resize or move a game" : "resize or move a game",
       settings: "quiet hours, player numbers and the settings page",
       graphics: "the poster and the team sheet",

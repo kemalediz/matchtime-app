@@ -75,6 +75,21 @@ describe("canonical URLs", () => {
     }
   });
 
+  // Review of #605: a page's own `openGraph` replaces the layout's whole,
+  // and the root's opengraph-image.png only attaches where a segment sets
+  // no `images`, so the seven pages below lost og:image. They carry the
+  // site card themselves, as the root emits it (1200 x 630 PNG, no alt).
+  it("every public page but the home page carries the site card image", () => {
+    const card = [{ url: "/opengraph-image.png", type: "image/png", width: 1200, height: 630 }];
+    for (const m of [contactMeta, pricingMeta, privacyMeta, playersMeta, helpMeta, helpPlayerMeta, helpAdminMeta] as Metadata[]) {
+      expect((m.openGraph as { images?: unknown }).images).toEqual(card);
+    }
+  });
+
+  it("the home page sets no image, so the root's opengraph-image.png still attaches to it as before", () => {
+    expect(homeMeta.openGraph).not.toHaveProperty("images");
+  });
+
   it("the page titles are unchanged", () => {
     expect(contactMeta.title).toBe("Contact");
     expect(pricingMeta.title).toBe("Pricing");
