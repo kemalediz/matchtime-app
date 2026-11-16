@@ -38,10 +38,11 @@ import path from "node:path";
 import { formatInTimeZone } from "date-fns-tz";
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
-import { engineOn } from "../helpers/stub";
+import { engineOn, setMonthlyReaderStub, stubCalls } from "../helpers/stub";
 import { E2E, E2E_BASE_URL, REPO_ROOT } from "../helpers/env";
 import { ORG_ID } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
+import { legacyReaderAnswer } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { listOpensAt, monthKickoffs, nextMonthStart, signupEndsAt } from "@/lib/month-signup-rules";
 import { buildSignupPasteOthersDm, buildSignupWaitingAdminNotice, buildSignupWaitingDm } from "@/lib/month-signup-copy";
 import { londonMonthStart } from "@/lib/squad-month-rules";
@@ -95,6 +96,35 @@ const P = {
 } as const;
 type Person = (typeof P)[keyof typeof P];
 const digits = (phone: string) => phone.replace(/^\+/, "");
+
+/**
+ * THE MONTHLY READER'S MEMBER REFS for the club (`monthly-reader.ts`):
+ * p1, p2 ... over its current members in the order they joined (the
+ * seeding order in `beforeAll`; "Gone Away" has left, so he has none).
+ * `expectReaderShown` checks every ref used against what the reader was
+ * actually shown, so a change in that order fails loudly here.
+ */
+const READER_ROSTER: Person[] = [P.rob, P.alex, P.bilal, P.chris, P.dan, P.eve, P.will, P.omar, P.off, P.ned];
+const refOf = (p: Person) => `p${READER_ROSTER.indexOf(p) + 1}`;
+
+/**
+ * A pasted list as the monthly reader reads it since #574 (it alone says
+ * who a line is): the old reading of the text, with each line that is a
+ * club member carrying his ref. A name in `members` is matched as written
+ * on the list ("Alex"); a line not in it is nobody (no ref).
+ */
+function readListWith(body: string, members: Record<string, Person>): Record<string, unknown> {
+  const answer = legacyReaderAnswer(body) as { lines: Array<{ name: string; member: string }> };
+  const missing = Object.keys(members).filter((n) => !answer.lines.some((l) => l.name === n));
+  if (missing.length > 0) throw new Error(`readListWith: no line named ${missing.join(", ")} in ${JSON.stringify(answer.lines.map((l) => l.name))}`);
+  return { ...answer, lines: answer.lines.map((l) => (members[l.name] ? { ...l, member: refOf(members[l.name]) } : l)) };
+}
+
+/** The reader's last call showed each of these members under the ref the stub answered with. */
+function expectReaderShown(members: Person[]): void {
+  const last = stubCalls(E2E.MONTHLY_READER_STUB_FILE).at(-1)?.user ?? "";
+  for (const p of members) expect(last, `the reader shows ${p.name} as ${refOf(p)}`).toContain(`  ${refOf(p)}: ${p.name}\n`);
+}
 
 const KEY = { "x-api-key": E2E.WHATSAPP_API_KEY };
 let seq = 0;
@@ -340,11 +370,12 @@ test("2. when it is due: the month's matches exist, the month is created ONCE, t
 
 test("3. door 1, a pasted list: the sender adds themselves; nobody else is added, and no player is created", async ({ request, db }) => {
   const usersBefore = await users(db);
-  const res = await say(
-    request,
-    P.dan,
-    [`List for ${MONTH_NAME}`, "", "1. Alex", "2. Bilal", "3. Chris", "4. Dan", "5. Bibs", "6. Will"].join("\n"),
-  );
+  const body = [`List for ${MONTH_NAME}`, "", "1. Alex", "2. Bilal", "3. Chris", "4. Dan", "5. Bibs", "6. Will"].join("\n");
+  // The reader names every club player on it; Bibs is nobody.
+  const named = { Alex: P.alex, Bilal: P.bilal, Chris: P.chris, Dan: P.dan, Will: P.will };
+  setMonthlyReaderStub({ bodies: { [body]: readListWith(body, named) } });
+  const res = await say(request, P.dan, body);
+  expectReaderShown(Object.values(named));
   expect(res).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list", react: "✅", reply: null });
   expect(await memberOf(db, P.dan)).toMatchObject({ kind: "regular", slot: 4, out: false, source: "paste", gamesCovered: KICKOFFS.length });
   // Will is a club player, but he did not paste it. Bibs is nobody.
@@ -359,7 +390,11 @@ test("3. door 1, a pasted list: the sender adds themselves; nobody else is added
 });
 
 test("4. every place taken: the next person waits, is told, and the organisers are told ONCE", async ({ request, db }) => {
-  const eve = await say(request, P.eve, [`List for ${MONTH_NAME}`, "1. Alex", "2. Bilal", "3. Chris", "4. Dan", "5. Eve"].join("\n"));
+  const evePaste = [`List for ${MONTH_NAME}`, "1. Alex", "2. Bilal", "3. Chris", "4. Dan", "5. Eve"].join("\n");
+  const named = { Alex: P.alex, Bilal: P.bilal, Chris: P.chris, Dan: P.dan, Eve: P.eve };
+  setMonthlyReaderStub({ bodies: { [evePaste]: readListWith(evePaste, named) } });
+  const eve = await say(request, P.eve, evePaste);
+  expectReaderShown(Object.values(named));
   expect(eve).toMatchObject({ handledBy: "fast-path", react: "✅" });
   expect(await memberOf(db, P.eve)).toMatchObject({ kind: "payg", slot: null, note: "waiting for a regular place", gamesCovered: 0 });
   expect((await dms(db, P.eve)).map((d) => d.text)).toEqual([buildSignupWaitingDm({ name: P.eve.name, monthDate: FIRST, max: 4, lang: "en" })]);
@@ -442,13 +477,18 @@ test("6. the list is re-posted when it has changed, once, and not after a paste 
   // A copy with Chris's own line blanked does NOT take him off the month:
   // it may be an old copy, or one somebody else edited.
   await ageListPosts(db);
-  const blanked = await say(request, P.chris, text.replace("3. Chris Bell", "3."));
+  const blankedText = text.replace("3. Chris Bell", "3.");
+  // The reader names every player on MatchTime's own list.
+  const onList = { "Alex Carter": P.alex, "Bilal Aydin": P.bilal, "Dan Price": P.dan, "Omar Khan": P.omar, "Eve Stone": P.eve, "Will Frost": P.will };
+  setMonthlyReaderStub({ bodies: { [blankedText]: readListWith(blankedText, onList) } });
+  const blanked = await say(request, P.chris, blankedText);
+  expectReaderShown(Object.values(onList));
   expect(blanked).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list", react: null });
   expect(await memberOf(db, P.chris)).toMatchObject({ kind: "regular", slot: 3, out: false });
   // He says so, and then pastes the list as it now stands: the group has seen it.
   expect(await say(request, P.chris, `OUT FOR ${MONTH_NAME.toUpperCase()}`)).toMatchObject({ intent: "month_signup", react: "✅" });
   expect(await memberOf(db, P.chris)).toMatchObject({ out: true });
-  const pasted = await say(request, P.chris, text.replace("3. Chris Bell", "3."));
+  const pasted = await say(request, P.chris, blankedText);
   expect(pasted).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list" });
   expect(listPosts(await poll(request, after(120)))).toEqual([]);
   expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE kind = 'signup-list-seen' AND key LIKE $1`, [`org-${ORG}:msu:list:%`])).toBe(1);
@@ -525,8 +565,10 @@ test("8. two days before the first game sign-up ends: the month runs, and until 
   expect(listPosts(out)).toEqual([]);
   const week = out.filter((i) => i.key.startsWith(`${games[0].id}:month-list:`));
   expect(week).toHaveLength(1);
-  // The squad by first name under each regular's own number (slot 3 is free).
-  expect(week[0].text!.split("\n").slice(2, 6)).toEqual([`*${MONTH_NAME} squad:*`, "1. Alex", "2. Bilal", "4. Dan"]);
+  // The squad by first name, counted 1, 2, 3 with no gap where slot 3 is
+  // free (#560, Kemal 2026-11-07). Each regular keeps his own number on
+  // the game itself: the positions below.
+  expect(week[0].text!.split("\n").slice(2, 7)).toEqual([`*${MONTH_NAME} squad:*`, "1. Alex", "2. Bilal", "3. Dan", ""]);
 
   const squad = () =>
     db.all<{ userId: string; status: string; position: number; paymentMethod: string | null }>(
@@ -558,7 +600,11 @@ test("8. two days before the first game sign-up ends: the month runs, and until 
   // A NEWCOMER pastes "List for <Month>" with his name on it. He joins the
   // MONTH as a regular (and so goes on game one as one), not game one as
   // a pay-as-you-go one-off.
-  const ned = await say(request, P.ned, [`List for ${MONTH_NAME}`, "1. Alex Carter", "2. Bilal Aydin", "3. Will Frost", "4. Ned"].join("\n"));
+  const nedPaste = [`List for ${MONTH_NAME}`, "1. Alex Carter", "2. Bilal Aydin", "3. Will Frost", "4. Ned"].join("\n");
+  const nedNamed = { "Alex Carter": P.alex, "Bilal Aydin": P.bilal, "Will Frost": P.will, Ned: P.ned };
+  setMonthlyReaderStub({ bodies: { [nedPaste]: readListWith(nedPaste, nedNamed) } });
+  const ned = await say(request, P.ned, nedPaste);
+  expectReaderShown(Object.values(nedNamed));
   expect(ned).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list", react: "✅" });
   expect(await memberOf(db, P.ned)).toMatchObject({ kind: "regular", slot: 4, out: false, source: "paste", gamesCovered: KICKOFFS.length });
   expect((await squad()).find((r) => r.userId === P.ned.id)).toEqual({ userId: P.ned.id, status: "CONFIRMED", position: 4, paymentMethod: "monthly" });

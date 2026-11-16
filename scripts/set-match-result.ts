@@ -20,23 +20,36 @@
  *
  *   --score  "<team> <n> <team> <n>", the club's own team names (or red,
  *            yellow, kırmızı, sarı), in either order.
- *   --mom    the player's name as the organisers said it; resolved against
- *            the match's players (CONFIRMED and the team sheet) with the
- *            pipeline's `resolvePerson`. Ambiguous or unknown: refused.
+ *   --mom    the player's name as the organisers said it; placed among the
+ *            match's players (CONFIRMED and the team sheet) exactly as a
+ *            pick reported in HQ is (`hqMom`, admin-group-score.ts):
+ *            who-is-who is shown the whole club with the players marked,
+ *            and `resolveMomRef` reads its answer. Ambiguous, not one of
+ *            the players, or a name who-is-who could not say (no answer,
+ *            the call failed): refused.
  *   --by     the organiser recording it (an OWNER or ADMIN of the club, by
- *            name); default the club's first owner.
+ *            name, looked up by who-is-who in the same call); default the
+ *            club's first owner.
  *   Either --score or --mom may be left out to record only the other.
  *
  * Refuses, and writes nothing, when the match is not found, has not been
  * played, a team or the name cannot be placed, or --by is not an organiser.
+ * Every check runs before the first write.
+ *
+ * Who-is-who is one model call (Haiku) when --mom or --by is given. In the
+ * stubbed e2e suite it is the suite's stand-in (`personPickerFor`).
  */
-import { db } from "../src/lib/db.ts";
-import { resolveTeamLabels } from "../src/lib/team-labels.ts";
-import { resolveTeamRef } from "../src/lib/pipeline/score-teams.ts";
-import { resolvePerson } from "../src/lib/pipeline/identity.ts";
-import { applyScoreWrites } from "../src/lib/score-engine.ts";
-import { buildScoreApplyDeps } from "../src/lib/owner-deps.ts";
-import { currentMom, matchPlayers, resolveMomRef, setMatchMom } from "../src/lib/mom-pick.ts";
+import { db } from "../src/lib/db";
+import { resolveTeamLabels } from "../src/lib/team-labels";
+import { resolveTeamRef } from "../src/lib/pipeline/score-teams";
+import { resolvePerson } from "../src/lib/pipeline/identity";
+import { identifyRefs, personPickerFor } from "../src/lib/pipeline/identify-batch";
+import { loadClubWhoRoster } from "../src/lib/club-who-roster";
+import { applyScoreWrites } from "../src/lib/score-engine";
+import { buildScoreApplyDeps } from "../src/lib/owner-deps";
+import { currentMom, matchPlayers, resolveMomRef, setMatchMom } from "../src/lib/mom-pick";
+import type { Member } from "../src/lib/pipeline/types";
+import type { PersonPicks } from "../src/lib/pipeline/who-is-who";
 
 function arg(name: string): string | null {
   const i = process.argv.indexOf(`--${name}`);
@@ -98,23 +111,50 @@ async function main() {
   const score = scoreText ? parseScoreArg(scoreText, labels) : null;
   if (scoreText && !score) fail(`cannot read "${scoreText}" as "<team> <n> <team> <n>" with ${labels[0]} and ${labels[1]}`);
 
-  let mom: { userId: string; name: string } | null = null;
-  if (momText) {
-    const r = resolveMomRef(momText, await matchPlayers(match.id));
-    if (r.kind === "ambiguous") fail(`"${momText}" could be ${r.names.join(" or ")}`);
-    if (r.kind === "not-in-match") fail(`"${momText}" is not one of the match's players`);
-    mom = { userId: r.userId, name: r.name };
-  }
-
-  // Who records the pick: an owner or admin of the club.
+  // Who may record the pick: an owner or admin of the club.
   const organisers = await db.membership.findMany({
     where: { orgId: match.activity.orgId, role: { in: ["OWNER", "ADMIN"] }, leftAt: null },
     select: { userId: true, role: true, user: { select: { name: true } } },
     orderBy: [{ role: "asc" }, { id: "asc" }],
   });
-  const roster = organisers.map((o) => ({ userId: o.userId, name: o.user?.name ?? "", isAdmin: true, hasPhone: false }));
+  const roster: Member[] = organisers.map((o) => ({ userId: o.userId, name: o.user?.name ?? "", isAdmin: true, hasPhone: false }));
   const byText = arg("by");
-  const byPick = byText ? resolvePerson(byText, roster) : null;
+
+  // WHO THE NAMES ARE, as hqMom asks it: who-is-who is shown the WHOLE
+  // club with the match's players marked, so a namesake who did not play
+  // makes the name ambiguous instead of the one player of that name being
+  // taken. --by is asked in the same call; organisers are marked too.
+  const players = momText ? await matchPlayers(match.id) : [];
+  let people: PersonPicks = new Map();
+  let clubNameOf = new Map<string, string>();
+  if (momText || byText) {
+    const organiserIds = new Set(roster.map((o) => o.userId));
+    const club = (await loadClubWhoRoster(match.activity.orgId, players, "played this game")).map((m) =>
+      organiserIds.has(m.userId) ? { ...m, note: m.note ? `${m.note}; an organiser` : "an organiser" } : m,
+    );
+    const said = [momText ? `Man of the Match: ${momText}` : null, byText ? `Recorded by: ${byText}` : null].filter(Boolean).join("\n");
+    ({ people } = await identifyRefs({
+      picker: personPickerFor(),
+      refs: [momText, byText].filter((r): r is string => !!r),
+      body: said,
+      author: null,
+      senderUserId: null,
+      roster: club,
+      where: "a match result the club's organisers gave, recorded by hand",
+    }));
+    clubNameOf = new Map(club.map((m) => [m.userId, m.name || (m.aliases ?? [])[0] || "?"]));
+  }
+
+  let mom: { userId: string; name: string } | null = null;
+  if (momText) {
+    const r = resolveMomRef(momText, players, people, clubNameOf);
+    if (r.kind === "ambiguous") fail(`"${momText}" could be ${r.names.join(" or ")}`);
+    if (r.kind === "not-in-match") fail(`"${momText}" is not one of the match's players`);
+    if (r.kind === "unsure") fail(`MatchTime could not say who "${momText}" is (who-is-who was not sure, or gave no answer)`);
+    mom = { userId: r.userId, name: r.name };
+  }
+
+  const byPick = byText ? resolvePerson(byText, roster, people) : null;
   if (byText && byPick?.kind !== "resolved") fail(`--by "${byText}" is not one organiser of the club`);
   // Owners sort first (the same order as `onlyOrganisersLine`).
   const by = byPick?.kind === "resolved" ? byPick.member : roster[0];

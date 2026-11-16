@@ -25,7 +25,7 @@ import { E2E } from "../helpers/env";
 import { londonAt } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { buildPasteGuestsAddedDm } from "@/lib/monthly-week-copy";
-import { firstKickoffOf, nextMonthStart } from "@/lib/month-signup-rules";
+import { firstKickoffOf, monthKickoffs, nextMonthStart } from "@/lib/month-signup-rules";
 
 test.describe.configure({ mode: "serial" });
 
@@ -53,6 +53,20 @@ const P = {
 } as const;
 type Person = (typeof P)[keyof typeof P];
 const digits = (phone: string) => phone.replace(/^\+/, "");
+
+/**
+ * THE READER'S MEMBER REFS for the club (`monthly-reader.ts`): p1, p2 ...
+ * over its current members in the order they joined (the seeding order in
+ * `beforeAll`). Since #574 a list line is a member only when the reader
+ * names his ref. `expectReaderShown` checks a ref against what the reader
+ * was actually shown.
+ */
+const READER_ROSTER: Person[] = [P.rob, P.alex, P.bilal, P.chris, P.lucas, P.will, P.tom];
+const refOf = (p: Person) => `p${READER_ROSTER.indexOf(p) + 1}`;
+function expectReaderShown(members: Person[]): void {
+  const last = stubCalls(E2E.MONTHLY_READER_STUB_FILE).at(-1)?.user ?? "";
+  for (const p of members) expect(last, `the reader shows ${p.name} as ${refOf(p)}`).toContain(`  ${refOf(p)}: ${p.name}\n`);
+}
 let seq = 0;
 
 async function say(request: APIRequestContext, who: Person, body: string): Promise<{ handledBy: string; intent: string | null; react: string | null }> {
@@ -213,13 +227,19 @@ test("B1: the same note written by somebody else (not an organiser) changes noth
 
 test("B3: somebody not on the running month adds himself to the MONTH's list: he is asked by DM, and joins on his yes", async ({ request, db }) => {
   const body = LIST(["4. Will"]);
+  // The reader names each line's member (since #574 nothing else places a line).
+  const member = (p: Person) => ({ member: refOf(p) });
   setMonthlyReaderStub({
     bodies: {
-      [body]: listAnswer([line(1, "Alex"), line(2, "Bilal"), line(3, "Chris"), line(4, "Will")], { listOf: "month" }),
+      [body]: listAnswer(
+        [line(1, "Alex", member(P.alex)), line(2, "Bilal", member(P.bilal)), line(3, "Chris", member(P.chris)), line(4, "Will", member(P.will))],
+        { listOf: "month" },
+      ),
       "yes please": { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER, signupFor: "sender" },
     },
   });
   const res = await say(request, P.will, body);
+  expectReaderShown([P.alex, P.bilal, P.chris, P.will]);
   expect(res).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list" });
   // One reading of a paste never joins a month under way (review of #465).
   expect(await monthRow(db, P.will)).toBeNull();
@@ -231,11 +251,19 @@ test("B3: somebody not on the running month adds himself to the MONTH's list: he
 });
 
 test("B4: 'in for <month> except the last week' joins the month with the games committed", async ({ request, db }) => {
+  // Tom joins a month under way, so he covers the games still to play
+  // (the calendar's, `loadLiveMonths`), and "except the last week" is one
+  // fewer: what the reader answers (its prompt: "the games committed when
+  // fewer than all"). A fixed 2 was all of them once only two were left
+  // (Mon 16 Nov 2026), which is recorded as no commitment (null), rightly.
+  const gamesLeft = monthKickoffs(MONTH_START, WEEKDAY, "20:00").filter((k) => k.getTime() > Date.now()).length;
+  test.skip(gamesLeft < 2, `one game left in ${MONTH_NAME}: there is no "all but the last" to commit to`);
+  const games = gamesLeft - 1;
   const body = `I'm in for ${MONTH_NAME} except the last week`;
-  setMonthlyReaderStub({ bodies: { [body]: { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER, signupFor: "sender", games: 2 } } });
+  setMonthlyReaderStub({ bodies: { [body]: { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER, signupFor: "sender", games } } });
   const res = await say(request, P.tom, body);
   expect(res).toMatchObject({ handledBy: "fast-path", intent: "month_signup", react: "✅" });
-  expect(await monthRow(db, P.tom)).toMatchObject({ kind: "regular", gamesCommitted: 2 });
+  expect(await monthRow(db, P.tom)).toMatchObject({ kind: "regular", gamesCommitted: games });
 });
 
 test("an organiser's list for the COMING month in the players' group: the draft goes to him by DM (with '4 only'), nothing in the group", async ({ request, db }) => {
