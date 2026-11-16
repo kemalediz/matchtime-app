@@ -35,7 +35,8 @@
  *            the call failed): refused.
  *   --by     the organiser recording it (an OWNER or ADMIN of the club, by
  *            name, looked up by who-is-who in the same call); default the
- *            club's first owner.
+ *            first owner, or the first admin when the club has no owner.
+ *   --apply  write; it takes no value. Without it, a dry run.
  *   Either --score or --mom may be left out to record only the other; --by
  *   needs --mom. Arguments are read strictly: an unknown or repeated flag,
  *   --flag=value, or a flag with a missing or blank value is refused.
@@ -81,18 +82,13 @@ import {
   requireDevApiKey,
 } from "../e2e/helpers/dev-api-key";
 import { E2E_DB_URL } from "../e2e/helpers/env";
+import { readArgs, stubsOnRealData, whoIsWhoClientOptions, whoIsWhoTimeoutMs } from "./set-match-result-rules";
 
 const HARNESS = "scripts/set-match-result.ts (who-is-who, for --mom and --by)";
 /** The documented way to run this script, for the re-run it prints. */
 const INVOCATION = "node --env-file=.env ./node_modules/.bin/tsx scripts/set-match-result.ts";
-/**
- * Who-is-who's whole budget: an API that takes the call and never answers
- * would otherwise hold the script for the SDK's 10 minutes per attempt,
- * times its retries, times who-is-who's own second attempt, saying nothing.
- * `MT_TEST_WHO_IS_WHO_TIMEOUT_MS` shortens it for the e2e test (an MT_TEST_
- * variable: only ever honoured against the harness's database, below).
- */
-const WHO_TIMEOUT_MS = Number(process.env.MT_TEST_WHO_IS_WHO_TIMEOUT_MS) > 0 ? Number(process.env.MT_TEST_WHO_IS_WHO_TIMEOUT_MS) : 60_000;
+/** Who-is-who's whole budget (`set-match-result-rules.ts`). */
+const WHO_TIMEOUT_MS = whoIsWhoTimeoutMs(process.env);
 
 /** One shell word, whatever it holds: single quotes, a ' written as '\''. */
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -103,59 +99,16 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-interface Args {
-  match: string | null;
-  score: string | null;
-  mom: string | null;
-  by: string | null;
-  apply: boolean;
-}
-const VALUED = ["match", "score", "mom", "by"] as const;
-
 /**
- * THE ARGUMENTS, STRICTLY (2026-11-16, review of #609). A forgiving reader
- * turned `--mom ""`, `--mom=Pat` or a forgotten value into "no --mom", and
- * the score was written with no Man of the Match and no word said; `--by ""`
- * became the first owner. Every flag is known, given once, and a valued
- * flag has a non-blank value after a space. Anything else is refused,
- * before the database is read.
- */
-function readArgs(argv: string[]): Args {
-  const out: Args = { match: null, score: null, mom: null, by: null, apply: false };
-  const seen = new Set<string>();
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i];
-    if (!token.startsWith("--")) fail(`unexpected "${token}": every value goes after its flag (--mom <name>)`);
-    const name = token.slice(2);
-    const base = name.split("=")[0];
-    const known = base === "apply" || (VALUED as readonly string[]).includes(base);
-    if (!known) fail(`unknown flag "${token}" (known: --match, --score, --mom, --by, --apply)`);
-    if (name !== base) fail(`"${token}": write the value after a space (--${base} <value>)`);
-    if (seen.has(name)) fail(`--${name} is given twice`);
-    seen.add(name);
-    if (name === "apply") {
-      out.apply = true;
-      continue;
-    }
-    const value = argv[i + 1];
-    if (value === undefined || value.startsWith("--") || value.trim() === "") fail(`--${name} needs a value`);
-    out[name as (typeof VALUED)[number]] = value;
-    i++;
-  }
-  return out;
-}
-
-/**
- * The e2e suite's stand-ins (MT_TEST_* variables) answer for the model and
- * other services. Left in an operator's shell they would make this script
- * read real data with them: refused unless the database is the harness's
- * own embedded Postgres for this checkout.
+ * The e2e suite's stand-ins left in an operator's shell would make this
+ * script use them on real data: refused unless the database is the
+ * harness's own embedded Postgres for this checkout (`stubsOnRealData`).
+ * The readers are asked too, not only the variable names.
  */
 function refuseTestSeamsOnRealData(): void {
-  const set = Object.keys(process.env)
-    .filter((k) => k.startsWith("MT_TEST_") && (process.env[k] ?? "").trim() !== "")
-    .sort();
-  if (set.length > 0 && process.env.DATABASE_URL !== E2E_DB_URL) {
+  const readersOn = extractorStubFromEnv() !== null || process.env[PERSON_PICKER_STUB_ENV] === "1";
+  const set = stubsOnRealData({ env: process.env, readersOn, harnessDbUrl: E2E_DB_URL });
+  if (set.length > 0) {
     fail(`test stub variables are set (${set.join(", ")}) and DATABASE_URL is not the e2e harness's database: the script would use the test stand-ins on real data. Unset them`);
   }
 }
@@ -190,7 +143,7 @@ function whoIsWhoPicker(): { picker: PersonPicker; model: boolean } {
   const apiKey = requireDevApiKey(HARNESS);
   assertProductionKeyForgotten(HARNESS);
   // The client's own limits sit inside the overall budget (`WHO_TIMEOUT_MS`).
-  const client = new Anthropic({ apiKey, timeout: WHO_TIMEOUT_MS, maxRetries: 1 });
+  const client = new Anthropic(whoIsWhoClientOptions(apiKey, WHO_TIMEOUT_MS));
   return { picker: modelPersonPicker(anthropicModel({ apiKey, client })), model: true };
 }
 
@@ -201,8 +154,9 @@ async function main() {
   // `whoIsWhoPicker` refuses when this did not happen.)
   if (process.env.MT_TEST_KEEP_PRODUCTION_KEY !== "1") forgetProductionApiKey();
   refuseTestSeamsOnRealData();
-  const args = readArgs(process.argv.slice(2));
-  const { match: matchId, score: scoreText, mom: momText, by: byText, apply: APPLY } = args;
+  const read = readArgs(process.argv.slice(2));
+  if (!read.ok) fail(read.error);
+  const { match: matchId, score: scoreText, mom: momText, by: byText, apply: APPLY } = read.args;
   if (!matchId || (!scoreText && !momText)) fail('usage: --match <id> --score "<team> <n> <team> <n>" --mom <name> [--by <organiser>] [--apply]');
   // --by only names who records the pick: alone it would change nothing
   // and still ask the model.
@@ -283,21 +237,26 @@ async function main() {
     const said = [momText ? `Man of the Match: ${momText}` : null, byText ? `Recorded by: ${byText}` : null].filter(Boolean).join("\n");
     const TIMED_OUT = Symbol("timed out");
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const who = await Promise.race([
-      identifyRefs({
-        picker: picker.picker,
-        refs,
-        body: said,
-        author: null,
-        senderUserId: null,
-        roster: club,
-        where: "a match result the club's organisers gave, recorded by hand",
-      }),
-      new Promise<typeof TIMED_OUT>((resolve) => {
-        timer = setTimeout(() => resolve(TIMED_OUT), WHO_TIMEOUT_MS);
-      }),
-    ]);
-    clearTimeout(timer);
+    let who: Awaited<ReturnType<typeof identifyRefs>> | typeof TIMED_OUT;
+    try {
+      who = await Promise.race([
+        identifyRefs({
+          picker: picker.picker,
+          refs,
+          body: said,
+          author: null,
+          senderUserId: null,
+          roster: club,
+          where: "a match result the club's organisers gave, recorded by hand",
+        }),
+        new Promise<typeof TIMED_OUT>((resolve) => {
+          timer = setTimeout(() => resolve(TIMED_OUT), WHO_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      // Cleared however the race ends, a throw included.
+      clearTimeout(timer);
+    }
     if (who === TIMED_OUT) {
       console.log(`  who-is-who: no answer in ${WHO_TIMEOUT_MS / 1000}s; what a request still open was billed is not known here`);
       fail(`who-is-who could not answer for ${quoted(refs)} (the call failed (timed out after ${WHO_TIMEOUT_MS / 1000}s))`);

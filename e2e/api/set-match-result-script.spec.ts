@@ -23,7 +23,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { test, expect, resetDb } from "../fixtures";
 import { ACTIVITY_ID, ORG_ID, U } from "../helpers/constants";
-import { REPO_ROOT } from "../helpers/env";
+import { E2E_DB_URL, REPO_ROOT } from "../helpers/env";
 import type { TestDb } from "../helpers/test-db";
 import { costOf } from "@/lib/pipeline/llm";
 import { WHO_IS_WHO_CALL } from "@/lib/pipeline/who-is-who";
@@ -213,6 +213,7 @@ test("arguments are read strictly, before the database: a flag with no value, an
     [[...score, "--mom", "Pat", "--by", "", "--apply"], "--by needs a value"],
     [[...score, "--mom", "Pat", "--mom", "Omar", "--apply"], "--mom is given twice"],
     [[...score, "--mom", "Pat", "--apply", "--apply"], "--apply is given twice"],
+    [[...score, "--mom", "Pat", "--apply=true"], '"--apply=true": --apply takes no value (write --apply)'],
     [[...score, "--moom", "Pat", "--apply"], `unknown flag "--moom"`],
     [[...score, "Pat", "--apply"], `unexpected "Pat"`],
     [[...score, "--by", "Alex", "--apply"], "--by says who records the Man of the Match: it needs --mom"],
@@ -247,6 +248,33 @@ test("a test stub variable outside the harness's own database is refused before 
     expect(r.stderr).toMatch(/MT_TEST_EXTRACTOR_STUB_FILE[^)]*\) and DATABASE_URL is not the e2e harness's database/);
     expect(r.stderr).not.toMatch(/MT_TEST_PERSON_PICKER_STUB[,)]/);
     expect(r.out).not.toContain("secret");
+  }
+  await nothingWritten(db);
+});
+
+/** Every MT_TEST_* variable of this worker, blanked to exactly "" (not set). */
+const allStubsOff = (): Record<string, string> =>
+  Object.fromEntries(Object.keys(process.env).filter((k) => k.startsWith("MT_TEST_")).map((k) => [k, ""]));
+
+test("a stub variable holding only whitespace still counts as set: refused against another database, nothing written", async ({ db }) => {
+  test.setTimeout(120_000);
+  // Only this one, and only a space: the extractor stub reads " " as on.
+  const r = await run(["--score", "Yellow 7 Red 4", "--mom", "Pat", "--apply"], {
+    ...allStubsOff(),
+    MT_TEST_EXTRACTOR_STUB_FILE: " ",
+    DATABASE_URL: "postgresql://ops:secret@db.example.invalid:5432/matchtime",
+  });
+  refusedBeforeDb(r, "test stub variables are set (MT_TEST_EXTRACTOR_STUB_FILE) and DATABASE_URL is not the e2e harness's database");
+  await nothingWritten(db);
+});
+
+test("the harness database is matched EXACTLY: a longer or a shorter URL is not it", async ({ db }) => {
+  test.setTimeout(120_000);
+  // (Either, connected to, is the harness's server with a database that does not exist.)
+  for (const url of [`${E2E_DB_URL}_other`, E2E_DB_URL.slice(0, -1)]) {
+    const r = await run(["--score", "Yellow 7 Red 4", "--mom", "Pat", "--apply"], { DATABASE_URL: url });
+    refusedBeforeDb(r, "test stub variables are set (");
+    expect(r.stderr, url).toContain(") and DATABASE_URL is not the e2e harness's database");
   }
   await nothingWritten(db);
 });

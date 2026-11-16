@@ -22,7 +22,7 @@
       "@/*": ["./src/*"]
     }
   },
-  "files": ["scripts/set-match-result.ts"],
+  "files": ["scripts/set-match-result.ts", "scripts/__tests__/set-match-result-rules.test.ts"],
   "include": [
     "next-env.d.ts",
     "**/*.ts",
