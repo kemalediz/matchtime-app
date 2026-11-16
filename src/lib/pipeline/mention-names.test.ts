@@ -41,7 +41,7 @@
  * of a fabricated one.
  */
 import { describe, it, expect } from "vitest";
-import { nameMentions, resolveMentionNames } from "./mention-names";
+import { nameMentions, namesForNamelessMembers, resolveMentionNames } from "./mention-names";
 import type { PersonPick, PersonPicker, PersonPicks } from "./who-is-who";
 
 const DAVID_PUSHNAME = "割::::.̸̢̤̋̃̓̉͗̏̾̃̌̚͘̕.̵͆͂";
@@ -369,5 +369,78 @@ describe("resolveMentionNames: a LID mention named by phone", () => {
       knownLids: [{ lid: "46179639369730@lid", userId: "u-stranger" }],
     });
     expect(out.body).toBe("@46179639369730 is IN");
+  });
+});
+
+// ── A MEMBER WHO JOINED MOMENTS AGO (Vets, 16 Nov 2026) ─────────────────
+//
+// 18:05 UTC a player was added to the group: `group-join` created his User
+// row with his phone and NO name (the Pi knew none). 18:06:48 the
+// organiser posted "@Match Time ... @128539798032620 is IN"; the Pi sent
+// that LID WITH his phone and his WhatsApp name (the MessageMentions row
+// proves it). His own "In" was in the SAME batch. The mention roster is
+// built from members with a name, and his name was only filled later in
+// the request, from his own post (resolve-sender, 18:06:52), so the phone
+// matched nobody on the roster, the token stayed raw and the group was
+// asked "who is it?". `namesForNamelessMembers` names such a member from
+// the WhatsApp name the batch itself carried, by the rule a first post
+// already uses (`usableWhatsAppName`).
+describe("namesForNamelessMembers: a nameless member the batch can name", () => {
+  const NEWBIE = { userId: "u-new", phone: "+447700900555" };
+  const NAMED = [{ userId: "u-org", name: "Olly", phone: "+447700900001" }];
+  const LID = "128539798032620@lid";
+  const organiserMsg = {
+    authorPhone: "447700900001",
+    authorName: "Olly",
+    body: "@Match Time @128539798032620 is IN",
+    mentions: [LID],
+    mentionNames: [{ jid: LID, name: "Nico", phone: "447700900555" }],
+  };
+
+  it("RED on main: the roster without nameless members leaves the mention raw, phone and all", () => {
+    const out = resolveMentionNames({ roster: NAMED, ...organiserMsg });
+    expect(out.body).toBe("@Match Time @128539798032620 is IN");
+  });
+
+  it("names him from his OWN post in the same batch, and the mention then resolves by phone", () => {
+    const names = namesForNamelessMembers({
+      nameless: [NEWBIE],
+      messages: [organiserMsg, { authorPhone: "447700900555", authorName: "Nico W", body: "In" }],
+    });
+    expect(names.get("u-new")).toBe("Nico W");
+    const out = resolveMentionNames({ roster: [...NAMED, { ...NEWBIE, name: names.get("u-new")! }], ...organiserMsg });
+    expect(out.body).toBe("@Match Time @Nico W is IN");
+    expect(out.outcomes[0].via).toBe("phone");
+  });
+
+  it("names him from the mention's WhatsApp name when he has not posted", () => {
+    const names = namesForNamelessMembers({ nameless: [NEWBIE], messages: [organiserMsg] });
+    expect(names.get("u-new")).toBe("Nico");
+  });
+
+  it("a phone mention (@c.us) carries its phone in the jid", () => {
+    const names = namesForNamelessMembers({
+      nameless: [NEWBIE],
+      messages: [{ body: "@447700900555 in", mentions: ["447700900555@c.us"], mentionNames: [{ jid: "447700900555@c.us", name: "Nico" }] }],
+    });
+    expect(names.get("u-new")).toBe("Nico");
+  });
+
+  it("never a number, the bot, or a name that is too short", () => {
+    for (const bad of ["447700900555", "Match Time", "N", "  "]) {
+      const names = namesForNamelessMembers({
+        nameless: [NEWBIE],
+        messages: [{ body: "@1 in", mentions: [LID], mentionNames: [{ jid: LID, name: bad, phone: "447700900555" }] }],
+      });
+      expect(names.size, bad).toBe(0);
+    }
+  });
+
+  it("nobody else's name: a different phone, or a member with no phone, gets nothing", () => {
+    const names = namesForNamelessMembers({
+      nameless: [{ userId: "u-other", phone: "+447700900999" }, { userId: "u-nophone", phone: null }],
+      messages: [organiserMsg, { authorPhone: "447700900555", authorName: "Nico", body: "In" }],
+    });
+    expect(names.size).toBe(0);
   });
 });

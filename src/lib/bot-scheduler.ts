@@ -128,6 +128,7 @@ import {
   type WeekStatus,
 } from "./monthly-week-rules";
 import { buildMonthlyDailyPost, buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "./monthly-week-copy";
+import { matchFormatTitle } from "./match-format-title";
 import { decideDailyUpdate, type DailySquad, type DailyUpdate } from "./daily-update-rules";
 import { londonMonthStart } from "./squad-month-rules";
 import {
@@ -927,7 +928,7 @@ export async function computeDuePosts(
         matchId: row.match.id,
         text: buildTentativeFollowupDm({
           playerName: row.user.name,
-          activityName: row.match.activity.name,
+          activityName: matchFormatTitle(row.match.activity.name, row.match.maxPlayers),
           whenLabel: dayTimeLabel(row.match.activity.org.language, row.match.date),
           lang: row.match.activity.org.language,
         }),
@@ -1388,7 +1389,11 @@ async function computeForMatch(
     return null;
   }
   const matchId = m.id;
-  const activity = m.activity;
+  // Every post below names this game by the size it is played at
+  // (`match-format-title.ts`, 2026-11-16): a 7-a-side activity whose game
+  // was switched to 8 a side is "Football 8-a-side" in its list, chases
+  // and reminders. A club's own name with no size in it is unchanged.
+  const activity = { ...m.activity, name: matchFormatTitle(m.activity.name, m.maxPlayers) };
   const sport = activity.sport;
   /**
    * A club on "monthly" whose month MatchTime does not hold yet (no
