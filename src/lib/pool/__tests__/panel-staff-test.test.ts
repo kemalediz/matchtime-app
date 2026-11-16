@@ -10,15 +10,15 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const dbMock = vi.hoisted(() => ({ db: { poolAsk: { findFirst: vi.fn() }, attendance: { count: vi.fn() } } }));
+const dbMock = vi.hoisted(() => ({ db: { poolAsk: { findFirst: vi.fn() } } }));
 vi.mock("../../db", () => dbMock);
 vi.mock("../../club-partnership", () => ({ loadPartnerAskSettings: vi.fn(async () => null) }));
 const cand = vi.hoisted(() => ({ findPoolCandidates: vi.fn() }));
 vi.mock("../candidates", async (orig) => ({ ...(await orig<typeof import("../candidates")>()), findPoolCandidates: cand.findPoolCandidates }));
-const fill = vi.hoisted(() => ({ poolAskFill: vi.fn() }));
+// The shown fill is the one shared helper (`loadRoundFillShown`, through
+// `poolAskShownFill`); its own rules are partner-ask-round-shown.test.ts.
+const fill = vi.hoisted(() => ({ poolAskShownFill: vi.fn() }));
 vi.mock("../round", () => fill);
-const share = vi.hoisted(() => ({ poolRoundStaffTestIds: vi.fn() }));
-vi.mock("../round-share", () => share);
 
 import { loadPoolPanel, poolNoticeBand } from "../panel";
 
@@ -33,9 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   cand.findPoolCandidates.mockResolvedValue(found(["kemal", "ali"], ["kemal"]));
   dbMock.db.poolAsk.findFirst.mockResolvedValue(null);
-  dbMock.db.attendance.count.mockResolvedValue(0);
-  fill.poolAskFill.mockResolvedValue({ wanted: 2, placed: 0 });
-  share.poolRoundStaffTestIds.mockResolvedValue([]);
+  fill.poolAskShownFill.mockResolvedValue({ wanted: 2, placed: 0 });
 });
 
 describe("the band: asking decided by everyone eligible, the shown band by real players", () => {
@@ -89,19 +87,10 @@ describe("asked, declined and placed: staff tests left out, by the offer's own f
     expect(select).toMatchObject({ staffTest: true });
   });
 
-  it("placed leaves out a staff test with a confirmed place, so it never reads 'asked 0, placed 1'", async () => {
-    fill.poolAskFill.mockResolvedValue({ wanted: 2, placed: 1 });
-    share.poolRoundStaffTestIds.mockResolvedValue(["kemal"]);
-    dbMock.db.attendance.count.mockResolvedValue(1);
+  it("placed is the round's SHOWN fill: a staff test with a place is not found", async () => {
+    fill.poolAskShownFill.mockResolvedValue({ wanted: 2, placed: 0 });
     const panel = await loadPoolPanel("m1", "org-1");
     expect(panel?.ask).toMatchObject({ placed: 0, wanted: 2 });
-    expect(share.poolRoundStaffTestIds).toHaveBeenCalledWith("m1", "ask-1");
-    expect(dbMock.db.attendance.count).toHaveBeenCalledWith({ where: { matchId: "m1", status: "CONFIRMED", userId: { in: ["kemal"] } } });
-  });
-
-  it("no staff test in the round: placed as the round's own fill, no extra read", async () => {
-    fill.poolAskFill.mockResolvedValue({ wanted: 2, placed: 1 });
-    expect((await loadPoolPanel("m1", "org-1"))?.ask).toMatchObject({ placed: 1 });
-    expect(dbMock.db.attendance.count).not.toHaveBeenCalled();
+    expect(fill.poolAskShownFill).toHaveBeenCalledWith({ id: "ask-1", roundId: null, matchId: "m1", places: 2 });
   });
 });

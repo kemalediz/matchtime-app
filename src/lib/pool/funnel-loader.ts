@@ -44,7 +44,7 @@ async function loadProfiles(): Promise<FunnelProfileFact[]> {
   const [offers, places] = userIds.length
     ? await Promise.all([
         db.poolOffer.groupBy({ by: ["userId"], where: { userId: { in: userIds }, sentAt: { not: null } }, _count: { _all: true } }),
-        db.guestPlace.findMany({ where: { userId: { in: userIds }, source: "pool" }, select: { userId: true, orgId: true, matchId: true, result: true, settledAt: true } }),
+        db.guestPlace.findMany({ where: { userId: { in: userIds }, source: "pool", staffTest: false }, select: { userId: true, orgId: true, matchId: true, result: true, settledAt: true } }),
       ])
     : [[], []];
 
@@ -95,23 +95,25 @@ async function loadProfiles(): Promise<FunnelProfileFact[]> {
   }));
 }
 
-/** The offer jobs that carried offers to MatchTime staff tests (rounds 3
- *  and 4 of #607), read off the offer's own flag (`PoolOffer.staffTest`), so
- *  an erased staff-test profile never comes back into the offer health. */
-async function staffTestOfferJobIds(): Promise<string[]> {
-  const offers = await db.poolOffer.findMany({ where: { staffTest: true, platformJobId: { not: null } }, select: { platformJobId: true } });
-  return offers.map((o) => o.platformJobId!);
+/** The offers made to MatchTime staff tests (rounds 3 to 5 of #607), read
+ *  off the offer's own flag (`PoolOffer.staffTest`), so an erased staff-test
+ *  profile never comes back into the offer health. Their jobs are found by
+ *  the job's own `refId` (the offer's id): an offer reset for a new ask
+ *  loses its `platformJobId`, but every job it ever had still names it. */
+async function staffTestOfferIds(): Promise<string[]> {
+  const offers = await db.poolOffer.findMany({ where: { staffTest: true }, select: { id: true } });
+  return offers.map((o) => o.id);
 }
 
 async function loadOfferHealthFacts(q: FunnelQuery): Promise<OfferHealthFacts> {
   const { start, end } = rangeInstants(q);
-  const staffJobIds = await staffTestOfferJobIds();
+  const staffOfferIds = await staffTestOfferIds();
   const [offerJobs, delivered, paused] = await Promise.all([
     db.platformJob.findMany({
       where: {
         purpose: POOL_OFFER_PURPOSE,
         OR: [{ createdAt: { gte: start, lt: end } }, { failedAt: { gte: start, lt: end } }],
-        ...(staffJobIds.length ? { id: { notIn: staffJobIds } } : {}),
+        ...(staffOfferIds.length ? { NOT: { refId: { in: staffOfferIds } } } : {}),
       },
       select: { createdAt: true, sendAfter: true, failReason: true, failedAt: true },
     }),

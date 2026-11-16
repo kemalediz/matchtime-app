@@ -43,7 +43,7 @@ import { loadPartnerAskSettings } from "./club-partnership";
 import { retirePastGuests, standDownVolunteers, tellGuestsMoved } from "./partner-guest";
 import { matchtimeWaNumber } from "./club-connect";
 import { askDmLink, askDmPrefill, askRefCode } from "./partner-ask-ref";
-import { loadRoundFill, type RoundFill } from "./partner-ask-round";
+import { loadRoundFill, loadRoundFillShown, type RoundFill } from "./partner-ask-round";
 import { askPlacesOpen, guestPaygPence } from "./monthly-week-asks";
 import { guestFeePounds } from "./monthly-week-asks-rules";
 import { dayCommaTimeLabel, dayLabel } from "./i18n/dates";
@@ -687,7 +687,9 @@ export async function loadPartnerAskPanel(
   const rounds: PartnerAskPanelData["rounds"] = [];
   for (const key of [...new Set(openAsks.map((a) => roundKey(a)))]) {
     const inRound = openAsks.filter((a) => roundKey(a) === key);
-    const fill = await loadRoundFill({ ...inRound[0], matchId });
+    // What the organiser SEES: a MatchTime staff test with a place in a
+    // partners-plus-pool round is not "found" (round 5 of #607).
+    const fill = await loadRoundFillShown({ ...inRound[0], matchId });
     rounds.push({
       roundKey: key,
       wanted: fill.wanted,

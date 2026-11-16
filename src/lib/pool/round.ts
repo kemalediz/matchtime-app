@@ -40,7 +40,7 @@ import { db } from "../db";
 import { appUrl } from "../app-url";
 import { loadPartnerAskSettings } from "../club-partnership";
 import { OPEN_ASK_STATUSES, askWindows } from "../partner-ask-rules";
-import { loadRoundFill } from "../partner-ask-round";
+import { loadRoundFill, loadRoundFillShown } from "../partner-ask-round";
 import { askPlacesOpen } from "../monthly-week-asks";
 import { queuePlatformDm } from "../platform-jobs";
 import { pausesForIgnored } from "./caps";
@@ -356,6 +356,12 @@ export async function cancelPoolAsk(args: { orgId: string; matchId: string; roun
 /** The round's fill for a pool ask (one definition: partner-ask-round.ts). */
 export function poolAskFill(ask: { id: string; roundId: string | null; matchId: string; places: number }) {
   return loadRoundFill({ id: ask.id, roundId: ask.roundId, matchId: ask.matchId, places: ask.places, volunteerUserIds: [], pickedUserIds: [] });
+}
+
+/** The same round's fill as the match page SHOWS it (round 5 of #607): a
+ *  MatchTime staff test with a place is not found (`loadRoundFillShown`). */
+export function poolAskShownFill(ask: { id: string; roundId: string | null; matchId: string; places: number }) {
+  return loadRoundFillShown({ id: ask.id, roundId: ask.roundId, matchId: ask.matchId, places: ask.places, volunteerUserIds: [], pickedUserIds: [] });
 }
 
 /**

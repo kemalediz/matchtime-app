@@ -61,6 +61,33 @@ scenarios("saying yes to a pool offer", () => {
     pool.expectSent(await pool.collect(), []);
   });
 
+  // Round 5 of #607: Kemal testing end to end. His yes works exactly as
+  // anyone's (his place, his DM), but the club is never told about a staff
+  // test: no HQ post, no players' group post, in or out. His place carries
+  // the offer's flag, so it stays out of every count.
+  scenario("a staff test says yes: his place and his DM as anyone's, the place flagged, and no post to the club's HQ or group, in or out", async ({ pool, page }) => {
+    const fnf = await openClub(pool, "fnf", { name: "FNF", hq: true });
+    const kemal = await poolPlayer(pool, "kemal", { name: "Kemal Test", at: near(fnf) });
+    await pool.db.run(`UPDATE "PoolProfile" SET "staffTest" = true WHERE "userId" = $1`, [kemal.userId]);
+    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
+    await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
+    const offer = ex.sent.find((m) => m.to === "kemal")!;
+    expect(await pool.db.one(`SELECT "staffTest" FROM "PoolOffer" WHERE "userId" = $1`, [kemal.userId])).toEqual({ staffTest: true });
+
+    expect(await tapOffer(pool, page, tapLinkIn(offer), "yes")).toBe("in");
+    const sent = await pool.collect();
+    pool.expectSent(sent, [{ to: "kemal", channel: "dm", purpose: "pool-placed", text: /✅ You're in: \*FNF\*/ }]);
+    expect(await pool.db.one(`SELECT source, result, "staffTest" FROM "GuestPlace" WHERE "matchId" = $1 AND "userId" = $2`, [fnf.group.matchId, kemal.userId])).toEqual({
+      source: "pool",
+      result: "booked",
+      staffTest: true,
+    });
+
+    pool.note("he gives the place back: still no post to the club");
+    expect(await tapOffer(pool, page, tapLinkIn(offer), "pull-out")).not.toBe("in");
+    expect((await pool.collect()).filter((m) => m.channel !== "dm")).toEqual([]);
+  });
+
   scenario("in Turkish: the page, his details and the organisers' notice in each one's language", async ({ pool, page }) => {
     const gs = await openClub(pool, "gs", { name: "Galata FC", hq: true });
     await pool.db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [gs.group.orgId]);

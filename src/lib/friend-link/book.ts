@@ -137,9 +137,11 @@ async function bookUnlocked(a: BookFriendArgs, now: Date): Promise<BookFriendRes
   const clubLang = normaliseLang(facts.language);
   const line = friendGroupLine(clubLang, { displayName: profile.displayName ?? "", member, kickoff: facts.kickoff, status: placed.kind, organiserPicks });
   // The group and he are told independently, each once (review of #488, 7).
-  await safely(`group notice for link ${link.id}`, () =>
-    tellClubAboutGuest({ orgId: link.orgId, matchId: link.matchId, key: `friend-link:${link.id}:placed`, kind: FRIEND_GUEST_NOTICE_KIND, now, hqText: line, groupText: line, prefer: "players-group-first" }),
-  );
+  // Never the club about a ticked MatchTime staff test (round 5 of #607).
+  if (!a.staffTest)
+    await safely(`group notice for link ${link.id}`, () =>
+      tellClubAboutGuest({ orgId: link.orgId, matchId: link.matchId, key: `friend-link:${link.id}:placed`, kind: FRIEND_GUEST_NOTICE_KIND, now, hqText: line, groupText: line, prefer: "players-group-first" }),
+    );
   await safely(`his DM for link ${link.id}`, async () =>
     queueOnce(
       a.phone,

@@ -767,8 +767,10 @@ export async function tellGuestsMoved(askId: string, now: Date = new Date()): Pr
 async function recordPartnerGuestPlace(a: { orgId: string; matchId: string; userId: string; fromOrgId: string; partnerAskId: string }): Promise<void> {
   await db.guestPlace.upsert({
     where: { matchId_userId: { matchId: a.matchId, userId: a.userId } },
-    create: { orgId: a.orgId, matchId: a.matchId, userId: a.userId, source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId },
-    update: { source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId, poolOfferId: null, result: "booked", resultAt: null, resultById: null, settledAt: null },
+    // A partner guest is never a staff test: replacing a staff test's pool
+    // place on the same match clears the flag (round 5 of #607).
+    create: { orgId: a.orgId, matchId: a.matchId, userId: a.userId, source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId, staffTest: false },
+    update: { source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId, poolOfferId: null, result: "booked", resultAt: null, resultById: null, settledAt: null, staffTest: false },
   });
 }
 

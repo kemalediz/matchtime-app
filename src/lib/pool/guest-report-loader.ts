@@ -133,7 +133,9 @@ export async function loadGuestFacts(
   ]);
   const blockedHere = new Set(clubBlocks.map((b) => b.userId));
 
-  const recordedHere = new Set(placesHere.map((p) => `${p.matchId}:${p.userId}`));
+  // Every place here, staff tests included (round 5 of #607): a staff-test
+  // place left out of the games must not come back as a "legacy" game.
+  const recordedHere = new Set(allPlacesHere.map((p) => `${p.matchId}:${p.userId}`));
   const legacy = legacyAttendance.filter((a) => !recordedHere.has(`${a.matchId}:${a.userId}`));
 
   const matchIds = [

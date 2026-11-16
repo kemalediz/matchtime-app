@@ -205,8 +205,15 @@ async function recordOf(userId: string) {
 }
 
 /** The club is told once, where it can see it (`guest-notice.ts`): HQ (or
- *  the admins' DMs) with the turn-up line, or its players' group without. */
+ *  the admins' DMs) with the turn-up line, or its players' group without.
+ *  Never about a MatchTime staff test (round 5 of #607): Kemal testing end
+ *  to end must not post "took a place" to a club's real HQ or group. His
+ *  own DMs and the match page are as for anyone. */
 async function tellClubOnce(o: LoadedOffer, key: string, text: { hq: string; group: string }, now: Date): Promise<void> {
+  if (o.staffTest) {
+    console.log(`[pool] offer ${o.id}: a staff test, the club is not told (${key})`);
+    return;
+  }
   await tellClubAboutPoolGuest({ orgId: o.orgId, matchId: o.matchId, key, now, hqText: text.hq, groupText: text.group });
 }
 

@@ -65,6 +65,25 @@ beforeEach(() => {
     ["m1", "m2"].map((id) => ({ id, date: KICKOFF, status: "COMPLETED", activity: { orgId: "org-1", venue: "Pitch", matchDurationMins: 60, sport: { id: "s", name: "Football" } } })),
   );
   dbMock.db.poolAsk.findMany.mockResolvedValue([{ matchId: "m1", status: "filled", _count: { offers: 1 } }]);
+  // Round 5 of #607: the real person is also this club's guest by
+  // membership, and his attendance rows are on both matches. A staff-test
+  // place must not come back as a "legacy" guest game through them.
+  dbMock.db.membership.findMany.mockImplementation(async (a: { where: Record<string, unknown> }) =>
+    "guestVia" in (a.where ?? {}) || "OR" in (a.where ?? {}) || "guestMatchId" in (a.where ?? {})
+      ? [
+          { userId: "u-real", guestFromOrgId: null, guestVia: "pool" },
+          { userId: "u-staff", guestFromOrgId: null, guestVia: "pool" },
+        ]
+      : [],
+  );
+  const attendance = [
+    { userId: "u-real", matchId: "m1", status: "CONFIRMED" },
+    { userId: "u-real", matchId: "m2", status: "CONFIRMED" },
+    { userId: "u-staff", matchId: "m1", status: "CONFIRMED" },
+  ];
+  dbMock.db.attendance.findMany.mockImplementation(async (a: { where: { userId?: { in: string[] } } }) =>
+    attendance.filter((r) => !a.where?.userId || a.where.userId.in.includes(r.userId)),
+  );
 });
 
 describe("loadGuestFacts: staff tests on the Guest players page and CSV", () => {

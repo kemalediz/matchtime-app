@@ -33,6 +33,15 @@ describe("staff tests and referral badges", () => {
     expect(whereOf(0)).toMatchObject({ referrerUserId: { not: null }, referralCountedAt: null, staffTest: false });
   });
 
+  // Round 5: a staff-test GAME (a real friend booked through a ticked staff
+  // test's link) is not "played" for anyone's badge either.
+  it("a friend's game counts as played only when its place is not a staff test's", async () => {
+    dbMock.db.poolProfile.findMany.mockResolvedValueOnce([{ id: "p-bea", userId: "bea", referrerUserId: "ali" }]);
+    await stampPlayedReferrals(new Date("2026-11-16T12:00:00Z"));
+    const where = (dbMock.db.guestPlace.findMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+    expect(where).toMatchObject({ userId: { in: ["bea"] }, staffTest: false });
+  });
+
   it("the club's badges read only friends who are not staff tests", async () => {
     dbMock.db.poolProfile.findMany
       .mockResolvedValueOnce([{ referrerUserId: "ali" }]) // members with a friend who played

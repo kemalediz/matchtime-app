@@ -55,7 +55,8 @@ export async function stampPlayedReferrals(now: Date = new Date()): Promise<{ co
   if (waiting.length === 0) return { counted: 0 };
   const userIds = waiting.map((w) => w.userId!);
   const [places, games] = await Promise.all([
-    db.guestPlace.findMany({ where: { userId: { in: userIds } }, select: { userId: true, matchId: true, result: true, settledAt: true } }),
+    // A staff test's place is not a game for anyone's badge (round 5 of #607).
+    db.guestPlace.findMany({ where: { userId: { in: userIds }, staffTest: false }, select: { userId: true, matchId: true, result: true, settledAt: true } }),
     db.attendance.findMany({ where: { userId: { in: userIds }, status: "CONFIRMED", match: PLAYED_MATCH }, select: { userId: true, matchId: true } }),
   ]);
 

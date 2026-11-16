@@ -36,6 +36,9 @@ export async function pullOutOfFriendPlace(a: { linkId: string; userId: string; 
     const live = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(facts.status) && !facts.isHistorical;
     if (!live || now.getTime() >= facts.kickoff.getTime()) return "started";
     const cutoff = askWindows(facts.kickoff, (await loadPartnerAskSettings(link.orgId))?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS).postBy;
+    // A ticked MatchTime staff test's place (round 5 of #607): the club is
+    // not told when he gives it back either.
+    const staffTest = !!(await db.guestPlace.findUnique({ where: { matchId_userId: { matchId: link.matchId, userId: a.userId } }, select: { staffTest: true } }))?.staffTest;
     const done = await withdrawFriendGuest({ userId: a.userId, matchId: link.matchId, orgId: link.orgId, linkId: link.id, result: pullOutResult({ now, cutoff }), now });
     if (!done) return "not-held";
     await markPoolActive(a.userId, now);
@@ -46,7 +49,7 @@ export async function pullOutOfFriendPlace(a: { linkId: string; userId: string; 
       db.user.findUnique({ where: { id: a.userId }, select: { phoneNumber: true } }),
     ]);
     const line = friendGroupOutLine(normaliseLang(facts.language), { displayName: profile.displayName ?? "", member: issuer?.name ?? "", kickoff: facts.kickoff });
-    try {
+    if (!staffTest) try {
       await tellClubAboutGuest({ orgId: link.orgId, matchId: link.matchId, key: `friend-link:${link.id}:out`, kind: FRIEND_GUEST_NOTICE_KIND, now, hqText: line, groupText: line, prefer: "players-group-first" });
     } catch (err) {
       console.error(`[friend-link] link ${link.id}: the group was not told of the pull-out:`, err instanceof Error ? err.message : "failed");

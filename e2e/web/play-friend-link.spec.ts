@@ -6,7 +6,7 @@
  * so and offers the plain pool sign-up. English and Turkish. No model: $0.
  */
 import type { Page } from "@playwright/test";
-import { test, expect, resetDb } from "../fixtures";
+import { test, expect, resetDb, signInAs } from "../fixtures";
 import { E2E } from "../helpers/env";
 import { MATCH, ORG_ID, U } from "../helpers/constants";
 import type { TestDb } from "../helpers/test-db";
@@ -82,6 +82,48 @@ test.describe("English", () => {
     );
     expect(row).toMatchObject({ status: "pending-verify", source: "friend", displayName: "Ali" });
     expect(row!.friendLinkId).toBeTruthy();
+  });
+
+  // Round 5 of #607: the friend link's page shows a MatchTime staff session
+  // the same "This is a test sign-up" tick as /play. A ticked sign-up there
+  // is a staff test, and the place it books carries the flag.
+  test("a MatchTime staff session sees the test tick; a ticked friend-link sign-up books a flagged guest place", async ({ page, db, request }) => {
+    await db.run(`UPDATE "User" SET "isSuperadmin" = true WHERE id = $1`, [U.admin]);
+    try {
+      const token = await seedLink(db);
+      await page.setExtraHTTPHeaders({ "x-forwarded-for": "198.51.100.211" });
+      await signInAs(page, U.admin, `/play/f/${token}`);
+      const tick = page.getByRole("checkbox", { name: PLAY.signup.staffTestLabel });
+      await expect(tick).toBeChecked({ timeout: 30_000 });
+      await page.getByLabel(PLAY.fields.districtLabel, { exact: true }).fill("sm1");
+      await page.getByRole("checkbox", { name: "Tuesday", exact: true }).check();
+      await page.getByRole("checkbox", { name: PLAY.signup.adultLabel }).check();
+      await page.getByRole("checkbox", { name: PLAY.signup.consentLabel }).check();
+      await page.getByRole("button", { name: PLAY.signup.submit }).click();
+      await expect(page.getByRole("heading", { name: PLAY.signup.confirmHeading })).toBeVisible({ timeout: 30_000 });
+      const code = (await page.getByTestId("pool-code").innerText()).trim();
+      const prefill = (await page.getByTestId("pool-prefill").innerText()).trim();
+      expect(await db.one(`SELECT "staffTest", source FROM "PoolProfile" WHERE "confirmCode" = $1`, [code])).toEqual({ staffTest: true, source: "friend" });
+
+      // His own WhatsApp code books him: the place is a staff test's.
+      const res = await request.post("/api/whatsapp/dm-reply", {
+        headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+        data: { phone: "447700911811", body: prefill, waMessageId: `e2e-friend-staff-${Date.now()}` },
+      });
+      expect(res.status()).toBe(200);
+      await expect
+        .poll(async () => db.one(`SELECT "staffTest", source FROM "GuestPlace" WHERE "matchId" = $1 AND "friendLinkId" IS NOT NULL`, [MATCH.upcoming]), { timeout: 15_000 })
+        .toEqual({ staffTest: true, source: "pool" });
+    } finally {
+      await db.run(`UPDATE "User" SET "isSuperadmin" = false WHERE id = $1`, [U.admin]);
+    }
+  });
+
+  test("anybody else on a friend link sees no test tick", async ({ page, db }) => {
+    const token = await seedLink(db);
+    await page.goto(`/play/f/${token}`);
+    await expect(page.getByRole("checkbox", { name: PLAY.signup.consentLabel })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("checkbox", { name: PLAY.signup.staffTestLabel })).toHaveCount(0);
   });
 
   test("an unnamed friend: the name starts empty", async ({ page, db }) => {

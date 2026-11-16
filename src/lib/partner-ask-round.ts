@@ -19,7 +19,7 @@
  * pool's). One definition of "filled" for partners and the pool alike.
  */
 import { db } from "./db";
-import { poolRoundShare } from "./pool/round-share";
+import { poolRoundShare, poolRoundStaffTestIds } from "./pool/round-share";
 
 export interface RoundAskRow {
   id: string;
@@ -37,10 +37,9 @@ export interface RoundFill {
   placed: number;
 }
 
-/** How full is this ask's round now? An ask with no `roundId` is a round
- *  of its own. Reads the round's asks fresh, so a volunteer on another of
- *  its asks counts. */
-export async function loadRoundFill(ask: RoundAskRow): Promise<RoundFill> {
+/** The round's parts: its partner asks' people, the pool's share (null when
+ *  it could not be read, or there is none), and the number it wants. */
+async function roundParts(ask: RoundAskRow) {
   const asks = ask.roundId
     ? await db.partnerAsk.findMany({
         where: { matchId: ask.matchId, roundId: ask.roundId },
@@ -50,7 +49,36 @@ export async function loadRoundFill(ask: RoundAskRow): Promise<RoundFill> {
   const rows = asks.length > 0 ? asks : [ask];
   const pool = await poolRoundShare(ask.matchId, ask.roundId ?? ask.id);
   const wanted = Math.max(...rows.map((a) => a.places), pool?.places ?? 0);
-  const ids = [...new Set([...rows.flatMap((a) => [...(a.volunteerUserIds ?? []), ...(a.pickedUserIds ?? [])]), ...(pool?.userIds ?? [])])];
-  const placed = ids.length === 0 ? 0 : await db.attendance.count({ where: { matchId: ask.matchId, status: "CONFIRMED", userId: { in: ids } } });
-  return { wanted, placed };
+  const partnerIds = new Set(rows.flatMap((a) => [...(a.volunteerUserIds ?? []), ...(a.pickedUserIds ?? [])]));
+  return { pool, wanted, partnerIds };
+}
+
+const confirmedOf = (matchId: string, ids: readonly string[]) =>
+  ids.length === 0 ? Promise.resolve(0) : db.attendance.count({ where: { matchId, status: "CONFIRMED", userId: { in: [...ids] } } });
+
+/** How full is this ask's round now? An ask with no `roundId` is a round
+ *  of its own. Reads the round's asks fresh, so a volunteer on another of
+ *  its asks counts. A MatchTime staff test holding a place counts: he truly
+ *  fills it. */
+export async function loadRoundFill(ask: RoundAskRow): Promise<RoundFill> {
+  const { pool, wanted, partnerIds } = await roundParts(ask);
+  const ids = [...new Set([...partnerIds, ...(pool?.userIds ?? [])])];
+  return { wanted, placed: await confirmedOf(ask.matchId, ids) };
+}
+
+/**
+ * The round's fill as an organiser SEES it on the match page (rounds 4 and
+ * 5 of #607), for a pool-only round and a partners-plus-pool round alike:
+ * a MatchTime staff test with a place is not shown as found (read off his
+ * offer's own flag, `PoolOffer.staffTest`). Nothing is taken off when the
+ * pool's share could not be read (the fill then counted no pool guest), and
+ * a staff user who is also a partner volunteer or pick in the round counts
+ * as that. Never for deciding anything: `loadRoundFill` does that.
+ */
+export async function loadRoundFillShown(ask: RoundAskRow): Promise<RoundFill> {
+  const { pool, wanted, partnerIds } = await roundParts(ask);
+  const poolIds = pool?.userIds ?? [];
+  const staff = poolIds.length ? new Set(await poolRoundStaffTestIds(ask.matchId, ask.roundId ?? ask.id)) : new Set<string>();
+  const shown = [...new Set([...partnerIds, ...poolIds.filter((u) => partnerIds.has(u) || !staff.has(u))])];
+  return { wanted, placed: await confirmedOf(ask.matchId, shown) };
 }

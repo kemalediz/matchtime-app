@@ -4,6 +4,7 @@ import { PlaySignup } from "../../play-signup";
 import { FriendLinkClosed } from "./friend-link-closed";
 import { FriendLinkHeld } from "./friend-link-held";
 import { auth } from "@/lib/auth";
+import { isPoolStaffSession } from "@/lib/pool/staff-request";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "MatchTime", robots: { index: false, follow: false } };
@@ -26,8 +27,12 @@ export default async function FriendLinkPage({ params }: { params: Promise<{ tok
   }
   if (opened.state !== "open") return <FriendLinkClosed state={opened.state} />;
   const f = opened.facts;
+  // A MatchTime staff session sees the test sign-up tick, as on /play
+  // (round 5 of #607).
+  const staffSession = await isPoolStaffSession();
   return (
     <PlaySignup
+      staffSession={staffSession}
       source={{ campaignCode: null, referralCode: null }}
       // Friend links work while pool sign-ups are paused (D5): the club asked
       // for him. And he plays now, so no early-list note.
