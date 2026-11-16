@@ -40,6 +40,7 @@ vi.mock("../candidates", () => ({
   findPoolCandidates: vi.fn(async () => ({
     ctx: { kickoff: KICKOFF, orgId: "fnf" },
     selection: { gate: null, eligible: [{ userId: "u1", distanceMiles: 2 }], excluded: {} },
+    staffTestUserIds: new Set<string>(),
   })),
 }));
 vi.mock("../offer-facts", () => ({ loadMatchOfferFacts: vi.fn(async () => ({ club: "FNF" })) }));
@@ -104,5 +105,20 @@ describe("a new ask re-offers a player whose earlier offer never reached him", (
     await asked();
     expect(tx.poolOffer.create).toHaveBeenCalledTimes(1);
     expect(tx.poolOffer.updateMany).not.toHaveBeenCalled();
+    expect((tx.poolOffer.create.mock.calls as unknown as Array<[{ data: unknown }]>)[0][0].data).toMatchObject({ userId: "u1", staffTest: false });
+  });
+
+  // Round 4 of #607: the offer carries the staff test flag itself, so it
+  // stays out of every count once his profile is erased.
+  it("an offer to a staff test carries the flag, new or reset", async () => {
+    const cand = await import("../candidates");
+    vi.mocked(cand.findPoolCandidates).mockResolvedValue({
+      ctx: { kickoff: KICKOFF, orgId: "fnf" },
+      selection: { gate: null, eligible: [{ userId: "u1", distanceMiles: 2 }], excluded: {} },
+      staffTestUserIds: new Set(["u1"]),
+    } as never);
+    onMatch([]);
+    await asked();
+    expect((tx.poolOffer.create.mock.calls as unknown as Array<[{ data: unknown }]>)[0][0].data).toMatchObject({ userId: "u1", staffTest: true });
   });
 });

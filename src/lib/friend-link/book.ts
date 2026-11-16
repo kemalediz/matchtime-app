@@ -49,6 +49,9 @@ export interface BookFriendArgs {
   newToPool: boolean;
   /** MatchTime paused him for reports or by hand (D6): not booked. */
   blockedProfile?: boolean;
+  /** The link's sign-up was a ticked staff test (round 4 of #607): the
+   *  place carries the flag, whoever's profile it lands on. */
+  staffTest?: boolean;
   now?: Date;
 }
 
@@ -112,7 +115,15 @@ async function bookUnlocked(a: BookFriendArgs, now: Date): Promise<BookFriendRes
   });
   if (claimed.count === 0) return refuse("used");
 
-  const placed = await placeFriendGuest({ linkId: link.id, userId: a.userId, orgId: link.orgId, matchId: link.matchId, benchPickMode: facts.benchPickMode, issuedByUserId: link.issuedByUserId });
+  const placed = await placeFriendGuest({
+    linkId: link.id,
+    userId: a.userId,
+    orgId: link.orgId,
+    matchId: link.matchId,
+    benchPickMode: facts.benchPickMode,
+    issuedByUserId: link.issuedByUserId,
+    staffTest: a.staffTest === true,
+  });
   if (placed.kind !== "in" && placed.kind !== "bench") {
     await db.friendLink.updateMany({ where: { id: link.id, usedMessageId: a.waMessageId }, data: { usedAt: null, usedByUserId: null, usedMessageId: null, outcome: null } });
     return refuse(placed.kind === "elsewhere" ? "elsewhere" : "failed");

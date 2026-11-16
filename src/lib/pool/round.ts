@@ -217,12 +217,21 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
       select: { userId: true, language: true, user: { select: { phoneNumber: true } } },
     });
     const byUser = new Map(profiles.map((p) => [p.userId as string, p]));
-    const prepared: Array<{ userId: string; distanceMiles: number; phone: string; lang: ReturnType<typeof normaliseLang>; manageLink: string }> = [];
+    const prepared: Array<{ userId: string; distanceMiles: number; phone: string; lang: ReturnType<typeof normaliseLang>; manageLink: string; staffTest: boolean }> = [];
     for (const c of shortlist) {
       const profile = byUser.get(c.userId);
       const phone = profile?.user?.phoneNumber;
       if (!profile || !phone) continue;
-      prepared.push({ userId: c.userId, distanceMiles: c.distanceMiles, phone, lang: normaliseLang(profile.language), manageLink: await buildPoolManageLink(c.userId) });
+      prepared.push({
+        userId: c.userId,
+        distanceMiles: c.distanceMiles,
+        phone,
+        lang: normaliseLang(profile.language),
+        manageLink: await buildPoolManageLink(c.userId),
+        // The offer carries the staff test flag itself (round 4 of #607), so
+        // it stays out of every count after his profile is erased.
+        staffTest: found.staffTestUserIds.has(c.userId),
+      });
     }
 
     const queued = await db.$transaction(
@@ -268,6 +277,7 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
               expiresAt: endsAt,
               // The caps count a queued offer at its creation (L4.3).
               createdAt: now,
+              staffTest: p.staffTest,
             };
             const reuseId = reusable.get(p.userId);
             let offer: { id: string };

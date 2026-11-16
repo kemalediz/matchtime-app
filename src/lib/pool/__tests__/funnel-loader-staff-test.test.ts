@@ -41,19 +41,21 @@ describe("loadPoolFunnel: no staff test sign-up in any count", () => {
     expect(counted.some((w) => w.status === "paused" && w.pausedReason === "ignored")).toBe(true);
   });
 
-  it("offer health: the offers sent to a staff test, and the jobs that carried them, are left out", async () => {
-    dbMock.db.poolProfile.findMany.mockImplementation(async (a: Args) => (a.where.staffTest === true ? [{ userId: "u-staff" }] : []));
-    dbMock.db.poolOffer.findMany.mockImplementation(async (a: Args) => ("platformJobId" in a.where ? [{ platformJobId: "job-staff" }] : []));
+  // Round 4: read off the offer's own flag, so an erased staff-test profile
+  // (its offers stay) never comes back into the offer health.
+  it("offer health: offers made to a staff test, and the jobs that carried them, are left out by the offer's own flag, profile or none", async () => {
+    dbMock.db.poolOffer.findMany.mockImplementation(async (a: Args) => (a.where.staffTest === true ? [{ platformJobId: "job-staff" }] : []));
     await loadPoolFunnel(parseFunnelQuery({}, NOW), NOW);
     const delivered = wheres(dbMock.db.poolOffer.findMany).find((w) => "sentAt" in w);
-    expect(delivered).toMatchObject({ userId: { notIn: ["u-staff"] } });
+    expect(delivered).toMatchObject({ staffTest: false });
+    expect(wheres(dbMock.db.poolOffer.findMany)).toContainEqual({ staffTest: true, platformJobId: { not: null } });
     expect(wheres(dbMock.db.platformJob.findMany)[0]).toMatchObject({ id: { notIn: ["job-staff"] } });
+    // No profile is read to decide it.
+    expect(wheres(dbMock.db.poolProfile.findMany).some((w) => w.staffTest === true)).toBe(false);
   });
 
-  it("with no staff test anywhere, the offer queries are as before", async () => {
+  it("with no staff-test offer anywhere, the jobs are read as before", async () => {
     await loadPoolFunnel(parseFunnelQuery({}, NOW), NOW);
-    const delivered = wheres(dbMock.db.poolOffer.findMany).find((w) => "sentAt" in w)!;
-    expect(delivered).not.toHaveProperty("userId");
     expect(wheres(dbMock.db.platformJob.findMany)[0]).not.toHaveProperty("id");
   });
 });

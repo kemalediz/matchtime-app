@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
  * a group message tagged is deleted after 7 days (`purgeOldMentions`,
  * src/lib/group-mentions.ts), the retention of "@Match Time DM these people".
  * And (2026-11-13; daily totals only since 2026-11-16) the /play visit
- * breakdown is deleted 90 days after its day (`purgeOldPoolVisitDaily`,
+ * breakdown keeps exactly 90 London days, today included (`purgeOldPoolVisitDaily`,
  * src/lib/pool/visits.ts).
  */
 export async function GET(request: Request) {

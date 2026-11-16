@@ -1,5 +1,5 @@
 /**
- * A /play sign-up from a MatchTime staff browser (2026-11-16): made exactly
+ * A staff test sign-up (2026-11-16; ticked, from a verified staff session): made exactly
  * as any other waiting sign-up, with `staffTest` stored on the profile, and
  * not counted as sent. The confirm comes later by WhatsApp, where there is
  * no cookie: the stored flag is what keeps it out of "confirmed" too

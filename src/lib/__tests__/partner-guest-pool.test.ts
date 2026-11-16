@@ -18,7 +18,7 @@ vi.mock("../attendance", () => att);
 vi.mock("../admin-channel", () => ({ sendAdminNotice: vi.fn() }));
 vi.mock("../partner-guest-standing", () => ({ loadGuestStandings: vi.fn() }));
 
-import { placePoolGuest } from "../partner-guest";
+import { placeFriendGuest, placePoolGuest } from "../partner-guest";
 
 const W = { offerId: "o1", userId: "ali", orgId: "fnf", matchId: "m2", benchPickMode: "organiser", fill: async () => ({ wanted: 1, placed: 0 }), now: new Date() };
 
@@ -47,5 +47,30 @@ describe("placePoolGuest", () => {
     dbMock.membership.findUnique.mockResolvedValue({ leftAt: null, guestFromOrgId: null, guestMatchId: "m2", guestVia: "pool" });
     await placePoolGuest(W);
     expect(dbMock.membership.upsert.mock.calls[0][0].update).toEqual({});
+  });
+});
+
+// Round 4 of #607: the place carries the staff flag itself, so an erased
+// staff-test profile's place stays out of every count.
+describe("the guest place carries the staff test flag", () => {
+  beforeEach(() => dbMock.membership.findUnique.mockResolvedValue(null));
+
+  it("an offer to a staff test: his place is a staff test's, on create and on update", async () => {
+    await placePoolGuest({ ...W, staffTest: true });
+    const args = dbMock.guestPlace.upsert.mock.calls[0][0];
+    expect(args.create).toMatchObject({ source: "pool", poolOfferId: "o1", staffTest: true });
+    expect(args.update).toMatchObject({ staffTest: true });
+  });
+
+  it("anybody else's: false", async () => {
+    await placePoolGuest(W);
+    const args = dbMock.guestPlace.upsert.mock.calls[0][0];
+    expect(args.create).toMatchObject({ staffTest: false });
+    expect(args.update).toMatchObject({ staffTest: false });
+  });
+
+  it("a friend link's sign-up ticked as a staff test: the place is a staff test's, whoever confirmed it", async () => {
+    await placeFriendGuest({ linkId: "l1", userId: "ali", orgId: "fnf", matchId: "m2", benchPickMode: "organiser", issuedByUserId: "u-member", staffTest: true });
+    expect(dbMock.guestPlace.upsert.mock.calls[0][0].create).toMatchObject({ friendLinkId: "l1", staffTest: true });
   });
 });

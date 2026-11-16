@@ -22,8 +22,8 @@
  * it was a scanner, and a count. Never a browser family or device, what
  * opened the page, the hour, the time on screen, the IP address, the user
  * agent itself, the friend's code, a user id or a cookie. At very low
- * traffic a day's total can still coincide with a single sign-up. Deleted
- * 90 days after its day; the privacy policy says so.
+ * traffic a day's total can still coincide with a single sign-up. Exactly
+ * 90 London days are kept, today included; the privacy policy says so.
  *
  * THE SERVER LOG (round 3 of #607) holds nothing per visit: no line for a
  * counted beacon, only one for a rejected one, its step (if it is one of
@@ -158,10 +158,12 @@ export function poolBeaconRejectedLogLine(a: { step: PoolBeaconStepNamed; reason
  *  counters ("PoolCampaignVisit", no category) are not part of it. */
 export const POOL_VISIT_RETENTION_DAYS = 90;
 
-/** Totals for a London day before this one ("yyyy-MM-dd") are deleted.
- *  Calendar arithmetic, so a clock change never shifts it. */
+/** The oldest London day kept ("yyyy-MM-dd"); totals for any day before it
+ *  are deleted. Exactly POOL_VISIT_RETENTION_DAYS (90) days are kept, today
+ *  included (round 4 of #607): on 13 November the oldest kept is 16 August,
+ *  and 15 August goes. Calendar arithmetic, so a clock change never shifts it. */
 export function poolVisitPurgeBeforeDay(now: Date): string {
   const d = new Date(`${poolVisitDay(now)}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - POOL_VISIT_RETENTION_DAYS);
+  d.setUTCDate(d.getUTCDate() - (POOL_VISIT_RETENTION_DAYS - 1));
   return d.toISOString().slice(0, 10);
 }

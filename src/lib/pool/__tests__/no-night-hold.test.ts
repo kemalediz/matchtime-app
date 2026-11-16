@@ -38,6 +38,7 @@ vi.mock("../candidates", () => ({
   findPoolCandidates: vi.fn(async () => ({
     ctx: { kickoff: KICKOFF, orgId: "fnf" },
     selection: { gate: null, eligible: [{ userId: "u1", distanceMiles: 2 }], excluded: {} },
+    staffTestUserIds: new Set<string>(),
   })),
 }));
 vi.mock("../offer-facts", () => ({ loadMatchOfferFacts: vi.fn(async () => ({ club: "FNF" })) }));

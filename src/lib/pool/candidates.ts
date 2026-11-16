@@ -64,6 +64,20 @@ export function countedPoolCandidates(found: FoundCandidates): number {
   return found.selection.eligible.filter((e) => !found.staffTestUserIds.has(e.userId)).length;
 }
 
+/**
+ * The band the organiser SEES (round 4 of #607). Whether the pool can be
+ * asked is decided by every eligible candidate, staff tests included
+ * (`selection.eligible`, as the round itself counts them), so the band is
+ * "none" only when nobody at all is eligible. Its size counts real players
+ * only: when the only candidates are staff tests it reads "a few", and a
+ * staff test never lifts it to "5+".
+ */
+export function shownPoolBand(found: FoundCandidates): PoolNearBand {
+  if (found.selection.eligible.length === 0) return "none";
+  const real = countedPoolCandidates(found);
+  return real === 0 ? "few" : nearBand(real);
+}
+
 export async function findPoolCandidates(matchId: string, opts: FindOptions = {}): Promise<FoundCandidates> {
   const now = opts.now ?? new Date();
 
@@ -188,10 +202,10 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
   return { ctx, selection: selectCandidates(ctx, rows, now), staffTestUserIds };
 }
 
-/** "Players near you" for the organiser: the band, never who, and never
- *  counting a MatchTime staff test. */
+/** "Players near you" for the organiser: the band shown, never who
+ *  (`shownPoolBand`). */
 export async function poolNearBand(matchId: string, opts: FindOptions = {}): Promise<PoolNearBand> {
-  return nearBand(countedPoolCandidates(await findPoolCandidates(matchId, opts)));
+  return shownPoolBand(await findPoolCandidates(matchId, opts));
 }
 
 /** How many more pool DMs may go at `now` (POOL_PLATFORM_CAPS). A hint

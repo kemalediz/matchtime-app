@@ -186,9 +186,14 @@ describe("retention: 90 days, then deleted", () => {
     expect(POOL_VISIT_RETENTION_DAYS).toBe(90);
   });
 
-  it("deletes every day's totals from before 90 days ago, by London day", () => {
-    expect(poolVisitPurgeBeforeDay(new Date("2026-11-13T06:00:00Z"))).toBe("2026-08-15");
-    // 00:30 London on 1 July is still 30 June in UTC.
-    expect(poolVisitPurgeBeforeDay(new Date("2026-06-30T23:30:00Z"))).toBe("2026-04-02");
+  // Round 4 of #607: exactly 90 London days are kept, today included; the
+  // 91st day back goes. On 13 November the oldest day kept is 16 August.
+  it("keeps exactly 90 London days, today included, and deletes the day before them", () => {
+    const keepFrom = poolVisitPurgeBeforeDay(new Date("2026-11-13T06:00:00Z"));
+    expect(keepFrom).toBe("2026-08-16");
+    const days = (Date.parse("2026-11-13T00:00:00Z") - Date.parse(`${keepFrom}T00:00:00Z`)) / 86_400_000 + 1;
+    expect(days).toBe(POOL_VISIT_RETENTION_DAYS);
+    // 00:30 London on 1 July is still 30 June in UTC: 1 July counts as today.
+    expect(poolVisitPurgeBeforeDay(new Date("2026-06-30T23:30:00Z"))).toBe("2026-04-03");
   });
 });

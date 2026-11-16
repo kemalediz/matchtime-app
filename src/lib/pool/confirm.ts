@@ -98,7 +98,7 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
 
   const rows = await db.poolProfile.findMany({
     where: { status: "pending-verify", confirmCode: { in: candidates } },
-    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true, language: true, claimPhone: true, userId: true, friendLinkId: true, referrerUserId: true, createdAt: true },
+    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true, language: true, claimPhone: true, userId: true, friendLinkId: true, referrerUserId: true, createdAt: true, staffTest: true },
   });
   const row = candidates.map((c) => rows.find((r) => r.confirmCode === c)).find(Boolean) ?? null;
   // Paused sign-ups: a friend link's code still works (friend link D5).
@@ -208,7 +208,7 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
   if (row!.friendLinkId) {
     // His welcome is the booking's DM, which says he joined the pool too.
     // A failed booking is retried by his next code message (retryFriendBooking).
-    const r = await bookFriend({ linkId: row!.friendLinkId, userId: confirmed.userId, phone: phone!, waMessageId: input.waMessageId, newToPool: true, now });
+    const r = await bookFriend({ linkId: row!.friendLinkId, userId: confirmed.userId, phone: phone!, waMessageId: input.waMessageId, newToPool: true, staffTest: row!.staffTest, now });
     return out(`confirmed:friend-${r.booked || r.reason}`, true);
   }
   return out("confirmed", await queuePoolWelcome(confirmed, phone!));

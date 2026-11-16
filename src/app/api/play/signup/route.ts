@@ -16,9 +16,10 @@
  * the page, a bundle or the sitemap. A stranger has to be able to write to
  * MatchTime; that is the whole point of the pool's WhatsApp-first sign-up.
  *
- * STAFF TESTS (2026-11-16; round 3 of #607). A sign-up made with a
- * VERIFIED MatchTime staff session (`User.isSuperadmin`:
- * `isPoolStaffSession`) is made and answered exactly as any other, and
+ * STAFF TESTS (2026-11-16; rounds 3 and 4 of #607). A sign-up TICKED as a
+ * test (`staffTest: true`, the box /play shows only a MatchTime staff
+ * session) and made with a VERIFIED MatchTime staff session
+ * (`User.isSuperadmin`: `isPoolStaffSession`) is made and answered exactly as any other, and
  * stored with `PoolProfile.staffTest`, so it is in none of the owner's or
  * clubs' numbers, and the answer says `staffTest: true` so the page counts
  * no analytics sign-up for it. NEVER from the staff cookie: it is unsigned,
@@ -63,9 +64,11 @@ export async function POST(request: Request) {
     if (!opened || opened.state !== "open") return NextResponse.json({ ok: false, reason: "link-closed" }, { status: 409 });
     friendLink = { id: opened.id, issuedByUserId: opened.issuedByUserId, kickoff: opened.facts.kickoff };
   }
-  // A verified MatchTime staff session's sign-up is made as any other, and
-  // marked so no number counts it. Never from the (unsigned) staff cookie.
-  const staffTest = await isPoolStaffSession();
+  // A staff test only when TICKED as one (the box /play shows a MatchTime
+  // staff session, round 4 of #607) AND from a verified staff session:
+  // never from the (unsigned) staff cookie, and never a real newcomer a
+  // staff member signs up at the pitch with the tick taken off.
+  const staffTest = body.staffTest === true && (await isPoolStaffSession());
   const res = await createPoolSignup({
     fields: valid.value,
     ip: poolRequestIp(request),

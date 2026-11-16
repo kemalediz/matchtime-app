@@ -88,6 +88,7 @@ export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
       adultLabel: `${f.minAge} yaşında ya da daha büyüğüm`,
       consentLabel: `MatchTime yakınımdaki maçlar hakkında bana WhatsApp'tan, ${perWeekTr(f.perWeek)} yazabilir. Bunu istediğim zaman durdurabilirim.`,
       consentPolicy: "Bilgilerini nasıl kullandığımızı gizlilik politikamızda oku.",
+      staffTestLabel: "Bu bir deneme kaydı (yalnızca MatchTime ekibi: hiçbir sayıma girmez)",
       submit: "WhatsApp'a devam et",
       submitting: "Kaydediliyor...",
       pausedNote: "Kayıtlar kısa bir süreliğine durduruldu. Lütfen daha sonra yeniden gel.",

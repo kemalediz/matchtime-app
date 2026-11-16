@@ -9,8 +9,10 @@
  * results of his games. Never a name, a number, an area or a distance
  * (`__tests__/funnel-loader.test.ts` pins the selects).
  *
- * STAFF TESTS (2026-11-16): a sign-up made from a MatchTime staff browser
- * (`PoolProfile.staffTest`) is left out of every count here.
+ * STAFF TESTS (2026-11-16; rounds 3 and 4 of #607): a sign-up ticked as a
+ * test from a verified MatchTime staff session (`PoolProfile.staffTest`)
+ * is left out of every count here; its offers by their own flag
+ * (`PoolOffer.staffTest`), so an erased profile stays out.
  */
 import { db } from "../db";
 import { ORDINARY_MEMBER_WHERE } from "../guest-membership";
@@ -93,30 +95,28 @@ async function loadProfiles(): Promise<FunnelProfileFact[]> {
   }));
 }
 
-/** Staff tests' user ids, and the offer jobs that carried offers to them
- *  (round 2 of #607): the offer health counts neither. Two small reads, the
- *  second only when there is a staff test at all. */
-async function staffTestOfferFacts(): Promise<{ userIds: string[]; jobIds: string[] }> {
-  const userIds = (await db.poolProfile.findMany({ where: { staffTest: true, userId: { not: null } }, select: { userId: true } })).map((p) => p.userId!);
-  if (userIds.length === 0) return { userIds, jobIds: [] };
-  const offers = await db.poolOffer.findMany({ where: { userId: { in: userIds }, platformJobId: { not: null } }, select: { platformJobId: true } });
-  return { userIds, jobIds: offers.map((o) => o.platformJobId!) };
+/** The offer jobs that carried offers to MatchTime staff tests (rounds 3
+ *  and 4 of #607), read off the offer's own flag (`PoolOffer.staffTest`), so
+ *  an erased staff-test profile never comes back into the offer health. */
+async function staffTestOfferJobIds(): Promise<string[]> {
+  const offers = await db.poolOffer.findMany({ where: { staffTest: true, platformJobId: { not: null } }, select: { platformJobId: true } });
+  return offers.map((o) => o.platformJobId!);
 }
 
 async function loadOfferHealthFacts(q: FunnelQuery): Promise<OfferHealthFacts> {
   const { start, end } = rangeInstants(q);
-  const staff = await staffTestOfferFacts();
+  const staffJobIds = await staffTestOfferJobIds();
   const [offerJobs, delivered, paused] = await Promise.all([
     db.platformJob.findMany({
       where: {
         purpose: POOL_OFFER_PURPOSE,
         OR: [{ createdAt: { gte: start, lt: end } }, { failedAt: { gte: start, lt: end } }],
-        ...(staff.jobIds.length ? { id: { notIn: staff.jobIds } } : {}),
+        ...(staffJobIds.length ? { id: { notIn: staffJobIds } } : {}),
       },
       select: { createdAt: true, sendAfter: true, failReason: true, failedAt: true },
     }),
     db.poolOffer.findMany({
-      where: { sentAt: { gte: new Date(start.getTime() - CAP_LOOKBACK_MS), lt: end }, ...(staff.userIds.length ? { userId: { notIn: staff.userIds } } : {}) },
+      where: { sentAt: { gte: new Date(start.getTime() - CAP_LOOKBACK_MS), lt: end }, staffTest: false },
       select: { sentAt: true },
     }),
     db.poolProfile.findMany({ where: { status: "paused", pausedReason: "ignored", staffTest: false }, select: { pausedAt: true } }),

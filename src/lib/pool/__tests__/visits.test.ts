@@ -182,7 +182,8 @@ describe("purgeOldPoolVisitDaily: the daily cron deletes the totals after 90 day
   it("deletes every day's totals from before 90 days ago", async () => {
     dbMock.db.poolVisitDaily.deleteMany.mockResolvedValue({ count: 7 });
     expect(await purgeOldPoolVisitDaily(new Date("2026-11-13T06:00:00Z"))).toBe(7);
-    expect(dbMock.db.poolVisitDaily.deleteMany).toHaveBeenCalledWith({ where: { day: { lt: new Date("2026-08-15T00:00:00Z") } } });
+    // 90 London days kept, 13 November included: 16 August is the oldest.
+    expect(dbMock.db.poolVisitDaily.deleteMany).toHaveBeenCalledWith({ where: { day: { lt: new Date("2026-08-16T00:00:00Z") } } });
   });
 
   it("a failure (the table not migrated yet) is 0, never a throw into the cron", async () => {

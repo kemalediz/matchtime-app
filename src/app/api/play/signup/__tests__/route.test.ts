@@ -81,21 +81,41 @@ describe("the short form", () => {
 // Round 3 of #607: the staff cookie is unsigned, so anyone could set it by
 // hand. A staff test hides a profile from the club's Guest players page, so
 // it is set only for a VERIFIED MatchTime staff session (User.isSuperadmin),
-// never from the cookie.
-describe("a staff test sign-up needs a verified MatchTime staff session (2026-11-16)", () => {
-  it("a superadmin's session: made exactly as any other, and marked staffTest", async () => {
+// never from the cookie. Round 4: and only when the sign-up is TICKED as a
+// test, so a real newcomer Kemal signs up at the pitch is a real sign-up.
+describe("a staff test sign-up needs a verified MatchTime staff session and the test tick (2026-11-16)", () => {
+  it("a superadmin's session, ticked as a test: made exactly as any other, and marked staffTest", async () => {
     session.auth.mockResolvedValue({ user: { id: "u-kemal" } });
     org.isSuperadmin.mockResolvedValue(true);
-    const res = await post(SHORT);
+    const res = await post({ ...SHORT, staffTest: true });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, code: "ABCDE", waLink: expect.stringContaining("wa.me/447700900555"), staffTest: true });
     expect(org.isSuperadmin).toHaveBeenCalledWith("u-kemal");
     expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: true });
   });
 
-  it("a hand-set staff cookie with no session: an ordinary sign-up", async () => {
+  it("a superadmin's session, the tick taken off (or not sent): a real sign-up", async () => {
+    session.auth.mockResolvedValue({ user: { id: "u-kemal" } });
+    org.isSuperadmin.mockResolvedValue(true);
+    for (const body of [{ ...SHORT, staffTest: false }, SHORT, { ...SHORT, staffTest: "true" }]) {
+      vi.clearAllMocks();
+      session.auth.mockResolvedValue({ user: { id: "u-kemal" } });
+      org.isSuperadmin.mockResolvedValue(true);
+      signup.createPoolSignup.mockResolvedValue({ ok: true, id: "p1", code: "ABCDE", expiresAt: new Date("2026-11-07T12:00:00Z"), earlyList: true });
+      const res = await post(body);
+      expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: false });
+      expect(await res.json()).not.toHaveProperty("staffTest");
+    }
+  });
+
+  it("the tick sent with no staff session: a real sign-up", async () => {
+    await post({ ...SHORT, staffTest: true });
+    expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: false });
+  });
+
+  it("a hand-set staff cookie with no session: an ordinary sign-up, tick or not", async () => {
     jar.cookies.set("mt-staff", "2");
-    const res = await post(SHORT);
+    const res = await post({ ...SHORT, staffTest: true });
     expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: false });
     expect(await res.json()).not.toHaveProperty("staffTest");
   });
@@ -103,14 +123,14 @@ describe("a staff test sign-up needs a verified MatchTime staff session (2026-11
   it("the staff cookie with a session that is not MatchTime staff: an ordinary sign-up", async () => {
     jar.cookies.set("mt-staff", "2");
     session.auth.mockResolvedValue({ user: { id: "u-organiser" } });
-    await post(SHORT);
+    await post({ ...SHORT, staffTest: true });
     expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: false });
   });
 
   it("a session check that fails: an ordinary sign-up, made all the same", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     session.auth.mockRejectedValue(new Error("db down"));
-    const res = await post(SHORT);
+    const res = await post({ ...SHORT, staffTest: true });
     expect(res.status).toBe(200);
     expect(signup.createPoolSignup.mock.calls[0][0]).toMatchObject({ staffTest: false });
     warn.mockRestore();

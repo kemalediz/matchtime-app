@@ -60,6 +60,7 @@ type Env = Record<string, string | undefined>;
 
 const OFFER_SELECT = {
   id: true,
+  staffTest: true,
   poolAskId: true,
   matchId: true,
   orgId: true,
@@ -232,6 +233,8 @@ export async function acceptOffer(offerId: string, now: Date = new Date(), env?:
     benchPickMode: o.ask.org.benchPickMode,
     fill: () => poolAskFill({ id: o.ask.id, roundId: o.ask.roundId, matchId: o.matchId, places: o.ask.places }),
     now,
+    // His place carries the offer's staff test flag (round 4 of #607).
+    staffTest: o.staffTest,
   });
   if (placed.kind === "gone") {
     await db.poolOffer.updateMany({ where: { id: o.id, outcome: "accepted" }, data: { outcome: "filled", resolvedAt: now } });

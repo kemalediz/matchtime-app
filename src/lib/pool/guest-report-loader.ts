@@ -16,11 +16,12 @@
  * before the pool has no `GuestPlace` row; his games are his attendance rows
  * on this club's matches (he is no member, so each one is a guest game).
  *
- * STAFF TESTS (round 2 of #607, 2026-11-16). The Guest players page and its
- * CSV pass `leaveOutStaffTests`: a MatchTime staff test sign-up
- * (`PoolProfile.staffTest`) is then in none of the club's numbers, not as a
- * guest, not as a game, not as an offer an ask reached. The callers that
- * ask about named people (an invitation, a match's guest card) do not.
+ * STAFF TESTS (rounds 2 to 4 of #607, 2026-11-16). The Guest players page
+ * and its CSV pass `leaveOutStaffTests`: a MatchTime staff test is then in
+ * none of the club's numbers, not as a guest, not as a game, not as an
+ * offer an ask reached. Read off the rows' own flags (`GuestPlace.staffTest`,
+ * `PoolOffer.staffTest`), which outlive his profile. The callers that ask
+ * about named people (an invitation, a match's guest card) do not.
  */
 import { GUEST_MEMBER_WHERE, guestSourceOf, isGuestMembership } from "../guest-membership";
 import { db } from "../db";
@@ -60,10 +61,7 @@ export async function loadGuestFacts(
   opts: { userIds?: string[]; report?: boolean; now?: Date; leaveOutStaffTests?: boolean } = {},
 ): Promise<GuestFacts> {
   const onlyUsers = opts.userIds ? { userId: { in: opts.userIds } } : {};
-  const staffIds = opts.leaveOutStaffTests
-    ? (await db.poolProfile.findMany({ where: { staffTest: true, userId: { not: null } }, select: { userId: true } })).map((p) => p.userId!)
-    : [];
-  const notStaff = <T extends { userId: string }>(rows: T[]) => (staffIds.length ? rows.filter((r) => !staffIds.includes(r.userId)) : rows);
+  const leaveOut = opts.leaveOutStaffTests === true;
 
   const [allGuestMemberships, allPlacesHere] = await Promise.all([
     db.membership.findMany({
@@ -72,12 +70,23 @@ export async function loadGuestFacts(
     }),
     db.guestPlace.findMany({
       where: { orgId, ...onlyUsers },
-      select: { userId: true, matchId: true, source: true, fromOrgId: true, result: true, settledAt: true },
+      select: { userId: true, matchId: true, source: true, fromOrgId: true, result: true, settledAt: true, staffTest: true },
     }),
   ]);
 
-  const guestMemberships = notStaff(allGuestMemberships);
-  const placesHere = notStaff(allPlacesHere);
+  // Staff tests (round 4 of #607), read off the rows' own flags so an erased
+  // profile stays out: a staff test's place is left out; a person is left
+  // out when every place of his here was a staff test's, or his live
+  // profile is one. A real person keeps his own games.
+  const staffIds = new Set<string>();
+  if (leaveOut) {
+    const real = new Set(allPlacesHere.filter((p) => !p.staffTest).map((p) => p.userId));
+    for (const p of allPlacesHere) if (p.staffTest && !real.has(p.userId)) staffIds.add(p.userId);
+    const live = await db.poolProfile.findMany({ where: { staffTest: true, userId: { not: null } }, select: { userId: true } });
+    for (const p of live) staffIds.add(p.userId!);
+  }
+  const guestMemberships = allGuestMemberships.filter((m) => !staffIds.has(m.userId));
+  const placesHere = allPlacesHere.filter((p) => !staffIds.has(p.userId) && !(leaveOut && p.staffTest));
   const userIds = [...new Set([...guestMemberships.map((m) => m.userId), ...placesHere.map((p) => p.userId)])];
 
   const [asks, partnerAsks] = opts.report
@@ -87,7 +96,7 @@ export async function loadGuestFacts(
           select: {
             matchId: true,
             status: true,
-            _count: { select: { offers: { where: { sentAt: { not: null }, ...(staffIds.length ? { userId: { notIn: staffIds } } : {}) } } } },
+            _count: { select: { offers: { where: { sentAt: { not: null }, ...(leaveOut ? { staffTest: false } : {}) } } } },
           },
         }),
         db.partnerAsk.findMany({ where: { askerOrgId: orgId }, select: { matchId: true, status: true, volunteerUserIds: true } }),

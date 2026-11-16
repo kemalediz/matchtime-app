@@ -66,7 +66,7 @@ scenarios("a stranger signs up", () => {
 | `club.hq.say(memberKey, text, { tag? })` | `POST /api/whatsapp/admin-group` |
 | `club.post(memberKey, text, simOpts)` | the players' group, `POST /api/whatsapp/analyze` (the sim's `post`) |
 | `club.group` | the underlying `SimGroup`, for anything else the group sim does |
-| `pool.signUp(body?, { poolOpen?, ip?, cookie? })` | the /play form: `POST /api/play/signup`, the route the page posts to; returns the code, the prefilled message and the wa.me link. `cookie` is the browser's, e.g. `mt-staff=2` for a staff test |
+| `pool.signUp(body?, { poolOpen?, ip?, cookie? })` | the /play form: `POST /api/play/signup`, the route the page posts to; returns the code, the prefilled message and the wa.me link. `cookie` is the browser's, e.g. `mt-staff=2`: it never makes a staff test (that needs a ticked sign-up from a verified MatchTime staff session) |
 | `person.dm(text, { messageId?, envelope? })` | also: the same message again (a Pi retry), or a LID on the envelope |
 | `pool.dispatchPlatform()` | the Pi's platform poll: claims the due `PlatformJob`s, as the Pi would |
 | `pool.note(text)` | a line of commentary in the transcript |

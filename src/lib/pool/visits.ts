@@ -19,8 +19,9 @@
  * device or what opened the page. Started, sent and confirmed have no breakdown: the counters
  * already count them, and a start is the step just before a sign-up.
  *
- * STAFF TESTS (2026-11-16). A sign-up made from a MatchTime staff browser
- * (`PoolProfile.staffTest`, set by `createPoolSignup`) is counted as
+ * STAFF TESTS (2026-11-16; rounds 3 and 4 of #607). A sign-up ticked as a
+ * test from a verified MatchTime staff session (`PoolProfile.staffTest`,
+ * set by `createPoolSignup`, never from the staff cookie) is counted as
  * neither sent nor confirmed. The confirm comes later by WhatsApp, where
  * there is no cookie, so the flag on the profile is what says so.
  *
@@ -130,8 +131,8 @@ export async function recordPoolVisit(a: {
 }
 
 /**
- * RETENTION: delete the daily breakdown once its day is
- * POOL_VISIT_RETENTION_DAYS (90) old. Run by the daily 06:00 cron
+ * RETENTION: keep exactly POOL_VISIT_RETENTION_DAYS (90) London days of
+ * the daily breakdown, today included, and delete the days before them. Run by the daily 06:00 cron
  * (`api/cron/close-ratings`). One statement on the "day" index, a day's
  * rows at a time in the steady state. Total: a failure is logged and
  * counted as 0, so the cron's other sweeps still run.

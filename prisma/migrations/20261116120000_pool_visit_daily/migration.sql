@@ -33,8 +33,9 @@
 -- code, no user id, no cookie. An open still counts only after a real tap,
 -- scroll or key press (src/app/play/funnel-open.ts); which one is not kept.
 --
--- RETENTION: 90 DAYS. A day's totals are deleted once the day is 90 days
--- old, by the daily 06:00 cron (/api/cron/close-ratings,
+-- RETENTION: 90 DAYS. Exactly 90 London days are kept, today included: on
+-- 13 November the oldest day kept is 16 August, and 15 August is deleted.
+-- Deleted by the daily 06:00 cron (/api/cron/close-ratings,
 -- purgeOldPoolVisitDaily in src/lib/pool/visits.ts; the rule is
 -- POOL_VISIT_RETENTION_DAYS in src/lib/pool/visit-log-rules.ts). The
 -- privacy policy (version 4) says so.

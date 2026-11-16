@@ -1,57 +1,107 @@
 /**
- * The match page's pool panel (and so the short-squad notice) counts no
- * MatchTime staff test (round 3 of #607): not in the "a few / 5+" band, not
- * in how many were asked or said no. A staff test still receives the offer.
+ * The match page's pool panel (and so the short-squad notice and the HQ
+ * YES list) with MatchTime staff tests (rounds 3 and 4 of #607):
+ *   - whether the pool can be asked is decided by EVERY eligible candidate,
+ *     staff tests included, so Kemal can test an ask with nobody else near;
+ *   - the band SHOWN counts only real players, and reads "a few" when the
+ *     only candidates are staff tests;
+ *   - asked, declined and placed leave staff tests out, read off the offer's
+ *     own flag (`PoolOffer.staffTest`), which outlives the profile.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const dbMock = vi.hoisted(() => ({ db: { poolAsk: { findFirst: vi.fn() }, poolProfile: { findMany: vi.fn() } } }));
+const dbMock = vi.hoisted(() => ({ db: { poolAsk: { findFirst: vi.fn() }, attendance: { count: vi.fn() } } }));
 vi.mock("../../db", () => dbMock);
 vi.mock("../../club-partnership", () => ({ loadPartnerAskSettings: vi.fn(async () => null) }));
 const cand = vi.hoisted(() => ({ findPoolCandidates: vi.fn() }));
 vi.mock("../candidates", async (orig) => ({ ...(await orig<typeof import("../candidates")>()), findPoolCandidates: cand.findPoolCandidates }));
-vi.mock("../round", () => ({ poolAskFill: vi.fn(async () => ({ wanted: 2, placed: 0 })) }));
+const fill = vi.hoisted(() => ({ poolAskFill: vi.fn() }));
+vi.mock("../round", () => fill);
+const share = vi.hoisted(() => ({ poolRoundStaffTestIds: vi.fn() }));
+vi.mock("../round-share", () => share);
 
-import { loadPoolPanel } from "../panel";
+import { loadPoolPanel, poolNoticeBand } from "../panel";
 
 const eligible = (userId: string) => ({ userId, row: { userId } });
+const found = (ids: string[], staff: string[]) => ({
+  ctx: { orgId: "org-1" },
+  selection: { gate: null, eligible: ids.map(eligible), excluded: {} },
+  staffTestUserIds: new Set(staff),
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
-  cand.findPoolCandidates.mockResolvedValue({
-    ctx: { orgId: "org-1" },
-    selection: { gate: null, eligible: [eligible("kemal"), eligible("ali")], excluded: {} },
-    staffTestUserIds: new Set(["kemal"]),
-  });
-  dbMock.db.poolAsk.findFirst.mockResolvedValue({
-    id: "ask-1",
-    roundId: null,
-    status: "open",
-    places: 2,
-    offers: [
-      { userId: "kemal", sentAt: new Date(), outcome: "declined" },
-      { userId: "ali", sentAt: new Date(), outcome: "declined" },
-      { userId: "bea", sentAt: new Date(), outcome: null },
-    ],
-  });
-  dbMock.db.poolProfile.findMany.mockResolvedValue([{ userId: "kemal" }]);
+  cand.findPoolCandidates.mockResolvedValue(found(["kemal", "ali"], ["kemal"]));
+  dbMock.db.poolAsk.findFirst.mockResolvedValue(null);
+  dbMock.db.attendance.count.mockResolvedValue(0);
+  fill.poolAskFill.mockResolvedValue({ wanted: 2, placed: 0 });
+  share.poolRoundStaffTestIds.mockResolvedValue([]);
 });
 
-describe("loadPoolPanel: staff tests in no number", () => {
-  it("the band counts only the ordinary candidate", async () => {
+describe("the band: asking decided by everyone eligible, the shown band by real players", () => {
+  it("a real player and a staff test: a few", async () => {
+    expect((await loadPoolPanel("m1", "org-1"))?.band).toBe("few");
+  });
+
+  it("only a staff test near: the ask can still go out, the band shown is a few", async () => {
+    cand.findPoolCandidates.mockResolvedValue(found(["kemal"], ["kemal"]));
     const panel = await loadPoolPanel("m1", "org-1");
     expect(panel?.band).toBe("few");
-    cand.findPoolCandidates.mockResolvedValue({
-      ctx: { orgId: "org-1" },
-      selection: { gate: null, eligible: [eligible("kemal")], excluded: {} },
-      staffTestUserIds: new Set(["kemal"]),
-    });
+    expect(panel?.gate).toBeNull();
+  });
+
+  it("five staff tests and one real player: a few, never 5+", async () => {
+    cand.findPoolCandidates.mockResolvedValue(found(["s1", "s2", "s3", "s4", "s5", "ali"], ["s1", "s2", "s3", "s4", "s5"]));
+    expect((await loadPoolPanel("m1", "org-1"))?.band).toBe("few");
+  });
+
+  it("nobody eligible at all: none", async () => {
+    cand.findPoolCandidates.mockResolvedValue(found([], []));
     expect((await loadPoolPanel("m1", "org-1"))?.band).toBe("none");
   });
 
-  it("asked and declined leave out the offers sent to a staff test", async () => {
+  it("the short-squad notice line (and so the HQ YES list) offers the pool when only a staff test is near", async () => {
+    cand.findPoolCandidates.mockResolvedValue(found(["kemal"], ["kemal"]));
+    expect(await poolNoticeBand("org-1", { id: "m1", date: new Date(Date.now() + 3 * 24 * 3600_000) }, new Date())).toBe("few");
+  });
+});
+
+describe("asked, declined and placed: staff tests left out, by the offer's own flag", () => {
+  beforeEach(() => {
+    dbMock.db.poolAsk.findFirst.mockResolvedValue({
+      id: "ask-1",
+      roundId: null,
+      status: "open",
+      places: 2,
+      offers: [
+        { sentAt: new Date(), outcome: "accepted", staffTest: true },
+        { sentAt: new Date(), outcome: "declined", staffTest: true },
+        { sentAt: new Date(), outcome: "declined", staffTest: false },
+        { sentAt: new Date(), outcome: null, staffTest: false },
+      ],
+    });
+  });
+
+  it("asked 2 and declined 1 of the real players", async () => {
     const panel = await loadPoolPanel("m1", "org-1");
     expect(panel?.ask).toMatchObject({ asked: 2, declined: 1 });
-    expect(dbMock.db.poolProfile.findMany).toHaveBeenCalledWith({ where: { userId: { in: ["kemal", "ali", "bea"] }, staffTest: true }, select: { userId: true } });
+    const select = dbMock.db.poolAsk.findFirst.mock.calls[0][0].select.offers.select;
+    expect(select).toMatchObject({ staffTest: true });
+  });
+
+  it("placed leaves out a staff test with a confirmed place, so it never reads 'asked 0, placed 1'", async () => {
+    fill.poolAskFill.mockResolvedValue({ wanted: 2, placed: 1 });
+    share.poolRoundStaffTestIds.mockResolvedValue(["kemal"]);
+    dbMock.db.attendance.count.mockResolvedValue(1);
+    const panel = await loadPoolPanel("m1", "org-1");
+    expect(panel?.ask).toMatchObject({ placed: 0, wanted: 2 });
+    expect(share.poolRoundStaffTestIds).toHaveBeenCalledWith("m1", "ask-1");
+    expect(dbMock.db.attendance.count).toHaveBeenCalledWith({ where: { matchId: "m1", status: "CONFIRMED", userId: { in: ["kemal"] } } });
+  });
+
+  it("no staff test in the round: placed as the round's own fill, no extra read", async () => {
+    fill.poolAskFill.mockResolvedValue({ wanted: 2, placed: 1 });
+    expect((await loadPoolPanel("m1", "org-1"))?.ask).toMatchObject({ placed: 1 });
+    expect(dbMock.db.attendance.count).not.toHaveBeenCalled();
   });
 });

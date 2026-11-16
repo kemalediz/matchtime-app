@@ -63,6 +63,36 @@ for (const vp of WIDTHS) {
   });
 }
 
+// Round 4 of #607: a MatchTime staff test may be asked, so Kemal can test the
+// whole path with nobody else near; the band shown still reads "a few", and
+// none of the numbers counts him, even once his profile is erased (his
+// offer carries its own flag).
+test("only a staff test near: the pool tick still shows and one press asks him; once erased, his offer is in no number", async ({ page, request, db }) => {
+  const world = new PoolWorld(request, db, false);
+  await world.start();
+  const fnf = await openClub(world, "fnf-staff", { name: "FNF" });
+  const kemal = await poolPlayer(world, "kemal-staff", { name: "Kemal Test", at: near(fnf) });
+  await db.run(`UPDATE "PoolProfile" SET "staffTest" = true WHERE "userId" = $1`, [kemal.userId]);
+  const owner = (await world.userOf(fnf.member("owner")))!;
+  await poolOpenCookie(page);
+
+  await signInAs(page, owner.id, `/matches/${fnf.group.matchId}`);
+  const row = page.getByTestId("pool-ask-row");
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await expect(row).toHaveAttribute("data-band", "few");
+  await expect(page.getByTestId("pool-ask-tick")).toBeChecked();
+  await page.getByTestId("partner-ask-button").click();
+  await expect(page.getByTestId("pool-ask-status")).toBeVisible({ timeout: 15_000 });
+
+  // The offer went to him, and carries the flag itself.
+  expect(await db.all(`SELECT "staffTest" FROM "PoolOffer" WHERE "orgId" = $1 AND "userId" = $2`, [fnf.group.orgId, kemal.userId])).toEqual([{ staffTest: true }]);
+  // Delivered and declined, then his profile erased: still counted as neither.
+  await db.run(`UPDATE "PoolOffer" SET "sentAt" = now(), outcome = 'declined', "resolvedAt" = now() WHERE "orgId" = $1`, [fnf.group.orgId]);
+  await db.run(`DELETE FROM "PoolProfile" WHERE "userId" = $1`, [kemal.userId]);
+  await page.reload();
+  await expect(page.getByTestId("pool-ask-status")).toContainText("Waiting to ask nearby players.", { timeout: 30_000 });
+});
+
 test("match page in Turkish: the pool line in the club's language", async ({ page, request, db }) => {
   const world = new PoolWorld(request, db, false);
   await world.start();

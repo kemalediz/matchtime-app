@@ -422,8 +422,9 @@ describe("the daily breakdown migration (2026-11-16): daily totals of opens only
   it("is indexed by day, for the daily deletion", () => {
     expect(sql).toContain(`CREATE INDEX IF NOT EXISTS "PoolVisitDaily_day_idx" ON "PoolVisitDaily"("day");`);
   });
-  it("states its retention and its place in the order of four", () => {
+  it("states its retention, exactly 90 days today included, and its place in the order of four", () => {
     expect(read(DAILY)).toMatch(/RETENTION: 90 DAYS/);
+    expect(read(DAILY).replace(/\n--\s*/g, " ")).toMatch(/Exactly 90 London days are kept, today included: on 13 November the oldest day kept is 16 August/);
     expect(read(DAILY)).toMatch(/BEFORE the deploy[\s\S]*BEFORE the deploy[\s\S]*AFTER the deploy[\s\S]*LATER/);
   });
   it("is additive, idempotent and one transaction with no session-level SET and no data written", () => {
@@ -448,10 +449,21 @@ describe("the staff test migration (2026-11-16)", () => {
     expect(read(STAFF)).toMatch(/EVERY insert into "PoolProfile"/);
     expect(read(STAFF)).toMatch(/every update of a "PoolProfile" that returns the row/i);
   });
-  it("adds one column, false for every existing profile", () => {
-    expect([...sql.matchAll(/ADD COLUMN IF NOT EXISTS "([^"]+)"/g)].map((m) => m[1])).toEqual(["staffTest"]);
-    expect(sql).toContain(`ALTER TABLE "PoolProfile" ADD COLUMN IF NOT EXISTS "staffTest" BOOLEAN NOT NULL DEFAULT false;`);
-    expect(read("prisma/schema.prisma")).toMatch(/model PoolProfile \{[^}]*staffTest\s+Boolean\s+@default\(false\)/);
+  // Round 4 of #607: the flag also goes on the rows that outlive the
+  // profile (an erased profile's offers and guest places stay), so a deleted
+  // staff test never comes back into a count.
+  it("adds the flag to the profile, its offers and its guest places, false for every existing row", () => {
+    expect([...sql.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN IF NOT EXISTS "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`)).toEqual([
+      "PoolProfile.staffTest",
+      "PoolOffer.staffTest",
+      "GuestPlace.staffTest",
+    ]);
+    for (const t of ["PoolProfile", "PoolOffer", "GuestPlace"]) {
+      expect(sql).toContain(`ALTER TABLE "${t}" ADD COLUMN IF NOT EXISTS "staffTest" BOOLEAN NOT NULL DEFAULT false;`);
+      expect(read("prisma/schema.prisma")).toMatch(new RegExp(`model ${t} \\{[^}]*staffTest\\s+Boolean\\s+@default\\(false\\)`));
+    }
+    expect(read(STAFF)).toMatch(/EVERY insert into "PoolOffer"/);
+    expect(read(STAFF)).toMatch(/EVERY insert into "GuestPlace"/);
   });
   it("is additive, idempotent and one transaction with no data written", () => {
     expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);

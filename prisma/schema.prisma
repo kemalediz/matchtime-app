@@ -3488,9 +3488,12 @@ model PoolProfile {
   /// The friend link (FriendLink.id) this sign-up came from, when a member
   /// vouched for him for one match (2026-10-31). Source "friend".
   friendLinkId      String?
-  /// Made from a MatchTime staff browser (2026-11-16, `isPoolStaffRequest`):
-  /// a staff test, counted in the /play funnel as neither sent nor
-  /// confirmed (`visits.ts`). Otherwise an ordinary sign-up. Migration
+  /// A staff test (2026-11-16; rounds 3 and 4 of #607): a sign-up TICKED as
+  /// a test on /play and made with a verified MatchTime staff session
+  /// (`isPoolStaffSession`), never from the staff cookie. Counted nowhere
+  /// (`visits.ts` and every owner and club count), though it works as any
+  /// other and can be offered games. Its offers and guest places carry the
+  /// flag too (`PoolOffer.staffTest`, `GuestPlace.staffTest`). Migration
   /// 20261116120100_pool_profile_staff_test.
   staffTest         Boolean   @default(false)
   /// His own share code for matchtime.ai/p/<code> (G1).
@@ -3642,6 +3645,10 @@ model PoolOffer {
   wave          Int       @default(1)
   /// The PlatformJob carrying the offer DM.
   platformJobId String?
+  /// Made to a MatchTime staff test (round 4 of #607): copied from his
+  /// profile when the offer is made, so it stays out of every count after
+  /// the profile is erased. Migration 20261116120100_pool_profile_staff_test.
+  staffTest     Boolean   @default(false)
   sentAt        DateTime?
   expiresAt     DateTime
   /// vocab.ts POOL_OFFER_OUTCOMES; NULL while open.
@@ -3800,7 +3807,7 @@ model PoolCampaignVisit {
 /// (`visit-log-unlinked.test.ts`). Migrations
 /// 20261116120000_pool_visit_daily (the table) and
 /// 20261116120200_pool_visit_daily_backfill (the per-visit opens added up).
-/// RETENTION 90 days from `day`: deleted by the daily 06:00 cron
+/// RETENTION exactly 90 London days, today included: older days deleted by the daily 06:00 cron
 /// (`purgeOldPoolVisitDaily`, POOL_VISIT_RETENTION_DAYS).
 model PoolVisitDaily {
   /// The bucket the counters use: a campaign code, "_direct" or "_referral".
@@ -3875,6 +3882,11 @@ model GuestPlace {
   poolOfferId  String?      @unique
   /// The friend link he came by (2026-10-31): source "pool", no offer (CHECK).
   friendLinkId String?      @unique
+  /// A MatchTime staff test took this place (round 4 of #607): copied from
+  /// the offer or the friend link's sign-up when it is written, so it stays
+  /// out of every count after his profile is erased. Migration
+  /// 20261116120100_pool_profile_staff_test.
+  staffTest    Boolean      @default(false)
   /// "booked" | "played" | "no-show" | "late-cancel" | "withdrawn".
   /// `resultAt` set exactly when it is no longer "booked".
   result       String       @default("booked")

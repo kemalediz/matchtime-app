@@ -12,17 +12,21 @@
  *                     null when there is nothing to offer (closed, no venue,
  *                     nobody near, an ask already open, past the cut-off).
  *
- * STAFF TESTS (round 3 of #607): a MatchTime staff test
- * (`PoolProfile.staffTest`) may be offered the match, so the whole path can
- * be tested, but none of these numbers counts him.
+ * STAFF TESTS (rounds 3 and 4 of #607): a MatchTime staff test may be
+ * offered the match, so the whole path can be tested, and whether the pool
+ * can be asked counts him (so the button, the notice line and the HQ YES
+ * list appear with only him near); but the band shown, asked, declined and
+ * placed do not. Offers carry their own flag (`PoolOffer.staffTest`), so a
+ * deleted staff-test profile stays out.
  */
 import { db } from "../db";
 import { loadPartnerAskSettings } from "../club-partnership";
 import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "../club-partnership-rules";
 import { askWindows } from "../partner-ask-rules";
-import { countedPoolCandidates, findPoolCandidates } from "./candidates";
+import { findPoolCandidates, shownPoolBand } from "./candidates";
+import { poolRoundStaffTestIds } from "./round-share";
 import { poolAskFill } from "./round";
-import { nearBand, type PoolNearBand } from "./near-band";
+import type { PoolNearBand } from "./near-band";
 import type { MatchGateRefusal } from "./matching-rules";
 
 type Env = Record<string, string | undefined>;
@@ -42,27 +46,29 @@ export async function loadPoolPanel(matchId: string, orgId: string, opts: { now?
   const ask = await db.poolAsk.findFirst({
     where: { matchId, orgId },
     orderBy: { createdAt: "desc" },
-    select: { id: true, roundId: true, status: true, places: true, offers: { select: { userId: true, sentAt: true, outcome: true } } },
+    select: { id: true, roundId: true, status: true, places: true, offers: { select: { sentAt: true, outcome: true, staffTest: true } } },
   });
+  const roundKey = ask ? (ask.roundId ?? ask.id) : null;
   const fill = ask ? await poolAskFill({ id: ask.id, roundId: ask.roundId, matchId, places: ask.places }) : null;
-  const offerUserIds = ask ? [...new Set(ask.offers.map((o) => o.userId))] : [];
-  const staffTests = new Set(
-    offerUserIds.length
-      ? (await db.poolProfile.findMany({ where: { userId: { in: offerUserIds }, staffTest: true }, select: { userId: true } })).map((p) => p.userId)
-      : [],
-  );
-  const counted = ask ? ask.offers.filter((o) => !staffTests.has(o.userId)) : [];
+  // Staff tests are read off the offer's own flag, which outlives the profile.
+  const counted = ask ? ask.offers.filter((o) => !o.staffTest) : [];
+  // The round's fill counts a staff test holding a place (he truly fills
+  // it); the number SHOWN does not, so it never reads "asked 0, placed 1".
+  const staffIds = roundKey ? await poolRoundStaffTestIds(matchId, roundKey) : [];
+  const staffPlaced = staffIds.length ? await db.attendance.count({ where: { matchId, status: "CONFIRMED", userId: { in: staffIds } } }) : 0;
   return {
-    band: nearBand(countedPoolCandidates(found)),
+    // Asking is decided by everyone eligible, staff tests included; the
+    // band shown counts real players only (`shownPoolBand`).
+    band: shownPoolBand(found),
     gate: found.selection.gate,
     ask: ask
       ? {
-          roundKey: ask.roundId ?? ask.id,
+          roundKey: roundKey!,
           status: ask.status,
           asked: counted.filter((o) => o.sentAt).length,
           declined: counted.filter((o) => o.outcome === "declined").length,
           wanted: fill?.wanted ?? ask.places,
-          placed: fill?.placed ?? 0,
+          placed: Math.max((fill?.placed ?? 0) - staffPlaced, 0),
         }
       : null,
   };

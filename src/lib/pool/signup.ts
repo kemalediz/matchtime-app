@@ -44,9 +44,10 @@ export async function createPoolSignup(args: {
   /** The friend link it came from (2026-10-31): source "friend", the member
    *  who sent it as referrer, and the code dies at kick-off if sooner. */
   friendLink?: { id: string; issuedByUserId: string; kickoff: Date };
-  /** 2026-11-16: made from a MatchTime staff browser (`isPoolStaffRequest`).
-   *  Stored on the profile; the funnel then counts it as neither sent nor
-   *  confirmed. Nothing else about the sign-up changes. */
+  /** 2026-11-16 (rounds 3 and 4 of #607): ticked as a test, with a verified
+   *  MatchTime staff session (`/api/play/signup`, `isPoolStaffSession`),
+   *  never from the staff cookie. Stored on the profile; no number counts
+   *  it. Nothing else about the sign-up changes. */
   staffTest?: boolean;
   now?: Date;
 }): Promise<PoolSignupResult> {

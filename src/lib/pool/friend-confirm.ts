@@ -70,7 +70,7 @@ export async function friendCodeExpiresAt(row: { createdAt: Date; confirmCodeExp
 const settled = (r: BookFriendResult) => r.booked !== false || r.reason !== "failed";
 
 export async function confirmFriendWithProfile(a: {
-  row: { id: string; confirmCode: string | null; friendLinkId: string | null; referrerUserId: string | null };
+  row: { id: string; confirmCode: string | null; friendLinkId: string | null; referrerUserId: string | null; staffTest?: boolean };
   userId: string;
   profile: { id: string; status: string; pausedReason: string | null; pausedAt: Date | null };
   phone: string;
@@ -96,7 +96,9 @@ export async function confirmFriendWithProfile(a: {
     });
     if (!done) return { result: "friend-restart-race-lost", replied: false };
   }
-  const r = await bookFriend({ linkId, userId, phone, waMessageId, newToPool: outcome.reactivate, blockedProfile: !outcome.book, now });
+  // A ticked staff test's link (round 4 of #607): the place is a staff
+  // test's, though it lands on his existing, unflagged profile.
+  const r = await bookFriend({ linkId, userId, phone, waMessageId, newToPool: outcome.reactivate, blockedProfile: !outcome.book, staffTest: row.staffTest === true, now });
   if (settled(r)) {
     await db.$transaction(async (tx: Tx) => {
       if (row.confirmCode) await tx.sentNotification.createMany({ data: [{ key: usedKey(userId, row.confirmCode), kind: "friend-code-used" }], skipDuplicates: true });
@@ -109,9 +111,9 @@ export async function confirmFriendWithProfile(a: {
 /** A new friend's own code again, after his booking failed: book him now.
  *  Null when there is nothing to retry (no link, or the link is spent). */
 export async function retryFriendBooking(a: { userId: string; phone: string; waMessageId: string; now: Date }): Promise<BookFriendResult | null> {
-  const p = await db.poolProfile.findUnique({ where: { userId: a.userId }, select: { friendLinkId: true } });
+  const p = await db.poolProfile.findUnique({ where: { userId: a.userId }, select: { friendLinkId: true, staffTest: true } });
   if (!p?.friendLinkId) return null;
   const link = await db.friendLink.findUnique({ where: { id: p.friendLinkId }, select: { usedAt: true } });
   if (!link || link.usedAt) return null;
-  return bookFriend({ linkId: p.friendLinkId, userId: a.userId, phone: a.phone, waMessageId: a.waMessageId, newToPool: true, now: a.now });
+  return bookFriend({ linkId: p.friendLinkId, userId: a.userId, phone: a.phone, waMessageId: a.waMessageId, newToPool: true, staffTest: p.staffTest, now: a.now });
 }

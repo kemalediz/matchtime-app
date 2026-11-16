@@ -10,6 +10,9 @@
  */
 import { test, expect, resetDb, signInAs, U } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
+import { poolPageCopy } from "@/lib/pool/page-copy";
+
+const EN = poolPageCopy("en");
 
 const CODE = "e2e-staff-excl";
 const P = "e2e-staff-excl";
@@ -84,17 +87,48 @@ test("a sign-up with a hand-set staff cookie and no session is an ordinary one",
   await context.close();
 });
 
-test("a sign-up with a MatchTime staff session (no cookie needed) is a staff test", async ({ browser, db }) => {
+// Round 4 of #607: a MatchTime staff session sees a "This is a test sign-up"
+// tick on /play, ticked by default. Only a ticked sign-up is a staff test,
+// so a real newcomer Kemal signs up at the pitch (tick taken off) is real.
+async function fillAndSend(page: import("@playwright/test").Page, name: string) {
+  await page.getByLabel(EN.fields.nameLabel, { exact: true }).fill(name);
+  await page.getByLabel(EN.fields.districtLabel, { exact: true }).fill("sm1");
+  await page.getByRole("checkbox", { name: "Tuesday", exact: true }).check();
+  await page.getByRole("checkbox", { name: EN.signup.adultLabel }).check();
+  await page.getByRole("checkbox", { name: EN.signup.consentLabel }).check();
+  await page.getByRole("button", { name: EN.signup.submit }).click();
+  await expect(page.getByRole("heading", { level: 1, name: EN.signup.confirmHeading })).toBeVisible({ timeout: 30_000 });
+  return (await page.getByTestId("pool-code").innerText()).trim();
+}
+
+for (const [ticked, expected] of [
+  [true, true],
+  [false, false],
+] as const) {
+  test(`a MatchTime staff session on /play sees the test tick, ticked; sent ${ticked ? "ticked: a staff test" : "with the tick taken off: a real sign-up"}`, async ({ browser, db }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    // Its own address, so the per-address sign-up cap of other specs is not his.
+    await page.setExtraHTTPHeaders({ "x-forwarded-for": `198.51.100.${ticked ? 203 : 204}` });
+    await signInAs(page, U.admin, `/play?src=${CODE}`);
+    await context.clearCookies({ name: "mt-staff" });
+    const tick = page.getByRole("checkbox", { name: EN.signup.staffTestLabel });
+    await expect(tick).toBeChecked({ timeout: 30_000 });
+    if (!ticked) await tick.uncheck();
+    const code = await fillAndSend(page, ticked ? "Staff Ticked" : "Real Newcomer");
+    expect(await db.one(`SELECT "staffTest" FROM "PoolProfile" WHERE "confirmCode" = $1`, [code])).toEqual({ staffTest: expected });
+    await db.run(`DELETE FROM "PoolProfile" WHERE "confirmCode" = $1`, [code]);
+    await context.close();
+  });
+}
+
+test("anybody else on /play sees no test tick, staff cookie or not", async ({ browser, baseURL }) => {
   const context = await browser.newContext();
+  await context.addCookies([{ name: "mt-staff", value: "2", url: baseURL! }]);
   const page = await context.newPage();
-  await signInAs(page, U.admin, "/play");
-  await context.clearCookies({ name: "mt-staff" });
-  const res = await context.request.post("/api/play/signup", { data: SIGNUP("Staff Session"), headers: { "x-forwarded-for": "198.51.100.202" } });
-  expect(res.status()).toBe(200);
-  const answer = (await res.json()) as { code: string; staffTest?: boolean };
-  expect(answer.staffTest).toBe(true);
-  expect(await db.one(`SELECT "staffTest" FROM "PoolProfile" WHERE "confirmCode" = $1`, [answer.code])).toEqual({ staffTest: true });
-  await db.run(`DELETE FROM "PoolProfile" WHERE "confirmCode" = $1`, [answer.code]);
+  await page.goto(`/play?src=${CODE}`);
+  await expect(page.getByRole("checkbox", { name: EN.signup.consentLabel })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("checkbox", { name: EN.signup.staffTestLabel })).toHaveCount(0);
   await context.close();
 });
 

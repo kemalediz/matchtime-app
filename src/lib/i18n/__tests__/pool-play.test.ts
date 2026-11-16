@@ -167,4 +167,10 @@ describe("Sutton FC's first game free (2026-11-13)", () => {
     expect(EN.signup.firstGameFree).toBe("First game free for new players");
     expect(TR.signup.firstGameFree).toBe("Yeni oyunculara ilk maç ücretsiz");
   });
+  // Round 4 of #607: shown only to a MatchTime staff session on /play,
+  // ticked by default; only a ticked sign-up is a staff test.
+  it("the staff test tick, English and Turkish", () => {
+    expect(EN.signup.staffTestLabel).toBe("This is a test sign-up (MatchTime staff only: it is counted nowhere)");
+    expect(TR.signup.staffTestLabel).toBe("Bu bir deneme kaydı (yalnızca MatchTime ekibi: hiçbir sayıma girmez)");
+  });
 });

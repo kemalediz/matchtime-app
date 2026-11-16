@@ -9,6 +9,7 @@ vi.mock("@/lib/pool/growth", () => ({ poolInvitedByName: vi.fn() }));
 vi.mock("@/lib/pool/flags-page", () => ({ signupGoesOnEarlyListForPage: vi.fn() }));
 vi.mock("../play-signup", () => ({ PlaySignup: () => null }));
 vi.mock("../funnel-beacon", () => ({ PoolFunnelBeacon: () => null }));
+vi.mock("@/lib/pool/staff-request", () => ({ isPoolStaffSession: async () => false }));
 
 import { SITE_META } from "@/components/landing/landing-content";
 import { poolPageCopy } from "@/lib/pool/page-copy";
