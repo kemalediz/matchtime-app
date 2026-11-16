@@ -848,6 +848,7 @@ async function main() {
       isGroupAdmin: driver.isGroupAdmin ? (groupId, jids) => driver.isGroupAdmin!(groupId, jids) : undefined,
       applyLocally: applyMessageChangeLocally,
       record: (c) => messageChanges.record(c),
+      settleAdmin: (key, admin) => messageChanges.settleAdmin(key, admin),
       attempt: (key) => messageChanges.attempt(key),
       whenFlushIdle: (groupId) => whenFlushIdle(groupId),
       log: (l) => console.log(l),

@@ -24,6 +24,7 @@ import {
   type LocalMessageChange,
   type MessageChangeDeps,
 } from "./message-change.js";
+import { createMessageChangeOutbox } from "./message-change-outbox.js";
 
 const GROUP = "120363000000000000@g.us";
 const TARGET = "3EB0AAAABBBBCCCC0001";
@@ -56,6 +57,9 @@ function deps(over: Partial<MessageChangeDeps> = {}) {
       order.push("record");
       recorded.push(c);
       return "key-1";
+    }),
+    settleAdmin: vi.fn((key: string, admin: boolean) => {
+      order.push(`settle:${key}:${admin}`);
     }),
     attempt: vi.fn(async () => {
       order.push("post");
@@ -140,7 +144,8 @@ describe("handleMessageChange", () => {
     expect(await handleMessageChange(revoke({ kind: "edit", byAdmin: true }), d)).toBe("posted");
     expect(order).toEqual(["local:edit", "record", "idle", "post"]);
     expect(recorded[0]).toEqual({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
-    expect(Object.keys(d).sort()).toEqual(["applyLocally", "attempt", "error", "log", "phoneForLid", "record", "whenFlushIdle"]);
+    expect(Object.keys(d).sort()).toEqual(["applyLocally", "attempt", "error", "log", "phoneForLid", "record", "settleAdmin", "whenFlushIdle"]);
+    expect(d.settleAdmin).not.toHaveBeenCalled();
   });
 
   it("an edit notice with only a LID is widened through the Pi's LID map, so it matches an original stored under the phone", async () => {
@@ -160,28 +165,64 @@ describe("handleMessageChange", () => {
     expect(nulled.recorded[0]).toMatchObject({ byAdmin: false, adminUnknown: true });
   });
 
-  it("the admin check runs HERE, off the driver's queue: the Pi's own record first (the author's own delete applies at once), then the read, then the record and the post say who it was", async () => {
+  it("the admin check runs HERE, off the driver's queue, and DURABILITY FIRST: the Pi's own record and the outbox (admin unknown) before the roster read, then the outbox entry is settled", async () => {
     let answer!: (v: boolean | null) => void;
     const isGroupAdmin = vi.fn(() => new Promise<boolean | null>((r) => (answer = r)));
     const { d, order, recorded } = deps({ isGroupAdmin });
     const running = handleMessageChange(revoke({ adminUnknown: true }), d);
     await vi.waitFor(() => expect(isGroupAdmin).toHaveBeenCalledWith(GROUP, [`${SAM}@c.us`]));
-    expect(order).toEqual(["local:revoke"]);
+    // Both written before the read: a crash now loses nothing.
+    expect(order).toEqual(["local:revoke", "record"]);
+    expect(recorded[0]).toMatchObject({ kind: "revoke", byAdmin: false, adminUnknown: true });
     answer(true);
     expect(await running).toBe("posted");
-    expect(order).toEqual(["local:revoke", "local:revoke", "record", "idle", "post"]);
-    expect(recorded[0]).toEqual({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: true });
-    // Not an admin: known, so no longer "unknown"; a read that throws stays unknown.
+    expect(order).toEqual(["local:revoke", "record", "local:revoke", "settle:key-1:true", "idle", "post"]);
+    // Not an admin: settled as known; a read that throws leaves it unknown, for the outbox's re-check.
     const no = deps({ isGroupAdmin: vi.fn(async () => false) });
     await handleMessageChange(revoke({ adminUnknown: true }), no.d);
-    expect(no.recorded[0]).toEqual({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
+    expect(no.order).toEqual(["local:revoke", "record", "settle:key-1:false", "idle", "post"]);
     const boom = deps({ isGroupAdmin: vi.fn(async () => Promise.reject(new Error("rate-overlimit"))) });
     await handleMessageChange(revoke({ adminUnknown: true }), boom.d);
     expect(boom.recorded[0]).toMatchObject({ byAdmin: false, adminUnknown: true });
+    expect(boom.d.settleAdmin).not.toHaveBeenCalled();
     // An edit never asks: only its author may edit.
     const ed = deps({ isGroupAdmin: vi.fn(async () => true) });
     await handleMessageChange(revoke({ kind: "edit" }), ed.d);
     expect(ed.d.isGroupAdmin).not.toHaveBeenCalled();
+  });
+
+  it("a crash between the outbox write and the roster read: after the restart the change is still posted, its admin status re-checked", async () => {
+    const file = { saved: null as unknown, load: () => (file.saved === null ? null : JSON.parse(JSON.stringify(file.saved))), save: (v: unknown) => (file.saved = JSON.parse(JSON.stringify(v))) };
+    const posted: LocalMessageChange[] = [];
+    const before = createMessageChangeOutbox({ io: file, now: () => 1_763_200_000_000, post: async () => true, log: () => {}, error: () => {} });
+    // The roster read never answers: the process dies there.
+    const dying = handleMessageChange(revoke({ adminUnknown: true }), {
+      applyLocally: () => ({ buffered: 0, history: 0, quotes: 0 }),
+      record: (c) => before.record(c),
+      settleAdmin: (k, a) => before.settleAdmin(k, a),
+      isGroupAdmin: () => new Promise<boolean | null>(() => {}),
+      attempt: (k) => before.attempt(k),
+      whenFlushIdle: async () => true,
+      log: () => {},
+      error: () => {},
+    });
+    void dying;
+    await vi.waitFor(() => expect(JSON.stringify(file.saved)).toContain(TARGET));
+    // The restart: a new outbox over the same file, with the re-check wired.
+    const after = createMessageChangeOutbox({
+      io: file,
+      now: () => 1_763_200_060_000,
+      post: async (c) => {
+        posted.push(c);
+        return true;
+      },
+      recheckAdmin: async () => true,
+      log: () => {},
+      error: () => {},
+    });
+    expect(after.load()).toEqual([expect.objectContaining({ kind: "revoke", messageId: TARGET, adminUnknown: true })]);
+    expect(await after.drainDue()).toBe(1);
+    expect(posted).toEqual([{ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: true }]);
   });
 
   it("a failed post is left to the outbox's retries ('queued'), and never throws", async () => {

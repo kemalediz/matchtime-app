@@ -68,6 +68,12 @@ export interface MessageChangeOutbox {
   load(): LocalMessageChange[];
   /** Keep a change (written at once) and return its key. Not posted yet. */
   record(change: LocalMessageChange): string;
+  /**
+   * A delete recorded with its admin status unknown, now known from the
+   * change handler's own read (round 8): settled in the file. No-op for a
+   * key it does not hold or a change already known.
+   */
+  settleAdmin(key: string, admin: boolean): void;
   /** Post it now. True when the server took it; otherwise it waits for its backoff. */
   attempt(key: string): Promise<boolean>;
   /** Post every change whose retry is due. Returns how many were taken. */
@@ -216,6 +222,14 @@ export function createMessageChangeOutbox(deps: {
       tidy();
       save();
       return key;
+    },
+    settleAdmin(key, admin) {
+      const e = entries.find((x) => x.key === key);
+      if (!e || !e.change.adminUnknown) return;
+      const { adminUnknown: _u, ...settled } = e.change;
+      void _u;
+      e.change = { ...settled, byAdmin: admin };
+      save();
     },
     async attempt(key) {
       const e = entries.find((x) => x.key === key);

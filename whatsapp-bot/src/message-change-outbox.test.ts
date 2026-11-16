@@ -156,6 +156,19 @@ describe("the outbox", () => {
     expect(t.box.pending()).toBe(0);
   });
 
+  it("settleAdmin: the change handler's own admin read settles an unknown entry in the file; a known one or an unknown key is left alone", async () => {
+    const t = setup({ recheck: async () => null });
+    const key = t.box.record(change("MSG000000060", "revoke", { adminUnknown: true }));
+    t.box.settleAdmin(key, true);
+    expect(JSON.stringify(t.file.saved)).not.toContain("adminUnknown");
+    expect(JSON.stringify(t.file.saved)).toContain('"byAdmin":true');
+    t.box.settleAdmin(key, false);
+    expect(JSON.stringify(t.file.saved)).toContain('"byAdmin":true');
+    t.box.settleAdmin("no-such-key", true);
+    expect(await t.box.attempt(key)).toBe(true);
+    expect(t.post).toHaveBeenCalledWith(expect.objectContaining({ messageId: "MSG000000060", byAdmin: true }));
+  });
+
   it("a re-check that finds the sender is NOT an admin settles it as the sender's own delete", async () => {
     const t = setup({ recheck: async () => false });
     const key = t.box.record(change("MSG000000022", "revoke", { adminUnknown: true }));

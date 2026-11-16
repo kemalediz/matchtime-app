@@ -127,6 +127,8 @@ export interface MessageChangeDeps {
   applyLocally(change: LocalMessageChange): { buffered: number; history: number; quotes: number };
   /** Into the durable outbox; returns its key. */
   record(change: LocalMessageChange): string;
+  /** The outbox entry of a delete recorded as "admin unknown", settled once the read answers. */
+  settleAdmin?(key: string, admin: boolean): void;
   /** One post; true when the server took it. */
   attempt(key: string): Promise<boolean>;
   /** True when no analysis of the group is running; false on its timeout. */
@@ -171,12 +173,15 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     }
   }
   try {
-    // The Pi's own record first, whatever happens next: the author's own
-    // delete applies to their message at once.
+    // The Pi's own record and the durable outbox first, whatever happens
+    // next: the author's own delete applies to their message at once, and a
+    // crash or a restart during the roster read below loses nothing (the
+    // outbox re-checks an unknown admin status on its retries).
     const counts = deps.applyLocally(local);
+    const key = deps.record(local);
     // A delete's admin status, read HERE, on this change's own path, never on
-    // the driver's message queue (round 8). Unreadable: kept "unknown" for
-    // the outbox to check again on its retries.
+    // the driver's message queue (round 8), then settled in the outbox.
+    // Unreadable: kept "unknown" for the outbox to check again.
     if (isDelete && local.adminUnknown && deps.isGroupAdmin) {
       let admin: boolean | null = null;
       try {
@@ -194,10 +199,9 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
           counts.history += more.history;
           counts.quotes += more.quotes;
         }
+        deps.settleAdmin?.(key, admin);
       }
     }
-    // Then into the durable outbox, before any post.
-    const key = deps.record(local);
     const idle = await deps.whenFlushIdle(change.chatId);
     if (!idle) deps.log(`${tag}: an analysis of this group is still running; posting anyway`);
     let taken = false;
