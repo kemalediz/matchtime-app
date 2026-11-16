@@ -98,21 +98,24 @@ describe("onMessageChange", () => {
         senderJids: [PLAYER_LID, "447700900123@c.us"],
         senderPhone: "447700900123",
         byAdmin: false,
+        // Whether the sender is an admin is read by the change handler, off this queue (round 8).
+        adminUnknown: true,
         fromMe: false,
       },
     ]);
   });
 
-  it("a delete by a group admin says so (read from the group's metadata)", async () => {
+  it("a group delete is handed up at once, with no roster read on the message queue: a slow read never holds up the next club message", async () => {
     const t = await started();
+    let release!: () => void;
+    t.sock().metadataHold = new Promise<void>((r) => (release = r));
+    const calls = t.sock().metadataCalls.length;
     await t.upsert(wa(revoke, { participant: ADMIN_LID, participantAlt: ADMIN_PN }));
-    expect(t.changes[0]).toMatchObject({ kind: "revoke", byAdmin: true, senderJids: [ADMIN_LID, "447700900124@c.us"] });
-  });
-
-  it("with no group metadata to read, a delete's admin status is UNKNOWN (kept to be checked again), never 'not an admin' for good", async () => {
-    const t = await started();
-    await t.upsert(wa(revoke, { remoteJid: "120363000000009999@g.us", participant: ADMIN_LID, participantAlt: ADMIN_PN }));
-    expect(t.changes[0]).toMatchObject({ kind: "revoke", byAdmin: false, adminUnknown: true });
+    await t.upsert(wa({ conversation: "in" }, { id: "3EB0AFTERDEL0001", remoteJid: "120363000000000333@g.us" }));
+    expect(t.changes).toEqual([expect.objectContaining({ kind: "revoke", byAdmin: false, adminUnknown: true, senderJids: [ADMIN_LID, "447700900124@c.us"] })]);
+    expect(t.messages).toHaveLength(1);
+    expect(t.sock().metadataCalls.length).toBe(calls);
+    release();
   });
 
   it("isGroupAdmin answers the re-check: true, false, or null when it still cannot be read", async () => {
@@ -156,12 +159,13 @@ describe("onMessageChange", () => {
     expect(alone.changes).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0MERGED000002", isGroup: true, fromMe: false })]);
   });
 
-  it("a delete from MatchTime's own phone (an admin on the bot's number) is handed up, as an admin's", async () => {
+  it("a delete from MatchTime's own phone (an admin on the bot's number) is handed up under the bot's own spellings, for the handler's admin check", async () => {
     const t = await started();
     await t.upsert(wa(revoke, { fromMe: true, participant: undefined, participantAlt: undefined }));
     expect(t.changes).toHaveLength(1);
-    expect(t.changes[0]).toMatchObject({ kind: "revoke", fromMe: true, messageId: TARGET, byAdmin: true });
+    expect(t.changes[0]).toMatchObject({ kind: "revoke", fromMe: true, messageId: TARGET, adminUnknown: true });
     expect(t.changes[0].senderJids).toEqual(expect.arrayContaining(["447700900001@c.us", "158000000000001@lid"]));
+    expect(await t.driver.isGroupAdmin!(GROUP, t.changes[0].senderJids)).toBe(true);
   });
 
   it("our own edits are not handed up: MatchTime's words are not a member's", async () => {

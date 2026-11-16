@@ -37,8 +37,8 @@ export interface HistoryCollectorDeps {
   log?(line: string): void;
   warn?(line: string): void;
   sleep?(ms: number): Promise<void>;
-  /** Deleted for everyone, or edited, as the Pi's own record says
-   *  (`smart-analysis.ts` `isDeletedLocally`, 2026-11-15): never captured. */
+  /** Deleted for everyone, or edited by its author, as the Pi's own record
+   *  says (`smart-analysis.ts` `isChangedLocally`, 2026-11-15): never captured. */
   isDeleted?(groupId: string, msg: InboundMessage): boolean;
 }
 

@@ -107,6 +107,24 @@ test("a list dropped by its delete, then a NEW list pasted and applied: a later 
   expect(await db.one(`SELECT outcome FROM "AdminSquadProposal" WHERE "waMessageId" = $1`, [storedId(dropped)])).toEqual({ outcome: "source-deleted" });
 });
 
+test("a member's 'hold on' after the list question, then EDITED by its author: it still counts as somebody speaking, so a bare YES asks 'Is that YES to...?' and applies nothing", async ({ request, db }) => {
+  await db.run(`DELETE FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.extra]);
+  expect(await say(request, LIST, storedId(bareId()))).toMatchObject({ outcome: "paste-proposed" });
+  const PLAYER = PHONE.player.replace(/^\+/, "");
+  const hold = bareId();
+  await say(request, "hold on, Zara can't make it", `false_${HQ}_${hold}_${PLAYER}@c.us`, { senderPhone: PLAYER, botMentioned: false });
+  const res = await request.post("/api/whatsapp/message-change", {
+    headers: KEY,
+    data: { kind: "edit", chatId: HQ, messageId: hold, senderJids: [`${PLAYER}@c.us`], senderPhone: PLAYER },
+  });
+  expect(res.status()).toBe(200);
+  expect(await db.count(`SELECT count(*)::int AS c FROM "AdminGroupMessage" WHERE "waMessageId" = $1 AND text = ''`, [`false_${HQ}_${hold}_${PLAYER}@c.us`])).toBe(1);
+  const yes = await say(request, "YES", `e2e-hqpaste-hold-yes-${hold}`);
+  expect(yes).toMatchObject({ handled: true, outcome: "hq-confirm-asked" });
+  expect(yes.replyText).toMatch(/^Is that YES to /);
+  expect(await statusOf(db, U.extra)).toBeNull();
+});
+
 // Last: it applies the list.
 test("a pasted list whose message is then EDITED by its author: the proposal stays open, and the YES applies it (MatchTime acts on what it read); the pasted words are forgotten", async ({ request, db }) => {
   // The test before applied the same list: Zara out again, so there is something to apply.
@@ -115,7 +133,8 @@ test("a pasted list whose message is then EDITED by its author: the proposal sta
   expect(await say(request, LIST, storedId(bare))).toMatchObject({ outcome: "paste-proposed" });
   await change(request, "edit", bare);
   expect(await db.count(`SELECT count(*)::int AS c FROM "AdminSquadProposal" WHERE "waMessageId" = $1 AND "resolvedAt" IS NULL`, [storedId(bare)])).toBe(1);
-  expect(await db.count(`SELECT count(*)::int AS c FROM "AdminGroupMessage" WHERE "waMessageId" = $1`, [storedId(bare)])).toBe(0);
+  // The pasted message keeps its HQ row (the safe-YES rule reads it), with no words.
+  expect(await db.count(`SELECT count(*)::int AS c FROM "AdminGroupMessage" WHERE "waMessageId" = $1 AND text <> ''`, [storedId(bare)])).toBe(0);
   const yes = await say(request, "YES", `e2e-hqpaste-edit-yes-${bare}`);
   expect(yes).toMatchObject({ outcome: "paste-applied" });
   expect(yes.replyText).not.toBe(CHANGED);

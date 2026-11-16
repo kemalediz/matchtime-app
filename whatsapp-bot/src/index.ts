@@ -72,7 +72,6 @@ import {
   stopBatchFlushTimer,
   applyMessageChangeLocally,
   adjustForServer,
-  isDeletedLocally,
   restoreMessageChanges,
   isRevokedLocally,
   isChangedLocally,
@@ -845,6 +844,8 @@ async function main() {
   driver.onMessageChange?.(async (change) => {
     await handleMessageChange(change, {
       phoneForLid: driver.phoneForLid ? (lid) => driver.phoneForLid!(lid) : undefined,
+      // A delete's admin check, off the driver's serial message queue (round 8).
+      isGroupAdmin: driver.isGroupAdmin ? (groupId, jids) => driver.isGroupAdmin!(groupId, jids) : undefined,
       applyLocally: applyMessageChangeLocally,
       record: (c) => messageChanges.record(c),
       attempt: (key) => messageChanges.attempt(key),

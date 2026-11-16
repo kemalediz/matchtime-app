@@ -27,7 +27,10 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { applyMessageChange } from "../message-change";
+import { applyMessageChange, sweepRecentTombstones } from "../message-change";
+import { mentionsAbove } from "../group-mentions";
+import { decideApproval } from "../admin-group-confirm-rules";
+import { sourceQuestionAnswered } from "../ask-source-rules";
 import { hqWeekChat, loadWeekChat, playersWeekChat } from "../week-chat";
 import { loadStoredGroupLines } from "../group-chat-history";
 import { groupLogSince, hqLogSince } from "../admin-group-log";
@@ -141,7 +144,7 @@ describe("what a delete or an edit leaves for the follow-ups", () => {
     expect(await loadOpenStatsClarifications(ORG)).toEqual([]);
   });
 
-  it("the refused-ask retry cannot repeat a request that was deleted, or edited away", async () => {
+  it("the refused-ask retry cannot repeat a request that was DELETED", async () => {
     const at = new Date(Date.now() - 60 * 1000);
     T.analyzedMessage.push(
       row({ waMessageId: gid("SAMASK000001", SAM), orgId: ORG, groupId: G, authorPhone: SAM, body: "@Match Time find us a player", pipelineTrace: RECRUIT, handledBy: "engine", createdAt: at }),
@@ -152,8 +155,85 @@ describe("what a delete or an edit leaves for the follow-ups", () => {
     expect(await latestAskFromRecords({ orgId: ORG, where: "group", now: new Date() })).not.toBeNull();
     expect(await latestAskFromRecords({ orgId: ORG, where: "hq", now: new Date() })).not.toBeNull();
     await applyMessageChange({ kind: "revoke", chatId: G, messageId: "SAMASK000001", ...BY_SAM });
-    await applyMessageChange({ kind: "edit", chatId: HQ, messageId: "SAMASKHQ0001", byAdmin: false, senderJids: [`${SAM}@c.us`], senderPhone: SAM });
+    await applyMessageChange({ kind: "revoke", chatId: HQ, messageId: "SAMASKHQ0001", ...BY_SAM });
     expect(await latestAskFromRecords({ orgId: ORG, where: "group", now: new Date() })).toBeNull();
     expect(await latestAskFromRecords({ orgId: ORG, where: "hq", now: new Date() })).toBeNull();
+  });
+});
+
+// ── Round 8: an edit purges the TEXT and keeps the FACTS ─────────────────
+describe("an author's edit: MatchTime forgets the words and otherwise behaves as today (the reviewers' probes)", () => {
+  const EDIT_BY_SAM = { kind: "edit" as const, ...BY_SAM };
+  const RECRUIT = { v: 1, extractions: [{ extractor: "admin", facts: { kind: "admin", action: "recruit", pool: true } }] };
+
+  it("'try again' still repeats an EDITED ask, in the players' group and in HQ", async () => {
+    const at = new Date(Date.now() - 60 * 1000);
+    T.analyzedMessage.push(
+      row({ waMessageId: gid("SAMASK000002", SAM), orgId: ORG, groupId: G, authorPhone: SAM, body: "@Match Time find us a player", pipelineTrace: RECRUIT, handledBy: "engine", createdAt: at }),
+    );
+    T.adminGroupMessage.push(
+      row({ waMessageId: gid("SAMASKHQ0002", SAM, HQ), orgId: ORG, fromMatchTime: false, text: "@Match Time find us a player", pipelineTrace: RECRUIT, hqOutcome: "refused", createdAt: at }),
+    );
+    await applyMessageChange({ ...EDIT_BY_SAM, chatId: G, messageId: "SAMASK000002" });
+    await applyMessageChange({ ...EDIT_BY_SAM, chatId: HQ, messageId: "SAMASKHQ0002" });
+    expect(await latestAskFromRecords({ orgId: ORG, where: "group", now: new Date() })).toMatchObject({ facts: { action: "recruit", pool: true } });
+    expect(await latestAskFromRecords({ orgId: ORG, where: "hq", now: new Date() })).toMatchObject({ facts: { action: "recruit", pool: true } });
+    expect(JSON.stringify([T.analyzedMessage, T.adminGroupMessage])).not.toContain("find us a player");
+  });
+
+  it("the 'who do you mean?' is KEPT open with its question (the 'Idirs' case), then the question goes once its hour is up", async () => {
+    const Q = "@Match Time how many goals has Idirs scored?";
+    T.analyzedMessage.push(
+      row({ waMessageId: gid("SAMQ00000002", SAM), orgId: ORG, groupId: G, authorUserId: "u-sam", authorPhone: SAM, authorName: "Sam", body: Q, intent: STATS_CLARIFICATION_INTENT, handledBy: "engine", createdAt: new Date(Date.now() - 5 * 60 * 1000) }),
+    );
+    await applyMessageChange({ ...EDIT_BY_SAM, chatId: G, messageId: "SAMQ00000002" });
+    // Only the clarification can still read the question: no reader of the chat shows it.
+    expect(T.analyzedMessage.find((r) => r.waMessageId === gid("SAMQ00000002", SAM))!.body).toBeNull();
+    expect(await everythingShown()).not.toContain("Idirs");
+    const open = await loadOpenStatsClarifications(ORG);
+    expect(open).toHaveLength(1);
+    expect(open[0].questionBody).toBe(Q);
+    // The hour is up: the sweep takes the held question out.
+    const later = new Date(Date.now() + 61 * 60 * 1000);
+    await sweepRecentTombstones(later);
+    expect(JSON.stringify(T.analyzedMessage)).not.toContain("Idirs");
+    expect(await loadOpenStatsClarifications(ORG, later)).toEqual([]);
+  });
+
+  it("'DM the people above' still picks the person the EDITED message tagged, never an older message's", async () => {
+    T.messageMentions.push(
+      row({ waMessageId: gid("ALITAG000001", ALI), orgId: ORG, chatId: G, senderUserId: "u-ali", mentions: [{ phone: "447700900777", name: "Wrong Person" }], unidentified: 0, sentAt: ago(10), createdAt: ago(10) }),
+      row({ waMessageId: gid("SAMTAG000001", SAM), orgId: ORG, chatId: G, senderUserId: "u-sam", mentions: [{ phone: "447700900888", name: "Right Person" }], unidentified: 0, sentAt: ago(5), createdAt: ago(5) }),
+    );
+    await applyMessageChange({ ...EDIT_BY_SAM, chatId: G, messageId: "SAMTAG000001" });
+    const above = await mentionsAbove({ orgId: ORG, chatId: G, before: ago(1), excludeWaMessageIds: [] });
+    expect(above?.sentAt).toEqual(ago(5));
+  });
+
+  it("HQ: an organiser's 'hold on', EDITED, still counts as somebody speaking: a bare YES then asks 'Is that YES to...?'", async () => {
+    T.adminGroupMessage.push(
+      row({ waMessageId: "mt:list:hold", orgId: ORG, fromMatchTime: true, askRef: "list:paste-1", text: "Adding: Zara. Say YES to apply.", createdAt: ago(4) }),
+      row({ waMessageId: gid("SAMHOLD00001", SAM, HQ), orgId: ORG, fromMatchTime: false, senderUserId: "u-sam", text: "hold on, Zara can't make it", createdAt: ago(3) }),
+    );
+    await applyMessageChange({ ...EDIT_BY_SAM, chatId: HQ, messageId: "SAMHOLD00001" });
+    const log = await hqLogSince(ORG, ago(24 * 60));
+    expect(log.find((r) => r.waMessageId === gid("SAMHOLD00001", SAM, HQ))).toMatchObject({ text: "", senderUserId: "u-sam" });
+    const pending = [{ ref: "list:paste-1", askedAt: ago(4) }] as unknown as Parameters<typeof decideApproval>[0]["pending"];
+    expect(decideApproval({ pending, quoted: null, log, now: NOW }).kind).not.toBe("approve");
+    // No blank line is shown to a model where the words were.
+    expect((await hqWeekChat({ orgId: ORG, now: NOW, messageId: "none" })).map((l) => l.body)).not.toContain("");
+  });
+
+  it("the players' group: an organiser line EDITED after 'who shall I ask?' still counts, so the next line is not read as the answer", async () => {
+    T.adminGroupMessage.push(
+      row({ waMessageId: "mt:group:ask-source:pool+partners:1", orgId: ORG, fromMatchTime: true, askRef: "ask-source:pool+partners", text: "Who shall I ask?", createdAt: ago(4) }),
+      row({ waMessageId: `group:${gid("SAMTALK00001", SAM)}`, orgId: ORG, fromMatchTime: false, senderUserId: "u-sam", text: "anyone got bibs?", createdAt: ago(3) }),
+    );
+    const before = sourceQuestionAnswered({ quoted: null, log: await groupLogSince(ORG, ago(24 * 60)), now: NOW });
+    await applyMessageChange({ ...EDIT_BY_SAM, chatId: G, messageId: "SAMTALK00001" });
+    const after = sourceQuestionAnswered({ quoted: null, log: await groupLogSince(ORG, ago(24 * 60)), now: NOW });
+    expect(before).toBeNull();
+    expect(after).toBeNull();
+    expect(JSON.stringify(T.adminGroupMessage)).not.toContain("bibs");
   });
 });

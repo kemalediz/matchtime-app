@@ -122,6 +122,8 @@ export function bodyForServer(c: LocalMessageChange): MessageChangeBody {
 export interface MessageChangeDeps {
   /** The Pi's own LID-to-phone map (local, never a WhatsApp lookup). */
   phoneForLid?(lidJid: string): Promise<string | null>;
+  /** Is one of these spellings an admin of the group? Null when it cannot be read. */
+  isGroupAdmin?(groupId: string, jids: string[]): Promise<boolean | null>;
   applyLocally(change: LocalMessageChange): { buffered: number; history: number; quotes: number };
   /** Into the durable outbox; returns its key. */
   record(change: LocalMessageChange): string;
@@ -169,8 +171,32 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     }
   }
   try {
-    // Recorded here and in the outbox first, whatever happens next.
+    // The Pi's own record first, whatever happens next: the author's own
+    // delete applies to their message at once.
     const counts = deps.applyLocally(local);
+    // A delete's admin status, read HERE, on this change's own path, never on
+    // the driver's message queue (round 8). Unreadable: kept "unknown" for
+    // the outbox to check again on its retries.
+    if (isDelete && local.adminUnknown && deps.isGroupAdmin) {
+      let admin: boolean | null = null;
+      try {
+        admin = await deps.isGroupAdmin(change.chatId, local.senderJids);
+      } catch {
+        admin = null;
+      }
+      if (admin !== null) {
+        const { adminUnknown: _u, ...known } = local;
+        void _u;
+        local = { ...known, byAdmin: admin };
+        if (admin) {
+          const more = deps.applyLocally(local);
+          counts.buffered += more.buffered;
+          counts.history += more.history;
+          counts.quotes += more.quotes;
+        }
+      }
+    }
+    // Then into the durable outbox, before any post.
     const key = deps.record(local);
     const idle = await deps.whenFlushIdle(change.chatId);
     if (!idle) deps.log(`${tag}: an analysis of this group is still running; posting anyway`);

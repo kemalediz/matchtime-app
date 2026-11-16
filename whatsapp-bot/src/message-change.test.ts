@@ -155,6 +155,33 @@ describe("handleMessageChange", () => {
     const { d, recorded } = deps();
     await handleMessageChange(revoke({ adminUnknown: true }), d);
     expect(recorded[0]).toMatchObject({ kind: "revoke", byAdmin: false, adminUnknown: true });
+    const nulled = deps({ isGroupAdmin: vi.fn(async () => null) });
+    await handleMessageChange(revoke({ adminUnknown: true }), nulled.d);
+    expect(nulled.recorded[0]).toMatchObject({ byAdmin: false, adminUnknown: true });
+  });
+
+  it("the admin check runs HERE, off the driver's queue: the Pi's own record first (the author's own delete applies at once), then the read, then the record and the post say who it was", async () => {
+    let answer!: (v: boolean | null) => void;
+    const isGroupAdmin = vi.fn(() => new Promise<boolean | null>((r) => (answer = r)));
+    const { d, order, recorded } = deps({ isGroupAdmin });
+    const running = handleMessageChange(revoke({ adminUnknown: true }), d);
+    await vi.waitFor(() => expect(isGroupAdmin).toHaveBeenCalledWith(GROUP, [`${SAM}@c.us`]));
+    expect(order).toEqual(["local:revoke"]);
+    answer(true);
+    expect(await running).toBe("posted");
+    expect(order).toEqual(["local:revoke", "local:revoke", "record", "idle", "post"]);
+    expect(recorded[0]).toEqual({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: true });
+    // Not an admin: known, so no longer "unknown"; a read that throws stays unknown.
+    const no = deps({ isGroupAdmin: vi.fn(async () => false) });
+    await handleMessageChange(revoke({ adminUnknown: true }), no.d);
+    expect(no.recorded[0]).toEqual({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
+    const boom = deps({ isGroupAdmin: vi.fn(async () => Promise.reject(new Error("rate-overlimit"))) });
+    await handleMessageChange(revoke({ adminUnknown: true }), boom.d);
+    expect(boom.recorded[0]).toMatchObject({ byAdmin: false, adminUnknown: true });
+    // An edit never asks: only its author may edit.
+    const ed = deps({ isGroupAdmin: vi.fn(async () => true) });
+    await handleMessageChange(revoke({ kind: "edit" }), ed.d);
+    expect(ed.d.isGroupAdmin).not.toHaveBeenCalled();
   });
 
   it("a failed post is left to the outbox's retries ('queued'), and never throws", async () => {

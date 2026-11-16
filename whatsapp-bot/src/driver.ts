@@ -304,10 +304,12 @@ export interface WaDriver {
   ): void;
 
   /**
-   * A message was deleted for everyone, or edited (2026-11-15). Never
-   * handed to `onMessage`: an edit is not analysed again. `index.ts` uses
-   * it to take the words out of what MatchTime stored
-   * (`message-change.ts`). Optional because only Baileys implements it.
+   * A message was deleted for everyone, or edited (2026-11-15). The notice
+   * itself is never handed to `onMessage`, so an edit is never analysed
+   * again (a message Baileys merged its edit into is handed up as the
+   * message it arrived as, AND here). `index.ts` uses it to take the words
+   * out of what MatchTime stored (`message-change.ts`). Optional because
+   * only Baileys implements it.
    */
   onMessageChange?(handler: (change: MessageChangeEvent) => void | Promise<void>): void;
 

@@ -1289,12 +1289,11 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         byAdmin: false,
         fromMe: key.fromMe === true,
       };
-      // Only a delete may come from an admin; an edit is its author's or nothing.
-      if (isGroup && change.kind === "revoke") {
-        const admin = await senderIsGroupAdmin(change.chatJid, senderJids);
-        if (admin === null) event.adminUnknown = true;
-        else event.byAdmin = admin;
-      }
+      // Only a delete may come from an admin; an edit is its author's or
+      // nothing. Whether the sender IS an admin is read by the change
+      // handler (`isGroupAdmin`), never here: a roster read on this serial
+      // queue would hold up every club's messages behind it (round 8).
+      if (isGroup && change.kind === "revoke") event.adminUnknown = true;
       log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} byAdmin=${event.byAdmin} handed up as a change`);
       tally(what);
       hand(changeHandlers, event, "onMessageChange");

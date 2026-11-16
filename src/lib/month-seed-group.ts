@@ -91,8 +91,9 @@ export async function proposeMonthSeedFromGroup(args: {
     await db.sentNotification.create({ data: { key: `org-${args.orgId}:month-seed-dm:${proposal.id}`, kind: MONTH_SEED_DM_KIND, text, targetUser: args.senderUserId } });
     if (phone) {
       const sendAfter = adminNoticeSendAfter(now, await loadClubQuietHours(args.orgId));
-      // The pasted message it was read from: a delete or an edit of that
-      // message cancels this DM unsent (`message-change.ts`, 2026-11-15).
+      // The pasted message it was read from: a delete of that message
+      // cancels this DM unsent, and clears the offer's words above
+      // (`message-change.ts`, 2026-11-15). An edit never cancels anything.
       await db.botJob.create({
         data: { orgId: args.orgId, kind: "dm", phone, text, aboutKey: `${MONTH_SEED_ABOUT_PREFIX}${args.waMessageId}`, ...(sendAfter ? { sendAfter } : {}) },
       });

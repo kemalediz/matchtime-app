@@ -392,7 +392,7 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
       });
       const [res] = await Promise.all([post, change(request, editBy(g, "alice", bare, HQ))]);
       expect(res.status()).toBe(200);
-      expect(await db.count(`SELECT count(*)::int AS c FROM "AdminGroupMessage" WHERE "waMessageId" = $1`, [id])).toBe(0);
+      expect(await db.count(`SELECT count(*)::int AS c FROM "AdminGroupMessage" WHERE "waMessageId" = $1 AND text <> ''`, [id])).toBe(0);
     }
   });
 

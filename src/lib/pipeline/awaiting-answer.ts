@@ -256,8 +256,10 @@ export function openStatsClarifications(
   const answeredAt = new Map<string, number>();
   for (const r of rows) {
     if (r.orgId !== orgId) continue;
-    // A question deleted for everyone keeps its row with no words
+    // A question DELETED for everyone keeps its row with no words
     // (`message-change.ts`): nothing is open, and nothing is asked again.
+    // Only a delete closes it: one its author EDITED comes here with its
+    // question held for it (`load-awaiting-answer.ts`) and stays open.
     if (r.intent === STATS_CLARIFICATION_INTENT && !(r.body ?? "").trim()) continue;
     const key = askerKey(r.authorUserId, r.authorName);
     if (!key) continue;

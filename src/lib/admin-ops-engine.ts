@@ -113,7 +113,7 @@ export interface AdminOpsApplyDeps {
   /** A future-dated `kind: "dm"` BotJob. The scheduler emits it when
    *  `sendAfter` has passed, which is what makes a reminder land on the
    *  right day without a second timer. */
-  /** `sourceMessageId`: the message that asked for it, so a delete or an edit of it cancels the DM (`message-change.ts`). */
+  /** `sourceMessageId`: the message that asked for it, so a delete of it cancels the DM (`message-change.ts`; an edit never does). */
   queueReminderDm: (args: { phone: string; text: string; sendAt: Date; sourceMessageId?: string }) => Promise<void>;
 }
 

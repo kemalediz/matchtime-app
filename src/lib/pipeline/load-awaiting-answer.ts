@@ -15,6 +15,7 @@
  * READ-ONLY BY CONSTRUCTION: every statement in this file is a
  * `findMany`. The gate never writes.
  */
+import { heldQuestionOf } from "../message-change-trace";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { GROUP_REPLY_KIND } from "../reply-context";
 import {
@@ -132,9 +133,18 @@ export async function loadOpenStatsClarifications(
       intent: { in: [STATS_CLARIFICATION_INTENT, STATS_CLARIFIED_INTENT] },
       createdAt: { gte: new Date(now.getTime() - GROUP_QUESTION_TTL_MS) },
     },
-    select: { id: true, orgId: true, intent: true, authorUserId: true, authorName: true, body: true, createdAt: true },
+    select: { id: true, orgId: true, intent: true, authorUserId: true, authorName: true, body: true, pipelineTrace: true, createdAt: true },
   });
-  return openStatsClarifications(rows, orgId, now);
+  // A question its author EDITED keeps no body; its words are held for this
+  // clarification alone, until its hour is up (`message-change.ts`, round 8).
+  return openStatsClarifications(
+    rows.map(({ pipelineTrace, ...r }) => {
+      const held = r.body === null ? heldQuestionOf(pipelineTrace) : null;
+      return held && held.until.getTime() > now.getTime() ? { ...r, body: held.text } : r;
+    }),
+    orgId,
+    now,
+  );
 }
 
 /**

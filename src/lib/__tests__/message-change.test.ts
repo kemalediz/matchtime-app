@@ -202,15 +202,50 @@ describe("a delete for everyone", () => {
   });
 });
 
-describe("an edit is a purge of the stored words, never a replacement", () => {
-  it("by its author: the original words leave every store, mentions, the form note's reason and the model's reading included, and no new words are stored", async () => {
+describe("an edit purges the TEXT and keeps the FACTS (round 8)", () => {
+  it("by its author: no original words are left anywhere, and no new words are stored; every row features read stays, with its facts", async () => {
     seed();
-    expect(await applyMessageChange(editBy(SAM), NOW)).toEqual({ analyzed: 1, archived: 1, hq: 1, mentions: 1, notes: 1, refused: 0 });
-    expect(T.formNote[0]).toMatchObject({ reason: "", delta: -1 });
-    expect(analyzed()).toMatchObject({ body: null, reasoning: null, pipelineTrace: null });
-    expect(T.messageMentions).toEqual([]);
-    expect(T.deletedMessage[0]).toMatchObject({ reason: "edited", byAdmin: false });
+    expect(await applyMessageChange(editBy(SAM), NOW)).toEqual({ analyzed: 1, archived: 1, hq: 1, mentions: 0, notes: 1, refused: 0 });
     expect(words()).not.toContain("4321");
+    expect(T.formNote[0]).toMatchObject({ reason: "", delta: -1 });
+    // The model's reading keeps its structure (round 8), not its words.
+    expect(analyzed()).toMatchObject({ body: null, reasoning: null, handledBy: "none", pipelineTrace: { v: 1, extractions: [] } });
+    // The organiser line stays (sender, time, flags), its text blank: the safe-YES rule still sees that someone spoke.
+    expect(T.adminGroupMessage.find((r) => r.waMessageId === `group:${SAM_ID}`)).toMatchObject({ text: "", fromMatchTime: false, hqOutcome: "hq-answered" });
+    // The mentions stay: "DM the people above" still finds who this message tagged.
+    expect(T.messageMentions).toHaveLength(1);
+    expect(T.deletedMessage[0]).toMatchObject({ reason: "edited", byAdmin: false });
+    // Idempotent: nothing left to purge the second time.
+    expect(await applyMessageChange(editBy(SAM), NOW)).toEqual({ analyzed: 0, archived: 0, hq: 0, mentions: 0, notes: 0, refused: 0 });
+  });
+
+  it("a DELETE after the edit still removes what a delete removes", async () => {
+    seed();
+    await applyMessageChange(editBy(SAM), NOW);
+    expect(await applyMessageChange(byAuthor, NOW)).toMatchObject({ analyzed: 1, hq: 1, mentions: 1 });
+    expect(analyzed()).toMatchObject({ body: null, pipelineTrace: null });
+    expect(T.adminGroupMessage.map((x) => x.waMessageId)).toEqual(["mt:teams:m1:1:abc"]);
+    expect(T.messageMentions).toEqual([]);
+  });
+
+  it("the model's reading keeps the refused-ask facts, and loses the raw output", async () => {
+    T.analyzedMessage.push(
+      row({
+        waMessageId: SAM_ID,
+        orgId: "org-a",
+        groupId: G,
+        authorPhone: SAM_PN,
+        body: "@Match Time find a keeper, my code is 4321",
+        reasoning: "4321",
+        handledBy: "engine",
+        intent: "admin",
+        pipelineTrace: { v: 1, extractions: [{ extractor: "admin", facts: { kind: "admin", action: "recruit", pool: true, note: "code 4321" }, calls: [{ ms: 5, raw: "4321" }], degradations: ["4321"] }] },
+        createdAt: ago(5),
+      }),
+    );
+    await applyMessageChange(editBy(SAM), NOW);
+    expect(analyzed()).toMatchObject({ body: null, reasoning: null, intent: "admin" });
+    expect(analyzed().pipelineTrace).toEqual({ v: 1, extractions: [{ extractor: "admin", facts: { kind: "admin", action: "recruit", pool: true, note: "" }, calls: [{ ms: 5 }], degradations: [] }] });
   });
 
   it("by anyone else, a group admin included: ignored entirely", async () => {
@@ -386,12 +421,15 @@ describe("the other stores a message's words reach", () => {
       row({ waMessageId: "mt:list:1", orgId: "org-a", fromMatchTime: true, askRef: `list:${HQ_ID}`, text: "I read: Door Code Dave, Secret Sid. Reply YES", createdAt: ago(5) }),
       row({ waMessageId: "mt:list:2", orgId: "org-a", fromMatchTime: true, askRef: "list:false_other", text: "another list", createdAt: ago(5) }),
     );
+    // The fee question's HQ line, and the month-seed draft's DM offer (round 8).
+    T.adminGroupMessage.push(row({ waMessageId: "mt:fee:1", orgId: "org-a", fromMatchTime: true, askRef: `fee:${T.adminFeeProposal[0].id}`, text: "Free place for Door Code Dave? Say YES", createdAt: ago(5) }));
+    T.sentNotification.push(row({ key: `org-org-a:month-seed-dm:${T.adminSquadProposal[0].id}`, kind: "month-seed-dm", text: "Your month: Door Code Dave, Secret Sid", createdAt: ago(5) }));
     await applyMessageChange({ ...byAuthor, chatId: HQ }, NOW);
     expect(T.adminSquadProposal[0]).toMatchObject({ resolvedAt: NOW, outcome: "source-deleted", playingNewNames: [], reserveNewNames: [], monthSeed: null });
     expect(T.adminFeeProposal[0]).toMatchObject({ resolvedAt: NOW, outcome: "source-deleted", text: "" });
-    expect(T.sentNotification.map((n) => n.text)).toEqual([null, "an unrelated reply"]);
+    expect(T.sentNotification.map((n) => n.text)).toEqual([null, "an unrelated reply", null]);
     expect(T.sentNotification[0].waMessageId).toBe("true_HQ_3EB0ASKED0001");
-    expect(T.adminGroupMessage.map((m) => m.text)).toEqual(["", "another list"]);
+    expect(T.adminGroupMessage.map((m) => m.text)).toEqual(["", "another list", ""]);
     expect(JSON.stringify([T.sentNotification, T.adminGroupMessage])).not.toContain("Door Code Dave");
   });
 

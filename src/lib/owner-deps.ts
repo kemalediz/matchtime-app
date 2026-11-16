@@ -236,8 +236,9 @@ export function buildAdminOpsApplyDeps(args: {
           phone: phone.replace(/^\+/, ""),
           text,
           sendAfter: sendAt,
-          // The message that asked for it: a delete or an edit of it cancels
-          // this DM, whose note quotes it (`message-change.ts`, 2026-11-15).
+          // The message that asked for it: a delete of it cancels this DM,
+          // whose note quotes it (`message-change.ts`, 2026-11-15). An edit
+          // never cancels anything.
           ...(sourceMessageId ? { aboutKey: `${REMINDER_ABOUT_PREFIX}${sourceMessageId}` } : {}),
         },
       });

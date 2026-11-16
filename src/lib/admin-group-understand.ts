@@ -560,7 +560,9 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       console.log(`[admin-group] ${messageId}: a reply to the pairing notice: ${r?.outcome ?? "not an answer"}`);
       return r ? { route: null, outcome: r.outcome, replyText: r.replyText } : null;
     }
-    const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
+    // A line its author edited keeps its row (the safe-YES rule above reads
+    // it) but no words: never shown to a model as a blank line (2026-11-16).
+    const recent = log.filter((r) => r.text.trim() !== "" && now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
     // The extractors' recent chat: MatchTime's own lines as MatchTime, an
     // organiser's under his roster name (never a pushname), the way the
     // players' group's lines are named (`group-chat-history.ts`).
@@ -573,7 +575,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     }));
     // MatchTime's last line in HQ. A reply's quoted message is shown to
     // every extractor beside it (`replyShown`), whoever wrote it.
-    const lastHqPost = [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null;
+    const lastHqPost = [...log].reverse().find((r) => r.fromMatchTime && r.text.trim() !== "")?.text ?? null;
     const capped = (await getAiBudgetStatus(org.id).catch(() => null))?.capped ?? false;
 
     // Every message goes to the shared router first. A list of names, a

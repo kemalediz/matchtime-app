@@ -25,13 +25,13 @@ export async function POST(request: Request) {
   }
   const input = parseMessageChangeInput(await request.json().catch(() => null));
   if (!input) {
-    return NextResponse.json({ error: "kind, a group chatId and messageId required (and text for an edit)" }, { status: 400 });
+    return NextResponse.json({ error: "kind (revoke or edit), a group chatId and messageId required" }, { status: 400 });
   }
   try {
     const r = await applyMessageChange(input);
     console.log(
       `[message-change] ${input.kind} ${input.chatId} ${input.messageId}: analyzed=${r.analyzed} archived=${r.archived} ` +
-        `hq=${r.hq} mentions=${r.mentions} refused=${r.refused}`,
+        `hq=${r.hq} mentions=${r.mentions} notes=${r.notes} refused=${r.refused}`,
     );
     return NextResponse.json({ ok: true, kind: input.kind, ...r });
   } catch (err) {

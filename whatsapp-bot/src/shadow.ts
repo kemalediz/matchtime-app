@@ -308,8 +308,8 @@ export function shadowGuard<T extends WaDriver>(driver: T, opts: ShadowGuardOpti
  */
 /**
  * What a refused write's payload may show. A deleted or edited message's
- * change (2026-11-15) is shown by its ids only: an edit carries the new
- * words and their mentions, which no log line may hold.
+ * change (2026-11-15) is shown by its ids only: it carries no words, and
+ * a log line could otherwise show whatever a future field adds.
  */
 function previewable(route: string, body: string): string {
   if (route.endsWith("/api/whatsapp/message-change")) {
