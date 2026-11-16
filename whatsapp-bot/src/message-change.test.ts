@@ -76,6 +76,11 @@ function deps(over: Partial<MessageChangeDeps> = {}) {
     flushNow: vi.fn(async () => {
       order.push("flush");
     }),
+    editUnreadable: vi.fn(() => {
+      order.push("unreadable");
+      return { buffered: 1, history: 1 };
+    }),
+    phoneForLid: vi.fn(async () => null),
     log: (l) => logs.push(l),
     error: (l) => logs.push(`ERR ${l}`),
     ...over,
@@ -173,12 +178,33 @@ describe("handleMessageChange", () => {
     expect(order.indexOf("flush")).toBeGreaterThan(order.indexOf("replace"));
   });
 
-  it("an edit with no readable new content is recorded and posted, with nothing to replace", async () => {
-    const { d, recorded } = deps();
+  it("an edit with no readable new content (the mapper rejected it): recorded and posted, and the message is dropped rather than analysed with the original", async () => {
+    const { d, recorded, order } = deps();
     await handleMessageChange(revoke({ kind: "edit" }), d);
     expect(d.replacePending).not.toHaveBeenCalled();
+    expect(d.editUnreadable).toHaveBeenCalledWith(expect.objectContaining({ kind: "edit", messageId: TARGET }));
+    expect(order.indexOf("unreadable")).toBeGreaterThan(order.indexOf("record"));
     expect(recorded[0]).toMatchObject({ kind: "edit" });
     expect(d.attempt).toHaveBeenCalled();
+  });
+
+  it("an edit whose reading returns nothing, or throws: dropped the same way", async () => {
+    const view = { body: "x" } as unknown as InboundMessage;
+    const nothing = deps({ readEdit: vi.fn(async () => null) });
+    await handleMessageChange(revoke({ kind: "edit", edited: view }), nothing.d);
+    expect(nothing.d.editUnreadable).toHaveBeenCalled();
+    const throws = deps({ readEdit: vi.fn(async () => Promise.reject(new Error("boom"))) });
+    await handleMessageChange(revoke({ kind: "edit", edited: view }), throws.d);
+    expect(throws.d.editUnreadable).toHaveBeenCalled();
+    expect(throws.d.replacePending).not.toHaveBeenCalled();
+  });
+
+  it("an edit notice with only a LID is widened through the Pi's LID map, so it matches an original stored under the phone", async () => {
+    const { d, recorded } = deps({ phoneForLid: vi.fn(async () => SAM) });
+    await handleMessageChange(revoke({ kind: "edit", senderJids: [SAM_LID], senderPhone: null }), d);
+    expect(d.phoneForLid).toHaveBeenCalledWith(SAM_LID);
+    expect(recorded[0]).toMatchObject({ senderPhone: SAM, senderJids: [SAM_LID, `${SAM}@c.us`] });
+    expect(isByAuthor(SAM_ID, null, recorded[0])).toBe(true);
   });
 
   it("a delete whose admin status could not be read is recorded as such, for the outbox to check again", async () => {

@@ -2733,6 +2733,12 @@ model DeletedMessage {
   senderJids   String[] @default([])
   /// The deleters' phones, digits only.
   senderPhones String[] @default([])
+  /// EACH change on its own, the source of truth for who may do what
+  /// (round 6): [{ reason: "deleted" | "edited", byAdmin, senderJids,
+  /// senderPhones, at }], appended atomically. A forged delete and the
+  /// author's real edit stay two changes: neither counts as the other.
+  /// The merged columns above are a summary for logs only.
+  changes      Json     @default("[]")
   deletedAt    DateTime @default(now())
   /// When every copy was last cleared for it (the live clear or the sweep).
   /// NULL: never yet, or changed since (a merge resets it). The sweep takes

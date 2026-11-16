@@ -34,6 +34,7 @@ import {
   storedIdForms,
   sweepRecentTombstones,
   withoutDeletedQuotes,
+  withoutChangedHistory,
 } from "../message-change";
 
 const NOW = new Date("2026-11-15T18:00:00.000Z");
@@ -453,6 +454,74 @@ describe("round 5: the guards on proposals and DMs, the LID map for quotes, a sw
     const r = await sweepRecentTombstones(NOW);
     expect(r.checked).toBe(2);
     expect(analyzed().body).toBeNull();
+  });
+});
+
+describe("round 6: each change keeps its own sender, reason and time", () => {
+  const HQ_ID = `false_${HQ}_${ID}_${SAM_PN}@c.us`;
+
+  for (const order of ["forged delete, then the author's edit", "the author's edit, then a forged delete"]) {
+    it(`${order}: never an authorised delete. The batch is not dropped (the IN counts); the text is purged`, async () => {
+      const forged = { ...byAuthor, ...ALI };
+      if (order.startsWith("forged")) {
+        await applyMessageChange(forged, NOW);
+        await applyMessageChange(editBy(SAM), NOW);
+      } else {
+        await applyMessageChange(editBy(SAM), NOW);
+        await applyMessageChange(forged, NOW);
+      }
+      expect((await deletedAmong(G, [{ id: SAM_ID, authorPhone: SAM_PN }])).size).toBe(0);
+      seed();
+      await enforceDeletes(G, [SAM_ID]);
+      expect(words()).not.toContain("4321");
+      // The forged delete still drops nothing of Sam's, quotes included, beyond the edit's own purge.
+      expect(T.deletedMessage[0].changes).toHaveLength(2);
+    });
+  }
+
+  it("an authorised delete after an edit is a delete", async () => {
+    await applyMessageChange(editBy(SAM), NOW);
+    await applyMessageChange(byAuthor, NOW);
+    expect([...(await deletedAmong(G, [{ id: SAM_ID }]))]).toEqual([SAM_ID]);
+  });
+
+  it("an EDIT cancels only the proposals and DMs made BEFORE it; those the batch built from the edited content stay. A DELETE cancels all", async () => {
+    const editAt = ago(5);
+    const before = ago(10);
+    const after = ago(1);
+    const proposals = () => {
+      T.adminSquadProposal.push(
+        row({ orgId: "org-a", matchId: "m1", waMessageId: HQ_ID, proposedByUserId: "u-sam", playingUserIds: [], playingNewNames: ["Old Name"], reserveUserIds: [], reserveNewNames: [], monthSeed: null, resolvedAt: null, outcome: null, createdAt: before, expiresAt: ago(-60) }),
+      );
+      T.botJob.push(
+        row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "old draft", aboutKey: `month-seed-of:${HQ_ID}`, sentAt: null, createdAt: before }),
+        row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "new draft", aboutKey: `month-seed-of:${HQ_ID}`, sentAt: null, createdAt: after }),
+        row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "new reminder", aboutKey: `asked-reminder:${HQ_ID}`, sentAt: null, createdAt: after }),
+      );
+    };
+    proposals();
+    await applyMessageChange({ ...editBy(SAM), chatId: HQ }, editAt);
+    // The batch then builds from the edited content (after the edit), and its clear runs.
+    T.adminSquadProposal.push(
+      row({ orgId: "org-a", matchId: "m1", waMessageId: `false_${HQ}_${ID}X_${SAM_PN}@c.us`, proposedByUserId: "u-sam", playingNewNames: [], reserveNewNames: [], monthSeed: null, resolvedAt: null, createdAt: after, expiresAt: ago(-60) }),
+    );
+    await enforceDeletes(HQ, [HQ_ID]);
+    expect(T.adminSquadProposal[0]).toMatchObject({ outcome: "source-deleted" });
+    expect(T.botJob.map((j) => j.text)).toEqual(["new draft", "new reminder"]);
+    // A delete cancels all of them.
+    await applyMessageChange({ ...byAuthor, chatId: HQ }, NOW);
+    expect(T.botJob).toEqual([]);
+  });
+
+  it("withoutChangedHistory (the server's safety net): a Pi recent-chat line of a deleted or EDITED message is dropped; a forged change, or a line with no id, is kept", async () => {
+    await applyMessageChange(editBy(SAM), NOW);
+    await applyMessageChange({ ...byAuthor, ...ALI, messageId: "OTHERID999" }, NOW);
+    const lines = [
+      { authorName: "Sam", body: "my door code is 4321", timestamp: ago(3).toISOString(), waMessageId: SAM_ID },
+      { authorName: "Sam", body: "unrelated line", timestamp: ago(2).toISOString(), waMessageId: `false_${G}_OTHERID999_${SAM_PN}@c.us` },
+      { authorName: "Old Pi", body: "no id", timestamp: ago(1).toISOString() },
+    ];
+    expect((await withoutChangedHistory(G, lines)).map((l) => l.body)).toEqual(["unrelated line", "no id"]);
   });
 });
 

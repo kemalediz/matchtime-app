@@ -1061,10 +1061,12 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
         }
-        // A YES to a pasted list that was dropped because its message was
-        // edited or deleted (2026-11-15): said once, never silence.
-        if (pending.length === 0 && (actor || squadActor)) {
-          const changed = await changedListNotice({ orgId: org.id, lang, now, ...(actor ? {} : { proposedBy: squadActor as string }) });
+        // A YES about a pasted list that was dropped because its message was
+        // edited or deleted (2026-11-15): said once. Only a YES quoting that
+        // list's question, or the paster's own with nothing newer since;
+        // any other YES goes on exactly as before.
+        if (pending.length === 0) {
+          const changed = await changedListNotice({ orgId: org.id, lang, now, senderUserId: actor ?? squadActor ?? null, quoted });
           if (changed) return said(changed.outcome, changed.replyText);
         }
         const decision = decideApproval({ pending, quoted, log, now });

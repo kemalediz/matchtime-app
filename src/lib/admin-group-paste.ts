@@ -32,6 +32,8 @@
  * The YES takes out exactly who the preview said. Logs carry ids and
  * counts only.
  */
+import { hqReplyKey } from "./reply-context";
+import { sameWhatsAppMessage } from "./quoted-message";
 import { db } from "./db";
 import { t } from "./i18n/t";
 import { loadOrganiserNames } from "./organiser-names";
@@ -305,23 +307,44 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
 /**
  * A YES to a pasted list that was CANCELLED because its message was edited
  * or deleted (`message-change.ts`, outcome "source-deleted"), within a day:
- * said ONCE ("That list was changed, so I've dropped it..."), so the
- * organiser is not left wondering why nothing happened. The claim on the
- * row (outcome "source-deleted-told") makes two YES messages say it once.
- * `proposedBy`: a member's own list only. Null when there is none.
+ * said ONCE ("That list was changed, so I've dropped it..."), but only when
+ * the YES is clearly about that list (round 6):
+ *
+ *   - it QUOTES MatchTime's proposal message for it (the HQ reply claimed
+ *     for the paste, by its acked id or its words); or
+ *   - it comes from the organiser who pasted it, and no newer list has been
+ *     proposed or applied in that club since.
+ *
+ * Any other YES gets null, and the caller behaves exactly as before. The
+ * claim on the row (outcome "source-deleted-told") makes it said once.
  */
-export async function changedListNotice(args: { orgId: string; lang: string | null | undefined; now: Date; proposedBy?: string }): Promise<PasteReply | null> {
+export async function changedListNotice(args: {
+  orgId: string;
+  lang: string | null | undefined;
+  now: Date;
+  senderUserId: string | null;
+  quoted?: { fromMatchTime?: boolean; text?: string | null; messageId?: string | null } | null;
+}): Promise<PasteReply | null> {
   const p = await db.adminSquadProposal.findFirst({
-    where: {
-      orgId: args.orgId,
-      outcome: "source-deleted",
-      resolvedAt: { gte: new Date(args.now.getTime() - EXPIRED_ANSWER_WINDOW_MS) },
-      ...(args.proposedBy ? { proposedByUserId: args.proposedBy } : {}),
-    },
+    where: { orgId: args.orgId, outcome: "source-deleted", resolvedAt: { gte: new Date(args.now.getTime() - EXPIRED_ANSWER_WINDOW_MS) } },
     orderBy: { resolvedAt: "desc" },
-    select: { id: true },
+    select: { id: true, waMessageId: true, proposedByUserId: true, createdAt: true },
   });
   if (!p) return null;
+  let quotesIt = false;
+  if (args.quoted?.fromMatchTime) {
+    const asked = await db.sentNotification.findFirst({ where: { key: hqReplyKey(args.orgId, p.waMessageId) }, select: { text: true, waMessageId: true } });
+    const qid = args.quoted.messageId ?? null;
+    const sameId = !!qid && !!asked?.waMessageId && sameWhatsAppMessage(qid, asked.waMessageId);
+    const sameWords = !!asked?.text && !!args.quoted.text && asked.text.trim() === args.quoted.text.trim();
+    quotesIt = sameId || sameWords;
+  }
+  let pastersOwn = false;
+  if (!quotesIt && args.senderUserId && args.senderUserId === p.proposedByUserId) {
+    const newer = await db.adminSquadProposal.findFirst({ where: { orgId: args.orgId, createdAt: { gt: p.createdAt } }, select: { id: true } });
+    pastersOwn = !newer;
+  }
+  if (!quotesIt && !pastersOwn) return null;
   const claimed = await db.adminSquadProposal.updateMany({ where: { id: p.id, outcome: "source-deleted" }, data: { outcome: "source-deleted-told" } });
   if (claimed.count === 0) return null;
   return { outcome: "paste-source-changed", replyText: t(args.lang).ag_paste_source_changed };

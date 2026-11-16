@@ -78,6 +78,7 @@ import {
   isRevokedLocally,
   isChangedLocally,
   flushGroupNow,
+  markEditUnreadable,
   whenFlushIdle,
 } from "./smart-analysis.js";
 import { bodyForServer, handleMessageChange } from "./message-change.js";
@@ -857,6 +858,8 @@ async function main() {
       },
       replacePending: replacePendingWithEdit,
       flushNow: (groupId) => flushGroupNow(groupId),
+      editUnreadable: markEditUnreadable,
+      phoneForLid: driver.phoneForLid ? (lid) => driver.phoneForLid!(lid) : undefined,
       applyLocally: applyMessageChangeLocally,
       record: (c) => messageChanges.record(c),
       attempt: (key) => messageChanges.attempt(key),

@@ -15,6 +15,10 @@
 -- or
 --   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261116120000_deleted_messages/migration.sql
 --
+-- "changes" holds EACH change on its own ({reason, byAdmin, senderJids,
+-- senderPhones, at}), appended atomically: who may do what is judged per
+-- change, so a forged delete never borrows the author's real edit.
+--
 -- RETENTION: 14 DAYS from "deletedAt", pruned by the sweep
 -- (DELETED_MESSAGE_RETENTION_DAYS in src/lib/message-change.ts). Ids and
 -- phones only, never a word of the message. "enforcedAt" is when every copy
@@ -57,6 +61,7 @@ CREATE TABLE IF NOT EXISTS "DeletedMessage" (
     "reason" TEXT NOT NULL DEFAULT 'deleted',
     "senderJids" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "senderPhones" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "changes" JSONB NOT NULL DEFAULT '[]',
     "deletedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "enforcedAt" TIMESTAMP(3),
 

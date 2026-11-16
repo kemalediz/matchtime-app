@@ -347,7 +347,7 @@ import { askPoolFromWords } from "@/lib/pool-ask-words";
 import { recruitPlacesFromWords } from "@/lib/recruit-source";
 import { dmNamedPeople } from "@/lib/named-invite";
 import { rememberMentions } from "@/lib/group-mentions";
-import { deletedAmong, enforceDeletes, withoutDeletedQuotes } from "@/lib/message-change";
+import { deletedAmong, enforceDeletes, withoutChangedHistory, withoutDeletedQuotes } from "@/lib/message-change";
 import { groupSourceAnswers } from "@/lib/ask-source-group";
 import { groupAdminFollowups } from "@/lib/group-admin-followups";
 import { setVenueFromWords } from "@/lib/venue-from-words";
@@ -418,6 +418,8 @@ interface InboundHistory {
   authorName: string | null;
   body: string;
   timestamp: string;
+  /** The line's own message id (Pi builds from 2026-11-15), so a changed message's line can be left out. */
+  waMessageId?: string;
 }
 
 interface InboundBody {
@@ -542,6 +544,9 @@ async function handleAnalyzeRequest(request: Request) {
       body.messages = body.messages.filter((m) => !gone.has(m.waMessageId));
     }
     body.messages = await withoutDeletedQuotes(body.groupId, body.messages, "quotedBody");
+    // The server's safety net for the Pi's recent chat (round 6): a line of a
+    // message deleted, or edited by its author, never reaches a model.
+    if (Array.isArray(body.history)) body.history = await withoutChangedHistory(body.groupId, body.history);
     if (body.messages.length === 0) {
       // Nothing left to read; the Pi still needs the next kickoff for its urgency flush.
       const next = await db.match.findFirst({

@@ -1908,6 +1908,14 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       return senderIsGroupAdmin(groupId, jids);
     },
 
+    async phoneForLid(lidJid) {
+      try {
+        return await phoneForLid(lidJid);
+      } catch {
+        return null;
+      }
+    },
+
     onGroupJoin(handler) {
       requireConnection("onGroupJoin");
       joinHandlers.push(handler);

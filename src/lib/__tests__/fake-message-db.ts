@@ -161,20 +161,22 @@ export function makeDb(T: Record<string, Row[]>, names: string[], uniqueKeys: Re
         $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
           if (!sql.includes('INSERT INTO "DeletedMessage"')) throw new Error(`unexpected raw SQL: ${sql.slice(0, 60)}`);
           if (missing.has("deletedMessage")) throw new Error('relation "DeletedMessage" does not exist');
-          const [id, chatId, waMessageId, byAdmin, reason, senderJids, senderPhones, deletedAt] = params as [string, string, string, boolean, string, string[], string[], Date];
+          const [id, chatId, waMessageId, byAdmin, reason, senderJids, senderPhones, deletedAt, changesJson] = params as [string, string, string, boolean, string, string[], string[], Date, string];
+          const added = JSON.parse(changesJson ?? "[]") as unknown[];
           const rows = (T.deletedMessage ??= []);
           let r = rows.find((x) => x.chatId === chatId && x.waMessageId === waMessageId);
           if (!r) {
-            r = { id, chatId, waMessageId, byAdmin, reason, senderJids: [...new Set(senderJids)], senderPhones: [...new Set(senderPhones)], deletedAt, enforcedAt: null };
+            r = { id, chatId, waMessageId, byAdmin, reason, senderJids: [...new Set(senderJids)], senderPhones: [...new Set(senderPhones)], changes: added, deletedAt, enforcedAt: null };
             rows.push(r);
           } else {
             r.byAdmin = (r.byAdmin as boolean) || byAdmin;
             r.reason = r.reason === "deleted" || reason === "deleted" ? "deleted" : "edited";
             r.senderJids = [...new Set([...((r.senderJids as string[]) ?? []), ...senderJids])];
             r.senderPhones = [...new Set([...((r.senderPhones as string[]) ?? []), ...senderPhones])];
+            r.changes = [...((r.changes as unknown[]) ?? []), ...added];
             r.enforcedAt = null;
           }
-          return [{ byAdmin: r.byAdmin, reason: r.reason, senderJids: r.senderJids, senderPhones: r.senderPhones, deletedAt: r.deletedAt }];
+          return [{ byAdmin: r.byAdmin, reason: r.reason, senderJids: r.senderJids, senderPhones: r.senderPhones, changes: r.changes, deletedAt: r.deletedAt }];
         },
         $transaction: async <R>(fn: (tx: unknown) => Promise<R>): Promise<R> => {
           const snapshot = Object.fromEntries(names.map((n) => [n, (T[n] ?? []).map((r) => ({ ...r }))]));

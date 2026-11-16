@@ -172,6 +172,8 @@ interface Pending {
   // flush interval.
   /** How many analyze POSTs have already failed for this message. */
   attempts: number;
+  /** Carries its author's edited content already (2026-11-15): never judged again. */
+  editApplied?: boolean;
 }
 
 // How many times a batch may fail its analyze POST before we give up on it.
@@ -314,7 +316,7 @@ function safeGroupId(msg: InboundMessage): string | null {
 // ─── In-memory state ────────────────────────────────────────────────
 /** A recent-chat line, with the id of the message it is (when known), so a
  *  delete or an edit can find it. The id never leaves the Pi (`getHistory`). */
-type HistoryEntry = AnalyzeInboundHistory & { waMessageId?: string };
+type HistoryEntry = AnalyzeInboundHistory & { waMessageId?: string; editApplied?: boolean };
 const historyByGroup = new Map<string, HistoryEntry[]>();
 const bufferByGroup = new Map<string, Pending[]>();
 const nextKickoffMsByGroup = new Map<string, number | null>();
@@ -335,8 +337,11 @@ export function recordHistory(groupId: string, entry: AnalyzeInboundHistory, waM
   // was sent, stays out; a copy of one whose waiting original an author's
   // edit replaced carries the edited content (2026-11-15).
   if (waMessageId && isGone(groupId, waMessageId, null)) return;
-  const replaced = waMessageId ? replacementFor(groupId, waMessageId, null) : null;
-  if (replaced) entry = { ...entry, body: replaced.text };
+  // An author's edit: its held content, or (being read) the line for now,
+  // to be fixed or dropped when the read ends; with no content, left out.
+  const state = waMessageId ? editStateOf(groupId, waMessageId, null) : "none";
+  if (state === "lost") return;
+  if (typeof state === "object") entry = { ...entry, body: state.text, editApplied: true } as HistoryEntry;
   const arr = historyByGroup.get(groupId) ?? [];
   // The same line, once. The live `message` handler and the restart
   // catch-up can both see one message (WhatsApp delivers the offline
@@ -359,8 +364,16 @@ export function recordHistory(groupId: string, entry: AnalyzeInboundHistory, waM
   historyByGroup.set(groupId, arr);
 }
 
+/**
+ * The recent chat posted with a batch. Each line carries its message id
+ * (round 6), so the server can leave out a changed one as well (its safety
+ * net). A line of a message whose author's edit is still being read, or
+ * whose edited content is gone, is left out: never its original words.
+ */
 function getHistory(groupId: string): AnalyzeInboundHistory[] {
-  return (historyByGroup.get(groupId) ?? []).map(({ authorName, body, timestamp }) => ({ authorName, body, timestamp }));
+  return (historyByGroup.get(groupId) ?? [])
+    .filter((h) => h.editApplied || !h.waMessageId || editStateOf(groupId, h.waMessageId, null) === "none")
+    .map(({ authorName, body, timestamp, waMessageId }) => ({ authorName, body, timestamp, ...(waMessageId ? { waMessageId } : {}) }));
 }
 
 // ─── Deletes and edits (2026-11-15, round 3) ────────────────────────
@@ -382,8 +395,18 @@ function getHistory(groupId: string): AnalyzeInboundHistory[] {
  * somebody who may not make it stays, and applies to nothing), so a later
  * admin re-check can add to it.
  */
-const MAX_REMEMBERED_CHANGES = 1000;
+const MAX_REMEMBERED_CHANGES = 5000;
+/** At least the replay buffer's window (two hours): a catch-up copy is still held to the record. Ids and phones only. */
+const CHANGE_RECORD_MS = 3 * 60 * 60 * 1000;
 const changedMessages = new Map<string, LocalMessageChange[]>();
+const changedAt = new Map<string, number>();
+/**
+ * Author's edits whose content is being read right now, by group and id: a
+ * flush holds those copies back for the next one, instead of sending the
+ * original words (round 6). Bounded in time: a read never takes a minute.
+ */
+const EDIT_PENDING_MS = 60 * 1000;
+const editPending = new Map<string, { change: LocalMessageChange; at: number }[]>();
 const changeKey = (groupId: string, messageId: string) => `${groupId}|${messageId}`;
 
 function recordChange(change: LocalMessageChange): void {
@@ -393,11 +416,44 @@ function recordChange(change: LocalMessageChange): void {
   // Only a delete may be an admin's.
   list.push(change.kind === "edit" ? { ...change, byAdmin: false } : change);
   changedMessages.set(key, list);
-  while (changedMessages.size > MAX_REMEMBERED_CHANGES) {
-    const oldest = changedMessages.keys().next().value;
-    if (oldest === undefined) break;
-    changedMessages.delete(oldest);
+  const now = Date.now();
+  changedAt.set(key, now);
+  // Oldest first: past the record's window, then over the cap.
+  for (const [k, at] of changedAt) {
+    if (now - at <= CHANGE_RECORD_MS && changedMessages.size <= MAX_REMEMBERED_CHANGES) break;
+    changedAt.delete(k);
+    changedMessages.delete(k);
   }
+  if (change.kind === "edit") {
+    const marks = (editPending.get(key) ?? []).filter((m) => now - m.at <= EDIT_PENDING_MS);
+    marks.push({ change, at: now });
+    editPending.set(key, marks);
+  }
+}
+
+/** Is an author's edit of this copy still being read? */
+function isEditPending(groupId: string, storedId: string, authorPhone: string | null): boolean {
+  const bare = bareOf(storedId);
+  if (!bare) return false;
+  const now = Date.now();
+  return (editPending.get(changeKey(groupId, bare)) ?? []).some((m) => now - m.at <= EDIT_PENDING_MS && isByAuthor(storedId, authorPhone, m.change));
+}
+
+/**
+ * Where an author's edit leaves this copy: "none" (no edit by its author),
+ * "pending" (the edit's content is being read), its edited content, or
+ * "lost" (an edit is recorded but its content is unknown: unreadable, past
+ * its 30 minutes, or forgotten in a restart). A "lost" copy is never
+ * analysed or shown: the author took those words back.
+ */
+function editStateOf(groupId: string, storedId: string, authorPhone: string | null): "none" | "pending" | "lost" | ReadEdit {
+  const bare = bareOf(storedId);
+  if (!bare || !namesMessage(storedId, groupId, bare) || storedId === bare) return "none";
+  const edits = (changedMessages.get(changeKey(groupId, bare)) ?? []).filter((c) => c.kind === "edit" && isByAuthor(storedId, authorPhone, c));
+  const content = replacementFor(groupId, storedId, authorPhone);
+  if (edits.length === 0) return content ?? "none";
+  if (isEditPending(groupId, storedId, authorPhone)) return "pending";
+  return content ?? "lost";
 }
 
 /**
@@ -464,6 +520,15 @@ export function replacePendingWithEdit(change: LocalMessageChange, read: ReadEdi
   const groupId = change.groupId;
   const key = changeKey(groupId, change.messageId);
   const now = Date.now();
+  // An edit with no time of its own counts in arrival order.
+  if (!editedAtMs) editedAtMs = now;
+  editPending.delete(key);
+  // Let go of every held content past its 30 minutes, not only this message's.
+  for (const [k, entries] of editedContent) {
+    const live = entries.filter((e) => now - e.at <= EDIT_MEMORY_MS);
+    if (live.length === 0) editedContent.delete(k);
+    else if (live.length !== entries.length) editedContent.set(k, live);
+  }
   const list = (editedContent.get(key) ?? []).filter((e) => now - e.at <= EDIT_MEMORY_MS);
   const seen = list.some((e) => e.editedAtMs === editedAtMs && JSON.stringify(e.read) === JSON.stringify(read) && JSON.stringify(e.change.senderJids) === JSON.stringify(change.senderJids));
   if (!seen) list.push({ change, read, editedAtMs, at: now });
@@ -482,9 +547,13 @@ export function replacePendingWithEdit(change: LocalMessageChange, read: ReadEdi
       const p = pending[i];
       if (!namesMessage(p.waMessageId, groupId, change.messageId)) continue;
       const eff = replacementFor(groupId, p.waMessageId, p.authorPhone || null);
-      if (!eff || !differs(p, eff)) continue;
+      if (!eff) continue;
+      if (!differs(p, eff)) {
+        pending[i] = { ...p, editApplied: true };
+        continue;
+      }
       if (eff.botMentioned && !p.botMentioned) tagAdded = true;
-      pending[i] = withEdit(p, eff);
+      pending[i] = { ...withEdit(p, eff), editApplied: true };
       replaced = true;
     }
   }
@@ -495,11 +564,45 @@ export function replacePendingWithEdit(change: LocalMessageChange, read: ReadEdi
       lines.map((h) => {
         if (!h.waMessageId || !namesMessage(h.waMessageId, groupId, change.messageId)) return h;
         const eff = replacementFor(groupId, h.waMessageId, null);
-        return eff ? { ...h, body: eff.text } : h;
+        return eff ? { ...h, body: eff.text, editApplied: true } : h;
       }),
     );
   }
   return { replaced, tagAdded };
+}
+
+/**
+ * An author's edit whose content cannot be read (none came, the mapper
+ * rejected it, the reader returned nothing or threw): every copy of the
+ * message by its author leaves the batch and the recent chat. Losing an IN
+ * is preferred to analysing words the author took back (round 6). Logged
+ * by ids only.
+ */
+export function markEditUnreadable(change: LocalMessageChange): { buffered: number; history: number } {
+  const groupId = change.groupId;
+  editPending.delete(changeKey(groupId, change.messageId));
+  const mine = (id: string, phone: string | null) => namesMessage(id, groupId, change.messageId) && id !== change.messageId && isByAuthor(id, phone, change);
+  let buffered = 0;
+  const pending = bufferByGroup.get(groupId);
+  if (pending) {
+    const kept = pending.filter((p) => !mine(p.waMessageId, p.authorPhone || null));
+    buffered = pending.length - kept.length;
+    bufferByGroup.set(groupId, kept);
+  }
+  let history = 0;
+  const lines = historyByGroup.get(groupId);
+  if (lines) {
+    const kept = lines.filter((h) => !(h.waMessageId && mine(h.waMessageId, null)));
+    history = lines.length - kept.length;
+    historyByGroup.set(groupId, kept);
+  }
+  console.warn(`[smart] an edit of ${change.messageId} in ${groupId} could not be read: the message is left out (batch=${buffered} recent=${history})`);
+  return { buffered, history };
+}
+
+/** Test-only: the keys of the edited content still held. */
+export function _test_editedContentKeys(): string[] {
+  return [...editedContent.keys()];
 }
 
 /** Does a recorded DELETE take this copy (its stored id, its author's phone) out? An edit never does: it replaces the content. */
@@ -573,8 +676,14 @@ function ownCopyAuthor(groupId: string, bare: string): { jid: string | null; pho
 /** A waiting message as the record leaves it: null (gone), or with its quote's words stripped. */
 function withChanges(groupId: string, p: Pending): { p: Pending | null; quote: boolean } {
   if (isGone(groupId, p.waMessageId, p.authorPhone || null)) return { p: null, quote: false };
-  const replaced = editedContent.size > 0 ? replacementFor(groupId, p.waMessageId, p.authorPhone || null) : null;
-  if (replaced) p = withEdit(p, replaced);
+  if (!p.editApplied) {
+    const state = editStateOf(groupId, p.waMessageId, p.authorPhone || null);
+    if (state === "lost") {
+      console.warn(`[smart] ${p.waMessageId} in ${groupId} was edited and its new content is gone: left out`);
+      return { p: null, quote: false };
+    }
+    if (typeof state === "object") p = { ...withEdit(p, state), editApplied: true };
+  }
   if (p.quotedMessageId && p.quotedBody !== undefined && quoteIsGone(groupId, p.quotedMessageId, p.quotedAuthorJid, p.quotedAuthorPhone)) {
     const { quotedBody: _q, ...rest } = p;
     void _q;
@@ -1220,8 +1329,8 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
   if (inFlightFlush.has(groupId)) return;
   inFlightFlush.add(groupId);
   try {
-    const pending = bufferByGroup.get(groupId) ?? [];
-    if (pending.length === 0) {
+    const queued = bufferByGroup.get(groupId) ?? [];
+    if (queued.length === 0) {
       // Log even the do-nothing flush. Silence here is exactly what hid the
       // 2026-08-30 outage for three days: the timer fired ~111 times and
       // returned without a word, so "the pipeline is stalled" and "there was
@@ -1230,7 +1339,15 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
       console.log(`[smart] flush ${groupId}: buffer empty (${formatInboundStats(inboundStats)})`);
       return;
     }
-    bufferByGroup.set(groupId, []); // clear optimistically; errors will log, but we don't want to loop
+    // A copy whose author's edit is still being read is held back for the
+    // next flush, never sent with its original words (2026-11-15, round 6).
+    const heldBack = queued.filter((p) => !p.editApplied && isEditPending(groupId, p.waMessageId, p.authorPhone || null));
+    const pending = heldBack.length ? queued.filter((p) => !heldBack.includes(p)) : queued;
+    if (pending.length === 0) {
+      console.log(`[smart] flush ${groupId}: ${heldBack.length} held back while an edit of it is read`);
+      return;
+    }
+    bufferByGroup.set(groupId, heldBack); // clear optimistically; errors will log, but we don't want to loop
 
     const msgsForAnalyze: AnalyzeInboundMessage[] = pending.map((p) => ({
       waMessageId: p.waMessageId,
@@ -1779,6 +1896,8 @@ export function _test_reset(): void {
   changedMessages.clear();
   editedContent.clear();
   takenOutAuthors.clear();
+  editPending.clear();
+  changedAt.clear();
   nextKickoffMsByGroup.clear();
   inFlightFlush.clear();
   reflushAfterInFlight.clear();

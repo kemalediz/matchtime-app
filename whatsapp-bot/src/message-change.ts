@@ -150,6 +150,15 @@ export interface MessageChangeDeps {
   replacePending(change: LocalMessageChange, read: ReadEdit, editedAtMs: number): { replaced: boolean; tagAdded: boolean };
   /** The immediate flush a tagged message gets. */
   flushNow(groupId: string): Promise<void>;
+  /**
+   * An author's edit whose new content cannot be read (no content, the
+   * mapper rejected it, the reader returned nothing or threw): the message
+   * is dropped from the batch and the recent chat, never analysed with the
+   * words its author took back.
+   */
+  editUnreadable(change: LocalMessageChange): { buffered: number; history: number };
+  /** The Pi's own LID-to-phone map (local, never a WhatsApp lookup). */
+  phoneForLid?(lidJid: string): Promise<string | null>;
   applyLocally(change: LocalMessageChange): { buffered: number; history: number; quotes: number };
   /** Into the durable outbox; returns its key. */
   record(change: LocalMessageChange): string;
@@ -172,7 +181,7 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     return "dm";
   }
   const isDelete = change.kind === "revoke";
-  const local: LocalMessageChange = {
+  let local: LocalMessageChange = {
     kind: change.kind,
     groupId: change.chatId,
     messageId: change.messageId,
@@ -181,21 +190,43 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     byAdmin: isDelete && change.byAdmin === true,
     ...(isDelete && change.adminUnknown ? { adminUnknown: true } : {}),
   };
+  // A sender known only by a LID, widened through the Pi's own LID map, so
+  // it matches an original stored under the phone (round 6).
+  if (!local.senderPhone && deps.phoneForLid) {
+    for (const jid of local.senderJids.filter((j) => j.endsWith("@lid"))) {
+      try {
+        const phone = await deps.phoneForLid(jid);
+        if (phone) {
+          local = { ...local, senderPhone: phone, senderJids: [...new Set([...local.senderJids, `${phone}@c.us`])] };
+          break;
+        }
+      } catch {
+        /* the change goes on as the sender it named */
+      }
+    }
+  }
   try {
-    // (a) recorded here and in the outbox first, whatever happens next.
+    // (a) recorded here and in the outbox first, whatever happens next. An
+    // author's edit marks its message as being read: a flush now holds it back.
     const counts = deps.applyLocally(local);
     const key = deps.record(local);
-    // (b)/(c) an author's edit: its content, in memory, in place of any waiting copy.
-    if (!isDelete && change.edited) {
+    // (b)/(c) an author's edit: its content, in memory, in place of any
+    // waiting copy. Content that cannot be read: the message is dropped,
+    // never analysed or kept with the original words.
+    if (!isDelete) {
+      let read: ReadEdit | null = null;
       try {
-        const read = await deps.readEdit(change.edited);
-        if (read) {
-          const r = deps.replacePending(local, read, change.editedAtMs ?? 0);
-          if (r.replaced) deps.log(`${tag}: a waiting copy now carries the edited content`);
-          if (r.tagAdded) await deps.flushNow(change.chatId);
-        }
-      } catch (err) {
-        deps.error(`${tag}: its new content could not be read (${err instanceof Error ? err.message : "failed"}); the original stays queued and is purged on the server`);
+        read = change.edited ? await deps.readEdit(change.edited) : null;
+      } catch {
+        read = null;
+      }
+      if (read) {
+        const r = deps.replacePending(local, read, change.editedAtMs ?? 0);
+        if (r.replaced) deps.log(`${tag}: a waiting copy now carries the edited content`);
+        if (r.tagAdded) await deps.flushNow(change.chatId);
+      } else {
+        const dropped = deps.editUnreadable(local);
+        deps.error(`${tag}: its new content could not be read; the message is left out (batch=${dropped.buffered} recent=${dropped.history})`);
       }
     }
     const idle = await deps.whenFlushIdle(change.chatId);

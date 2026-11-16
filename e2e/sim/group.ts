@@ -502,6 +502,8 @@ export interface BatchItem {
 export interface SimHistoryEntry {
   authorName: string | null;
   body: string;
+  /** The line's own message id (the Pi sends it since 2026-11-15). */
+  waMessageId?: string;
   /** Default: 10 minutes before now, in list order. */
   timestamp?: string;
 }
@@ -699,6 +701,8 @@ export class SimGroup {
       body: h.body,
       timestamp:
         h.timestamp ?? new Date(Date.now() - (arr.length - i) * 60_000).toISOString(),
+      // The line's own message id, as the Pi sends it since 2026-11-15.
+      ...(h.waMessageId ? { waMessageId: h.waMessageId } : {}),
     }));
     const res = await this.request.post("/api/whatsapp/analyze", {
       headers: { ...HEADERS, ...(opts.headers ?? {}) },

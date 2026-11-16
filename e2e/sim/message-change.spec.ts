@@ -527,4 +527,43 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "waMessageId" = $1 AND body IS NOT NULL`, [id])).toBe(0);
     expect((await g.attendanceOf("dan"))?.status).toBe("CONFIRMED");
   });
+
+  // ── Round 6 ────────────────────────────────────────────────────────
+
+  for (const order of ["forged delete first", "author's edit first"]) {
+    test(`a forged delete and the author's real edit (${order}) never make an authorised delete: the author's IN counts, with its tick`, async ({ request, db }) => {
+      const g = await createGroup(request, db);
+      const bare = bareId();
+      const id = storedId(g.groupId, bare, g.player("dan").phone);
+      const forged = change(request, revokeBy(g, "pete", bare));
+      const edited = () => change(request, editBy(g, "dan", bare));
+      if (order.startsWith("forged")) {
+        await forged;
+        await edited();
+      } else {
+        await edited();
+        await forged;
+      }
+      const res = await g.postBatch([{ player: "dan", body: "in", route: "self_att", facts: selfIn(), waMessageId: id }]);
+      const r = res.results.find((x) => x.waMessageId === id);
+      expect(r?.handledBy).not.toBe("missing");
+      expect(r?.react).toBeTruthy();
+      expect((await g.attendanceOf("dan"))?.status).toBe("CONFIRMED");
+    });
+  }
+
+  test("the server's safety net: a Pi recent-chat line carrying an EDITED message's original words never reaches the model", async ({ request, db }) => {
+    const g = await createGroup(request, db, { attendance: [{ key: "pete", status: "CONFIRMED" as const }] });
+    const bare = bareId();
+    const dan = g.player("dan");
+    await change(request, editBy(g, "dan", bare));
+    await g.postBatch([{ player: "pete", body: "@Match Time out", tag: true, route: "self_att", facts: selfOut() }], {
+      history: [
+        { authorName: dan.name, body: SECRET, timestamp: new Date(Date.now() - 60_000).toISOString(), waMessageId: storedId(g.groupId, bare, dan.phone) },
+        { authorName: dan.name, body: OTHER, timestamp: new Date(Date.now() - 30_000).toISOString() },
+      ],
+    });
+    expect(JSON.stringify(calls())).not.toContain("4321");
+    expect(JSON.stringify(calls())).toContain(OTHER);
+  });
 });

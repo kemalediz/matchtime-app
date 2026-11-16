@@ -327,6 +327,9 @@ export interface WaDriver {
    */
   isGroupAdmin?(groupId: string, jids: string[]): Promise<boolean | null>;
 
+  /** The phone for a LID from the Pi's own local map, or null. Never a WhatsApp lookup. */
+  phoneForLid?(lidJid: string): Promise<string | null>;
+
   /**
    * Somebody (possibly the bot) was added to a group.
    *

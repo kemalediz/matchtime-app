@@ -81,3 +81,23 @@ for (const kind of ["edit", "revoke"] as const) {
     expect(again.replyText).not.toBe(CHANGED);
   });
 }
+
+test("an edit recorded BEFORE the paste reaches HQ: the proposal built from the edited list stays open (it is not cancelled by its own clear)", async ({ request, db }) => {
+  const bare = bareId();
+  await change(request, "edit", bare);
+  const proposed = await say(request, LIST, storedId(bare));
+  expect(proposed).toMatchObject({ outcome: "paste-proposed" });
+  expect(await db.count(`SELECT count(*)::int AS c FROM "AdminSquadProposal" WHERE "waMessageId" = $1 AND "resolvedAt" IS NULL`, [storedId(bare)])).toBe(1);
+});
+
+test("a list dropped by its edit, then a NEW list pasted and applied: a later YES is not told the old list was changed", async ({ request, db }) => {
+  const dropped = bareId();
+  expect(await say(request, LIST, storedId(dropped))).toMatchObject({ outcome: "paste-proposed" });
+  await change(request, "edit", dropped);
+  const fresh = bareId();
+  expect(await say(request, LIST, storedId(fresh))).toMatchObject({ outcome: "paste-proposed" });
+  expect(await say(request, "YES", `e2e-hqpaste-apply-${fresh}`)).toMatchObject({ outcome: "paste-applied" });
+  const later = await say(request, "YES", `e2e-hqpaste-later-${fresh}`);
+  expect(later.replyText).not.toBe(CHANGED);
+  expect(await db.one(`SELECT outcome FROM "AdminSquadProposal" WHERE "waMessageId" = $1`, [storedId(dropped)])).toEqual({ outcome: "source-deleted" });
+});

@@ -719,6 +719,8 @@ export interface AnalyzeInboundHistory {
   authorName: string | null;
   body: string;
   timestamp: string; // ISO
+  /** The line's own message id (2026-11-15): the server leaves out a changed one too. */
+  waMessageId?: string;
 }
 
 export interface AnalyzeResult {
