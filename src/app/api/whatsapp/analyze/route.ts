@@ -531,9 +531,10 @@ async function handleAnalyzeRequest(request: Request) {
   // A MESSAGE DELETED FOR EVERYONE (2026-11-15) is left out before anything
   // reads it: not archived, not analysed, not stored, not shown as recent
   // chat (a Pi replaying it after a restart, or a delete that beat its
-  // batch here). Only a DELETE: an edited message in a batch carries what
-  // the Pi holds for it now, and clear-after-write purges any stored copy
-  // under an edited tombstone. A reply QUOTING a deleted or edited message
+  // batch here). Only a DELETE: an edited message is analysed as the Pi
+  // sent it (MatchTime acts on what it read and never re-reads an edit),
+  // and clear-after-write then purges what was stored under an edited
+  // tombstone. A reply QUOTING a deleted or edited message
   // carries no quote text: never the Pi's copy of the words
   // (`message-change.ts`). Best-effort: with no record readable, nothing
   // is left out.

@@ -165,18 +165,36 @@ export function makeDb(T: Record<string, Row[]>, names: string[], uniqueKeys: Re
           const added = JSON.parse(changesJson ?? "[]") as unknown[];
           const rows = (T.deletedMessage ??= []);
           let r = rows.find((x) => x.chatId === chatId && x.waMessageId === waMessageId);
+          /** As the SQL does: the same change (ignoring `at`) once, the first kept; at most 20, deletes first; in order. */
+          const merged = (list: unknown[]) => {
+            const seen = new Set<string>();
+            const once = list
+              .map((e, o) => ({ e: e as Record<string, unknown>, o }))
+              .filter(({ e }) => {
+                const { at: _at, ...rest } = e;
+                void _at;
+                const k = JSON.stringify(Object.keys(rest).sort().map((x) => [x, rest[x]]));
+                if (seen.has(k)) return false;
+                seen.add(k);
+                return true;
+              });
+            const kept = [...once].sort((a, b) => Number(b.e.reason === "deleted") - Number(a.e.reason === "deleted") || a.o - b.o).slice(0, 20);
+            return kept.sort((a, b) => a.o - b.o).map((x) => x.e);
+          };
           if (!r) {
-            r = { id, chatId, waMessageId, byAdmin, reason, senderJids: [...new Set(senderJids)], senderPhones: [...new Set(senderPhones)], changes: added, deletedAt, enforcedAt: null };
+            r = { id, chatId, waMessageId, byAdmin, reason, senderJids: [...new Set(senderJids)], senderPhones: [...new Set(senderPhones)], changes: merged(added), deletedAt, lastChangeAt: deletedAt, enforcedAt: null };
             rows.push(r);
           } else {
             r.byAdmin = (r.byAdmin as boolean) || byAdmin;
             r.reason = r.reason === "deleted" || reason === "deleted" ? "deleted" : "edited";
             r.senderJids = [...new Set([...((r.senderJids as string[]) ?? []), ...senderJids])];
             r.senderPhones = [...new Set([...((r.senderPhones as string[]) ?? []), ...senderPhones])];
-            r.changes = [...((r.changes as unknown[]) ?? []), ...added];
+            r.changes = merged([...((r.changes as unknown[]) ?? []), ...added]);
+            const last = r.lastChangeAt instanceof Date ? r.lastChangeAt : (r.deletedAt as Date);
+            r.lastChangeAt = last && last > deletedAt ? last : deletedAt;
             r.enforcedAt = null;
           }
-          return [{ byAdmin: r.byAdmin, reason: r.reason, senderJids: r.senderJids, senderPhones: r.senderPhones, changes: r.changes, deletedAt: r.deletedAt }];
+          return [{ byAdmin: r.byAdmin, reason: r.reason, senderJids: r.senderJids, senderPhones: r.senderPhones, changes: r.changes, deletedAt: r.deletedAt, lastChangeAt: r.lastChangeAt }];
         },
         $transaction: async <R>(fn: (tx: unknown) => Promise<R>): Promise<R> => {
           const snapshot = Object.fromEntries(names.map((n) => [n, (T[n] ?? []).map((r) => ({ ...r }))]));

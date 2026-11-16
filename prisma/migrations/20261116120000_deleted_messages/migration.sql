@@ -16,15 +16,17 @@
 --   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261116120000_deleted_messages/migration.sql
 --
 -- "changes" holds EACH change on its own ({reason, byAdmin, senderJids,
--- senderPhones, at}), appended atomically: who may do what is judged per
--- change, so a forged delete never borrows the author's real edit.
+-- senderPhones, at}), appended atomically (the same change once, at most
+-- 20): who may do what is judged per change, so a forged delete never
+-- borrows the author's real edit. "deletedAt" is the first change,
+-- "lastChangeAt" the latest.
 --
--- RETENTION: 14 DAYS from "deletedAt", pruned by the sweep
+-- RETENTION: 14 DAYS from "lastChangeAt", pruned by the sweep
 -- (DELETED_MESSAGE_RETENTION_DAYS in src/lib/message-change.ts). Ids and
 -- phones only, never a word of the message. "enforcedAt" is when every copy
 -- was last cleared; the sweep takes the rows never cleared yet, plus a short
--- re-check window for late writers. Recorded only for a group linked to a
--- club.
+-- re-check window (six hours after each row's latest change) for late
+-- writers. Recorded only for a group linked to a club.
 --
 -- ORDER: APPLY THIS BEFORE DEPLOYING THE SERVER. Deployed without it,
 -- /api/whatsapp/message-change answers 500 (the Pi keeps the change in its
@@ -63,14 +65,15 @@ CREATE TABLE IF NOT EXISTS "DeletedMessage" (
     "senderPhones" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "changes" JSONB NOT NULL DEFAULT '[]',
     "deletedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastChangeAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "enforcedAt" TIMESTAMP(3),
 
     CONSTRAINT "DeletedMessage_pkey" PRIMARY KEY ("id")
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "DeletedMessage_chatId_waMessageId_key" ON "DeletedMessage"("chatId", "waMessageId");
-CREATE INDEX IF NOT EXISTS "DeletedMessage_deletedAt_idx" ON "DeletedMessage"("deletedAt");
-CREATE INDEX IF NOT EXISTS "DeletedMessage_enforcedAt_deletedAt_idx" ON "DeletedMessage"("enforcedAt", "deletedAt");
+CREATE INDEX IF NOT EXISTS "DeletedMessage_lastChangeAt_idx" ON "DeletedMessage"("lastChangeAt");
+CREATE INDEX IF NOT EXISTS "DeletedMessage_enforcedAt_lastChangeAt_idx" ON "DeletedMessage"("enforcedAt", "lastChangeAt");
 CREATE INDEX IF NOT EXISTS "GroupMessage_waChatId_createdAt_idx" ON "GroupMessage"("waChatId", "createdAt");
 
 COMMIT;

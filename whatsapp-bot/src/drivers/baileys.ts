@@ -198,7 +198,7 @@ import {
 import { createRetryCounterCache } from "../baileys/retry-cache.js";
 import { createReplayBuffer, type ReplayBuffer } from "../baileys/replay.js";
 import { mapInboundMessage, skipReason, toNumber } from "../baileys/inbound.js";
-import { readMessageChange } from "../baileys/message-change.js";
+import { isMergedEdit, readMessageChange } from "../baileys/message-change.js";
 import {
   JOIN_WATCH_MS,
   createJoinWatch,
@@ -860,19 +860,6 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
    * read here is. NULL when it cannot be read: the delete is then kept and
    * checked again on its retry, never taken as "not an admin" for good.
    */
-  /** An edit's new content as the edited message itself (its id, its author, the new words), or null. In memory only. */
-  function editedView(notice: WAMessage, targetId: string, content: proto.IMessage, upsertType: string, senderPhone: string | null): BaileysInboundView | null {
-    const k = notice.key ?? {};
-    const edited = {
-      key: { remoteJid: k.remoteJid, fromMe: k.fromMe, id: targetId, participant: k.participant, participantAlt: k.participantAlt },
-      message: content,
-      messageTimestamp: notice.messageTimestamp,
-      pushName: notice.pushName,
-    } as WAMessage;
-    const mapped = mapInboundMessage(edited);
-    return mapped ? buildInboundView(edited, mapped, { upsertType, senderPhone }) : null;
-  }
-
   async function senderIsGroupAdmin(groupJid: string, senderJids: string[]): Promise<boolean | null> {
     if (senderJids.length === 0) return false;
     try {
@@ -1265,8 +1252,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     // a member's words; our own deletes may be (an admin on the bot's
     // phone), so they go up. The log line carries ids, never the text.
     // An original Baileys merged its edit into (after a reconnect) is not a
-    // change: it is handed up below as the message, in its edited form, and
-    // the edit notice behind it is handed up as an edit, like any other.
+    // change: it is handed up below as the message, as it arrived, plus an
+    // edit (ids only), so the server forgets its stored words.
     const change = readMessageChange(m);
     if (change) {
       const what = change.kind === "revoke" ? "a delete for everyone" : "an edit";
@@ -1307,11 +1294,6 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         const admin = await senderIsGroupAdmin(change.chatJid, senderJids);
         if (admin === null) event.adminUnknown = true;
         else event.byAdmin = admin;
-      }
-      if (change.kind === "edit") {
-        if (change.editedAtMs) event.editedAtMs = change.editedAtMs;
-        const view = change.content ? editedView(m, change.targetId, change.content, upsertType, senderPhone) : null;
-        if (view) event.edited = view as InboundMessage;
       }
       log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} byAdmin=${event.byAdmin} handed up as a change`);
       tally(what);
@@ -1368,6 +1350,16 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         `media=${mapped.hasMedia} mentions=${mapped.mentionedJids.length}`,
     );
     tally(`handed up (${mapped.type})`);
+    // A message Baileys merged its author's edit into (after a reconnect):
+    // handed up as it arrived, as any message is, and ALSO as an edit by its
+    // author (ids only), so the server forgets its stored words. Nothing
+    // else about it changes (2026-11-15).
+    if (mapped.isGroup && !mapped.fromMe && isMergedEdit(m)) {
+      const senderJids = [...new Set([key.participant, key.participantAlt].map((j) => legacyJid(j)).filter((j): j is string => !!j))];
+      log(`${line} a merged edit of ${mapped.id}: handed up as the message, and as an edit`);
+      tally("a merged edit");
+      hand(changeHandlers, { kind: "edit", chatId: mapped.chatJid, isGroup: true, messageId: mapped.id, senderJids, senderPhone, byAdmin: false, fromMe: false }, "onMessageChange");
+    }
     // Picture reading: handed up by the reader, once, after it is read.
     if (deps.pictures?.wants(view as InboundMessage)) {
       deps.pictures.handle(view as InboundMessage, m, (v) => hand(messageHandlers, v, "onMessage"));

@@ -2,8 +2,8 @@
  * The Baileys driver hands a delete-for-everyone and an edit up on their
  * own event, `onMessageChange`, and NEVER as a chat message (2026-11-15).
  * Round 2: whether the sender is a group admin (read from the group's
- * metadata), and an edit's new content as a message, so its mentions are
- * read the way an inbound message's are. Against a fake socket: no
+ * metadata). An edit is handed up by ids only, never its new words; a
+ * merged edit is the message plus an edit. Against a fake socket: no
  * WhatsApp connection, no send. Simulated numbers and made-up people.
  */
 import { describe, it, expect } from "vitest";
@@ -123,25 +123,22 @@ describe("onMessageChange", () => {
     expect(await t.driver.isGroupAdmin!("120363000000009999@g.us", [ADMIN_LID])).toBeNull();
   });
 
-  it("a group edit: handed up with the edited message as an in-memory view (its id, the new words and mentions); never an admin's; never logged", async () => {
+  it("a group edit: handed up by ids and sender only (never its new words, never as a message); never an admin's; never logged", async () => {
     const t = await started();
     const calls = t.sock().metadataCalls.length;
     await t.upsert(wa(editOf({ extendedTextMessage: { text: "my new secret words @447700900456", contextInfo: { mentionedJid: ["447700900456@s.whatsapp.net"] } } }), { participant: ADMIN_LID, participantAlt: ADMIN_PN }));
     expect(t.messages).toEqual([]);
     expect(t.changes).toEqual([
-      expect.objectContaining({ kind: "edit", chatId: GROUP, isGroup: true, messageId: TARGET, senderJids: [ADMIN_LID, "447700900124@c.us"], senderPhone: "447700900124", byAdmin: false, fromMe: false }),
+      { kind: "edit", chatId: GROUP, isGroup: true, messageId: TARGET, senderJids: [ADMIN_LID, "447700900124@c.us"], senderPhone: "447700900124", byAdmin: false, fromMe: false },
     ]);
-    const view = t.changes[0].edited as unknown as { body: string; from: string; mentionedIds: string[]; id: { _serialized: string } };
-    expect(view.body).toBe("my new secret words @447700900456");
-    expect(view.mentionedIds).toEqual(["447700900456@c.us"]);
-    expect(view.id._serialized).toContain(TARGET);
+    expect(JSON.stringify(t.changes)).not.toContain("secret");
     // No admin lookup for an edit: only its author may edit.
     expect(t.sock().metadataCalls.length).toBe(calls);
     expect([...t.logs, ...t.errors].join("\n")).not.toContain("secret");
     expect(t.logs.some((l) => /an edit of 3EB0AAAABBBBCCCC0001/.test(l))).toBe(true);
   });
 
-  it("after a reconnect Baileys merges the edit into the original: the original is handed up ONCE with the new words, AND the notice behind it is handed up as an edit (recorded, posted)", async () => {
+  it("an original Baileys merged its edit into (after a reconnect) is handed up ONCE as the message it arrived as, AND as an edit by its author (ids only), with or without the notice behind it", async () => {
     const t = await started();
     const original = wa({ editedMessage: { message: { conversation: "In" } } }, { id: TARGET });
     const notice = wa(edit("In"), { id: "3EB0NOTICE000077" });
@@ -149,14 +146,14 @@ describe("onMessageChange", () => {
     for (let i = 0; i < 10; i++) await tick();
     expect(t.messages).toHaveLength(1);
     expect((t.messages[0] as unknown as { body: string }).body).toBe("In");
-    expect(t.changes).toEqual([expect.objectContaining({ kind: "edit", messageId: TARGET })]);
-  });
-
-  it("an edit carries its own time", async () => {
-    const t = await started();
-    const at = 1_763_200_123_000;
-    await t.upsert(wa({ protocolMessage: { key: { id: TARGET, remoteJid: GROUP, fromMe: true }, type: P.MESSAGE_EDIT, editedMessage: { conversation: "x" }, timestampMs: at } }));
-    expect(t.changes[0].editedAtMs).toBe(at);
+    expect(t.changes).toEqual([
+      expect.objectContaining({ kind: "edit", messageId: TARGET, senderJids: [PLAYER_LID, "447700900123@c.us"], byAdmin: false }),
+      expect.objectContaining({ kind: "edit", messageId: TARGET, senderJids: [PLAYER_LID, "447700900123@c.us"], byAdmin: false }),
+    ]);
+    const alone = await started();
+    await alone.upsert(wa({ editedMessage: { message: { conversation: "Out" } } }, { id: "3EB0MERGED000002" }));
+    expect(alone.messages).toHaveLength(1);
+    expect(alone.changes).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0MERGED000002", isGroup: true, fromMe: false })]);
   });
 
   it("a delete from MatchTime's own phone (an admin on the bot's number) is handed up, as an admin's", async () => {

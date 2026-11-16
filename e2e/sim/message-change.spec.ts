@@ -1,7 +1,8 @@
 /**
  * A MESSAGE DELETED FOR EVERYONE IS GONE FROM WHAT THE NEXT ANSWER IS
- * SHOWN; AN EDIT REPLACES IT (2026-11-15), through the REAL analyze,
- * message-change and admin-group routes and a REAL database.
+ * SHOWN; AN EDITED ONE'S ORIGINAL WORDS ARE FORGOTTEN, BUT WHAT MATCHTIME
+ * READ STILL COUNTS (2026-11-15), through the REAL analyze, message-change
+ * and admin-group routes and a REAL database.
  *
  * Each spec stores a member's message, deletes or edits it the way the Pi
  * now reports it (`POST /api/whatsapp/message-change`, by WhatsApp id and
@@ -551,6 +552,47 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
       expect((await g.attendanceOf("dan"))?.status).toBe("CONFIRMED");
     });
   }
+
+  // ── The edit rule after six rounds: acted on once, as read; words forgotten ──
+
+  test("a typo edit while its batch is analysed: 'inn' is acted on ONCE as MatchTime read it, then its stored text is purged; a catch-up copy is not analysed again", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = bareId();
+    const id = storedId(g.groupId, bare, g.player("dan").phone);
+    // FORCED ORDER: past the door, held; the author's edit lands; then analysed.
+    const batch = g.postBatch([{ player: "dan", body: "inn", route: "self_att", facts: selfIn(), waMessageId: id }], { headers: { "x-mt-test-pause-after-door-ms": "2000" } });
+    await new Promise((r) => setTimeout(r, 600));
+    await change(request, editBy(g, "dan", bare));
+    const res = await batch;
+    const r = res.results.find((x) => x.waMessageId === id);
+    expect(r?.handledBy).not.toBe("missing");
+    expect(r?.react).toBeTruthy();
+    expect((await g.attendanceOf("dan"))?.status).toBe("CONFIRMED");
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "waMessageId" = $1 AND body IS NOT NULL`, [id])).toBe(0);
+    const again = await g.postBatch([{ player: "dan", body: "inn", route: "self_att", facts: selfIn(), waMessageId: id }]);
+    expect(again.results.find((x) => x.waMessageId === id)?.handledBy).toBe("deduped");
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [id])).toBe(1);
+  });
+
+  test("the same change posted again (outbox retries) is kept once; at most 20 changes are kept per message, a delete never pushed out by edits (real Postgres)", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = bareId();
+    for (let i = 0; i < 3; i++) await change(request, editBy(g, "dan", bare));
+    for (let i = 0; i < 2; i++) await change(request, revokeBy(g, "dan", bare));
+    const reasons = async () =>
+      (await db.one<{ changes: Array<{ reason: string }> }>(`SELECT changes FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare]))!.changes.map((c) => c.reason);
+    expect(await reasons()).toEqual(["edited", "deleted"]);
+    for (let i = 0; i < 25; i++) {
+      const phone = `4477009020${String(i).padStart(2, "0")}`;
+      await change(request, { kind: "edit", chatId: g.groupId, messageId: bare, senderJids: [`${phone}@c.us`], senderPhone: phone });
+    }
+    await change(request, revokeBy(g, "pete", bare, g.groupId, true));
+    const kept = await reasons();
+    expect(kept).toHaveLength(20);
+    expect(kept.filter((x) => x === "deleted")).toHaveLength(2);
+    const t = await db.one<{ first: Date; last: Date }>(`SELECT "deletedAt" AS first, "lastChangeAt" AS last FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare]);
+    expect(new Date(t!.last).getTime()).toBeGreaterThan(new Date(t!.first).getTime());
+  });
 
   test("the server's safety net: a Pi recent-chat line carrying an EDITED message's original words never reaches the model", async ({ request, db }) => {
     const g = await createGroup(request, db, { attendance: [{ key: "pete", status: "CONFIRMED" as const }] });

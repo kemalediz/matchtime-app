@@ -21,27 +21,15 @@
  *   4. one post to `/api/whatsapp/message-change`; a failure is left to the
  *      outbox's retries with backoff, across restarts.
  *
- * AN EDIT, ONE RULE (round 5), whatever order things arrive in, and never
- * judging whether the message was "already analysed":
- *
- *   (a) it is ALWAYS recorded here and posted as an "edited" tombstone (no
- *       words): the server purges every stored copy of the message's text,
- *       including after any later write, and strips quotes of it;
- *   (b) its new content (read exactly as an inbound message is,
- *       `readGroupMessageForServer`: body, mentions, mention names, the
- *       bot's tag) REPLACES any copy waiting in the batch, a requeued one
- *       after a failed post included, so the message is analysed once, with
- *       its edited words; an edit that adds the tag is flushed at once, as
- *       a tagged message is;
- *   (c) the content is kept IN MEMORY ONLY for 30 minutes, keyed by id, so
- *       an original that arrives after its edit (a held picture, content
- *       that failed to decrypt first) is queued with the edited content;
- *   (d) a merged edit (Baileys folds it into the original after a
- *       reconnect) is the same: the original carries it, the notice behind
- *       it is (a) plus (b), and applying the same content twice changes
- *       nothing;
- *   (f) of two edits, the later by the edit's OWN time wins, never by
- *       arrival or by when its reading finished.
+ * AN EDIT (decided after six review rounds): an author's edit is recorded
+ * here and posted as an "edited" tombstone (no words), and the server
+ * forgets every stored copy of the message's text, including after any
+ * later write, and strips quotes of it. It NEVER changes what MatchTime
+ * acts on: the Pi does not hold, drop, replace or re-order the message, so
+ * it is analysed once with whatever content the Pi has, exactly as before
+ * PR #606, and nothing built from it is cancelled. Only a delete cancels.
+ * A merged edit (Baileys folds it into the original after a reconnect) is
+ * the message as it arrived, plus the same tombstone.
  *
  * The outbox and the tombstone never hold a word of any message.
  *
@@ -59,7 +47,7 @@
  *
  * Logs carry ids and counts, never the words.
  */
-import type { InboundMessage, MessageChangeEvent } from "./driver.js";
+import type { MessageChangeEvent } from "./driver.js";
 import type { MessageChangeBody } from "./api.js";
 import { legacyJid, parseKey } from "./baileys/key.js";
 
@@ -131,32 +119,7 @@ export function bodyForServer(c: LocalMessageChange): MessageChangeBody {
   return { kind: "edit", chatId: c.groupId, messageId: c.messageId, senderJids: c.senderJids, senderPhone: c.senderPhone };
 }
 
-/** An edit's new content, read as an inbound message is. In memory only. */
-export interface ReadEdit {
-  text: string;
-  botMentioned: boolean;
-  mentions?: string[];
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
-}
-
 export interface MessageChangeDeps {
-  /** An edit's new content read exactly as an inbound message is. */
-  readEdit(view: InboundMessage): Promise<ReadEdit | null>;
-  /**
-   * Keep an author's edit (in memory, the latest by `editedAtMs`) and put it
-   * in place of any copy waiting in the batch. `tagAdded`: the edit tags
-   * MatchTime where the waiting copy did not.
-   */
-  replacePending(change: LocalMessageChange, read: ReadEdit, editedAtMs: number): { replaced: boolean; tagAdded: boolean };
-  /** The immediate flush a tagged message gets. */
-  flushNow(groupId: string): Promise<void>;
-  /**
-   * An author's edit whose new content cannot be read (no content, the
-   * mapper rejected it, the reader returned nothing or threw): the message
-   * is dropped from the batch and the recent chat, never analysed with the
-   * words its author took back.
-   */
-  editUnreadable(change: LocalMessageChange): { buffered: number; history: number };
   /** The Pi's own LID-to-phone map (local, never a WhatsApp lookup). */
   phoneForLid?(lidJid: string): Promise<string | null>;
   applyLocally(change: LocalMessageChange): { buffered: number; history: number; quotes: number };
@@ -206,29 +169,9 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     }
   }
   try {
-    // (a) recorded here and in the outbox first, whatever happens next. An
-    // author's edit marks its message as being read: a flush now holds it back.
+    // Recorded here and in the outbox first, whatever happens next.
     const counts = deps.applyLocally(local);
     const key = deps.record(local);
-    // (b)/(c) an author's edit: its content, in memory, in place of any
-    // waiting copy. Content that cannot be read: the message is dropped,
-    // never analysed or kept with the original words.
-    if (!isDelete) {
-      let read: ReadEdit | null = null;
-      try {
-        read = change.edited ? await deps.readEdit(change.edited) : null;
-      } catch {
-        read = null;
-      }
-      if (read) {
-        const r = deps.replacePending(local, read, change.editedAtMs ?? 0);
-        if (r.replaced) deps.log(`${tag}: a waiting copy now carries the edited content`);
-        if (r.tagAdded) await deps.flushNow(change.chatId);
-      } else {
-        const dropped = deps.editUnreadable(local);
-        deps.error(`${tag}: its new content could not be read; the message is left out (batch=${dropped.buffered} recent=${dropped.history})`);
-      }
-    }
     const idle = await deps.whenFlushIdle(change.chatId);
     if (!idle) deps.log(`${tag}: an analysis of this group is still running; posting anyway`);
     let taken = false;

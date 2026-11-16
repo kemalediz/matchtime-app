@@ -12,7 +12,7 @@
  * ones. Simulated numbers, made-up people.
  */
 import { describe, it, expect, vi } from "vitest";
-import type { InboundMessage, MessageChangeEvent } from "./driver.js";
+import type { MessageChangeEvent } from "./driver.js";
 import {
   bareOf,
   bodyForServer,
@@ -64,21 +64,6 @@ function deps(over: Partial<MessageChangeDeps> = {}) {
     whenFlushIdle: vi.fn(async () => {
       order.push("idle");
       return true;
-    }),
-    readEdit: vi.fn(async () => {
-      order.push("read");
-      return { text: "In", botMentioned: false, mentions: [], mentionNames: [] };
-    }),
-    replacePending: vi.fn(() => {
-      order.push("replace");
-      return { replaced: true, tagAdded: false };
-    }),
-    flushNow: vi.fn(async () => {
-      order.push("flush");
-    }),
-    editUnreadable: vi.fn(() => {
-      order.push("unreadable");
-      return { buffered: 1, history: 1 };
     }),
     phoneForLid: vi.fn(async () => null),
     log: (l) => logs.push(l),
@@ -150,53 +135,12 @@ describe("handleMessageChange", () => {
     expect(d.record).toHaveBeenCalled();
   });
 
-  it("ONE RULE for an author's edit: always recorded and posted (no words); its content then replaces any waiting copy, latest by the edit's own time", async () => {
+  it("an author's edit: recorded and posted (ids only), exactly as a delete is; nothing is read, replaced, held or flushed", async () => {
     const { d, order, recorded } = deps();
-    const view = { body: "In" } as unknown as InboundMessage;
-    expect(await handleMessageChange(revoke({ kind: "edit", edited: view, editedAtMs: 1_763_200_001_000 }), d)).toBe("posted");
-    expect(order).toEqual(["local:edit", "record", "read", "replace", "idle", "post"]);
+    expect(await handleMessageChange(revoke({ kind: "edit", byAdmin: true }), d)).toBe("posted");
+    expect(order).toEqual(["local:edit", "record", "idle", "post"]);
     expect(recorded[0]).toEqual({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
-    expect(d.replacePending).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "edit", messageId: TARGET }),
-      { text: "In", botMentioned: false, mentions: [], mentionNames: [] },
-      1_763_200_001_000,
-    );
-    expect(JSON.stringify(recorded)).not.toContain('"In"');
-  });
-
-  it("with nothing waiting (already sent, or not seen yet), it is still recorded and posted; the content is kept for a copy to come", async () => {
-    const { d, recorded } = deps({ replacePending: vi.fn(() => ({ replaced: false, tagAdded: false })) });
-    expect(await handleMessageChange(revoke({ kind: "edit", byAdmin: true, edited: { body: "In" } as unknown as InboundMessage }), d)).toBe("posted");
-    expect(recorded[0]).toMatchObject({ kind: "edit", byAdmin: false });
-    expect(d.replacePending).toHaveBeenCalled();
-  });
-
-  it("an edit that ADDS the tag is flushed at once, as a tagged message is", async () => {
-    const { d, order } = deps({ replacePending: vi.fn(() => ({ replaced: true, tagAdded: true })) });
-    await handleMessageChange(revoke({ kind: "edit", edited: { body: "@Match Time in" } as unknown as InboundMessage }), d);
-    expect(d.flushNow).toHaveBeenCalledWith(GROUP);
-    expect(order.indexOf("flush")).toBeGreaterThan(order.indexOf("replace"));
-  });
-
-  it("an edit with no readable new content (the mapper rejected it): recorded and posted, and the message is dropped rather than analysed with the original", async () => {
-    const { d, recorded, order } = deps();
-    await handleMessageChange(revoke({ kind: "edit" }), d);
-    expect(d.replacePending).not.toHaveBeenCalled();
-    expect(d.editUnreadable).toHaveBeenCalledWith(expect.objectContaining({ kind: "edit", messageId: TARGET }));
-    expect(order.indexOf("unreadable")).toBeGreaterThan(order.indexOf("record"));
-    expect(recorded[0]).toMatchObject({ kind: "edit" });
-    expect(d.attempt).toHaveBeenCalled();
-  });
-
-  it("an edit whose reading returns nothing, or throws: dropped the same way", async () => {
-    const view = { body: "x" } as unknown as InboundMessage;
-    const nothing = deps({ readEdit: vi.fn(async () => null) });
-    await handleMessageChange(revoke({ kind: "edit", edited: view }), nothing.d);
-    expect(nothing.d.editUnreadable).toHaveBeenCalled();
-    const throws = deps({ readEdit: vi.fn(async () => Promise.reject(new Error("boom"))) });
-    await handleMessageChange(revoke({ kind: "edit", edited: view }), throws.d);
-    expect(throws.d.editUnreadable).toHaveBeenCalled();
-    expect(throws.d.replacePending).not.toHaveBeenCalled();
+    expect(Object.keys(d).sort()).toEqual(["applyLocally", "attempt", "error", "log", "phoneForLid", "record", "whenFlushIdle"]);
   });
 
   it("an edit notice with only a LID is widened through the Pi's LID map, so it matches an original stored under the phone", async () => {

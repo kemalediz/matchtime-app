@@ -305,18 +305,22 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
  * own list only, 2026-10-20).
  */
 /**
- * A YES to a pasted list that was CANCELLED because its message was edited
- * or deleted (`message-change.ts`, outcome "source-deleted"), within a day:
- * said ONCE ("That list was changed, so I've dropped it..."), but only when
- * the YES is clearly about that list (round 6):
+ * A YES to a pasted list that was CANCELLED because its message was
+ * DELETED (`message-change.ts`, outcome "source-deleted"; an edit never
+ * cancels one), within a day: said ONCE ("That list was changed, so I've
+ * dropped it..."), but only when the YES is clearly about that list:
  *
  *   - it QUOTES MatchTime's proposal message for it (the HQ reply claimed
- *     for the paste, by its acked id or its words); or
- *   - it comes from the organiser who pasted it, and no newer list has been
- *     proposed or applied in that club since.
+ *     for the paste): by the quoted id, or, only when the quote carries no
+ *     id, by its words (the delete clears those words, so after it only
+ *     the id matches); or
+ *   - it quotes NOTHING, comes from the organiser who pasted it, and no
+ *     newer list has been proposed or applied in that club since.
  *
- * Any other YES gets null, and the caller behaves exactly as before. The
- * claim on the row (outcome "source-deleted-told") makes it said once.
+ * A YES quoting any other message never counts, and the paster rule never
+ * overrides it. Any other YES gets null, and the caller behaves exactly as
+ * before. The claim on the row (outcome "source-deleted-told") makes it
+ * said once.
  */
 export async function changedListNotice(args: {
   orgId: string;
@@ -331,20 +335,20 @@ export async function changedListNotice(args: {
     select: { id: true, waMessageId: true, proposedByUserId: true, createdAt: true },
   });
   if (!p) return null;
-  let quotesIt = false;
-  if (args.quoted?.fromMatchTime) {
+  const qid = args.quoted?.messageId?.trim() || null;
+  const qtext = args.quoted?.text?.trim() || "";
+  if (qid || qtext) {
+    // A quote: about this list only if it is MatchTime's question for it.
+    if (!args.quoted?.fromMatchTime) return null;
     const asked = await db.sentNotification.findFirst({ where: { key: hqReplyKey(args.orgId, p.waMessageId) }, select: { text: true, waMessageId: true } });
-    const qid = args.quoted.messageId ?? null;
-    const sameId = !!qid && !!asked?.waMessageId && sameWhatsAppMessage(qid, asked.waMessageId);
-    const sameWords = !!asked?.text && !!args.quoted.text && asked.text.trim() === args.quoted.text.trim();
-    quotesIt = sameId || sameWords;
-  }
-  let pastersOwn = false;
-  if (!quotesIt && args.senderUserId && args.senderUserId === p.proposedByUserId) {
+    const quotesIt = qid ? !!asked?.waMessageId && sameWhatsAppMessage(qid, asked.waMessageId) : !!asked?.text && asked.text.trim() === qtext;
+    if (!quotesIt) return null;
+  } else {
+    // No quote: the paster's own YES, with no newer list since.
+    if (!args.senderUserId || args.senderUserId !== p.proposedByUserId) return null;
     const newer = await db.adminSquadProposal.findFirst({ where: { orgId: args.orgId, createdAt: { gt: p.createdAt } }, select: { id: true } });
-    pastersOwn = !newer;
+    if (newer) return null;
   }
-  if (!quotesIt && !pastersOwn) return null;
   const claimed = await db.adminSquadProposal.updateMany({ where: { id: p.id, outcome: "source-deleted" }, data: { outcome: "source-deleted-told" } });
   if (claimed.count === 0) return null;
   return { outcome: "paste-source-changed", replyText: t(args.lang).ag_paste_source_changed };

@@ -2709,8 +2709,9 @@ model GroupMessage {
 
 
 /// A WhatsApp message deleted for everyone, or edited by its author
-/// (2026-11-15, the tombstone). An edit is a purge: MatchTime forgets the
-/// original words and never stores the new ones. One row per message: its
+/// (2026-11-15, the tombstone). Either makes MatchTime forget the stored
+/// words; only a delete also cancels what it was about to do because of the
+/// message (a proposal, a reminder). One row per message: its
 /// chat (group JID), its BARE WhatsApp id, and who sent the delete or edit.
 /// Every writer of a member's words clears again AFTER writing
 /// (`src/lib/message-change.ts` `enforceDeletes`), and the hourly
@@ -2719,8 +2720,8 @@ model GroupMessage {
 /// from a group admin (`byAdmin`, a delete only, read by the Pi from the
 /// group's metadata) or from the message's own author (one of `senderJids` /
 /// `senderPhones`). Recorded only for a group linked to a club. Holds ids
-/// and phones, never words. RETENTION 14 days from `deletedAt`, pruned by
-/// the sweep. Migration 20261116120000_deleted_messages.
+/// and phones, never words. RETENTION 14 days from `lastChangeAt`, pruned
+/// by the sweep. Migration 20261116120000_deleted_messages.
 model DeletedMessage {
   id           String   @id @default(cuid())
   chatId       String
@@ -2735,19 +2736,24 @@ model DeletedMessage {
   senderPhones String[] @default([])
   /// EACH change on its own, the source of truth for who may do what
   /// (round 6): [{ reason: "deleted" | "edited", byAdmin, senderJids,
-  /// senderPhones, at }], appended atomically. A forged delete and the
-  /// author's real edit stay two changes: neither counts as the other.
-  /// The merged columns above are a summary for logs only.
+  /// senderPhones, at }], appended atomically, the same change only once
+  /// (whatever its `at`), at most 20. A forged delete and the author's real
+  /// edit stay two changes: neither counts as the other. The merged columns
+  /// above are a summary for logs only.
   changes      Json     @default("[]")
+  /// The FIRST change: the start of the 14 days of copies looked at.
   deletedAt    DateTime @default(now())
+  /// The LATEST change: the sweep re-checks late writers for six hours after
+  /// it, and the row is kept 14 days after it.
+  lastChangeAt DateTime @default(now())
   /// When every copy was last cleared for it (the live clear or the sweep).
   /// NULL: never yet, or changed since (a merge resets it). The sweep takes
   /// the NULL ones, oldest first, plus a short re-check window for late writers.
   enforcedAt   DateTime?
 
   @@unique([chatId, waMessageId])
-  @@index([deletedAt])
-  @@index([enforcedAt, deletedAt])
+  @@index([lastChangeAt])
+  @@index([enforcedAt, lastChangeAt])
 }
 /// THE PEOPLE A GROUP MESSAGE TAGGED (2026-11-09, Vets MNF: "@Match Time DM
 /// these people"). One row per message MatchTime was shown, in the players'

@@ -74,11 +74,8 @@ import {
   adjustForServer,
   isDeletedLocally,
   restoreMessageChanges,
-  replacePendingWithEdit,
   isRevokedLocally,
   isChangedLocally,
-  flushGroupNow,
-  markEditUnreadable,
   whenFlushIdle,
 } from "./smart-analysis.js";
 import { bodyForServer, handleMessageChange } from "./message-change.js";
@@ -580,9 +577,6 @@ async function main() {
   messageChanges.start();
   console.log(`[message-change] outbox read back: ${messageChanges.pending()} change(s) waiting for the server`);
 
-  // An edit never races its original here (2026-11-15, round 5): its
-  // content is kept by id (`replacePendingWithEdit`), so the original is
-  // queued with it whether it is enqueued before or after the edit.
   driver.onMessage(async (msg) => {
     await handleInbound(msg);
   });
@@ -730,7 +724,7 @@ async function main() {
           isAdminGroup,
           addAdminGroup,
           // Held to the Pi's record of deletes and edits (2026-11-15): a
-          // message deleted, or edited after it was sent, is not forwarded;
+          // deleted message is not forwarded (an edited one goes as read);
           // a quote of one its author or an admin took back goes without
           // its words.
           read: async () => {
@@ -844,21 +838,12 @@ async function main() {
   });
 
   // A message deleted for everyone, or edited (2026-11-15, Baileys only).
-  // HOUSEKEEPING ONLY: a delete, or an edit of a message already sent, takes
-  // its words out of the Pi's batch and recent chat and every store the
-  // server keeps; an author's edit of a message still waiting replaces it
-  // in the batch, to be analysed once. Nothing is sent, replied to or
-  // reacted to here (message-change.ts).
+  // HOUSEKEEPING ONLY: a delete takes the message out of the Pi's batch and
+  // recent chat; a delete or an author's edit takes its words out of every
+  // store the server keeps. An edit never changes what is analysed. Nothing
+  // is sent, replied to or reacted to here (message-change.ts).
   driver.onMessageChange?.(async (change) => {
     await handleMessageChange(change, {
-      // An edit's new content, read exactly as an inbound message is.
-      readEdit: async (view) => {
-        const r = await readGroupMessageForServer(driver, view);
-        return r ? { text: r.text, botMentioned: r.botMentioned, mentions: r.mentions, mentionNames: r.mentionNames } : null;
-      },
-      replacePending: replacePendingWithEdit,
-      flushNow: (groupId) => flushGroupNow(groupId),
-      editUnreadable: markEditUnreadable,
       phoneForLid: driver.phoneForLid ? (lid) => driver.phoneForLid!(lid) : undefined,
       applyLocally: applyMessageChangeLocally,
       record: (c) => messageChanges.record(c),

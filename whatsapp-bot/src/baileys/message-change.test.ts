@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { proto } from "baileys";
 import type { WAMessage } from "baileys";
-import { readMessageChange } from "./message-change.js";
+import { isMergedEdit, readMessageChange } from "./message-change.js";
 import { mapInboundMessage, skipReason } from "./inbound.js";
 
 const GROUP = "120363000000000000@g.us";
@@ -52,10 +52,9 @@ describe("readMessageChange: a delete for everyone", () => {
 });
 
 describe("readMessageChange: an edit", () => {
-  it("a text edited: the edited message's id, and its new content (kept in memory only, for a message still waiting)", () => {
+  it("a text edited: the edited message's id only, never its new words", () => {
     const r = readMessageChange(wa(edit({ extendedTextMessage: { text: "new words" } })));
-    expect(r).toMatchObject({ kind: "edit", chatJid: GROUP, targetId: TARGET });
-    expect(r?.content?.extendedTextMessage?.text).toBe("new words");
+    expect(r).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
   });
 
   it("inside the editedMessage wrapper, and an edit of a caption or of anything else", () => {
@@ -64,12 +63,12 @@ describe("readMessageChange: an edit", () => {
     expect(readMessageChange(wa(edit({ stickerMessage: { mimetype: "image/webp" } })))).toMatchObject({ kind: "edit", targetId: TARGET });
   });
 
-  it("carries the edit's OWN time (the protocol message's timestampMs), so the later edit wins", () => {
-    expect(readMessageChange(wa(edit({ conversation: "x" })))?.editedAtMs).toBe(1763200001000);
-  });
-
-  it("an ORIGINAL that Baileys merged its edit into (`editedMessage` holding the new content itself) is a message, not a change", () => {
-    expect(readMessageChange(wa({ editedMessage: { message: { conversation: "In" } } }))).toBeNull();
+  it("an ORIGINAL that Baileys merged its edit into (`editedMessage` holding the new content itself) is a message, not a change; `isMergedEdit` tells it apart", () => {
+    const merged = wa({ editedMessage: { message: { conversation: "In" } } });
+    expect(readMessageChange(merged)).toBeNull();
+    expect(isMergedEdit(merged)).toBe(true);
+    expect(isMergedEdit(wa(edit({ conversation: "x" })))).toBe(false);
+    expect(isMergedEdit(wa({ conversation: "in" }))).toBe(false);
   });
 
   it("an edit that names no message is nothing", () => {

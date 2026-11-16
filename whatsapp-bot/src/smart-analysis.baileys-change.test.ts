@@ -4,7 +4,7 @@
  * The batch tests in `smart-analysis.message-change.test.ts` drive the old
  * whatsapp-web.js driver. This drives the LIVE one: the Baileys driver over
  * a fake socket, wired as `index.ts` wires it (recent chat, then the batch;
- * the change handler with the real local record and the real edit reader),
+ * the change handler with the real local record),
  * and reads what the next analyze POST carries. No WhatsApp connection, no
  * send, no server: the post is a mock. Simulated numbers, made-up people.
  */
@@ -25,7 +25,7 @@ vi.mock("./api.js", () => ({
   ackInstruction: async () => {},
 }));
 
-const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, replacePendingWithEdit, readGroupMessageForServer, flushGroupNow, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
+const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
 const { handleMessageChange } = await import("./message-change.js");
 
 const GROUP = "120363000000007700@g.us";
@@ -85,12 +85,6 @@ async function wired() {
   });
   driver.onMessageChange!(async (change) => {
     await handleMessageChange(change, {
-      flushNow: (groupId) => flushGroupNow(groupId),
-      readEdit: async (view) => {
-        const r = await readGroupMessageForServer(driver, view);
-        return r ? { text: r.text, botMentioned: r.botMentioned, mentions: r.mentions, mentionNames: r.mentionNames } : null;
-      },
-      replacePending: replacePendingWithEdit,
       applyLocally: applyMessageChangeLocally,
       record: (c) => {
         outbox.push(c);
@@ -120,7 +114,7 @@ function wa(id: string, message: Record<string, unknown>, from: { lid: string; p
   } as WAMessage;
 }
 const revokeOf = (id: string) => ({ protocolMessage: { key: { id, remoteJid: GROUP, fromMe: true }, type: P.REVOKE } });
-const editOf = (id: string, edited: Record<string, unknown>, timestampMs = Date.now()) => ({
+const editOf = (id: string, edited: Record<string, unknown>, timestampMs = 1_763_200_000_000) => ({
   editedMessage: { message: { protocolMessage: { key: { id, remoteJid: GROUP, fromMe: true }, type: P.MESSAGE_EDIT, editedMessage: edited, timestampMs } } },
 });
 const posted = () => postAnalyzeFull.mock.calls[0][0] as { messages: Array<Record<string, unknown>>; history: Array<Record<string, unknown>> };
@@ -157,57 +151,39 @@ describe("the Baileys driver, the local record and the batch together", () => {
     expect(posted().messages.map((m) => m.body)).toEqual([SECRET]);
   });
 
-  it("edit while waiting: 'Inn' fixed to 'In' is analysed once as 'In' (with the NEW content's mentions); the edit is recorded and posted", async () => {
+  it("a typo edit while waiting: the message is analysed ONCE, with the content the Pi has ('Inn'); the edit is recorded and posted by ids only", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00021", { conversation: "Inn" }));
     await t.upsert(wa("3EB0NOTICE000021", editOf("3EB0BAILEYS00021", { extendedTextMessage: { text: "In, ask @158055467598022", contextInfo: { mentionedJid: [ALI_LID] } } })));
     expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00021", byAdmin: false })]);
     expect(JSON.stringify(t.outbox)).not.toMatch(/Inn|ask @/);
     await _test_flushNow(GROUP);
+    await _test_flushNow(GROUP);
     expect(postAnalyzeFull).toHaveBeenCalledTimes(1);
-    expect(posted().messages).toHaveLength(1);
-    expect(posted().messages[0]).toMatchObject({ body: "In, ask @158055467598022", mentions: [ALI_LID] });
-    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("Inn");
+    expect(posted().messages.map((m) => m.body)).toEqual(["Inn"]);
+    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("ask @");
   });
 
-  it("the edit in the SAME upsert as its original (while the original is still being read): the IN is analysed once, as 'In'", async () => {
+  it("the edit in the SAME upsert as its original: the original is analysed once, as it came", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00023", { conversation: "Inn" }), wa("3EB0NOTICE000023", editOf("3EB0BAILEYS00023", { conversation: "In" })));
     await _test_flushNow(GROUP);
-    expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
+    expect(posted().messages.map((m) => m.body)).toEqual(["Inn"]);
     expect(t.outbox).toHaveLength(1);
   });
 
-  it("the edit BEFORE its original's content (it first failed to decrypt): the content, when it comes, is queued as 'In'", async () => {
-    const t = await wired();
-    const stub = {
-      key: { remoteJid: GROUP, fromMe: false, id: "3EB0BAILEYS00026", participant: SAM_LID, participantAlt: SAM_PN },
-      messageStubType: proto.WebMessageInfo.StubType.CIPHERTEXT,
-      messageStubParameters: ["No session found to decrypt message"],
-      messageTimestamp: Math.floor(Date.now() / 1000),
-      pushName: "Sam",
-    } as WAMessage;
-    await t.upsert(stub);
-    await t.upsert(wa("3EB0NOTICE000026", editOf("3EB0BAILEYS00026", { conversation: "In" })));
-    await t.upsert(wa("3EB0BAILEYS00026", { conversation: "Inn" }));
-    await _test_flushNow(GROUP);
-    expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
-  });
-
-  it("a merged edit after a reconnect, then a SECOND edit: analysed once as the first, both recorded and posted; a later copy carries the second", async () => {
+  it("a merged edit after a reconnect: the message as it arrived, once, and its edit recorded (the merged copy and the notice, ids only)", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00024", { editedMessage: { message: { conversation: "In" } } }), wa("3EB0NOTICE000024", editOf("3EB0BAILEYS00024", { conversation: "In" }, 1000)));
     await _test_flushNow(GROUP);
     expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
-    postAnalyzeFull.mockClear();
-    await t.upsert(wa("3EB0NOTICE000025", editOf("3EB0BAILEYS00024", { conversation: "Out" }, 2000)));
-    expect(t.outbox).toHaveLength(2);
-    await t.catchUp(t.delivered[0]); // the reconnect catch-up re-queues it
-    await _test_flushNow(GROUP);
-    expect(posted().messages.map((m) => m.body)).toEqual(["Out"]);
+    expect(t.outbox).toEqual([
+      expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00024" }),
+      expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00024" }),
+    ]);
   });
 
-  it("the catch-up re-queues a message already analysed, then it is edited: the edit is posted (the server purges the stored original), and the copy carries the edit", async () => {
+  it("the catch-up re-queues a message already analysed, then it is edited: the copy goes as it is (the server dedupes it, and forgets the stored words)", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00025", { conversation: SECRET }));
     await _test_flushNow(GROUP);
@@ -216,17 +192,8 @@ describe("the Baileys driver, the local record and the batch together", () => {
     await t.upsert(wa("3EB0NOTICE000027", editOf("3EB0BAILEYS00025", { conversation: "my new words" })));
     expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00025", byAdmin: false })]);
     await _test_flushNow(GROUP);
-    expect(posted().messages.map((m) => m.body)).toEqual(["my new words"]);
-    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("4321");
-  });
-
-  it("two edits out of order: the later by the edit's own time wins", async () => {
-    const t = await wired();
-    await t.upsert(wa("3EB0BAILEYS00028", { conversation: "Inn" }));
-    await t.upsert(wa("3EB0NOTICE000028", editOf("3EB0BAILEYS00028", { conversation: "In" }, 2000)));
-    await t.upsert(wa("3EB0NOTICE000029", editOf("3EB0BAILEYS00028", { conversation: "Out" }, 1000)));
-    await _test_flushNow(GROUP);
-    expect(posted().messages.map((m) => m.body)).toEqual(["In"]);
+    expect(posted().messages.map((m) => m.body)).toEqual([SECRET]);
+    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("my new words");
   });
 
   it("an edit by somebody else is ignored", async () => {

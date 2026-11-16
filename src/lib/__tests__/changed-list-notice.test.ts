@@ -1,10 +1,13 @@
 /**
- * A YES to a pasted list that was cancelled because its message was edited
- * or deleted (2026-11-15, PR #606 rounds 5-6): MatchTime says so ONCE, in
- * the club's language, but only when the YES is clearly about that list:
- * it quotes MatchTime's proposal message for it, or it comes from the
- * organiser who pasted it with no newer list proposed or applied since.
- * Any other YES behaves as before. Made-up people.
+ * A YES to a pasted list that was cancelled because its message was
+ * DELETED (2026-11-15, PR #606; an edit never cancels a list): MatchTime
+ * says so ONCE, in the club's language, but only when the YES is clearly
+ * about that list: it quotes MatchTime's proposal message for it (by the
+ * quoted id; by its words only when the quote carries no id), or it quotes
+ * nothing and comes from the organiser who pasted it with no newer list
+ * proposed or applied since. A quote of any other message never counts,
+ * and the paster rule never overrides it. Any other YES behaves as before.
+ * Made-up people.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { makeDb, row, type Row } from "./fake-message-db";
@@ -50,6 +53,25 @@ describe("changedListNotice", () => {
     expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-ali" })).toBeNull();
     expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-ali", quoted: { fromMatchTime: true, messageId: "3EB0OTHER000001", text: "Teams ready?" } })).toBeNull();
     expect(T.adminSquadProposal[0].outcome).toBe("source-deleted");
+  });
+
+  it("by words ONLY when the quote carries no id: a quote with another id and the same words is not about it", async () => {
+    expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-ali", quoted: { fromMatchTime: true, messageId: "3EB0OTHER000001", text: QUESTION } })).toBeNull();
+    expect(T.adminSquadProposal[0].outcome).toBe("source-deleted");
+  });
+
+  it("the paster's YES that QUOTES another message (MatchTime's or a member's): not about the dropped list, the paster rule never overrides the quote", async () => {
+    expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-sam", quoted: { fromMatchTime: true, messageId: "3EB0OTHER000001", text: "Teams ready?" } })).toBeNull();
+    expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-sam", quoted: { fromMatchTime: false, messageId: "3EB0MEMBER00001", text: "who's in?" } })).toBeNull();
+    expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-sam", quoted: { fromMatchTime: true, messageId: null, text: "Teams ready?" } })).toBeNull();
+    expect(T.adminSquadProposal[0].outcome).toBe("source-deleted");
+    // An empty quote is no quote: the paster rule applies.
+    expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-sam", quoted: { fromMatchTime: false, messageId: null, text: "" } })).toMatchObject({ replyText: CHANGED });
+  });
+
+  it("the question's words already cleared (the delete cleared them): its id still matches", async () => {
+    T.sentNotification[0].text = null;
+    expect(await changedListNotice({ orgId: "org-a", lang: "en", now: NOW, senderUserId: "u-ali", quoted: { fromMatchTime: true, messageId: "3EB0QUESTION0001", text: QUESTION } })).toMatchObject({ replyText: CHANGED });
   });
 
   it("a list re-pasted (and applied) since: a later YES from the paster is not about the dropped one", async () => {

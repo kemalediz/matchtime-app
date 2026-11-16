@@ -16,8 +16,8 @@
  *
  * WHAT IT DOES, all additive: CREATE TABLE "DeletedMessage" (new, empty, no
  * foreign key), one unique index ("chatId", "waMessageId"), one index
- * ("deletedAt", for the pruning), one ("enforcedAt", "deletedAt", for the
- * sweep), and CREATE INDEX on the existing
+ * ("lastChangeAt", for the pruning), one ("enforcedAt", "lastChangeAt", for
+ * the sweep), and CREATE INDEX on the existing
  * "GroupMessage" ("waChatId", "createdAt"). It rewrites, backfills, drops
  * or renames nothing. The dry run prints the state; the apply checks every
  * object is in place.
@@ -52,10 +52,10 @@ async function main() {
     const unique: any = await db.$queryRawUnsafe(`SELECT to_regclass('"DeletedMessage_chatId_waMessageId_key"')::text AS t;`);
     const archiveIdx: any = await db.$queryRawUnsafe(`SELECT to_regclass('"GroupMessage_waChatId_createdAt_idx"')::text AS t;`);
     const enforced: any = await db.$queryRawUnsafe(
-      `SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_name = 'DeletedMessage' AND column_name = 'enforcedAt';`,
+      `SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_name = 'DeletedMessage' AND column_name IN ('enforcedAt', 'lastChangeAt', 'changes');`,
     );
     const analyzed: any = await db.$queryRawUnsafe(`SELECT COUNT(*)::int AS n FROM "AnalyzedMessage";`);
-    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", enforcedAt: enforced[0].n === 1, analyzedRows: analyzed[0].n };
+    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", enforcedAt: enforced[0].n === 3, analyzedRows: analyzed[0].n };
   };
 
   const todo = statements(readFileSync(FILE, "utf8"));

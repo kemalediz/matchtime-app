@@ -50,7 +50,7 @@ import {
 import { describeReactionFailure, planReaction } from "./react-with-id.js";
 import { isOnboardingGroup, removeOnboardingGroup } from "./handlers.js";
 import { requestOrgRefresh } from "./org-refresh.js";
-import { bareOf, deleteApplies, isByAuthor, namesMessage, type LocalMessageChange, type ReadEdit } from "./message-change.js";
+import { bareOf, deleteApplies, isByAuthor, namesMessage, type LocalMessageChange } from "./message-change.js";
 import { legacyJid, parseKey } from "./baileys/key.js";
 
 const HISTORY_PER_GROUP = 15;
@@ -172,8 +172,6 @@ interface Pending {
   // flush interval.
   /** How many analyze POSTs have already failed for this message. */
   attempts: number;
-  /** Carries its author's edited content already (2026-11-15): never judged again. */
-  editApplied?: boolean;
 }
 
 // How many times a batch may fail its analyze POST before we give up on it.
@@ -315,8 +313,8 @@ function safeGroupId(msg: InboundMessage): string | null {
 
 // ─── In-memory state ────────────────────────────────────────────────
 /** A recent-chat line, with the id of the message it is (when known), so a
- *  delete or an edit can find it. The id never leaves the Pi (`getHistory`). */
-type HistoryEntry = AnalyzeInboundHistory & { waMessageId?: string; editApplied?: boolean };
+ *  delete can find it, and the server can leave out a changed one (`getHistory`). */
+type HistoryEntry = AnalyzeInboundHistory & { waMessageId?: string };
 const historyByGroup = new Map<string, HistoryEntry[]>();
 const bufferByGroup = new Map<string, Pending[]>();
 const nextKickoffMsByGroup = new Map<string, number | null>();
@@ -333,15 +331,10 @@ let sharedDriver: WaDriver | null = null;
 
 // ─── History buffer ─────────────────────────────────────────────────
 export function recordHistory(groupId: string, entry: AnalyzeInboundHistory, waMessageId?: string) {
-  // A copy of a message already deleted for everyone, or edited after it
-  // was sent, stays out; a copy of one whose waiting original an author's
-  // edit replaced carries the edited content (2026-11-15).
+  // A copy of a message already deleted for everyone stays out (2026-11-15).
+  // An edited one is kept as it is: the server leaves its line out (its
+  // safety net, by the id each line carries).
   if (waMessageId && isGone(groupId, waMessageId, null)) return;
-  // An author's edit: its held content, or (being read) the line for now,
-  // to be fixed or dropped when the read ends; with no content, left out.
-  const state = waMessageId ? editStateOf(groupId, waMessageId, null) : "none";
-  if (state === "lost") return;
-  if (typeof state === "object") entry = { ...entry, body: state.text, editApplied: true } as HistoryEntry;
   const arr = historyByGroup.get(groupId) ?? [];
   // The same line, once. The live `message` handler and the restart
   // catch-up can both see one message (WhatsApp delivers the offline
@@ -366,57 +359,56 @@ export function recordHistory(groupId: string, entry: AnalyzeInboundHistory, waM
 
 /**
  * The recent chat posted with a batch. Each line carries its message id
- * (round 6), so the server can leave out a changed one as well (its safety
- * net). A line of a message whose author's edit is still being read, or
- * whose edited content is gone, is left out: never its original words.
+ * (round 6), so the server leaves out the line of a message deleted or
+ * edited by its author (its safety net): the original words never reach a
+ * model, whatever the Pi still holds.
  */
 function getHistory(groupId: string): AnalyzeInboundHistory[] {
-  return (historyByGroup.get(groupId) ?? [])
-    .filter((h) => h.editApplied || !h.waMessageId || editStateOf(groupId, h.waMessageId, null) === "none")
-    .map(({ authorName, body, timestamp, waMessageId }) => ({ authorName, body, timestamp, ...(waMessageId ? { waMessageId } : {}) }));
+  return (historyByGroup.get(groupId) ?? []).map(({ authorName, body, timestamp, waMessageId }) => ({
+    authorName,
+    body,
+    timestamp,
+    ...(waMessageId ? { waMessageId } : {}),
+  }));
 }
 
-// ─── Deletes and edits (2026-11-15, round 3) ────────────────────────
+// ─── Deletes and edits (2026-11-15) ─────────────────────────────────
 /**
- * THE PI'S OWN RECORD of the deletes and edits it has seen, per message,
- * so every copy that turns up later is held to it: a reconnect's replay, a
- * requeued batch, content that arrived late, a reply quoting it, an HQ
- * forward, the react step, the bot-added history capture. Restored from
- * the durable outbox after a restart (`restoreMessageChanges`). Bounded;
- * the oldest go.
+ * THE PI'S OWN RECORD of the deletes and edits it has seen, per message
+ * (ids and phones only), so every copy that turns up later is held to it: a
+ * reconnect's replay, a requeued batch, a reply quoting it, an HQ forward,
+ * the react step, the bot-added history capture. Restored from the durable
+ * outbox after a restart (`restoreMessageChanges`). Bounded; the oldest go.
  *
- * AN EDIT here is the PURGE kind (round 4): an author's edit of a message
- * already sent for analysis takes every later copy out, exactly as a
- * delete does. An author's edit of a message STILL WAITING in the batch is
- * not recorded here: it replaces the original in the batch instead
- * (`replacePendingWithEdit`, kept in `editedContent` for later copies).
- * A delete applies to a copy when it came from a group admin or the copy's
- * own author; an edit only from its author. Every change is kept (one from
- * somebody who may not make it stays, and applies to nothing), so a later
- * admin re-check can add to it.
+ * A DELETE that applies (from a group admin, or the copy's own author)
+ * takes the message out of the batch and the recent chat, and every later
+ * copy of it. AN EDIT never holds, drops, replaces or re-orders the
+ * message: it is analysed once, with whatever content the Pi has, exactly
+ * as before PR #606. An author's edit only takes the quoted words out of a
+ * reply quoting it, and keeps the message out of the history capture; the
+ * server forgets the stored words. Every change is kept (one from somebody
+ * who may not make it stays, and applies to nothing), so a later admin
+ * re-check can add to it.
  */
 const MAX_REMEMBERED_CHANGES = 5000;
 /** At least the replay buffer's window (two hours): a catch-up copy is still held to the record. Ids and phones only. */
 const CHANGE_RECORD_MS = 3 * 60 * 60 * 1000;
 const changedMessages = new Map<string, LocalMessageChange[]>();
 const changedAt = new Map<string, number>();
-/**
- * Author's edits whose content is being read right now, by group and id: a
- * flush holds those copies back for the next one, instead of sending the
- * original words (round 6). Bounded in time: a read never takes a minute.
- */
-const EDIT_PENDING_MS = 60 * 1000;
-const editPending = new Map<string, { change: LocalMessageChange; at: number }[]>();
 const changeKey = (groupId: string, messageId: string) => `${groupId}|${messageId}`;
 
 function recordChange(change: LocalMessageChange): void {
   const key = changeKey(change.groupId, change.messageId);
   const list = changedMessages.get(key) ?? [];
-  changedMessages.delete(key);
   // Only a delete may be an admin's.
-  list.push(change.kind === "edit" ? { ...change, byAdmin: false } : change);
-  changedMessages.set(key, list);
+  const c = change.kind === "edit" ? { ...change, byAdmin: false } : change;
+  // The same change again (a retry, a restored copy, a merged edit and its notice): kept once.
+  if (!list.some((x) => JSON.stringify(x) === JSON.stringify(c))) list.push(c);
   const now = Date.now();
+  // Delete THEN set, in both maps, so each is in the order of its latest change.
+  changedMessages.delete(key);
+  changedMessages.set(key, list);
+  changedAt.delete(key);
   changedAt.set(key, now);
   // Oldest first: past the record's window, then over the cap.
   for (const [k, at] of changedAt) {
@@ -424,188 +416,9 @@ function recordChange(change: LocalMessageChange): void {
     changedAt.delete(k);
     changedMessages.delete(k);
   }
-  if (change.kind === "edit") {
-    const marks = (editPending.get(key) ?? []).filter((m) => now - m.at <= EDIT_PENDING_MS);
-    marks.push({ change, at: now });
-    editPending.set(key, marks);
-  }
 }
 
-/** Is an author's edit of this copy still being read? */
-function isEditPending(groupId: string, storedId: string, authorPhone: string | null): boolean {
-  const bare = bareOf(storedId);
-  if (!bare) return false;
-  const now = Date.now();
-  return (editPending.get(changeKey(groupId, bare)) ?? []).some((m) => now - m.at <= EDIT_PENDING_MS && isByAuthor(storedId, authorPhone, m.change));
-}
-
-/**
- * Where an author's edit leaves this copy: "none" (no edit by its author),
- * "pending" (the edit's content is being read), its edited content, or
- * "lost" (an edit is recorded but its content is unknown: unreadable, past
- * its 30 minutes, or forgotten in a restart). A "lost" copy is never
- * analysed or shown: the author took those words back.
- */
-function editStateOf(groupId: string, storedId: string, authorPhone: string | null): "none" | "pending" | "lost" | ReadEdit {
-  const bare = bareOf(storedId);
-  if (!bare || !namesMessage(storedId, groupId, bare) || storedId === bare) return "none";
-  const edits = (changedMessages.get(changeKey(groupId, bare)) ?? []).filter((c) => c.kind === "edit" && isByAuthor(storedId, authorPhone, c));
-  const content = replacementFor(groupId, storedId, authorPhone);
-  if (edits.length === 0) return content ?? "none";
-  if (isEditPending(groupId, storedId, authorPhone)) return "pending";
-  return content ?? "lost";
-}
-
-/**
- * AN AUTHOR'S EDIT'S NEW CONTENT (round 5), by group and id, IN MEMORY ONLY
- * for 30 minutes: every copy of the message the Pi holds, now or later
- * (waiting in the batch, requeued after a failed post, re-queued by a
- * reconnect's catch-up, or an original that arrives after its edit: a held
- * picture, content that failed to decrypt first), carries it. Of two edits
- * the later by the edit's OWN time wins. Never written to disk or posted.
- */
-const EDIT_MEMORY_MS = 30 * 60 * 1000;
-const MAX_EDITED = 500;
-interface EditedContent {
-  change: LocalMessageChange;
-  read: ReadEdit;
-  editedAtMs: number;
-  at: number;
-}
-const editedContent = new Map<string, EditedContent[]>();
-
-function withEdit(p: Pending, read: ReadEdit): Pending {
-  const { mentions: _m, mentionNames: _n, ...rest } = p;
-  void _m;
-  void _n;
-  return {
-    ...rest,
-    body: read.text,
-    botMentioned: read.botMentioned === true,
-    ...(read.mentions?.length ? { mentions: read.mentions } : {}),
-    ...(read.mentionNames?.length ? { mentionNames: read.mentionNames as MentionName[] } : {}),
-  };
-}
-
-/** The latest edit of this copy by its own author, still held, or null. */
-function replacementFor(groupId: string, storedId: string, authorPhone: string | null): ReadEdit | null {
-  const bare = bareOf(storedId);
-  if (!bare || !namesMessage(storedId, groupId, bare) || storedId === bare) return null;
-  const now = Date.now();
-  let best: EditedContent | null = null;
-  for (const e of editedContent.get(changeKey(groupId, bare)) ?? []) {
-    if (now - e.at > EDIT_MEMORY_MS || !isByAuthor(storedId, authorPhone, e.change)) continue;
-    if (!best || e.editedAtMs >= best.editedAtMs) best = e;
-  }
-  return best?.read ?? null;
-}
-
-const sameList = (a: unknown[] | undefined, b: unknown[] | undefined) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
-function differs(p: Pending, r: ReadEdit): boolean {
-  return p.body !== r.text || (p.botMentioned === true) !== (r.botMentioned === true) || !sameList(p.mentions, r.mentions) || !sameList(p.mentionNames, r.mentionNames);
-}
-
-/**
- * Keep an author's edit's content (latest by `editedAtMs` wins; the same
- * content again is a no-op) and put it in place of every copy waiting in
- * the batch, and its recent-chat line. `replaced`: a waiting copy changed.
- * `tagAdded`: it now tags MatchTime where it did not (the caller flushes at
- * once, as for a tagged message). Synchronous, so a flush cannot take the
- * message between the check and the replacement. An edit by anyone but a
- * copy's author changes nothing of it.
- */
-export function replacePendingWithEdit(change: LocalMessageChange, read: ReadEdit, editedAtMs: number): { replaced: boolean; tagAdded: boolean } {
-  const none = { replaced: false, tagAdded: false };
-  if (change.kind !== "edit") return none;
-  const groupId = change.groupId;
-  const key = changeKey(groupId, change.messageId);
-  const now = Date.now();
-  // An edit with no time of its own counts in arrival order.
-  if (!editedAtMs) editedAtMs = now;
-  editPending.delete(key);
-  // Let go of every held content past its 30 minutes, not only this message's.
-  for (const [k, entries] of editedContent) {
-    const live = entries.filter((e) => now - e.at <= EDIT_MEMORY_MS);
-    if (live.length === 0) editedContent.delete(k);
-    else if (live.length !== entries.length) editedContent.set(k, live);
-  }
-  const list = (editedContent.get(key) ?? []).filter((e) => now - e.at <= EDIT_MEMORY_MS);
-  const seen = list.some((e) => e.editedAtMs === editedAtMs && JSON.stringify(e.read) === JSON.stringify(read) && JSON.stringify(e.change.senderJids) === JSON.stringify(change.senderJids));
-  if (!seen) list.push({ change, read, editedAtMs, at: now });
-  editedContent.delete(key);
-  editedContent.set(key, list);
-  while (editedContent.size > MAX_EDITED) {
-    const oldest = editedContent.keys().next().value;
-    if (oldest === undefined) break;
-    editedContent.delete(oldest);
-  }
-  let replaced = false;
-  let tagAdded = false;
-  const pending = bufferByGroup.get(groupId);
-  if (pending) {
-    for (let i = 0; i < pending.length; i++) {
-      const p = pending[i];
-      if (!namesMessage(p.waMessageId, groupId, change.messageId)) continue;
-      const eff = replacementFor(groupId, p.waMessageId, p.authorPhone || null);
-      if (!eff) continue;
-      if (!differs(p, eff)) {
-        pending[i] = { ...p, editApplied: true };
-        continue;
-      }
-      if (eff.botMentioned && !p.botMentioned) tagAdded = true;
-      pending[i] = { ...withEdit(p, eff), editApplied: true };
-      replaced = true;
-    }
-  }
-  const lines = historyByGroup.get(groupId);
-  if (lines) {
-    historyByGroup.set(
-      groupId,
-      lines.map((h) => {
-        if (!h.waMessageId || !namesMessage(h.waMessageId, groupId, change.messageId)) return h;
-        const eff = replacementFor(groupId, h.waMessageId, null);
-        return eff ? { ...h, body: eff.text, editApplied: true } : h;
-      }),
-    );
-  }
-  return { replaced, tagAdded };
-}
-
-/**
- * An author's edit whose content cannot be read (none came, the mapper
- * rejected it, the reader returned nothing or threw): every copy of the
- * message by its author leaves the batch and the recent chat. Losing an IN
- * is preferred to analysing words the author took back (round 6). Logged
- * by ids only.
- */
-export function markEditUnreadable(change: LocalMessageChange): { buffered: number; history: number } {
-  const groupId = change.groupId;
-  editPending.delete(changeKey(groupId, change.messageId));
-  const mine = (id: string, phone: string | null) => namesMessage(id, groupId, change.messageId) && id !== change.messageId && isByAuthor(id, phone, change);
-  let buffered = 0;
-  const pending = bufferByGroup.get(groupId);
-  if (pending) {
-    const kept = pending.filter((p) => !mine(p.waMessageId, p.authorPhone || null));
-    buffered = pending.length - kept.length;
-    bufferByGroup.set(groupId, kept);
-  }
-  let history = 0;
-  const lines = historyByGroup.get(groupId);
-  if (lines) {
-    const kept = lines.filter((h) => !(h.waMessageId && mine(h.waMessageId, null)));
-    history = lines.length - kept.length;
-    historyByGroup.set(groupId, kept);
-  }
-  console.warn(`[smart] an edit of ${change.messageId} in ${groupId} could not be read: the message is left out (batch=${buffered} recent=${history})`);
-  return { buffered, history };
-}
-
-/** Test-only: the keys of the edited content still held. */
-export function _test_editedContentKeys(): string[] {
-  return [...editedContent.keys()];
-}
-
-/** Does a recorded DELETE take this copy (its stored id, its author's phone) out? An edit never does: it replaces the content. */
+/** Does a recorded DELETE take this copy (its stored id, its author's phone) out? Each delete judged alone; an edit never does. */
 function isGone(groupId: string, storedId: string, authorPhone: string | null): boolean {
   const bare = bareOf(storedId);
   if (!bare || !namesMessage(storedId, groupId, bare)) return false;
@@ -617,9 +430,10 @@ function isGone(groupId: string, storedId: string, authorPhone: string | null): 
 /**
  * Does a recorded change take a QUOTE of that message out? Only when it
  * came from a group admin (a delete), or from the quoted message's own
- * author, matched by the quote's participant id (LID or phone JID) or its
- * phone. A change from anybody else, or one we cannot tie to the quoted
- * author, leaves the quote: a forged delete changes nothing.
+ * author (a delete or an edit: the original words must go), matched by the
+ * quote's participant id (LID or phone JID) or its phone. A change from
+ * anybody else, or one we cannot tie to the quoted author, leaves the
+ * quote: a forged delete changes nothing.
  */
 function quoteIsGone(groupId: string, quotedId: string | null | undefined, quotedAuthorJid: string | null | undefined, quotedAuthorPhone: string | null | undefined): boolean {
   const bare = bareOf(quotedId);
@@ -644,7 +458,7 @@ function quoteIsGone(groupId: string, quotedId: string | null | undefined, quote
 }
 
 /**
- * Who wrote each message a change took out of the Pi's own copies (its
+ * Who wrote each message a delete took out of the Pi's own copies (its
  * stored id's participant), kept so a reply quoting it later can still be
  * tied to its author. In memory; bounded.
  */
@@ -657,7 +471,7 @@ function rememberAuthorOf(groupId: string, storedId: string): void {
   if (takenOutAuthors.size > MAX_REMEMBERED_CHANGES) takenOutAuthors.delete(takenOutAuthors.keys().next().value as string);
 }
 
-/** The author of a message, from the Pi's own copies of it (the recent chat and the batch, or one a change took out). */
+/** The author of a message, from the Pi's own copies of it (the recent chat and the batch, or one a delete took out). */
 function ownCopyAuthor(groupId: string, bare: string): { jid: string | null; phone: string } {
   const gone = takenOutAuthors.get(changeKey(groupId, bare));
   if (gone) return { jid: gone, phone: gone.endsWith("@c.us") ? gone.split("@")[0] : "" };
@@ -673,17 +487,9 @@ function ownCopyAuthor(groupId: string, bare: string): { jid: string | null; pho
   return { jid: null, phone: "" };
 }
 
-/** A waiting message as the record leaves it: null (gone), or with its quote's words stripped. */
+/** A waiting message as the record leaves it: null (deleted), or with its quote's words stripped. */
 function withChanges(groupId: string, p: Pending): { p: Pending | null; quote: boolean } {
   if (isGone(groupId, p.waMessageId, p.authorPhone || null)) return { p: null, quote: false };
-  if (!p.editApplied) {
-    const state = editStateOf(groupId, p.waMessageId, p.authorPhone || null);
-    if (state === "lost") {
-      console.warn(`[smart] ${p.waMessageId} in ${groupId} was edited and its new content is gone: left out`);
-      return { p: null, quote: false };
-    }
-    if (typeof state === "object") p = { ...withEdit(p, state), editApplied: true };
-  }
   if (p.quotedMessageId && p.quotedBody !== undefined && quoteIsGone(groupId, p.quotedMessageId, p.quotedAuthorJid, p.quotedAuthorPhone)) {
     const { quotedBody: _q, ...rest } = p;
     void _q;
@@ -750,48 +556,23 @@ export function isChangedLocally(groupId: string, waMessageId: string, authorPho
   );
 }
 
-/** The immediate flush a tagged message gets, for an edit that added the tag. */
-export async function flushGroupNow(groupId: string): Promise<void> {
-  if (!sharedDriver) return;
-  if (inFlightFlush.has(groupId)) {
-    reflushAfterInFlight.add(groupId);
-    return;
-  }
-  await flushGroup(sharedDriver, groupId);
-}
-
 /**
  * Deleted for everyone (a DELETE only, never an edit), by somebody who may?
  * The react step's question: a recorded IN that was then EDITED keeps its
  * ✅; one that was DELETED does not.
  */
 export function isRevokedLocally(groupId: string, waMessageId: string, authorPhone: string | null | undefined): boolean {
-  const bare = bareOf(waMessageId);
-  if (!bare || !namesMessage(waMessageId, groupId, bare)) return false;
-  return (changedMessages.get(changeKey(groupId, bare)) ?? []).some((c) => c.kind === "revoke" && deleteApplies(c, waMessageId, authorPhone || null));
+  return isGone(groupId, waMessageId, authorPhone || null);
 }
 
 /**
  * An admin-group (HQ) forward held to the record: null when it was
- * deleted; the edited content when its author edited it (the server purges
- * the stored text either way); no quoted words for a quote of a message
- * its author or an admin took back.
+ * DELETED; otherwise as read (an edit changes nothing of the message: the
+ * server forgets the stored words), with no quoted words for a quote of a
+ * message its author or an admin took back.
  */
 export function adjustForServer(m: GroupMessageForServer): GroupMessageForServer | null {
   if (isGone(m.groupId, m.messageId, m.senderPhone || null)) return null;
-  const edited = replacementFor(m.groupId, m.messageId, m.senderPhone || null);
-  if (edited) {
-    const { mentions: _m, mentionNames: _n, ...rest } = m;
-    void _m;
-    void _n;
-    m = {
-      ...rest,
-      text: edited.text,
-      botMentioned: edited.botMentioned === true,
-      ...(edited.mentions?.length ? { mentions: edited.mentions } : {}),
-      ...(edited.mentionNames?.length ? { mentionNames: edited.mentionNames } : {}),
-    };
-  }
   if (m.quotedMessageId && m.quotedText !== undefined && quoteIsGone(m.groupId, m.quotedMessageId, m.quotedAuthorJid, m.quotedAuthorPhone)) {
     const { quotedText: _q, ...rest } = m;
     void _q;
@@ -800,9 +581,9 @@ export function adjustForServer(m: GroupMessageForServer): GroupMessageForServer
   return m;
 }
 
-/** A batch as the record leaves it: gone copies out, quotes held to it. */
+/** A batch as the record leaves it: deleted copies out, quotes held to it. */
 function afterChanges(groupId: string, batch: Pending[]): Pending[] {
-  if (changedMessages.size === 0 && editedContent.size === 0) return batch;
+  if (changedMessages.size === 0) return batch;
   return batch.flatMap((p) => {
     const r = withChanges(groupId, p);
     return r.p ? [r.p] : [];
@@ -980,12 +761,11 @@ export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage):
     attempts: 0,
   };
 
-  // A copy of a message already deleted for everyone, or edited after it
-  // was sent, is not queued; a copy of one whose waiting original an
-  // author's edit replaced is queued with the edited content; a reply
-  // quoting a message its author or an admin took back loses the quoted
-  // words (2026-11-15).
-  const held = changedMessages.size > 0 || editedContent.size > 0 ? withChanges(groupId, pending) : { p: pending };
+  // A copy of a message already deleted for everyone is not queued; a
+  // reply quoting a message its author or an admin deleted or edited loses
+  // the quoted words (2026-11-15). An edit never holds, drops or replaces
+  // the message itself: it is analysed once, as the Pi has it.
+  const held = changedMessages.size > 0 ? withChanges(groupId, pending) : { p: pending };
   if (!held.p) {
     console.log(`[smart] ${waMessageId} in ${groupId} was deleted for everyone; not queued`);
     return;
@@ -1007,8 +787,7 @@ export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage):
   const reason = immediateFlushReason({
     // A reply to MatchTime's own message is addressed to it, so it is
     // answered within seconds exactly as a tag is.
-    // The batch's copy (an edit kept from before it arrived may have added the tag).
-    botMentioned: held.p.botMentioned === true || pending.quotedFromMatchTime === true,
+    botMentioned: botMentioned || pending.quotedFromMatchTime === true,
     bufferLen: arr.length,
     maxBufferLen: Infinity,
     kickoffMs: kickoff,
@@ -1329,8 +1108,8 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
   if (inFlightFlush.has(groupId)) return;
   inFlightFlush.add(groupId);
   try {
-    const queued = bufferByGroup.get(groupId) ?? [];
-    if (queued.length === 0) {
+    const pending = bufferByGroup.get(groupId) ?? [];
+    if (pending.length === 0) {
       // Log even the do-nothing flush. Silence here is exactly what hid the
       // 2026-08-30 outage for three days: the timer fired ~111 times and
       // returned without a word, so "the pipeline is stalled" and "there was
@@ -1339,15 +1118,7 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
       console.log(`[smart] flush ${groupId}: buffer empty (${formatInboundStats(inboundStats)})`);
       return;
     }
-    // A copy whose author's edit is still being read is held back for the
-    // next flush, never sent with its original words (2026-11-15, round 6).
-    const heldBack = queued.filter((p) => !p.editApplied && isEditPending(groupId, p.waMessageId, p.authorPhone || null));
-    const pending = heldBack.length ? queued.filter((p) => !heldBack.includes(p)) : queued;
-    if (pending.length === 0) {
-      console.log(`[smart] flush ${groupId}: ${heldBack.length} held back while an edit of it is read`);
-      return;
-    }
-    bufferByGroup.set(groupId, heldBack); // clear optimistically; errors will log, but we don't want to loop
+    bufferByGroup.set(groupId, []); // clear optimistically; errors will log, but we don't want to loop
 
     const msgsForAnalyze: AnalyzeInboundMessage[] = pending.map((p) => ({
       waMessageId: p.waMessageId,
@@ -1894,9 +1665,7 @@ export function _test_reset(): void {
   historyByGroup.clear();
   bufferByGroup.clear();
   changedMessages.clear();
-  editedContent.clear();
   takenOutAuthors.clear();
-  editPending.clear();
   changedAt.clear();
   nextKickoffMsByGroup.clear();
   inFlightFlush.clear();

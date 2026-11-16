@@ -71,7 +71,7 @@ export interface InboundMessage {
  * `messageId` is the BARE WhatsApp id of the message deleted or edited
  * (not the notice's own id). The sender fields name whoever sent the
  * notice: for a delete in a group that can be an admin, not the author.
- * An edit's new words travel only as `edited`, in memory.
+ * An edit's new words are never carried: an edit is never analysed again.
  */
 export interface MessageChangeEvent {
   kind: "revoke" | "edit";
@@ -92,16 +92,6 @@ export interface MessageChangeEvent {
   /** The group's metadata could not be read: whether the sender is an admin
    *  is checked again later (`isGroupAdmin`), never taken as "no" for good. */
   adminUnknown?: boolean;
-  /**
-   * An edit's NEW content as the edited message itself (its id, its author,
-   * the new words and mentions), so it is read exactly as an inbound
-   * message is. In memory only: it replaces the original in the Pi's
-   * waiting batch when the original has not been sent yet; it is never
-   * logged, stored on disk or posted as a change.
-   */
-  edited?: InboundMessage;
-  /** An edit's OWN time (the protocol message's `timestampMs`, else the notice's): the later edit wins. */
-  editedAtMs?: number;
   fromMe: boolean;
 }
 
