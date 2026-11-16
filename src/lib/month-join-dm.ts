@@ -12,16 +12,21 @@
  *     read against them, with what was said before as the chat (a plain
  *     "yes" keeps it), and the games of his row already behind him added.
  *
- * Every count is checked against the games he covers (`fitGamesCommitted`)
- * and is never stored when it does not fit: he is asked again (at most
- * three questions a month), and past that the answer is still consumed and
- * the organisers are told once. A question one of whose games has been
- * played since it was asked is not answered on a guess: he is asked again
- * with the games now left. A question that is closed (he answered it, or
- * said a count that fits since) is never answered.
+ * WHICH QUESTION A DM ANSWERS: the one he quoted, or MatchTime's newest DM
+ * (`dm-answering.ts`). An UNQUOTED DM while a "which of them?" is open, and
+ * that the reader reads as his games or a sign-up for that month, answers
+ * it too, even when other DMs came after it (2026-11-16).
  *
- * Only while a question is open and it is the message he is answering (the
- * quoted one, or MatchTime's newest DM to him); one delivery is read once.
+ * The message is always READ first. Anything that is not a sign-up for the
+ * month goes on to the other DM handlers as before ("what time is kick
+ * off?", "Paid"); an "out" closes the question and goes on as well, as a
+ * plain message would. Every count is checked against the games he covers
+ * (`fitGamesCommitted`) and is never stored when it does not fit: he is
+ * asked again (at most three questions a month), and past that the answer
+ * is still consumed and the organisers are told. A games answer to a
+ * question one of whose games has been played since is not stored on a
+ * guess: he is asked again with the games now left. A save the setter
+ * refuses is never reported as stored. A closed question is never answered.
  */
 import { db } from "./db";
 import { formatLondon } from "./london-time";
@@ -57,6 +62,8 @@ export async function handleMonthJoinDmReply(input: {
   text: string;
   waMessageId: string;
   answering: () => Promise<string | null>;
+  /** He swipe-replied to a message (it is the one he answers). */
+  quoted?: boolean;
   now: Date;
 }): Promise<{ handled: MonthJoinDmHandled; monthId: string } | null> {
   try {
@@ -71,9 +78,12 @@ export async function handleMonthJoinDmReply(input: {
       select: { id: true, key: true, kind: true, text: true, createdAt: true },
     });
     if (rows.length === 0) return null;
+    const asks = rows.map(openAskOf).filter((a): a is OpenAsk => !!a);
     const said = (await input.answering())?.trim();
-    if (!said) return null;
-    const ask = rows.map(openAskOf).find((a): a is OpenAsk => !!a && a.dm.trim() === said);
+    // The question he answers; unquoted, his newest open "which of them?"
+    // too, when it is not the newest DM (read below: only his games act).
+    const exact = said ? asks.find((a) => a.dm.trim() === said) : undefined;
+    const ask = exact ?? (!input.quoted ? asks.find((a) => a.state !== null) : undefined);
     if (!ask) return null;
     const { orgId, monthId } = ask;
     try {
@@ -81,23 +91,10 @@ export async function handleMonthJoinDmReply(input: {
     } catch {
       return null; // this delivery was read already
     }
-    const { loadSignupMonth, applySignup, askOrNote, commitMonthGames, gamesCoverOf, gamesPlayedBy, isRegularMember } = await import("./month-signup");
-    const month = await loadSignupMonth(monthId);
+    const ms = await import("./month-signup");
+    const month = await ms.loadSignupMonth(monthId);
     if (!month) return null;
-    const close = () => db.sentNotification.updateMany({ where: { id: ask.id, kind: ask.kind }, data: { kind: `${ask.kind}-closed` } });
-    /** Ask him again (a new question, toward the cap), or tell the organisers. */
-    const askAgain = async (original: string | null, originalBy: string | null, games: number | null) => {
-      await close();
-      const r = await askOrNote({ month, userId: input.userId, now: input.now, original, originalBy, games });
-      return { handled: (r === "asked" ? "month-join-asked" : "month-join-noted") as MonthJoinDmHandled, monthId };
-    };
-
-    // A game it listed has been played since: never answered on a guess.
     const listed = (ask.state?.dates ?? []).map((d) => new Date(d));
-    if (ask.state && listed.some((d) => d.getTime() <= input.now.getTime())) {
-      return askAgain(ask.state.original, ask.state.originalBy, ask.state.games);
-    }
-
     const { loadMonthlyReaderContext, readMonthlyMessage } = await import("./monthly-reader");
     const { withOrgAiBudget } = await import("./ai-budget");
     const reading = await withOrgAiBudget(orgId, async () => {
@@ -116,7 +113,7 @@ export async function handleMonthJoinDmReply(input: {
             ? {
                 answering: {
                   label: formatLondon(month.kickoffs[0] ?? month.firstKickoff, "MMMM yyyy"),
-                  dates: listed.map((d) => ({ day: formatLondon(d, "EEE d MMM"), played: false })),
+                  dates: listed.map((d) => ({ day: formatLondon(d, "EEE d MMM"), played: d.getTime() <= input.now.getTime() })),
                 },
               }
             : {}),
@@ -124,40 +121,72 @@ export async function handleMonthJoinDmReply(input: {
         ctx,
       );
     });
+    // Not about this month: it goes on to the other DM handlers, as before.
     if (reading.kind !== "signup" || reading.month !== month.monthNumber) return null;
+    const close = () => db.sentNotification.updateMany({ where: { id: ask.id, kind: ask.kind }, data: { kind: `${ask.kind}-closed` } });
     if (reading.choice !== "in") {
       await close();
-      return { handled: "month-join-no", monthId };
+      // To "which of them?": an "out" is handled as the same plain message
+      // would be (the other DM handlers). To the join question: a no.
+      return ask.state ? null : { handled: "month-join-no", monthId };
     }
+    /** Ask him again (a new question, toward the cap), or tell the organisers. */
+    const askAgain = async (original: string | null, originalBy: string | null, games: number | null) => {
+      await close();
+      const fresh = (await ms.loadSignupMonth(monthId)) ?? month;
+      const r = await ms.askOrNote({ month: fresh, userId: input.userId, now: input.now, original, originalBy, games, words: input.text });
+      return { handled: (r === "asked" ? "month-join-asked" : "month-join-noted") as MonthJoinDmHandled, monthId };
+    };
+    /** A save the setter refused: never reported as stored. */
+    const refused = async (saved: import("./month-signup").GamesSave) => {
+      await close();
+      const r = await ms.afterRefusedSave({ month: (await ms.loadSignupMonth(monthId)) ?? month, userId: input.userId, now: input.now, saved, words: input.text, games: reading.games });
+      return { handled: (r === "asked" ? "month-join-asked" : "month-join-noted") as MonthJoinDmHandled, monthId };
+    };
+    const regular = month.members.some((x) => x.userId === input.userId && ms.isRegularMember(x));
 
     if (!ask.state) {
       // "Join <month> for the N games left?": he joins for the games he
       // covers (the games left, or a paid leaver's own). A count that does
       // not fit ("yes except the last week" read as every game) is asked
       // about instead.
-      const fit = fitGamesCommitted(reading.games, gamesCoverOf(month, input.userId, input.now).covers);
+      const fit = fitGamesCommitted(reading.games, ms.gamesCoverOf(month, input.userId, input.now).covers);
       if (fit.kind === "ask") return askAgain(input.text, null, reading.games);
       await close();
-      const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games: fit.kind === "some" ? fit.games : null, now: input.now });
-      return res.ok ? { handled: "month-join-yes", monthId } : null;
+      const res = await ms.applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games: fit.kind === "some" ? fit.games : null, now: input.now });
+      if (!res.ok) return null;
+      if (res.gamesSaved && res.gamesSaved !== "stored" && res.gamesSaved !== "unchanged") return refused(res.gamesSaved);
+      return { handled: "month-join-yes", monthId };
     }
+
+    // A game the question listed has been played since: no guessing which
+    // of his were meant. He is asked again with the games now left.
+    if (listed.some((d) => d.getTime() <= input.now.getTime())) return askAgain(ask.state.original ?? input.text, ask.state.originalBy, reading.games);
 
     // "Which of them will you play?": his answer is about the games it
     // listed; the games of his row already behind him are added to it.
     const fit = fitGamesCommitted(reading.games, listed.length);
     if (fit.kind === "ask") return askAgain(input.text, null, reading.games);
     const games = fit.kind === "some" ? fit.games + ask.state.pastCovered : null;
-    const regular = month.members.some((x) => x.userId === input.userId && isRegularMember(x));
     if (regular) {
-      // On the month already: never below the games he has played.
-      if (games !== null && games < (await gamesPlayedBy(monthId, input.userId, input.now))) return askAgain(input.text, null, reading.games);
+      const row = month.members.find((x) => x.userId === input.userId);
+      if (row?.gamesCommitted === games) {
+        await close();
+        return { handled: "month-join-yes", monthId };
+      }
+      // On the month already: above the games he has played, while any are left.
+      const played = await ms.gamesPlayedBy(monthId, input.userId, input.now);
+      if (games !== null && fitGamesCommitted(games, ms.gamesCoverOf(month, input.userId, input.now).covers, played).kind !== "some") return askAgain(input.text, null, reading.games);
+      const saved = await ms.commitMonthGamesResult(monthId, input.userId, games);
+      if (saved !== "stored" && saved !== "unchanged") return refused(saved);
       await close();
-      await commitMonthGames(monthId, input.userId, games);
       return { handled: "month-join-yes", monthId };
     }
     await close();
-    const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games, now: input.now });
-    return res.ok ? { handled: "month-join-yes", monthId } : null;
+    const res = await ms.applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games, now: input.now });
+    if (!res.ok) return null;
+    if (res.gamesSaved && res.gamesSaved !== "stored" && res.gamesSaved !== "unchanged") return refused(res.gamesSaved);
+    return { handled: "month-join-yes", monthId };
   } catch (err) {
     console.error("[month-join-dm] failed:", err instanceof Error ? err.message : "failed");
     return null;

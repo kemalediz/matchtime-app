@@ -21,6 +21,7 @@ const m = vi.hoisted(() => ({
   applySignup: vi.fn(async () => ({ ok: true, changed: true, locked: false, outcome: "regular", unknownDays: [] })),
   commitMonthGames: vi.fn(async () => true),
   guardedRegularGames: vi.fn(async () => "stored"),
+  joinGamesOrHold: vi.fn(async (): Promise<{ hold: true; result: "asked" | "noted" } | { hold: false; games: number | null }> => ({ hold: false, games: null })),
   loadSignupMonth: vi.fn(async () => ({ firstKickoff: new Date("2026-11-02T20:30:00Z"), kickoffs: [new Date("2026-11-09T20:30:00Z"), new Date("2026-11-16T20:30:00Z"), new Date("2026-11-23T20:30:00Z")] })),
   loadLiveMonths: vi.fn(),
   claimMonthPaid: vi.fn(async () => true),
@@ -43,7 +44,7 @@ vi.mock("@/lib/db", () => ({
     botJob: { create: (...a: unknown[]) => m.botJobCreate(...(a as [])) },
   },
 }));
-vi.mock("@/lib/month-signup", () => ({ applySignup: m.applySignup, commitMonthGames: m.commitMonthGames, guardedRegularGames: m.guardedRegularGames, loadSignupMonth: m.loadSignupMonth, loadLiveMonths: m.loadLiveMonths }));
+vi.mock("@/lib/month-signup", () => ({ applySignup: m.applySignup, commitMonthGames: m.commitMonthGames, guardedRegularGames: m.guardedRegularGames, joinGamesOrHold: m.joinGamesOrHold, loadSignupMonth: m.loadSignupMonth, loadLiveMonths: m.loadLiveMonths }));
 vi.mock("@/lib/month-payment", () => ({ claimMonthPaid: m.claimMonthPaid }));
 vi.mock("@/lib/month-close", () => ({ reconcileLeavers: m.reconcileLeavers }));
 vi.mock("@/lib/resolve-sender", () => ({ createProvisionalByName: m.createProvisionalByName }));
@@ -103,6 +104,14 @@ describe("the join, as the months page's 'Add a player, Regular'", () => {
     // Through the one guard (2026-11-16): against the games HE covers.
     expect(m.guardedRegularGames).toHaveBeenCalledWith(expect.objectContaining({ userId: "u-tom", games: 2 }));
     expect(r).toMatchObject({ ok: true, changed: true, outcome: "regular", gamesLeft: 3 });
+  });
+  it("a count that does not fit his games holds him back: nothing is written until he answers (2026-11-16)", async () => {
+    m.joinGamesOrHold.mockResolvedValueOnce({ hold: true, result: "asked" });
+    m.applySignup.mockClear();
+    const r = await joinMonthAsOrganiser({ orgId: "o", monthId: "month-nov", userId: "u-tom", line: { ...line, games: 4 }, organiserUserId: "u-davide", words: "add Tom, 4 games", now: NOW });
+    expect(m.joinGamesOrHold).toHaveBeenCalledWith(expect.objectContaining({ userId: "u-tom", games: 4, words: "add Tom, 4 games" }));
+    expect(m.applySignup).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ ok: true, changed: false, held: true });
   });
   it("a PAYG line is PAYG for the days it names, or the next game", async () => {
     await joinMonthAsOrganiser({ orgId: "o", monthId: "month-nov", userId: "u-tom", line: { ...line, payg: true, paid: false }, organiserUserId: "u-davide", weekDay: 9, now: NOW });

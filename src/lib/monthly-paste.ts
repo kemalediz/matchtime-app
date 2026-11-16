@@ -368,7 +368,7 @@ export async function handleMonthlyPaste(args: {
           failures.push(a.name);
           continue;
         }
-        const j = await joinMonthAsOrganiser({ orgId, monthId: week.monthId, userId, line: a.line, organiserUserId: sender.userId, weekDay, now });
+        const j = await joinMonthAsOrganiser({ orgId, monthId: week.monthId, userId, line: a.line, organiserUserId: sender.userId, weekDay, words: args.text ?? null, now });
         if (!j.ok) {
           failures.push(a.name);
           continue;
@@ -498,27 +498,6 @@ export async function handleMonthlyPaste(args: {
     }
   }
 
-  // "4 only" beside a regular: their own line, or an organiser's paste.
-  // Anybody else's note is left alone. The one setter works out the money.
-  // Checked against the games HE covers (2026-11-16): one that does not fit
-  // is not recorded, and his own line gets the "which of them?" question.
-  let asked = false;
-  const gamesFor = outcome.games.filter((g) => g.self || senderIsAdmin);
-  if (gamesFor.length > 0) {
-    // Loaded here: month-signup imports this module's neighbours.
-    const { guardedRegularGames, loadSignupMonth } = await import("./month-signup");
-    const month = await loadSignupMonth(week.monthId);
-    for (const g of gamesFor) {
-      if (!month) break;
-      const done = await guardedRegularGames({ month, userId: g.userId, games: g.games, words: args.text ?? null, writtenBy: g.self ? null : sender.name, now });
-      if (done === "stored") applied.push(`games:${g.games}:${g.userId}`);
-      else if (done === "asked" || done === "noted") {
-        asked = true;
-        applied.push(`games-${done}:${g.userId}`);
-      }
-    }
-  }
-
   // The member who brought guests is told who was added, once per paste.
   if (guestsAdded.length > 0 && sender.userId) {
     const phone = phoneOf.get(sender.userId);
@@ -587,6 +566,31 @@ export async function handleMonthlyPaste(args: {
       }
     } catch (err) {
       console.error("[monthly-paste] not-added notice failed:", err);
+    }
+  }
+
+  // "4 only" beside a regular: their own line, or an organiser's paste.
+  // Anybody else's note is left alone. The one setter works out the money.
+  // Checked against the games HE covers (2026-11-16): one that does not fit
+  // is not recorded, and HE gets the "which of them?" question, after the
+  // other DMs of this paste (a reply answers the newest). The organisers'
+  // line, if it comes to that, quotes his own line, not the whole list.
+  let asked = false;
+  const gamesFor = outcome.games.filter((g) => g.self || senderIsAdmin);
+  if (gamesFor.length > 0) {
+    // Loaded here: month-signup imports this module's neighbours.
+    const { guardedRegularGames, loadSignupMonth, pastedLineOf } = await import("./month-signup");
+    const month = await loadSignupMonth(week.monthId);
+    const entries = [...list.slots, ...list.sections.cantPlay, ...list.sections.reserves, ...list.sections.other];
+    for (const g of gamesFor) {
+      if (!month) break;
+      const words = pastedLineOf(args.text ?? null, entries.find((e) => e.facts?.memberId === g.userId) ?? null);
+      const done = await guardedRegularGames({ month, userId: g.userId, games: g.games, words, original: args.text ?? null, writtenBy: g.self ? null : sender.name, now });
+      if (done === "stored") applied.push(`games:${g.games}:${g.userId}`);
+      else if (done === "asked" || done === "noted") {
+        asked = true;
+        applied.push(`games-${done}:${g.userId}`);
+      }
     }
   }
 

@@ -82,6 +82,20 @@ describe("loadMonthlyReaderContext", () => {
     expect(ctx.months[0]).toContain("  Games each regular on it covers: davide (p1) 5, lee (p2) 3.");
   });
 
+  it("the covers line is ordered by name then id (never by the rows' order), and shows the number the guard uses", async () => {
+    // Rows in another order, one cover above the games scheduled.
+    months.value = [{ ...(months.value[0] as Record<string, unknown>), members: [member("lee", "regular", { gamesCovered: 3 }), member("davide", "regular", { gamesCovered: 7 })] }];
+    const { ctx } = await turnFor("will", new Date(Date.UTC(2026, 10, 12, 12)));
+    expect(ctx.months[0]).toContain("  Games each regular on it covers: davide (p1) 5, lee (p2) 3.");
+  });
+
+  it("a regular with no cover count is left off, never rendered as null", async () => {
+    months.value = [{ ...(months.value[0] as Record<string, unknown>), members: [member("davide", "regular", { gamesCovered: undefined }), member("lee", "regular", { gamesCovered: 3 })] }];
+    const { ctx } = await turnFor("will", new Date(Date.UTC(2026, 10, 12, 12)));
+    expect(ctx.months[0]).toContain("  Games each regular on it covers: lee (p2) 3.");
+    expect(ctx.months[0]).not.toContain("null");
+  });
+
   it("a game at the very moment of kick-off is played: it is not one a joiner covers", async () => {
     const { ctx } = await turnFor("will", NOV[2]);
     expect(ctx.months[0]).toContain("Mon 16 Nov (played)");

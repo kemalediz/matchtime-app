@@ -208,7 +208,7 @@ export type GamesFit = { kind: "all" } | { kind: "some"; games: number } | { kin
  *   - no count: every game he covers;
  *   - a count below them: those games;
  *   - one game covered and a count of 1: that one game, so every game;
- *   - a count below the games he has already PLAYED this month does not
+ *   - a count at or below the games he has already PLAYED this month does not
  *     fit either (`minGames`; the setter refuses it, `fewer-than-played`);
  *   - any other count does not fit (at or above what he covers: a partial
  *     phrase counted against something else, or a misreading). It is never
@@ -218,7 +218,9 @@ export type GamesFit = { kind: "all" } | { kind: "some"; games: number } | { kin
 export function fitGamesCommitted(games: number | null, covers: number, minGames = 0): GamesFit {
   if (games === null) return { kind: "all" };
   if (covers === 1 && games === 1 && minGames <= 1) return { kind: "all" };
-  if (isWholeNumber(games) && games >= Math.max(1, minGames) && games < covers) return { kind: "some", games };
+  // Above the games already played: a count with no game still to play in it
+  // (exactly the games played, games left) is no commitment for the rest.
+  if (isWholeNumber(games) && games >= 1 && games > minGames && games < covers) return { kind: "some", games };
   return { kind: "ask" };
 }
 

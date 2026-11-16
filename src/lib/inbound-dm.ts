@@ -838,7 +838,7 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
     //   while that is open and it is the message he answers, his reply is
     //   read by the monthly reader (`month-join-dm.ts`).
     const { handleMonthJoinDmReply } = await import("@/lib/month-join-dm");
-    const joined = await handleMonthJoinDmReply({ userId: user.id, text, waMessageId, answering, now: new Date() });
+    const joined = await handleMonthJoinDmReply({ userId: user.id, text, waMessageId, answering, quoted: !!(quoted?.text ?? parseDmQuote(body)?.text), now: new Date() });
     if (joined) return NextResponse.json({ ok: true, ...joined });
 
     // ── An organiser saying who a name on his month is (2026-11-03) ──────

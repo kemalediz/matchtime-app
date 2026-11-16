@@ -16,6 +16,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { db } from "./db";
 import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
 import { formatLondon } from "./london-time";
+import { coverFor } from "./squad-month-rules";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./pipeline/llm";
 import {
   buildMonthlyReaderUserTurn,
@@ -97,13 +98,17 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     const games = m.kickoffs.map((k) => ({ day: day(k), played: k.getTime() <= now.getTime() }));
     // What each regular on it covers, by ref (2026-11-16): a list line about
     // somebody else is counted against HIS games, not the month's.
+    // The number is the guard's own (`coverFor`: never above the games
+    // scheduled), and the order is by name then id: never the rows' order.
     const covers = monthCoversLine(
       m.members
         .filter((x) => isRegularMember(x) && Number.isInteger(x.gamesCovered))
         .flatMap((x) => {
           const r = members.find((y) => y.userId === x.userId);
-          return r ? [{ name: r.name || "no name yet", ref: r.ref, covered: x.gamesCovered }] : [];
-        }),
+          const covered = coverFor({ kickoffs: m.kickoffs, rowCovered: x.gamesCovered, now }).covers;
+          return r ? [{ name: r.name || "no name yet", ref: r.ref, covered, userId: x.userId }] : [];
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, "en") || a.userId.localeCompare(b.userId)),
     );
     return [
       monthHeadLine({ label, monthNumber: m.monthNumber, state, games }),

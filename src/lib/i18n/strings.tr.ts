@@ -3481,6 +3481,11 @@ export const tr: Strings = {
     return `${head} ${p.dates.length === 1 ? "Oynayacak mısın?" : "Hangilerinde oynayacaksın?"} Yanıt ver, not edeyim.`;
   },
   msu_admin_games_unrecorded: (p) => `${p.name} için ${p.month} maçlarını "${p.words}" mesajından kaydedemedim. Ay sayfasından ayarla.`,
+  msu_admin_games_unanswered: (p) => `${p.name} hangi ${p.month} maçlarında oynayacağını söylemedi; ay sayfasından ayarla.`,
+  msu_dm_rejoin_which: (p) =>
+    p.games === 1
+      ? `📋 ${p.month} ayına ödediğin 1 maç için geri dönüyorsun: ${p.dates.join(", ")}. Oynayacak mısın? Yanıt ver, seni o maç için listeye geri ekleyeyim.`
+      : `📋 ${p.month} ayına ödediğin ${p.games} maç için geri dönüyorsun: ${p.dates.slice(0, -1).join(", ")} ve ${p.dates.at(-1)}. Hangilerinde oynayacaksın? Yanıt ver, seni o maçlar için listeye geri ekleyeyim.`,
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,

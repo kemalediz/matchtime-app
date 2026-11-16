@@ -56,9 +56,13 @@ describe("fitGamesCommitted: a regular cannot commit to fewer games than he has 
     expect(fitGamesCommitted(1, 5, 2)).toEqual({ kind: "ask" });
   });
 
-  it("at least the games played and below his cover: fits", () => {
-    expect(fitGamesCommitted(2, 5, 2)).toEqual({ kind: "some", games: 2 });
+  it("more than the games played and below his cover: fits", () => {
+    expect(fitGamesCommitted(3, 5, 2)).toEqual({ kind: "some", games: 3 });
     expect(fitGamesCommitted(4, 5, 2)).toEqual({ kind: "some", games: 4 });
+  });
+
+  it("exactly the games played, with games left: no game still to play in it, so asked", () => {
+    expect(fitGamesCommitted(2, 5, 2)).toEqual({ kind: "ask" });
   });
 
   it("no count is every game, whatever he has played", () => {
@@ -282,6 +286,25 @@ describe("the one DM question: which of the games he covers will he play (Englis
     );
     expect(t("tr").msu_admin_games_unrecorded({ name: "Mo Many", month: "Kasım", words: "Kasım varım son hafta hariç" })).toBe(
       `Mo Many için Kasım maçlarını "Kasım varım son hafta hariç" mesajından kaydedemedim. Ay sayfasından ayarla.`,
+    );
+  });
+
+  it("the organisers' line when a question about his games expired unanswered", () => {
+    expect(t("en").msu_admin_games_unanswered({ name: "Exa Expired", month: "November" })).toBe("Exa Expired didn't say which November games; set them on the month page.");
+    expect(t("tr").msu_admin_games_unanswered({ name: "Exa Expired", month: "Kasım" })).toBe(
+      "Exa Expired hangi Kasım maçlarında oynayacağını söylemedi; ay sayfasından ayarla.",
+    );
+  });
+
+  it("a leaver who paid and comes back is asked as rejoining, for the games he keeps", () => {
+    expect(t("en").msu_dm_rejoin_which({ month: "November", games: 2, dates: ["Mon 23 Nov", "Mon 30 Nov"] })).toBe(
+      "📋 You're rejoining November for the 2 games you paid for: Mon 23 Nov and Mon 30 Nov. Which of them will you play? Reply and I'll put you back on the list for those.",
+    );
+    expect(t("en").msu_dm_rejoin_which({ month: "November", games: 1, dates: ["Mon 30 Nov"] })).toBe(
+      "📋 You're rejoining November for the 1 game you paid for: Mon 30 Nov. Will you play it? Reply and I'll put you back on the list for it.",
+    );
+    expect(t("tr").msu_dm_rejoin_which({ month: "Kasım", games: 2, dates: ["23 Kasım Pazartesi", "30 Kasım Pazartesi"] })).toBe(
+      "📋 Kasım ayına ödediğin 2 maç için geri dönüyorsun: 23 Kasım Pazartesi ve 30 Kasım Pazartesi. Hangilerinde oynayacaksın? Yanıt ver, seni o maçlar için listeye geri ekleyeyim.",
     );
   });
 });

@@ -4847,6 +4847,15 @@ export const en = {
    *  that could be neither recorded nor asked about. `words`: his message. */
   msu_admin_games_unrecorded: (p: { name: string; month: string; words: string }): string =>
     `I couldn't record ${p.name}'s ${p.month} games from "${p.words}". Set them on the month page.`,
+  /** To the organisers (2026-11-16), once a question: he was asked which
+   *  games he will play and never answered. */
+  msu_admin_games_unanswered: (p: { name: string; month: string }): string => `${p.name} didn't say which ${p.month} games; set them on the month page.`,
+  /** "Which of them?" to a leaver who paid and is coming back: the games he
+   *  keeps (2026-11-16). */
+  msu_dm_rejoin_which: (p: { month: string; games: number; dates: string[] }): string =>
+    p.games === 1
+      ? `📋 You're rejoining ${p.month} for the 1 game you paid for: ${p.dates.join(", ")}. Will you play it? Reply and I'll put you back on the list for it.`
+      : `📋 You're rejoining ${p.month} for the ${p.games} games you paid for: ${p.dates.slice(0, -1).join(", ")} and ${p.dates.at(-1)}. Which of them will you play? Reply and I'll put you back on the list for those.`,
   /** To a member whose paste had more new players than one paste may add. */
   mwk_dm_paste_guests_refused: (p: { names: string[] }): string =>
     `📋 One list can only add a few new players, so I didn't add ${p.names.join(", ")}. An organiser can add them.`,
