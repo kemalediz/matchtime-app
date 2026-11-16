@@ -73,9 +73,14 @@ export interface ResizeResult {
   replyText: string;
   promoted: string[];
   demoted: string[];
+  /** The same reply without "the teams are cleared, tag me to make them
+   *  again", for a message that makes the teams itself right after the
+   *  switch (several instructions, 2026-11-16). Absent when the switch
+   *  cleared no teams. */
+  replyIfTeamsMade?: string;
 }
 
-const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
+const LIVE =["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
 export async function resizeMatch(p: {
   matchId: string;
@@ -86,6 +91,14 @@ export async function resizeMatch(p: {
   /** Where it was asked, for the audit row ("web", "whatsapp", "hq"). */
   via: string;
   now?: Date;
+  /**
+   * False: the new list is NOT queued for the players' group (2026-11-16).
+   * The switch is one part of a message with several instructions, and
+   * that message's ONE reply carries the list or the team sheet, built
+   * from the database after every part. The organisers' relay, the DMs and
+   * the slot reactions are unchanged. Default true.
+   */
+  groupList?: boolean;
 }): Promise<ResizeResult> {
   const now = p.now ?? new Date();
   const match = await db.match.findUnique({
@@ -301,21 +314,25 @@ export async function resizeMatch(p: {
     renderWeekList,
     recordWeekListShown,
     loadMonthlyWeek,
+    groupList: p.groupList !== false,
   });
 
-  return {
-    outcome: "format-switched",
-    replyText: c.switched({
+  const said = (teamsCleared: boolean) =>
+    c.switched({
       day,
       perSide: p.perSide,
       places: newPlaces,
       promoted: moved.promote.map(nameOf),
       demoted: moved.demote.map(nameOf),
-      teamsCleared: moved.teamsCleared,
+      teamsCleared,
       pickOpen: organiserPick ? moved.free : 0,
-    }),
+    });
+  return {
+    outcome: "format-switched",
+    replyText: said(moved.teamsCleared),
     promoted: moved.promote,
     demoted: moved.demote,
+    ...(moved.teamsCleared ? { replyIfTeamsMade: said(false) } : {}),
   };
 }
 
@@ -436,6 +453,9 @@ async function postNewList(a: {
   renderWeekList: typeof import("./monthly-week").renderWeekList;
   recordWeekListShown: typeof import("./monthly-week").recordWeekListShown;
   loadMonthlyWeek: typeof import("./monthly-week").loadMonthlyWeek;
+  /** False: nothing queued for the players' group (`resizeMatch`'s
+   *  `groupList`); the organisers' relay still goes. */
+  groupList: boolean;
 }): Promise<void> {
   const built = await renderNewList(a);
   if (!built) return;
@@ -444,6 +464,7 @@ async function postNewList(a: {
     await sendAdminNotice({ orgId: a.orgId, text: buildOrganiserRelay(text, a.lang) });
     return;
   }
+  if (!a.groupList) return;
   // Marked (`aboutKey`) so the scheduler renders it again when it is sent:
   // the squad can change while the job waits (Vets, 2026-11-16).
   await db.botJob.create({

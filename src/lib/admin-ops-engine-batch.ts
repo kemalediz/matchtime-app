@@ -320,6 +320,10 @@ export interface AdminOpsMessageOutcome {
   namedInviteRequest: boolean;
   /** A write threw. The caller must not say anything cheerful. */
   writeFailed: boolean;
+  /** The reply without "the teams are cleared, tag me to make them
+   *  again", for a message whose own teams part then makes them
+   *  (several instructions, 2026-11-16). Absent otherwise. */
+  replyIfTeamsMade?: string;
 }
 
 export interface AdminOpsBatchResult {
@@ -413,7 +417,9 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     /** The quoted post, when the message replies to MatchTime's own. */
     quotedId: string | null;
     explicit: boolean;
-  }) => Promise<{ outcome: string; replyText: string | null }>;
+    /** False: no list queued for the players' group (`partOfSeveral`). */
+    groupList?: boolean;
+  }) => Promise<{ outcome: string; replyText: string | null; replyIfTeamsMade?: string }>;
   /** The club's games to come, shown to the admin extractor as GAMES TO
    *  COME (2026-11-10, move_game). Defaults to `game-move-words.ts`;
    *  injected so tests need no database. */
@@ -449,6 +455,13 @@ export async function runAdminOpsBatch(args: {
   /** Where this batch reports the silences it chose (`tagged-silence.ts`),
    *  so the route does not call them "not understood". Absent: unreported. */
   silence?: SilenceFacts;
+  /**
+   * Every message here is one part of a message with several instructions
+   * (2026-11-16): a size switch queues no list of its own for the players'
+   * group, because that message's one reply carries the list or the team
+   * sheet, built from the database after every part.
+   */
+  partOfSeveral?: boolean;
 }): Promise<AdminOpsBatchResult> {
   const { orgId, now, messages, history, enabled, deps } = args;
   const t0 = Date.now();
@@ -1020,8 +1033,9 @@ export async function runAdminOpsBatch(args: {
   for (const [id, ask] of switchAsks) {
     try {
       const apply = deps.applySwitchFormatWords ?? (async (a) => (await import("./format-switch-words")).applySwitchFormatWords(a));
-      const r = await apply({ orgId, ...ask, via: "whatsapp", lang: state.features.language, now });
-      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `switch_format by an organiser: ${r.outcome}`));
+      const r = await apply({ orgId, ...ask, via: "whatsapp", lang: state.features.language, now, ...(args.partOfSeveral ? { groupList: false } : {}) });
+      const o = replyOnly(id, r.replyText, r.outcome, `switch_format by an organiser: ${r.outcome}${args.partOfSeveral ? "; one part of several, no list of its own" : ""}`);
+      cancelOutcomes.push(r.replyIfTeamsMade ? { ...o, replyIfTeamsMade: r.replyIfTeamsMade } : o);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error(`[admin-ops-engine] ${id}: switch_format threw:`, err);

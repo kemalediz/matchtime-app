@@ -342,18 +342,35 @@ describe("the router prompt", () => {
     const line = ROUTER_SYSTEM_PROMPT.trimEnd().split("\n").at(-1)!;
     expect(line).toMatch(/^Return JSON only:/);
     const shape = line.slice(line.indexOf("{"));
-    const filled = shape.replace("<id>", "wa-1").replace("<route>", "other_att").replaceAll("<true or false>", "true");
-    const out = parseRouterResponse(filled, ["wa-1"]);
+    const fill = (also: string) =>
+      shape
+        .replace("<id>", "wa-1")
+        .replace("<route>", "other_att")
+        .replace(/<the other routes[^>]*>/, also)
+        .replaceAll("<true or false>", "true");
+    const out = parseRouterResponse(fill(""), ["wa-1"]);
     expect(out.routes).toEqual([{ messageId: "wa-1", route: "other_att", source: "model", toBot: true, pastedList: true }]);
     expect(out.degradations).toEqual([]);
+    // Several instructions (2026-11-16): the same contract carries them.
+    const several = parseRouterResponse(fill('"balancer","admin_ops"'), ["wa-1"]);
+    expect(several.routes[0].alsoRoutes).toEqual(["admin_ops", "balancer"]);
+    expect(several.degradations).toEqual([]);
   });
 
-  it("defines to_bot and pasted_list once each, beside the answer, and says neither changes the route", () => {
+  it("defines to_bot, pasted_list and also once each, beside the answer, and says no fact changes the route", () => {
     const lines = ROUTER_SYSTEM_PROMPT.split("\n");
     expect(lines.filter((l) => l.startsWith("to_bot ")).length).toBe(1);
     expect(lines.filter((l) => l.startsWith("pasted_list ")).length).toBe(1);
+    expect(lines.filter((l) => l.startsWith("also ")).length).toBe(1);
     expect(lines.find((l) => l.startsWith("to_bot "))).toMatch(/question 2/);
-    expect(lines.find((l) => l.startsWith("THE ANSWER."))).toMatch(/neither changes the route/);
+    expect(lines.find((l) => l.startsWith("THE ANSWER."))).toMatch(/neither fact changes the route/);
+  });
+
+  it("defines several instructions in one message once, after the three questions and before the routes", () => {
+    const at = (s: string) => ROUTER_SYSTEM_PROMPT.indexOf(s);
+    expect(ROUTER_SYSTEM_PROMPT.split("SEVERAL INSTRUCTIONS IN ONE MESSAGE.").length).toBe(2);
+    expect(at("SEVERAL INSTRUCTIONS IN ONE MESSAGE.")).toBeGreaterThan(at("3. Is it for the bot at all?"));
+    expect(at("SEVERAL INSTRUCTIONS IN ONE MESSAGE.")).toBeLessThan(at("THE ROUTES, each defined once."));
   });
 });
 
@@ -392,7 +409,15 @@ describe("to_bot: the router's own reading of who a message speaks to (B1, 2026-
       },
     };
     await routeBatch(m, [{ id: "a", authorName: "Ali", body: "MatchTime who runs this club?" }]);
-    expect(JSON.stringify(schema)).toContain('"required":["id","route","to_bot","pasted_list"]');
+    expect(JSON.stringify(schema)).toContain('"required":["id","route","to_bot","pasted_list","also"]');
+    // `also` never offers none or unsure: neither is an instruction (review of #613).
+    const alsoEnum = (schema as { properties: { routes: { items: { properties: { also: { items: { enum: string[] } }; route: { enum: string[] } } } } } })
+      .properties.routes.items.properties;
+    expect(alsoEnum.also.items.enum).not.toContain("none");
+    expect(alsoEnum.also.items.enum).not.toContain("unsure");
+    expect(alsoEnum.also.items.enum).toContain("admin_ops");
+    expect(alsoEnum.route.enum).toContain("none");
+    expect(alsoEnum.route.enum).toContain("unsure");
   });
 });
 

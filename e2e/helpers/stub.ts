@@ -80,10 +80,11 @@ export interface RouterStub {
    * an id unmapped is asserting something about the engine, not about a
    * fallback.
    */
-  routes?: Record<string, string>;
+  routes?: Record<string, string | string[]>;
   /** Trimmed body → route. The sim harness mints its own message ids, so
-   *  a spec addresses the router by what was said. */
-  bodies?: Record<string, string>;
+   *  a spec addresses the router by what was said. A list is the route
+   *  followed by its `also` routes (several instructions, 2026-11-16). */
+  bodies?: Record<string, string | string[]>;
   /** What each stubbed router call reports it cost, in dollars (default
    *  0). Drives the daily AI cap (`src/lib/ai-budget.ts`) for real. */
   costUsd?: number;
@@ -121,6 +122,12 @@ export function clearRouterStub(): void {
  */
 export interface ExtractorStub {
   bodies?: Record<string, Record<string, unknown>>;
+  /** Per extractor kind ("attendance", "admin", "teams", ...), body → raw
+   *  JSON; read before `bodies`. One message with several instructions is
+   *  read by several extractors (2026-11-16). */
+  byExtractor?: Record<string, Record<string, Record<string, unknown>>>;
+  /** Per extractor kind, the bodies whose call to THAT extractor fails. */
+  failByExtractor?: Record<string, string[]>;
   /** Bodies whose extractor CALL fails with a real overload error, after
    *  the SDK's four retries. The only way to exercise that path end to
    *  end. */

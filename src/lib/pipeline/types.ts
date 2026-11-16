@@ -166,6 +166,20 @@ export interface RoutedMessage {
    * Absent: the model did not say so (or was not asked).
    */
   pastedList?: boolean;
+  /**
+   * THE OTHER INSTRUCTIONS IN THE SAME MESSAGE (2026-11-16, Vets): the
+   * routes, beyond `route`, that the message ALSO tells MatchTime to carry
+   * out, in the order they are done (`multi-route.ts`: the format first,
+   * then who plays, then the teams). "@Match Time switch to 7aside, take
+   * Luca to bench, Zak is IN and then make the teams" is
+   * `route: "other_att"`, `alsoRoutes: ["admin_ops", "balancer"]`; until
+   * this field the switch and the teams were dropped without a word.
+   * `route` keeps meaning what it always meant (the owner that answers
+   * for the message), so a trace written before this field reads the same.
+   * ABSENT, never `[]`, for a message with one instruction: those
+   * messages are byte for byte what they were.
+   */
+  alsoRoutes?: Route[];
 }
 
 // ── Stage 2: FACTS ─────────────────────────────────────────────────────

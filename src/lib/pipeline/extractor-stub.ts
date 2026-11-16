@@ -33,6 +33,16 @@ export interface ExtractorStubConfig {
    *  returned, e.g. `{"claims":[…],"affirmation":"none","sideRequests":[]}`. */
   bodies?: Record<string, Record<string, unknown>>;
   /**
+   * Per extractor (its kind: "attendance", "admin", "teams", "question",
+   * "score"), trimmed body → raw JSON. Read before `bodies`. One message
+   * with several instructions (2026-11-16) is read by several extractors,
+   * and each returns its own shape.
+   */
+  byExtractor?: Record<string, Record<string, Record<string, unknown>>>;
+  /** Per extractor kind, the trimmed bodies whose call to THAT extractor
+   *  fails like `fail` (one part of a several-instruction message). */
+  failByExtractor?: Record<string, string[]>;
+  /**
    * Trimmed message bodies whose extractor CALL FAILS, the way the real
    * API fails under load: a 529 the SDK has already retried four times.
    *
@@ -111,10 +121,11 @@ export function extractorStubFromEnv(env: NodeJS.ProcessEnv = process.env): Pipe
         /* recording is for the spec */
       }
       const body = messageBodyOf(req.user);
-      if (cfg.failAll || (cfg.fail ?? []).includes(body)) {
+      const kind = (req.label ?? "").replace(/^extractor:/, "");
+      if (cfg.failAll || (cfg.fail ?? []).includes(body) || (cfg.failByExtractor?.[kind] ?? []).includes(body)) {
         throw new Error(OVERLOADED_MESSAGE);
       }
-      const canned = cfg.bodies?.[body] ?? EMPTY_ATTENDANCE;
+      const canned = cfg.byExtractor?.[kind]?.[body] ?? cfg.bodies?.[body] ?? EMPTY_ATTENDANCE;
       return {
         text: JSON.stringify(canned),
         stopReason: "end_turn",

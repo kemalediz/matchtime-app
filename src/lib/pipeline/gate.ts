@@ -625,11 +625,13 @@ export interface RouterStubConfig {
    * keys parse, mean nothing, and cannot select anything.
    */
   floor?: boolean;
-  /** waMessageId → route. Unmapped ids fall back to `unsure`. */
-  routes?: Record<string, string>;
+  /** waMessageId → route. Unmapped ids fall back to `unsure`. A list is
+   *  the route followed by its `also` routes (2026-11-16). */
+  routes?: Record<string, string | string[]>;
   /** Trimmed message body → route, for specs that cannot know the ids
-   *  the sim harness mints. `routes` wins where both match. */
-  bodies?: Record<string, string>;
+   *  the sim harness mints. `routes` wins where both match. A list is the
+   *  route followed by its `also` routes. */
+  bodies?: Record<string, string | string[]>;
   /** What each stubbed router call reports it cost, in dollars. Default
    *  0. Lets the stubbed suite drive the daily AI cap for real. */
   costUsd?: number;
@@ -675,11 +677,18 @@ function routerStubFromEnv(): PipelineModel | null {
       const rows = [...req.user.matchAll(/^\[([^\]]+)\]\s*[^:]*:\s?(.*)$/gm)];
       // The turn carries short ids (m1, m2, ...); a spec names real ones.
       const toBot = new Set(cfg.toBotBodies ?? []);
-      const routes = rows.map((m) => ({
-        id: m[1],
-        route: byId[req.shortIds?.[m[1]] ?? m[1]] ?? byBody[m[2].trim()] ?? "unsure",
-        ...(toBot.has(m[2].trim()) ? { to_bot: true } : {}),
-      }));
+      const routes = rows.map((m) => {
+        // A list is the route then its `also` (several instructions in one
+        // message, 2026-11-16); a string is the route alone, as before.
+        const given = byId[req.shortIds?.[m[1]] ?? m[1]] ?? byBody[m[2].trim()] ?? "unsure";
+        const [route, ...also] = Array.isArray(given) ? given : [given];
+        return {
+          id: m[1],
+          route: route ?? "unsure",
+          ...(also.length > 0 ? { also } : {}),
+          ...(toBot.has(m[2].trim()) ? { to_bot: true } : {}),
+        };
+      });
       return {
         text: JSON.stringify({ routes }),
         stopReason: "end_turn",

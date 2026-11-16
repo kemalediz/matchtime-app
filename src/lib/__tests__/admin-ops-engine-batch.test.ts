@@ -1491,6 +1491,42 @@ describe("one game switched to another size by WhatsApp", () => {
     expect(out?.intent).toBe("format-switched");
   });
 
+  // Review of #613, item 1: one part of a message with several instructions.
+  it("one part of several: the switch is told to queue NO list of its own, and the no-teams-line reply is kept", async () => {
+    const { model } = stubModel({ [SAY]: SWITCH_FACTS });
+    const r = recorder(model, paidWorld());
+    const seen: Array<boolean | undefined> = [];
+    const res = await runAdminOpsBatch({
+      orgId: "org-1",
+      now: NOW,
+      messages: [msg({ body: SAY, senderUserId: "u-kemal", senderName: fullName("kemal") })],
+      history: [],
+      enabled: new Set<Route>(["admin_ops"]),
+      partOfSeveral: true,
+      deps: {
+        ...r.deps,
+        onlyOrganisersLine: onlyKemal,
+        applySwitchFormatWords: async (a) => (
+          seen.push(a.groupList),
+          { outcome: "format-switched", replyText: "✅ Done. The teams are cleared, so tag me to make them again.", replyIfTeamsMade: "✅ Done." }
+        ),
+      },
+    });
+    expect(seen).toEqual([false]);
+    expect(res.outcomes.get(`wa-${SAY.slice(0, 14)}`)).toMatchObject({ replyIfTeamsMade: "✅ Done." });
+  });
+
+  it("alone, the switch posts its list as it always did (no groupList flag passed)", async () => {
+    const { model } = stubModel({ [SAY]: SWITCH_FACTS });
+    const r = recorder(model, paidWorld());
+    const seen: Array<boolean | undefined> = [];
+    await run({
+      messages: [msg({ body: SAY, senderUserId: "u-kemal", senderName: fullName("kemal") })],
+      deps: { ...r.deps, onlyOrganisersLine: onlyKemal, applySwitchFormatWords: async (a) => (seen.push(a.groupList), { outcome: "format-switched", replyText: "x" }) },
+    });
+    expect(seen).toEqual([undefined]);
+  });
+
   it("a total is halved by code: '16 players' is 8 a side", async () => {
     const { calls } = await outcomeOf(SAY, {}, { ...SWITCH_FACTS, size: 16, aSide: false });
     expect(calls.map((c) => c.perSide)).toEqual([8]);
