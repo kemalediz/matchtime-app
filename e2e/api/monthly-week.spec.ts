@@ -65,7 +65,7 @@ const WHEN = formatInTimeZone(KICKOFF, LONDON, "EEE d MMM, HH:mm");
 const MONTH_NAME = formatInTimeZone(KICKOFF, LONDON, "MMMM");
 const MONTH_START = `${formatInTimeZone(KICKOFF, LONDON, "yyyy-MM")}-01`;
 const WEEKDAY = Number(formatInTimeZone(KICKOFF, LONDON, "i")) % 7; // 0 = Sunday
-const HEADER = `📋 *Monday 7-a-side, ${formatInTimeZone(KICKOFF, LONDON, "EEE d MMM 'at' HH:mm")}*`;
+const HEADER = `📋 *Monday Footie, ${formatInTimeZone(KICKOFF, LONDON, "EEE d MMM 'at' HH:mm")}*`;
 const SQUAD = `*${MONTH_NAME} squad:*`;
 const ALL_IN = "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.";
 
@@ -238,7 +238,7 @@ async function club(
   );
   await db.run(
     `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "deadlineHours", "updatedAt")
-     VALUES ($1, $2, $3, 'Monday 7-a-side', $4, '20:00', 'Goals', 5, now())`,
+     VALUES ($1, $2, $3, 'Monday Footie', $4, '20:00', 'Goals', 5, now())`,
     [o.act, o.org, o.sport, o.dayOfWeek ?? WEEKDAY],
   );
 }
@@ -374,7 +374,7 @@ test("1. the regulars are put on the week's match, once, and the list is posted 
     ["dm", `${MATCH_ID}:payg-pool-dm:${P.will.id}`, digits(P.will.phone)],
   ]);
   expect(poolDms[0].text).toBe(
-    buildPaygPoolDm({ name: P.omar.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, paygPricePence: 800, lang: "en" }),
+    buildPaygPoolDm({ name: P.omar.name, activityName: "Monday Footie", matchDate: KICKOFF, paygPricePence: 800, lang: "en" }),
   );
 
   // LAST WEEK'S GAME, played before the month was started here, is not
@@ -602,7 +602,7 @@ test("5. D4: a paste that changes somebody else's line is applied, and that play
 
   // Dave is told, with the one word that undoes it.
   expect((await dms(db, P.dave)).map((d) => d.text)).toEqual([
-    buildPasteUndoDm({ change: "out-paid", actorName: P.alex.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, lang: "en" }),
+    buildPasteUndoDm({ change: "out-paid", actorName: P.alex.name, activityName: "Monday Footie", matchDate: KICKOFF, lang: "en" }),
   ]);
   expect((await dms(db, P.dave))[0].text).toContain(`${P.alex.name} moved you to "Paid but can't play"`);
   // Alex changed nobody else's line: nobody else is told.
@@ -648,7 +648,7 @@ test("6. an old copy cannot bring back a player who dropped; the organisers are 
   // Tom is not a regular: no credit, and his DM says "took you off".
   expect((await credits(db)).filter((c) => !c.voided).map((c) => c.userId)).toEqual([P.bilal.id]);
   expect((await dms(db, P.tom)).map((d) => d.text)).toEqual([
-    buildPasteUndoDm({ change: "out", actorName: P.rob.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, lang: "en" }),
+    buildPasteUndoDm({ change: "out", actorName: P.rob.name, activityName: "Monday Footie", matchDate: KICKOFF, lang: "en" }),
   ]);
 });
 
@@ -767,7 +767,7 @@ test("8. after the match: no payment poll, and the PAYG price is confirmed for t
   expect(ask).toHaveLength(1);
   expect(ask[0].phone).toBe(digits(P.rob.phone));
   expect(ask[0].text).toBe(
-    buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 7-a-side", wasTotal: false, lang: "en" }),
+    buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday Footie", wasTotal: false, lang: "en" }),
   );
   const fee = () =>
     db.one<{ pending: number | null; fee: number | null }>(
@@ -918,7 +918,7 @@ test.describe("10. guards, and Turkish", () => {
     expect(posts).toHaveLength(1);
     expect(posts[0].text).toBe(
       [
-        `📋 *Monday 7-a-side, ${formatInTimeZone(KICKOFF, LONDON, "d MMMM EEEE HH:mm", { locale: trLocale })}*`,
+        `📋 *Monday Footie, ${formatInTimeZone(KICKOFF, LONDON, "d MMMM EEEE HH:mm", { locale: trLocale })}*`,
         "",
         `*${formatInTimeZone(KICKOFF, LONDON, "MMMM", { locale: trLocale })} kadrosu:*`,
         "1. Ayşe",
@@ -964,7 +964,7 @@ test.describe("10. guards, and Turkish", () => {
     ]);
     // The undo DM is in the club's language.
     expect((await dms(db, Q.burak as unknown as Person, ORG2)).map((d) => d.text)).toEqual([
-      buildPasteUndoDm({ change: "out-paid", actorName: Q.ayse.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, lang: "tr" }),
+      buildPasteUndoDm({ change: "out-paid", actorName: Q.ayse.name, activityName: "Monday Footie", matchDate: KICKOFF, lang: "tr" }),
     ]);
   });
 });
@@ -1006,7 +1006,7 @@ test.describe("regulars have priority at the seed", () => {
     ]);
     // Ned is told why.
     expect((await dms(db, R.ned as unknown as Person, ORG3)).map((d) => d.text)).toEqual([
-      buildSeedBumpedDm({ name: R.ned.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, lang: "en" }),
+      buildSeedBumpedDm({ name: R.ned.name, activityName: "Monday Footie", matchDate: KICKOFF, lang: "en" }),
     ]);
     const ev = await db.one<{ cause: string; note: string }>(
       `SELECT cause, note FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 AND "toStatus" = 'BENCH'`,
@@ -1106,7 +1106,7 @@ test.describe("the bench on a pasted list (Kemal, 2026-11-09)", () => {
       await db.one(`SELECT cause, note FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 AND "toStatus" = 'DROPPED'`, [MATCH7, B.ned.id]),
     ).toEqual({ cause: "pasted-roster", note: "taken off the bench on a pasted monthly list" });
     expect((await dms(db, B.ned as unknown as Person, ORG7)).map((d) => d.text)).toEqual([
-      buildPasteUndoDm({ change: "out", actorName: B.rob.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, lang: "en" }),
+      buildPasteUndoDm({ change: "out", actorName: B.rob.name, activityName: "Monday Footie", matchDate: KICKOFF, lang: "en" }),
     ]);
 
     // 3. Zed goes on the bench after that. The organiser pastes a copy
@@ -1169,7 +1169,7 @@ test.describe("after a game: the collector's reply, and the hourly sweep", () =>
     const polled = await poll(request, NOW, GROUP4);
     const ask = polled.filter((i) => i.key === `${MATCH4}:fee-ask`);
     expect(ask).toHaveLength(1);
-    expect(ask[0].text).toBe(buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 7-a-side", wasTotal: false, lang: "en" }));
+    expect(ask[0].text).toBe(buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday Footie", wasTotal: false, lang: "en" }));
     // The regulars' rows are the month's.
     expect((await rows(db, MATCH4)).map((r) => [r.userId, r.paymentMethod])).toEqual([
       [S.rae.id, "monthly"],

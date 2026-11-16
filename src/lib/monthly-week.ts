@@ -40,6 +40,7 @@ import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 import { ROLLING_LOOKBACK_DAYS, adminNoticeSendAfter, pickSeedSource, rollingSeedDue } from "./rolling-squad-rules";
 import { loadClubQuietHours } from "./club-quiet-hours";
 import { buildSeedBumpedDm, buildWeekListPost } from "./monthly-week-copy";
+import { matchFormatTitle } from "./match-format-title";
 import { loadPlayerNames } from "./player-display-name";
 import { FORMAT_UP_KEY_PREFIX, formatUpOffered, oneMoreForNextSize, playerRange } from "./flex-format-rules";
 import { organisersAnnounce } from "./list-announcer";
@@ -334,7 +335,9 @@ export async function loadMonthlyWeek(
     matchStatus: match.status,
     seeded: match.rollingSeededAt != null && match.rollingSeededAt.getTime() >= month.createdAt.getTime(),
     maxPlayers: match.maxPlayers,
-    activityName: match.activity.name,
+    // The size this game is played at, not the activity's usual one
+    // (`match-format-title.ts`): the list after "switch to 8side".
+    activityName: matchFormatTitle(match.activity.name, match.maxPlayers),
     creditRule: normaliseCreditRule(match.activity.org.monthCreditRule),
     paygPricePence: match.activity.org.paygPricePence,
     pickMode: match.activity.org.benchPickMode,

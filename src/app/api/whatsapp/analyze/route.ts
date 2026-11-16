@@ -323,6 +323,7 @@ import {
   type ClauseReport,
 } from "@/lib/pipeline/clause-peel";
 import { describeMentionOutcomes, nameMentions } from "@/lib/pipeline/mention-names";
+import { loadMentionRoster } from "@/lib/mention-roster";
 import { personPickerFor } from "@/lib/pipeline/identify-batch";
 import { loadKnownLids } from "@/lib/known-lids";
 // Sender resolution moved OUT of this file on 2026-09-09. It could not be
@@ -379,7 +380,7 @@ interface InboundMessage {
    */
   /** `phone` (2026-09-30): the phone behind a LID mention, when the Pi
    *  was told it. An entry carries a name, a phone, or both. */
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
   /** The text of the message this one REPLIES to (a WhatsApp quoted
    *  reply), when the Pi forwards it. No Pi build sends it yet (monthly
    *  squad, slice 3): until one does, a bare "IN" in reply to the month's
@@ -4614,29 +4615,21 @@ async function nameMentionsFromRoster(
   );
   if (!relevant) return messages;
 
-  const [members, aliases, knownLids] = await Promise.all([
-    db.membership.findMany({
-      where: { orgId },
-      select: { user: { select: { id: true, name: true, phoneNumber: true } } },
-    }),
-    db.userAlias.findMany({ where: { orgId }, select: { alias: true, userId: true } }),
+  // The roster includes a member added moments ago with no name yet,
+  // named from the WhatsApp name this batch carries for his phone
+  // (`mention-roster.ts`; the Vets, 16 Nov 2026).
+  const withMentions = messages.filter((m) => m?.mentions?.length && RAW_TOKEN.test(m.body ?? ""));
+  const [{ roster, aliases }, knownLids] = await Promise.all([
+    loadMentionRoster(orgId, messages),
     loadKnownLids(orgId).catch((err) => {
       console.error("[analyze] stored LID lookup failed (mentions named without it):", err);
       return [];
     }),
   ]);
-  // Soft-removed members are INCLUDED. Naming someone correctly is not a
-  // write, and whether they may actually play is decided later by code
-  // that reads `leftAt` for itself.
-  const roster = members
-    .map((m) => m.user)
-    .filter((u) => !!u?.name)
-    .map((u) => ({ userId: u.id, name: u.name as string, phone: u.phoneNumber }));
 
   // Phone and stored LID first; the pushnames those leave are put to
   // who-is-who in ONE call for the whole batch (2026-11-09), never
   // matched by spelling.
-  const withMentions = messages.filter((m) => m?.mentions?.length && RAW_TOKEN.test(m.body ?? ""));
   const named = await nameMentions({
     messages: withMentions.map((m) => ({ body: m.body, mentions: m.mentions, mentionNames: m.mentionNames })),
     roster,

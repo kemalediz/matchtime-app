@@ -23,6 +23,7 @@ import { buildOrganiserListUpdate } from "./organisers-list-copy";
 import { sendAdminNotice } from "./admin-channel";
 import { normaliseLang } from "./i18n/lang";
 import { loadPlayerNames } from "./player-display-name";
+import { matchFormatTitle } from "./match-format-title";
 
 export async function announceSquadFullIfJustFilled(
   matchId: string,
@@ -111,7 +112,7 @@ export async function announceSquadFullIfJustFilled(
       orgId: m.activity.orgId,
       text: buildOrganiserListUpdate({
         reason: "squad-complete",
-        activityName: m.activity.name,
+        activityName: matchFormatTitle(m.activity.name, m.maxPlayers),
         whenLabel: dayTimeLabel(lang, m.date),
         confirmed: confirmed.map((a) => a.user),
         bench: bench.map((a) => a.user),
@@ -137,7 +138,7 @@ export async function announceSquadFullIfJustFilled(
       matchId: m.id,
       text: buildSquadCompletePost({
         maxPlayers: m.maxPlayers,
-        activityName: m.activity.name,
+        activityName: matchFormatTitle(m.activity.name, m.maxPlayers),
         kickoffLabel: kickoffLondon,
         confirmed: confirmed.map((a) => shown.get(a.userId)?.display ?? a.user.name),
         bench: bench.map((a) => shown.get(a.userId)?.display ?? a.user.name),

@@ -72,7 +72,7 @@ export interface AdminGroupMessage {
   senderLid?: string | null;
   senderAltPhone?: string | null;
   timestamp?: string | null;
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
   /** Every mentioned JID, raw, the bot's included (2026-11-09). */
   mentions?: string[];
   /** The message this one replies to (a WhatsApp reply), as the Pi saw it. */

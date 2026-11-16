@@ -116,7 +116,7 @@ describe("@-mentions on the wire to /api/whatsapp/analyze", () => {
     expect(m.body).toBe("@158055467598020 is out due to unforeseen issue at work");
     expect(m.body).not.toContain("DÇ");
     expect(m.mentions).toEqual([SHAHROKH_LID]);
-    expect(m.mentionNames).toEqual([{ jid: SHAHROKH_LID, name: "DÇ" }]);
+    expect(m.mentionNames).toEqual([{ jid: SHAHROKH_LID, name: "DÇ", pushname: "DÇ" }]);
     expect(m.botMentioned).toBe(false);
   });
 
@@ -131,8 +131,8 @@ describe("@-mentions on the wire to /api/whatsapp/analyze", () => {
     expect(m.body).toBe("@233452997767322 and @447700900321 out");
     expect(m.body).not.toContain("割");
     expect(m.mentionNames).toEqual([
-      { jid: DAVID_LID, name: "割::::.." }, // the UserAlias key for David
-      { jid: NAJIB_CUS, name: "Najib" },
+      { jid: DAVID_LID, name: "割::::..", pushname: "割::::.." }, // the UserAlias key for David
+      { jid: NAJIB_CUS, name: "Najib", pushname: "Najib" },
     ]);
     expect(m.botMentioned).toBe(false);
   });
@@ -155,7 +155,7 @@ describe("@-mentions on the wire to /api/whatsapp/analyze", () => {
     expect(m.body).toBe("@Match Time put me and @233452997767322 in the same team");
     expect(m.botMentioned).toBe(true);
     // The bot is not a player and never becomes a mention candidate.
-    expect(m.mentionNames).toEqual([{ jid: DAVID_LID, name: "割::::.." }]);
+    expect(m.mentionNames).toEqual([{ jid: DAVID_LID, name: "割::::..", pushname: "割::::.." }]);
   });
 
   it("botMentioned survives a contact lookup that throws (JID match)", async () => {

@@ -128,7 +128,7 @@ function match(over: Record<string, unknown> = {}) {
     activity: {
       id: "mon-7",
       orgId: ORG.id,
-      name: "Monday 7-a-side",
+      name: "Monday 3-a-side",
       venue: "Goals",
       dayOfWeek: 1,
       matchDurationMins: 60,
@@ -343,7 +343,7 @@ describe("WEEKLY: a club on weekly mode is untouched on every branch slice 5 cha
     setWorld(m, { monthly: false });
     const ask = (await instructions(AFTER_MATCH)).find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
     expect(ask.text).toBe(
-      buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 7-a-side", headcount: 4, lang: "en" }),
+      buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 3-a-side", headcount: 4, lang: "en" }),
     );
   });
 
@@ -353,7 +353,7 @@ describe("WEEKLY: a club on weekly mode is untouched on every branch slice 5 cha
     setWorld(m, { monthly: false });
     const ask = (await instructions(AFTER_MATCH)).find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
     expect(ask.text).toBe(
-      buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 7-a-side", headcount: 3, freeCount: 1, lang: "en" }),
+      buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 3-a-side", headcount: 3, freeCount: 1, lang: "en" }),
     );
     expect(ask.text).toContain("(3 played)");
     expect(ask.text).toContain("(1 player is on a free place and not counted.)");
@@ -415,6 +415,20 @@ describe("WEEKLY: a club on weekly mode is untouched on every branch slice 5 cha
   });
 });
 
+describe("MONTHLY: the list post names the size the game is played at (2026-11-16)", () => {
+  // The Vets: "switch to 8side" made the game 16 places, and the list was
+  // still headed with the activity's own "Football 7-a-side".
+  it("a 3-a-side game switched to 4 a side is headed \"Monday 4-a-side\"", async () => {
+    const m = match({ maxPlayers: 8 });
+    setWorld(m, { monthly: true });
+    const out = await instructions(THU_10AM);
+    const posts = out.filter((i) => i.key.startsWith(`${m.id}:month-list:`));
+    expect(posts).toHaveLength(1);
+    const text = "text" in posts[0] ? posts[0].text : "";
+    expect(text.split("\n")[0]).toBe("📋 *Monday 4-a-side, Mon 12 Oct at 20:00*");
+  });
+});
+
 describe("MONTHLY: the list post (plan 5.4)", () => {
   it("is posted once the regulars are on the match, in the group's format, keyed by its hash", async () => {
     const m = match();
@@ -426,7 +440,7 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
     expect(posts[0]).toMatchObject({ kind: "group-message", matchId: m.id, key: `${m.id}:month-list:${weekListHash(text)}:0`, text });
     expect(text).toBe(
       [
-        "📋 *Monday 7-a-side, Mon 12 Oct at 20:00*",
+        "📋 *Monday 3-a-side, Mon 12 Oct at 20:00*",
         "",
         "*October squad:*",
         "1. Alex",
@@ -769,7 +783,7 @@ describe("MONTHLY: the daily 17:00 post is the month's list (2026-11-04)", () =>
     const hash = weekListHash(listText(m));
     setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date(THU_5PM.getTime() - 90 * 60_000) }] });
     const [post] = evening(await instructions(THU_5PM));
-    expect(post.text).toBe(["📋 *Monday 7-a-side, Mon 12 Oct at 20:00*", "", "*Pay as you go:* 2 places open, £8. Say *IN* to take one."].join("\n"));
+    expect(post.text).toBe(["📋 *Monday 3-a-side, Mon 12 Oct at 20:00*", "", "*Pay as you go:* 2 places open, £8. Say *IN* to take one."].join("\n"));
     expect(post.weekListShown).toBeUndefined();
   });
 
@@ -846,7 +860,7 @@ describe("MONTHLY: the daily 17:00 post is the month's list (2026-11-04)", () =>
       setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date(THU_5PM.getTime() - 90 * 60_000) }] });
       withRange(8);
       const [post] = evening(await instructions(THU_5PM));
-      expect(post.text).toBe(["📋 *Monday 7-a-side, Mon 12 Oct at 20:00*", "", "The squad is full.", LINE, "", invite].join("\n"));
+      expect(post.text).toBe(["📋 *Monday 3-a-side, Mon 12 Oct at 20:00*", "", "The squad is full.", LINE, "", invite].join("\n"));
     });
 
     it("two on the bench: no line (the suggestion is the scheduler's own post)", async () => {
@@ -889,7 +903,7 @@ describe("MONTHLY: what a running month switches off (plan 5.4, 5.6)", () => {
     expect(m.feePendingConfirm).toBeNull();
     setWorld(m, { monthly: true });
     const ask = (await instructions(AFTER_MATCH)).find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
-    expect(ask.text).toBe(buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 7-a-side", wasTotal: false, lang: "en" }));
+    expect(ask.text).toBe(buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 3-a-side", wasTotal: false, lang: "en" }));
   });
 
   it("once the amount is staged (the question was sent), the collector is not asked again", async () => {
@@ -906,7 +920,7 @@ describe("MONTHLY: what a running month switches off (plan 5.4, 5.6)", () => {
     setWorld(m, { monthly: true, paygPricePence: null });
     const ask = (await instructions(AFTER_MATCH)).find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
     expect(ask.text).toBe(
-      buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 7-a-side", headcount: 1, lang: "en" }),
+      buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 3-a-side", headcount: 1, lang: "en" }),
     );
   });
 
@@ -1016,7 +1030,7 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
     expect((out[0] as { text: string }).text).toBe("🎟 3 places open for *Mon 12 Oct, 20:00*, £8 PAYG. First to say *IN* gets one.");
     expect(out[1]).toMatchObject({ phone: "447700900201", targetUser: "u-omar" });
     expect((out[1] as { text: string }).text).toBe(
-      buildPaygPoolDm({ name: "Omar Khan", activityName: "Monday 7-a-side", matchDate: KICKOFF, paygPricePence: 800, lang: "en" }),
+      buildPaygPoolDm({ name: "Omar Khan", activityName: "Monday 3-a-side", matchDate: KICKOFF, paygPricePence: 800, lang: "en" }),
     );
   });
 
@@ -1106,7 +1120,7 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
 describe("MONTHLY: round 2 of the review", () => {
   const withPayg = (over: Record<string, unknown> = {}) =>
     match({ attendances: [...REGULARS.map((n, i) => att(n, i)), att("Omar", 4, { paymentMethod: null })], ...over });
-  const prompt = buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 7-a-side", wasTotal: false, lang: "en" });
+  const prompt = buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 3-a-side", wasTotal: false, lang: "en" });
 
   it("D: the fee question is asked ONCE MORE when its first send reported no message id and 30 minutes have passed", async () => {
     const m = withPayg();
@@ -1170,7 +1184,7 @@ describe("MONTHLY: review fixes", () => {
     const out = await instructions(AFTER_MATCH);
     expect(out.some((i) => i.key === `${m.id}:payment-poll`)).toBe(true);
     const ask = out.find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
-    expect(ask.text).toBe(buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 7-a-side", headcount: 4, lang: "en" }));
+    expect(ask.text).toBe(buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 3-a-side", headcount: 4, lang: "en" }));
     expect(out.some((i) => i.key.includes("month-list"))).toBe(false);
   });
 
@@ -1200,7 +1214,7 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     monthStart: new Date("2026-11-01T00:00:00.000Z"),
     status: "open",
     listOpenedAt: OPENED,
-    activity: { name: "Monday 7-a-side", venue: "Goals", dayOfWeek: 1, time: "20:00", sport: { playersPerTeam: 3 } },
+    activity: { name: "Monday 3-a-side", venue: "Goals", dayOfWeek: 1, time: "20:00", sport: { playersPerTeam: 3 } },
     org: { language: "en" },
     members: MEMBERS.map((mm) => ({
       userId: mm.userId,
@@ -1359,7 +1373,7 @@ describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
     payByAt: PAY_BY,
     pricedAt: new Date("2026-10-27T12:00:00.000Z"),
     summarySentAt: null,
-    activity: { name: "Monday 7-a-side", venue: "Goals", dayOfWeek: 1, time: "20:00", sport: { playersPerTeam: 3 } },
+    activity: { name: "Monday 3-a-side", venue: "Goals", dayOfWeek: 1, time: "20:00", sport: { playersPerTeam: 3 } },
     org: { language: "en" },
     members: [...MEMBERS, { userId: "u-sam", name: "Sam Collector", slot: 5 }].map((mm) => ({
       userId: mm.userId,

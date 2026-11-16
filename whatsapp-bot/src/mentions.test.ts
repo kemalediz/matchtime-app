@@ -285,3 +285,23 @@ describe("botMentioned across every bot identity form", () => {
     ).toBe(false);
   });
 });
+
+// 2026-11-16: the server may SAVE a tagged member's name only from his own
+// profile name. `name` falls back to address-book labels on the bot phone.
+describe("rewriteMentions: the pushname travels on its own", () => {
+  it("an address-book label is `name` only; the person's own pushname is `pushname`", () => {
+    const out = rewriteMentions({
+      body: "@128539798032620 is IN",
+      contacts: [{ jid: "128539798032620@lid", name: "Nico Plumber", pushname: "Nico", phone: "447700900555" }],
+    });
+    expect(out.mentionNames).toEqual([{ jid: "128539798032620@lid", name: "Nico Plumber", phone: "447700900555", pushname: "Nico" }]);
+  });
+
+  it("no pushname, no `pushname` field", () => {
+    const out = rewriteMentions({
+      body: "@128539798032620 is IN",
+      contacts: [{ jid: "128539798032620@lid", name: "Nico Plumber", phone: "447700900555" }],
+    });
+    expect(out.mentionNames).toEqual([{ jid: "128539798032620@lid", name: "Nico Plumber", phone: "447700900555" }]);
+  });
+});

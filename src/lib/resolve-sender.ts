@@ -38,6 +38,7 @@
  * is why the Pi now prefers `_data.notifyName`, which survives a broken
  * injected layer, over a contact lookup that does not.
  */
+import { isRawDigitName, usableWhatsAppName } from "./whatsapp-name";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { personPickerFor } from "@/lib/pipeline/identify-batch";
@@ -93,34 +94,9 @@ export async function restoreFormerMember(orgId: string, userId: string): Promis
   if (count > 0) console.log(`[analyze] brought former member ${userId} back into org ${orgId} (who-is-who, sure)`);
 }
 
-/**
- * True when a "name" is really a raw phone number / numeric @lid id
- * ("447700900123", "123456789012@lid", "+44 7700 900123", "@4477…").
- * Never stamp these as display names or print them in group posts —
- * use a neutral placeholder and let an admin rename. (RC4 of the
- * 2026-06-12 Sutton Lads incident: a bare number showed up as a player
- * name in a group post.)
- */
-export function isRawDigitName(raw: string): boolean {
-  const cleaned = raw
-    .trim()
-    .replace(/@?lid$/i, "")
-    .replace(/[@\s+().-]/g, "");
-  return /^\d{5,}$/.test(cleaned);
-}
-/**
- * A WhatsApp display name fit to become a player's name, or null: trimmed,
- * 2 to 60 characters, not a raw number (RC4, see `isRawDigitName`), not
- * the bot or a system author. Used for a nameless placeholder's first
- * post and for a joiner the Pi could name (2026-09-30).
- */
-export function usableWhatsAppName(raw: string | null | undefined): string | null {
-  const name = raw?.trim().replace(/\s+/g, " ") ?? "";
-  if (name.length < 2 || name.length > 60) return null;
-  if (isRawDigitName(name)) return null;
-  if (/^(match ?time|whatsapp|system)$/i.test(name)) return null;
-  return name;
-}
+// `isRawDigitName` and `usableWhatsAppName` live in `whatsapp-name.ts`
+// (2026-11-16) so the pure mention naming can share them without the db.
+export { isRawDigitName, usableWhatsAppName };
 
 /** The phone half of resolution: the member by phone (naming a nameless
  *  placeholder from its first post), or null when the phone finds nobody

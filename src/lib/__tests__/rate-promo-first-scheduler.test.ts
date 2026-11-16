@@ -122,7 +122,7 @@ function match() {
     activity: {
       id: "tuesday-7aside",
       orgId: ORG.id,
-      name: "Tuesday 7-a-side",
+      name: "Tuesday 4-a-side",
       venue: "Goals North Cheam",
       dayOfWeek: 2,
       matchDurationMins: 60,
@@ -200,14 +200,14 @@ describe("the first rating post a club ever gets", () => {
     const p = await promo();
     expect(p?.kind).toBe("group-message");
     expect(p?.text).toContain("*Why rate?* I use the ratings to pick two balanced teams");
-    expect(p?.text).toContain("I've just DM'd the players from the *Tuesday 7-a-side* on Tue 22 Sep");
+    expect(p?.text).toContain("I've just DM'd the players from the *Tuesday 4-a-side* on Tue 22 Sep");
     expect(p?.text).toContain("The same link is where you pick Man of the Match.");
     expect(p?.text).not.toContain("Just DM'd every player");
   });
 
   it("a club that has had one before (another match) gets today's short post", async () => {
     const p = await promo({ sentKeys: ["match-tue-15-sep:rate-promo"] });
-    expect(p?.text).toContain("Just DM'd every player from the *Tuesday 7-a-side*");
+    expect(p?.text).toContain("Just DM'd every player from the *Tuesday 4-a-side*");
     expect(p?.text).not.toContain("Why rate?");
   });
 

@@ -43,6 +43,7 @@ import { cancelAttendance, registerAttendance } from "./attendance";
 import { runAttendanceEngineBatch } from "./attendance-engine-batch";
 import { withOrgAiBudget } from "./ai-budget";
 import { nameMentions as nameMentionsByModel } from "./pipeline/mention-names";
+import { loadMentionRoster } from "./mention-roster";
 import { personPickerFor } from "./pipeline/identify-batch";
 import { buildClaimGuestNameAsk } from "./owner-deps";
 import { moveNamedSlot } from "./team-slot-fill";
@@ -74,7 +75,7 @@ export interface AdminSquadChangeInput {
   lang: string | null | undefined;
   messageId: string;
   text: string;
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
   senderUserId: string;
   senderName: string | null;
   sentAt: Date | null;
@@ -164,14 +165,9 @@ export function hqChangePeople(changes: readonly HqSquadChange[]): PersonPicks {
  *  players' group does. Only read when the text carries a raw tag. */
 export async function nameMentions(orgId: string, text: string, mentionNames: AdminSquadChangeInput["mentionNames"]): Promise<string> {
   if (!mentionNames?.length || !/@\d{5,}/.test(text)) return text;
-  const [members, aliases] = await Promise.all([
-    db.membership.findMany({ where: { orgId }, select: { user: { select: { id: true, name: true, phoneNumber: true } } } }),
-    db.userAlias.findMany({ where: { orgId }, select: { alias: true, userId: true } }),
-  ]);
-  const roster = members
-    .map((m) => m.user)
-    .filter((u) => !!u?.name)
-    .map((u) => ({ userId: u.id, name: u.name as string, phone: u.phoneNumber }));
+  // A member added moments ago with no name yet is named from the WhatsApp
+  // name the tag carried for his phone (`mention-roster.ts`).
+  const { roster, aliases } = await loadMentionRoster(orgId, [{ body: text, mentions: mentionNames.map((m) => m.jid), mentionNames }]);
   const [named] = await nameMentionsByModel({
     messages: [{ body: text, mentions: mentionNames.map((m) => m.jid), mentionNames }],
     roster,

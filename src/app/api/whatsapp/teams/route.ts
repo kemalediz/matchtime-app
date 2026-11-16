@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { matchFormatTitle } from "@/lib/match-format-title";
 import { NextResponse } from "next/server";
 import { formatLondon } from "@/lib/london-time";
 import { resolveTeamLabels } from "@/lib/team-labels";
@@ -58,7 +59,8 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     match: {
-      name: match.activity.name,
+      // The size this game is played at (`match-format-title.ts`).
+      name: matchFormatTitle(match.activity.name, match.maxPlayers),
       date: formatLondon(match.date, "EEEE d MMMM 'at' HH:mm"),
     },
     teams: {

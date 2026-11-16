@@ -62,6 +62,7 @@
  * person" degradation fires on an HONEST unknown instead of on
  * fabricated text.
  */
+import { usableWhatsAppName } from "../whatsapp-name";
 import { resolvePerson } from "./identity";
 import type { Member } from "./types";
 import type { PersonPicker, PersonPicks } from "./who-is-who";
@@ -84,6 +85,11 @@ export interface MentionNameInput {
   jid: string;
   name?: string;
   phone?: string;
+  /** The person's OWN WhatsApp profile name (pushname), when the Pi could
+   *  tell it apart from `name` (2026-11-16). `name` may instead be an
+   *  address-book label on the bot's phone, so only this one is ever
+   *  saved as a player's name (`namesForNamelessMembers`). */
+  pushname?: string;
 }
 
 /** A LID the server has stored against a phone or a member. */
@@ -304,6 +310,79 @@ export async function nameMentions(args: {
     const people = res.picks.get(String(i));
     return people ? resolveMentionNames({ ...base, ...m, people }) : first[i];
   });
+}
+
+/** A member MatchTime holds with no name yet: added by phone when they
+ *  joined the group, before anyone knew what to call them. */
+export interface NamelessMember {
+  userId: string;
+  /** E.164 or null. */
+  phone: string | null;
+}
+
+/**
+ * A NAME FOR A MEMBER WHO HAS NONE, from the batch itself (2026-11-16).
+ *
+ * The Vets, 16 Nov 2026: a player was added to the group (his User row
+ * made from his phone, with no name), and two minutes later an organiser
+ * tagged him "@<lid> is IN". The Pi sent his phone and his WhatsApp name
+ * with the tag, but the mention roster holds only members WITH a name
+ * (a name is what goes into the body), and his was filled only later in
+ * the same request, from his own "In" (`resolve-sender.ts`). So the phone
+ * matched nobody and the group was asked who he was.
+ *
+ * The name is the one his first post would give him, by the same rule
+ * (`usableWhatsAppName`): his own WhatsApp name as a SENDER in this
+ * batch first, else his own profile name (`pushname`) the Pi sent with a
+ * tag of his phone. Never a tag's plain `name`: the Pi fills it from
+ * `pushname || name || shortName`, and the last two can be a label in the
+ * bot phone's address book, which must never become a player's name.
+ * Only a name that may be SAVED is returned: the caller writes it (only
+ * while the row still has none) and puts the member on the roster. A name
+ * used for this batch alone would be worse than none: the body would say
+ * "@Nico is IN" while the member is still nameless, and the engine
+ * provisions a NEW member for an organiser's IN it cannot match
+ * (`pipeline/engine.ts`), a duplicate. Only a phone match counts. Pure.
+ */
+export function namesForNamelessMembers(args: {
+  nameless: NamelessMember[];
+  messages: Array<{
+    authorPhone?: string | null;
+    authorName?: string | null;
+    /** Not read: the words never name anybody here. */
+    body?: string;
+    mentions?: string[];
+    mentionNames?: MentionNameInput[];
+  }>;
+}): Map<string, string> {
+  const out = new Map<string, string>();
+  const byPhone = new Map<string, string>();
+  for (const m of args?.nameless ?? []) {
+    const d = typeof m?.phone === "string" ? m.phone.replace(/\D/g, "") : "";
+    if (d.length >= 7 && typeof m.userId === "string") byPhone.set(d, m.userId);
+  }
+  if (byPhone.size === 0) return out;
+
+  const fromSenders = new Map<string, string>();
+  const fromMentions = new Map<string, string>();
+  for (const msg of args?.messages ?? []) {
+    const sender = typeof msg?.authorPhone === "string" ? msg.authorPhone.replace(/\D/g, "") : "";
+    const senderName = usableWhatsAppName(msg?.authorName ?? null);
+    const senderId = byPhone.get(sender);
+    if (senderId && senderName && !fromSenders.has(senderId)) fromSenders.set(senderId, senderName);
+    for (const mn of msg?.mentionNames ?? []) {
+      if (!mn || typeof mn.jid !== "string") continue;
+      const phone = PHONE_JID.test(mn.jid) ? digitsOf(mn.jid) : typeof mn.phone === "string" ? mn.phone.replace(/\D/g, "") : "";
+      const id = byPhone.get(phone);
+      const name = usableWhatsAppName(typeof mn.pushname === "string" ? mn.pushname : null);
+      if (id && name && !fromMentions.has(id)) fromMentions.set(id, name);
+    }
+  }
+  for (const userId of byPhone.values()) {
+    const name = fromSenders.get(userId) ?? fromMentions.get(userId);
+    if (name) out.set(userId, name);
+  }
+  return out;
 }
 
 /** One compact ops line per message, or null when there is nothing to say. */

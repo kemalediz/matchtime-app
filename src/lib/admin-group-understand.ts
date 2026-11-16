@@ -201,7 +201,7 @@ export interface UnderstandInput {
   text: string;
   /** The Pi's real mention flag for the bot (a fact, 2026-10-30). */
   botMentioned?: boolean;
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
   quoted: QuotedMessage | null;
   /** Who sent it, when MatchTime knows them; null for someone it does not. */
   senderUserId: string | null;

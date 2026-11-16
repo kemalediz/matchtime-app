@@ -530,7 +530,7 @@ export interface AdminGroupForward {
   senderPhone: string;
   senderLid?: string;
   timestamp: string;
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
   groupSubject?: string;
   /** A WhatsApp reply (2026-10-16). See `readGroupMessageForServer`. */
   quotedMessageId?: string;
@@ -643,7 +643,7 @@ export interface AnalyzeInboundMessage {
    * when the Pi has been told it (group metadata, message envelopes). The
    * server's exact key. An entry carries a name, a phone, or both.
    */
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
   /** Did this message @-mention the bot's own JID? Computed on the Pi
    *  (only it knows the bot's selfId). PRIMARY signal for the server's
    *  @Match Time interaction-contract gate; the server falls back to body

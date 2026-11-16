@@ -49,7 +49,7 @@ async function played(db: TestDb, at = new Date(), score: { red: number; yellow:
   await db.run(
     `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline",
                           "redScore", "yellowScore", "postMatchEndFlow", "updatedAt")
-     VALUES ($1, $2, $3, 14, $4, $5, $6, $7, false, now())`,
+     VALUES ($1, $2, $3, 10, $4, $5, $6, $7, false, now())`,
     [MATCH_ID, ACTIVITY_ID, kickoff, score ? "COMPLETED" : "TEAMS_PUBLISHED", new Date(kickoff.getTime() - 60 * 60 * 1000), score?.red ?? null, score?.yellow ?? null],
   );
 }

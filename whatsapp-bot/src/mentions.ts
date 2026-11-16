@@ -78,6 +78,9 @@ export interface RawMentionContact {
   isMe?: boolean;
   /** `pushname || name || shortName`. UNTRUSTED and possibly not a string. */
   name?: unknown;
+  /** `pushname` alone (2026-11-16): the person's OWN profile name. `name`
+   *  and `shortName` can be labels from the bot phone's address book. */
+  pushname?: unknown;
   /**
    * The phone behind a LID mention, when the driver has been TOLD it
    * (the harvested directory or Baileys' local mapping store, both fed by
@@ -105,6 +108,10 @@ export interface MentionName {
   jid: string;
   name?: string;
   phone?: string;
+  /** The person's own WhatsApp profile name, when the contact had one
+   *  (2026-11-16). The only name the server may SAVE for a member who has
+   *  none; `name` may be an address-book label. */
+  pushname?: string;
 }
 
 /** Shortest run of digits that can plausibly be a WhatsApp id. */
@@ -271,7 +278,8 @@ export function rewriteMentions(args: {
     const name = sanitiseMentionName(c.name);
     const phone = isLidMention(c.jid) ? sanitiseMentionPhone(c.phone) : undefined;
     if (!name && !phone) continue;
-    mentionNames.push({ jid: c.jid, ...(name ? { name } : {}), ...(phone ? { phone } : {}) });
+    const pushname = sanitiseMentionName(c.pushname);
+    mentionNames.push({ jid: c.jid, ...(name ? { name } : {}), ...(phone ? { phone } : {}), ...(pushname ? { pushname } : {}) });
   }
 
   return { body, mentionNames, botMentioned };
