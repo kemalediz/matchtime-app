@@ -12,8 +12,9 @@
  * STAFF TESTS (#607): this page is a MEASUREMENT, so a sign-up ticked as a
  * test from a verified MatchTime staff session (`PoolProfile.staffTest`)
  * is left out of every count here, and the offer health leaves out offers
- * made to staff tests by the offer's own flag (`PoolOffer.staffTest`).
- * Operationally a staff test is a player like any other (offers, rounds,
+ * made to staff tests by the offer's own flag (`PoolOffer.staffTest`),
+ * except in the platform cap hits: that cap is shared, so their offers take
+ * room there like any other (round 7 of #607). Operationally a staff test is a player like any other (offers, rounds,
  * places, posts, pages): nothing outside the measurements leaves him out.
  */
 import { db } from "../db";
@@ -120,14 +121,16 @@ async function loadOfferHealthFacts(q: FunnelQuery): Promise<OfferHealthFacts> {
       select: { createdAt: true, sendAfter: true, failReason: true, failedAt: true },
     }),
     db.poolOffer.findMany({
-      where: { sentAt: { gte: new Date(start.getTime() - CAP_LOOKBACK_MS), lt: end }, staffTest: false },
-      select: { sentAt: true },
+      // Every offer, a staff test's too: the platform cap is shared.
+      where: { sentAt: { gte: new Date(start.getTime() - CAP_LOOKBACK_MS), lt: end } },
+      select: { sentAt: true, staffTest: true },
     }),
     db.poolProfile.findMany({ where: { status: "paused", pausedReason: "ignored", staffTest: false }, select: { pausedAt: true } }),
   ]);
   return {
     offerJobs,
-    delivered: delivered.map((o) => o.sentAt).filter((d): d is Date => !!d),
+    delivered: delivered.flatMap((o) => (o.sentAt && !o.staffTest ? [o.sentAt] : [])),
+    staffDelivered: delivered.flatMap((o) => (o.sentAt && o.staffTest ? [o.sentAt] : [])),
     ignoredPausedAt: paused.map((p) => p.pausedAt).filter((d): d is Date => !!d),
   };
 }

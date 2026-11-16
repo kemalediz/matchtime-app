@@ -2,7 +2,7 @@
  * Auth.js's own routes, as they were, with one addition (round 2 of #607,
  * 2026-11-16): a sign-out also clears the /play staff cookie (`mt-staff`,
  * `src/lib/pool/visit-rules.ts`), so Kemal signing in once on someone
- * else's device does not mark that browser as MatchTime staff for a year.
+ * else's device does not leave that browser marked as MatchTime staff.
  * Every sign-out in the app (the sidebar, the claim page, the player's
  * erase on /play/manage) is `signOut` from next-auth/react, which POSTs
  * here to /api/auth/signout.

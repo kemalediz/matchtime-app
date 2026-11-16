@@ -299,6 +299,7 @@ describe("buildOfferHealth", () => {
           job({ failReason: "Pi said no", failedAt: at("2026-10-22T10:00:00Z") }),
         ],
         delivered: [],
+        staffDelivered: [],
         ignoredPausedAt: [],
       },
       { from, to },
@@ -311,6 +312,7 @@ describe("buildOfferHealth", () => {
       {
         offerJobs: [job({ sendAfter: at("2026-10-22T07:30:00Z") }), job(), job({ createdAt: at("2026-10-01T22:00:00Z"), sendAfter: at("2026-10-02T07:30:00Z") })],
         delivered: [],
+        staffDelivered: [],
         ignoredPausedAt: [],
       },
       { from, to },
@@ -319,7 +321,7 @@ describe("buildOfferHealth", () => {
   });
 
   it("ignored pauses: profiles paused for three ignored offers in a row, paused in the range", () => {
-    const h = buildOfferHealth({ offerJobs: [], delivered: [], ignoredPausedAt: [at("2026-10-21T10:00:00Z"), at("2026-09-01T10:00:00Z")] }, { from, to });
+    const h = buildOfferHealth({ offerJobs: [], delivered: [], staffDelivered: [], ignoredPausedAt: [at("2026-10-21T10:00:00Z"), at("2026-09-01T10:00:00Z")] }, { from, to });
     expect(h.ignoredPauses).toBe(1);
   });
 
@@ -329,22 +331,35 @@ describe("buildOfferHealth", () => {
     const burst = Array.from({ length: POOL_PLATFORM_CAPS.perHour }, (_, i) => new Date(base + i * 60_000));
     // One more, 2 hours later: the hour has room again.
     const later = [new Date(base + 2 * 3600_000)];
-    const h = buildOfferHealth({ offerJobs: [], delivered: [...later, ...burst], ignoredPausedAt: [] }, { from, to });
+    const h = buildOfferHealth({ offerJobs: [], delivered: [...later, ...burst], staffDelivered: [], ignoredPausedAt: [] }, { from, to });
     expect(h.platformCapHits).toBe(1);
     expect(h.delivered).toBe(POOL_PLATFORM_CAPS.perHour + 1);
+  });
+
+  // Round 7 of #607: the platform cap is SHARED, so a staff test's offer
+  // takes room like any other; it is only left out of "delivered".
+  it("platform cap hits: a staff test's offer takes the shared room like any other, but is not counted as delivered", () => {
+    const base = at("2026-10-21T08:00:00Z").getTime();
+    const players = Array.from({ length: POOL_PLATFORM_CAPS.perHour - 1 }, (_, i) => new Date(base + i * 60_000));
+    const staff = [new Date(base + POOL_PLATFORM_CAPS.perHour * 60_000)];
+    const h = buildOfferHealth({ offerJobs: [], delivered: players, staffDelivered: staff, ignoredPausedAt: [] }, { from, to });
+    expect(h.platformCapHits).toBe(1);
+    expect(h.delivered).toBe(POOL_PLATFORM_CAPS.perHour - 1);
+    // The same offers without the staff test's: the hour never fills.
+    expect(buildOfferHealth({ offerJobs: [], delivered: players, staffDelivered: [], ignoredPausedAt: [] }, { from, to }).platformCapHits).toBe(0);
   });
 
   it("a cap reached by offers sent before the range counts only for the moment it filled inside the range", () => {
     const start = at("2026-10-19T23:00:00Z").getTime(); // 20 Oct 00:00 BST
     const before = Array.from({ length: POOL_PLATFORM_CAPS.perHour - 1 }, (_, i) => new Date(start - (i + 1) * 60_000));
     const inside = [new Date(start + 60_000)];
-    const h = buildOfferHealth({ offerJobs: [], delivered: [...before, ...inside], ignoredPausedAt: [] }, { from, to });
+    const h = buildOfferHealth({ offerJobs: [], delivered: [...before, ...inside], staffDelivered: [], ignoredPausedAt: [] }, { from, to });
     expect(h.platformCapHits).toBe(1);
     expect(h.delivered).toBe(1);
   });
 
   it("nothing at all: every count is 0", () => {
-    expect(buildOfferHealth({ offerJobs: [], delivered: [], ignoredPausedAt: [] }, { from, to })).toEqual({
+    expect(buildOfferHealth({ offerJobs: [], delivered: [], staffDelivered: [], ignoredPausedAt: [] }, { from, to })).toEqual({
       delivered: 0,
       capsHit: { total: 0, dayCap: 0, weekCap: 0, declineCooldown: 0 },
       quietHourHolds: 0,
@@ -364,7 +379,7 @@ describe("funnelCsv", () => {
     },
     q,
   );
-  const health = buildOfferHealth({ offerJobs: [], delivered: [], ignoredPausedAt: [] }, q);
+  const health = buildOfferHealth({ offerJobs: [], delivered: [], staffDelivered: [], ignoredPausedAt: [] }, q);
   const csv = funnelCsv(report, health, q);
   const lines = csv.split("\r\n");
 

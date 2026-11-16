@@ -24,6 +24,7 @@ import {
   readPoolFunnelPeriod,
   readPoolPageStep,
 } from "../visit-rules";
+import { AUTH_SESSION_MAX_AGE_SECONDS } from "../../auth-session";
 
 const FETCHERS = [
   "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
@@ -206,8 +207,9 @@ describe("our own staff's visits (2026-11-12): MatchTime staff only, since 2026-
   // Set by the server since 2026-11-16 (`/admin/staff-mark`): WebKit caps a
   // cookie a page script sets at 7 days, so Kemal's iPhone lost the mark
   // weekly. A server-set cookie keeps its year, and no script needs to read it.
-  it("the cookie the server sets: a year long, the whole site, sent on a link opened from elsewhere, Secure on https, out of page script's reach", () => {
-    expect(poolStaffCookieOptions({ secure: true })).toEqual({ name: "mt-staff", value: "2", maxAge: 31_536_000, path: "/", sameSite: "lax", secure: true, httpOnly: true });
+  it("the cookie the server sets: as long as a session (30 days, round 7 of #607), the whole site, sent on a link opened from elsewhere, Secure on https, out of page script's reach", () => {
+    expect(poolStaffCookieOptions({ secure: true })).toEqual({ name: "mt-staff", value: "2", maxAge: 2_592_000, path: "/", sameSite: "lax", secure: true, httpOnly: true });
+    expect(poolStaffCookieOptions({ secure: true }).maxAge).toBe(AUTH_SESSION_MAX_AGE_SECONDS);
     expect(poolStaffCookieOptions({ secure: false })).toMatchObject({ value: "2", secure: false, httpOnly: true });
   });
   it("cleared for an organiser who is not MatchTime staff: the same cookie, expired", () => {

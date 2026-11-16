@@ -26,12 +26,12 @@ beforeEach(() => {
 });
 
 describe("POST /admin/staff-mark", () => {
-  it("MatchTime staff: the server sets the staff cookie for a year, Secure on https, not readable by page script", async () => {
+  it("MatchTime staff: the server sets the staff cookie for as long as a session lasts (30 days), Secure on https, not readable by page script", async () => {
     const res = await call();
     expect(res.status).toBe(204);
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(org.isSuperadmin).toHaveBeenCalledWith("u-kemal");
-    expect(jar.set).toHaveBeenCalledWith({ name: "mt-staff", value: "2", maxAge: 31_536_000, path: "/", sameSite: "lax", secure: true, httpOnly: true });
+    expect(jar.set).toHaveBeenCalledWith({ name: "mt-staff", value: "2", maxAge: 2_592_000, path: "/", sameSite: "lax", secure: true, httpOnly: true });
   });
 
   it("plain http (next dev): the same cookie without Secure", async () => {

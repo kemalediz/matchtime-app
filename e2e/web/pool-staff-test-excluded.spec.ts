@@ -75,14 +75,21 @@ const SIGNUP = (name: string) => ({
   source: { c: CODE },
 });
 
-test("a sign-up with a hand-set staff cookie and no session is an ordinary one", async ({ browser, baseURL, db }) => {
+const sentCount = async (db: TestDb) =>
+  (await db.one<{ n: number }>(`SELECT COALESCE(sum(count), 0)::int AS n FROM "PoolCampaignVisit" WHERE code = $1 AND step = 'sent'`, [CODE]))!.n;
+
+// Round 7 of #607: the staff cookie AND a staff-test claim together, with no
+// session, are still an ordinary sign-up, and its "sent" step is counted.
+test("a sign-up with a hand-set staff cookie, claiming to be a staff test, and no session is an ordinary one, counted as sent", async ({ browser, baseURL, db }) => {
   const context = await browser.newContext();
   await context.addCookies([{ name: "mt-staff", value: "2", url: baseURL! }]);
-  const res = await context.request.post("/api/play/signup", { data: SIGNUP("Cookie Only"), headers: { "x-forwarded-for": "198.51.100.201" } });
+  const sentBefore = await sentCount(db);
+  const res = await context.request.post("/api/play/signup", { data: { ...SIGNUP("Cookie Only"), staffTest: true }, headers: { "x-forwarded-for": "198.51.100.201" } });
   expect(res.status()).toBe(200);
   const answer = (await res.json()) as { code: string; staffTest?: boolean };
   expect(answer.staffTest).toBeUndefined();
   expect(await db.one(`SELECT "staffTest" FROM "PoolProfile" WHERE "confirmCode" = $1`, [answer.code])).toEqual({ staffTest: false });
+  expect(await sentCount(db)).toBe(sentBefore + 1);
   await db.run(`DELETE FROM "PoolProfile" WHERE "confirmCode" = $1`, [answer.code]);
   await context.close();
 });

@@ -57,7 +57,9 @@
  *                      lifted leaves no record and is not counted.
  *   platform cap hits  times a delivered offer filled the platform's hour
  *                      or London day (`platformRoom` left 0), so the next
- *                      one waited.
+ *                      one waited. The cap is shared, so a staff test's
+ *                      offer takes room here like any other, though it is
+ *                      never counted as delivered (round 7 of #607).
  */
 import { formatLondon, londonDateTimeToUtc } from "../london-time";
 import { platformRoom, type PlayerCapRefusal } from "./caps";
@@ -343,6 +345,10 @@ export interface OfferHealthFacts {
   offerJobs: { createdAt: Date; sendAfter: Date | null; failReason: string | null; failedAt: Date | null }[];
   /** When delivered offers went, from a day before the range to its end. */
   delivered: Date[];
+  /** The same for offers to MatchTime staff tests (`PoolOffer.staffTest`):
+   *  never "delivered", but the platform cap is shared, so they took room
+   *  like any other offer (round 7 of #607). */
+  staffDelivered: Date[];
   /** `pausedAt` of every profile paused now for ignored offers. */
   ignoredPausedAt: Date[];
 }
@@ -360,14 +366,16 @@ export function buildOfferHealth(facts: OfferHealthFacts, q: { from: string; to:
   const reasonOf = new Map<string, PlayerCapRefusal>(PLAYER_CAP_REFUSALS.map((r) => [poolOfferCancelFailReason(r), r]));
   const capped = facts.offerJobs.filter((j) => within(j.failedAt, range)).flatMap((j) => (j.failReason && reasonOf.has(j.failReason) ? [reasonOf.get(j.failReason)!] : []));
 
-  const sent = [...facts.delivered].sort((a, b) => a.getTime() - b.getTime());
+  // The platform's hour and day are shared by every offer, a staff test's
+  // included, so the cap hits are worked out over all of them.
+  const everySent = [...facts.delivered, ...facts.staffDelivered].sort((a, b) => a.getTime() - b.getTime());
   let platformCapHits = 0;
-  sent.forEach((t, i) => {
-    if (within(t, range) && platformRoom(sent.slice(0, i + 1), t) === 0) platformCapHits++;
+  everySent.forEach((t, i) => {
+    if (within(t, range) && platformRoom(everySent.slice(0, i + 1), t) === 0) platformCapHits++;
   });
 
   return {
-    delivered: sent.filter((t) => within(t, range)).length,
+    delivered: facts.delivered.filter((t) => within(t, range)).length,
     capsHit: {
       total: capped.length,
       dayCap: capped.filter((r) => r === "day-cap").length,

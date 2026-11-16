@@ -23,7 +23,8 @@
  *     scanner, our staff not at all;
  *   - signing out clears the staff cookie;
  *   - the staff cookie is set by the server (2026-11-16), HttpOnly, so
- *     WebKit's 7-day cap on script-set cookies does not apply;
+ *     WebKit's 7-day cap on script-set cookies does not apply; it lasts a
+ *     session's length and is renewed on every admin page (round 7 of #607);
  *   - the owner's source codes page shows opened, started, sent and
  *     confirmed for today, 7 days or 30 days, with the drop between steps.
  * The server's own steps (sent, confirmed, a staff test sign-up) are
@@ -236,23 +237,43 @@ test.describe("the page's steps", () => {
     await owner.close();
   });
 
-  test("MatchTime staff who load /admin get the staff cookie from the server, a year long and HttpOnly, and their /play visit counts nothing; a player gets none", async ({ browser, db }) => {
+  test("MatchTime staff who load /admin get the staff cookie from the server, as long as a session and HttpOnly, renewed on every admin page, and their /play visit counts nothing; a player gets none", async ({ browser, db }) => {
     await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
     await db.run(`UPDATE "User" SET "isSuperadmin" = true WHERE id = $1`, [U.admin]);
     const staff = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
     const page = await staff.newPage();
+    const staffCookie = async () => (await staff.cookies()).find((c) => c.name === "mt-staff");
     await signInAs(page, U.admin, "/admin");
-    await expect.poll(async () => (await staff.cookies()).find((c) => c.name === "mt-staff")?.value, { timeout: 30_000 }).toBe("2");
-    const cookie = (await staff.cookies()).find((c) => c.name === "mt-staff")!;
+    await expect.poll(async () => (await staffCookie())?.value, { timeout: 30_000 }).toBe("2");
+    // Every staff-mark call the page made has answered before the cookie is
+    // looked at or taken away (round 7 of #607: in dev React runs the effect
+    // twice, and a late second answer set it again after the clear).
+    await page.waitForLoadState("networkidle");
+    const cookie = (await staffCookie())!;
     expect(cookie.path).toBe("/");
     expect(cookie.sameSite).toBe("Lax");
-    expect(cookie.expires * 1000 - Date.now()).toBeGreaterThan(360 * 86_400_000);
+    // Round 7 of #607: no longer than a session (30 days), so a browser whose
+    // session simply ran out stops hiding its visits.
+    const life = cookie.expires * 1000 - Date.now();
+    expect(life).toBeGreaterThan(29.9 * 86_400_000);
+    expect(life).toBeLessThanOrEqual(30 * 86_400_000);
     // Set in a response header, never by page script (WebKit caps those at 7 days).
     expect(cookie.httpOnly).toBe(true);
     expect(await page.evaluate(() => document.cookie)).not.toContain("mt-staff");
+    // Renewed on every admin page, a move inside /admin included.
+    await staff.clearCookies({ name: "mt-staff" });
+    const renewed = page.waitForResponse((r) => r.url().endsWith("/admin/staff-mark"));
+    await page.locator("nav").getByRole("link", { name: "Stats", exact: true }).click();
+    await page.waitForURL(/\/admin\/stats/);
+    await renewed;
+    await expect.poll(async () => (await staffCookie())?.value, { timeout: 10_000 }).toBe("2");
+    await page.waitForLoadState("networkidle");
     // Round 3 of #607: the SESSION alone, the cookie taken away first (the
     // cookie alone is the "a browser with the staff cookie" case above).
+    // Off /admin first, so no staff-mark call is left to set it again.
+    await page.goto("about:blank");
     await staff.clearCookies({ name: "mt-staff" });
+    expect(await staffCookie()).toBeUndefined();
     const beacons = await watchBeacons(page);
     await page.goto(`/play?src=${CODE}`);
     await hydrated(page);

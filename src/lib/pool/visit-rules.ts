@@ -43,6 +43,7 @@
  * coincide with a single sign-up.
  */
 import { formatInTimeZone } from "date-fns-tz";
+import { AUTH_SESSION_MAX_AGE_SECONDS } from "../auth-session";
 import { isLinkPreviewFetcher } from "../link-preview-fetchers";
 import type { PoolProfileSource } from "./vocab";
 
@@ -114,8 +115,8 @@ export function poolVisitDay(now: Date): string {
  * of /play were counted as people opening and starting it. So a browser
  * that has loaded an /admin page as MatchTime staff carries this cookie
  * (set by the server, `POST /admin/staff-mark`, which the admin layout's
- * `StaffMark` calls, a year long, so a staff phone is known on /play even
- * when signed out), and the beacon counts nothing for
+ * `StaffMark` calls on every admin page, so a staff phone is known on /play
+ * even when signed out), and the beacon counts nothing for
  * it, nor for a request that carries a staff session. The cookie is
  * unsigned: forged, it only hides that browser's own visits. A STAFF TEST
  * sign-up (`PoolProfile.staffTest`, 2026-11-16), which the pool's
@@ -132,7 +133,10 @@ export function poolVisitDay(now: Date): string {
  */
 export const POOL_STAFF_COOKIE = "mt-staff";
 const POOL_STAFF_COOKIE_VALUE = "2";
-const POOL_STAFF_COOKIE_MAX_AGE = 365 * 24 * 3600;
+/** No longer than a staff session (round 7 of #607; a year until then):
+ *  renewed on every admin page a staff member loads, so a browser whose
+ *  session simply ran out stops hiding its visits too. */
+const POOL_STAFF_COOKIE_MAX_AGE = AUTH_SESSION_MAX_AGE_SECONDS;
 
 /** Is this request from our own staff? `staffSession`: the request's
  *  session is a MatchTime staff account (`User.isSuperadmin`). */
@@ -157,7 +161,7 @@ export interface PoolStaffCookieOptions {
 
 /** The staff cookie as the SERVER sets it (`/admin/staff-mark`, 2026-11-16:
  *  WebKit caps a cookie a page script sets at 7 days, a server-set one keeps
- *  its year). First-party, the whole site, Lax so it is sent when /play is
+ *  its full life, a session's length since round 7 of #607). First-party, the whole site, Lax so it is sent when /play is
  *  opened from a link elsewhere, Secure on https (every deployment; plain
  *  http is only `next dev`), and HttpOnly: only the server reads it. */
 export function poolStaffCookieOptions(o: { secure: boolean }): PoolStaffCookieOptions {
@@ -171,7 +175,7 @@ export function poolStaffCookieClearedOptions(o: { secure: boolean }): PoolStaff
 
 /** The same deletion as a Set-Cookie header, for a response built outside
  *  `cookies()`: signing out (round 2 of #607), so a staff member who signs
- *  in once on someone else's device does not leave it marked for a year. */
+ *  in once on someone else's device does not leave it marked as staff. */
 export function poolStaffCookieClearedHeader(o: { secure: boolean }): string {
   const c = poolStaffCookieClearedOptions(o);
   return [`${c.name}=`, `Max-Age=${c.maxAge}`, `Path=${c.path}`, "SameSite=Lax", "HttpOnly", ...(c.secure ? ["Secure"] : [])].join("; ");
