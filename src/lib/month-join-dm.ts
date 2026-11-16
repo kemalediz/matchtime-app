@@ -1,26 +1,50 @@
 /**
- * A PLAYER'S ANSWER TO "JOIN <MONTH> FOR THE GAMES LEFT?" (2026-10-29,
- * review of #465). Joining a month under way never rests on one reading:
- * MatchTime asks by DM (`askToJoinMonth`), and his reply is read by the
- * monthly reader (the same model step that reads every month sign-up, with
- * MatchTime's question as the message he replies to). A sign-up "in" for
- * that month joins him for the games left, as "IN FOR <month>" would; "out"
- * closes the ask; anything else goes on to the other DM handlers.
+ * A PLAYER'S ANSWER TO MATCHTIME'S MONTH QUESTIONS, by DM. Two questions,
+ * one handler, both answered through the monthly reader (the same model
+ * step that reads every month sign-up, with MatchTime's question as the
+ * message he replies to):
  *
- * The same handler answers the other question of that ask (2026-11-16):
- * "which of the games left will you play?", asked when the games he
- * committed to did not fit the games left. His answer is checked the same
- * way (`fitLateJoinGames`); one that still does not fit stores nothing and
- * leaves the question open.
+ *   "Join <month> for the N games left?" (2026-10-29, review of #465):
+ *     joining a month under way never rests on one reading. A sign-up "in"
+ *     joins him for the games left; "out" closes the ask.
+ *   "Which of them will you play?" (2026-11-16): his games did not fit the
+ *     games he covers. It lists them; his answer is read against those
+ *     dates, with what he said before as the chat (a plain "yes" keeps it).
  *
- * Only while the ask is open and it is the message he is answering (the
+ * Every count is checked against the games he covers (`fitGamesCommitted`):
+ * one that does not fit is never stored. To the join question it is asked
+ * about instead; to the which question it stores nothing and leaves the
+ * question open. Anything else goes on to the other DM handlers.
+ *
+ * Only while a question is open and it is the message he is answering (the
  * quoted one, or MatchTime's newest DM to him); one delivery is read once.
  */
 import { db } from "./db";
-import { MONTH_JOIN_ASK_KIND, MONTH_JOIN_WHICH_KIND } from "./month-signup";
-import { fitLateJoinGames } from "./squad-month-rules";
+import { formatLondon } from "./london-time";
+import { MONTH_JOIN_ASK_KIND, MONTH_JOIN_WHICH_KIND, MONTH_WHICH_OPEN_MS, parseWhichAskState, type WhichAskState } from "./month-signup";
+import { fitGamesCommitted, joinerGamesFromAnswer } from "./squad-month-rules";
 
 const OPEN_MS = 48 * 3600 * 1000;
+
+interface OpenAsk {
+  id: string;
+  kind: string;
+  createdAt: Date;
+  dm: string;
+  orgId: string;
+  monthId: string;
+  state: WhichAskState | null;
+}
+
+function openAskOf(a: { id: string; kind: string; key: string; text: string | null; createdAt: Date }): OpenAsk | null {
+  if (a.kind === MONTH_JOIN_WHICH_KIND) {
+    const state = parseWhichAskState(a.text);
+    return state ? { id: a.id, kind: a.kind, createdAt: a.createdAt, dm: state.dm, orgId: state.orgId, monthId: state.monthId, state } : null;
+  }
+  // key: org-<orgId>:msu:join-ask:<monthId>:<userId>
+  const m = /^org-(.+?):msu:join-ask:([^:]+):/.exec(a.key);
+  return m && a.text ? { id: a.id, kind: a.kind, createdAt: a.createdAt, dm: a.text, orgId: m[1], monthId: m[2], state: null } : null;
+}
 
 export async function handleMonthJoinDmReply(input: {
   userId: string;
@@ -28,24 +52,33 @@ export async function handleMonthJoinDmReply(input: {
   waMessageId: string;
   answering: () => Promise<string | null>;
   now: Date;
-}): Promise<{ handled: "month-join-yes" | "month-join-no"; monthId: string } | null> {
+}): Promise<{ handled: "month-join-yes" | "month-join-no" | "month-join-asked"; monthId: string } | null> {
   try {
-    const ask = await db.sentNotification.findFirst({
-      where: { kind: { in: [MONTH_JOIN_ASK_KIND, MONTH_JOIN_WHICH_KIND] }, targetUser: input.userId, createdAt: { gte: new Date(input.now.getTime() - OPEN_MS) } },
+    const rows = await db.sentNotification.findMany({
+      where: {
+        kind: { in: [MONTH_JOIN_ASK_KIND, MONTH_JOIN_WHICH_KIND] },
+        targetUser: input.userId,
+        createdAt: { gte: new Date(input.now.getTime() - Math.max(OPEN_MS, MONTH_WHICH_OPEN_MS)) },
+      },
       orderBy: { createdAt: "desc" },
+      take: 10,
       select: { id: true, key: true, kind: true, text: true, createdAt: true },
     });
-    if (!ask?.text) return null;
-    if ((await input.answering())?.trim() !== ask.text.trim()) return null;
-    // key: org-<orgId>:msu:join-ask:<monthId>:<userId>
-    const m = /^org-(.+?):msu:join-ask:([^:]+):/.exec(ask.key);
-    if (!m) return null;
-    const [, orgId, monthId] = m;
+    if (rows.length === 0) return null;
+    const said = (await input.answering())?.trim();
+    if (!said) return null;
+    const ask = rows.map(openAskOf).find((a): a is OpenAsk => !!a && a.dm.trim() === said);
+    if (!ask) return null;
+    const { orgId, monthId } = ask;
     try {
       await db.sentNotification.create({ data: { key: `org-${orgId}:msu:join-reply:${input.waMessageId}`, kind: "month-join-reply" } });
     } catch {
       return null; // this delivery was read already
     }
+    const { loadSignupMonth, applySignup, askWhichGames, commitMonthGames, gamesLeftIn, isRegularMember } = await import("./month-signup");
+    const month = await loadSignupMonth(monthId);
+    if (!month) return null;
+    const listed = (ask.state?.dates ?? []).map((d) => new Date(d));
     const { loadMonthlyReaderContext, readMonthlyMessage } = await import("./monthly-reader");
     const { withOrgAiBudget } = await import("./ai-budget");
     const reading = await withOrgAiBudget(orgId, async () => {
@@ -55,41 +88,66 @@ export async function handleMonthJoinDmReply(input: {
         {
           body: input.text,
           sender: { userId: input.userId, name: me?.name ?? null, organiser: me?.organiser ?? false },
-          history: [],
-          reply: { at: ask.createdAt, text: ask.text, topic: null, match: null, author: null },
+          // What he said that the question is about: a plain "yes" keeps it.
+          history: ask.state?.original ? [{ author: me?.name ?? null, body: ask.state.original }] : [],
+          reply: { at: ask.createdAt, text: ask.dm, topic: null, match: null, author: null },
           now: input.now,
+          ...(ask.state
+            ? {
+                answering: {
+                  label: formatLondon(month.kickoffs[0] ?? month.firstKickoff, "MMMM yyyy"),
+                  dates: listed.map((d) => ({ day: formatLondon(d, "EEE d MMM"), played: d.getTime() <= input.now.getTime() })),
+                },
+              }
+            : {}),
         },
         ctx,
       );
     });
-    if (reading.kind !== "signup") return null;
-    const { loadSignupMonth, applySignup, gamesLeftIn } = await import("./month-signup");
-    const month = await loadSignupMonth(monthId);
-    if (!month || reading.month !== month.monthNumber) return null;
-    const left = gamesLeftIn(month, input.now);
-    // The games he commits to. To "join for the N games left?" a plain yes
-    // can come back with the question's own N, which is what he is joining
-    // for anyway: only FEWER than the games left is a commitment. To
-    // "which of them will you play?" a count that does not fit the games
-    // left is no answer: nothing is stored and the question stays open.
-    let games: number | null = null;
-    if (reading.choice === "in") {
-      if (ask.kind === MONTH_JOIN_WHICH_KIND) {
-        const fit = fitLateJoinGames(reading.games, left);
-        if (fit.kind === "ask") {
-          console.info(`[month-join-dm] ${input.userId}'s answer for ${monthId} does not fit the ${left} games left: nothing stored, still open`);
-          return null;
-        }
-        games = fit.kind === "some" ? fit.games : null;
-      } else if (reading.games !== null && reading.games < left) {
-        games = reading.games;
+    if (reading.kind !== "signup" || reading.month !== month.monthNumber) return null;
+    const close = () => db.sentNotification.updateMany({ where: { id: ask.id, kind: ask.kind }, data: { kind: `${ask.kind}-closed` } });
+
+    if (!ask.state) {
+      // "Join <month> for the N games left?": he joins for the games left,
+      // so his count is checked against them. One that does not fit ("yes
+      // except the last week" read as every game) is asked about instead.
+      if (reading.choice !== "in") {
+        await close();
+        return { handled: "month-join-no", monthId };
       }
+      const fit = fitGamesCommitted(reading.games, gamesLeftIn(month, input.now));
+      if (fit.kind === "ask") {
+        if (!(await askWhichGames({ month, userId: input.userId, now: input.now, original: input.text, games: reading.games }))) return null;
+        await close();
+        return { handled: "month-join-asked", monthId };
+      }
+      await close();
+      const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games: fit.kind === "some" ? fit.games : null, now: input.now });
+      return res.ok ? { handled: "month-join-yes", monthId } : null;
     }
-    // Answered either way: the ask is closed.
-    await db.sentNotification.updateMany({ where: { id: ask.id, kind: ask.kind }, data: { kind: `${ask.kind}-closed` } });
-    if (reading.choice !== "in") return { handled: "month-join-no", monthId };
-    // His games are recorded by `applySignup`, before he is told what he owes.
-    const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games, now: input.now });
+
+    // "Which of them will you play?": read against the games it listed.
+    if (reading.choice !== "in") {
+      await close();
+      return { handled: "month-join-no", monthId };
+    }
+    const fit = fitGamesCommitted(reading.games, listed.length);
+    if (fit.kind === "ask") {
+      console.info(`[month-join-dm] ${input.userId}'s answer for ${monthId} does not fit the ${listed.length} games asked about: nothing stored, still open`);
+      return null;
+    }
+    const regular = month.members.some((x) => x.userId === input.userId && isRegularMember(x));
+    if (ask.state.regular && regular) {
+      // His own games, on the month already: nothing played since changes them.
+      await close();
+      await commitMonthGames(monthId, input.userId, fit.kind === "some" ? fit.games : null);
+      return { handled: "month-join-yes", monthId };
+    }
+    // Joining: a listed game played before he answered counts towards his games.
+    const games = joinerGamesFromAnswer(fit, listed.length, listed.filter((d) => d.getTime() <= input.now.getTime()).length);
+    await close();
+    if (games.kind === "none" || games.kind === "ask") return { handled: "month-join-no", monthId };
+    const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games: games.kind === "some" ? games.games : null, now: input.now });
     return res.ok ? { handled: "month-join-yes", monthId } : null;
   } catch (err) {
     console.error("[month-join-dm] failed:", err instanceof Error ? err.message : "failed");

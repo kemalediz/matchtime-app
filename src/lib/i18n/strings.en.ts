@@ -4830,6 +4830,12 @@ export const en = {
     p.games === 1
       ? `📋 ${p.month} has 1 game left: ${p.dates.join(", ")}. Will you play it? Reply and I'll put you on the list for it.`
       : `📋 ${p.month} has ${p.games} games left: ${p.dates.slice(0, -1).join(", ")} and ${p.dates.at(-1)}. Which of them will you play? Reply and I'll put you on the list for those.`,
+  /** The same question to a regular already on the month whose new count
+   *  did not fit the games he covers (2026-11-16). `dates` are his games. */
+  msu_dm_games_which: (p: { month: string; games: number; dates: string[] }): string =>
+    p.games === 1
+      ? `📋 You're on the ${p.month} list for 1 game: ${p.dates.join(", ")}. Will you play it? Reply and I'll note it.`
+      : `📋 You're on the ${p.month} list for ${p.games} games: ${p.dates.slice(0, -1).join(", ")} and ${p.dates.at(-1)}. Which of them will you play? Reply and I'll note it.`,
   /** To a member whose paste had more new players than one paste may add. */
   mwk_dm_paste_guests_refused: (p: { names: string[] }): string =>
     `📋 One list can only add a few new players, so I didn't add ${p.names.join(", ")}. An organiser can add them.`,

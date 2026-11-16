@@ -3472,6 +3472,10 @@ export const tr: Strings = {
     p.games === 1
       ? `📋 ${p.month} ayında 1 maç kaldı: ${p.dates.join(", ")}. Oynayacak mısın? Yanıt ver, seni o maç için listeye ekleyeyim.`
       : `📋 ${p.month} ayında ${p.games} maç kaldı: ${p.dates.slice(0, -1).join(", ")} ve ${p.dates.at(-1)}. Hangilerinde oynayacaksın? Yanıt ver, seni o maçlar için listeye ekleyeyim.`,
+  msu_dm_games_which: (p) =>
+    p.games === 1
+      ? `📋 ${p.month} listesinde 1 maç için varsın: ${p.dates.join(", ")}. Oynayacak mısın? Yanıt ver, not edeyim.`
+      : `📋 ${p.month} listesinde ${p.games} maç için varsın: ${p.dates.slice(0, -1).join(", ")} ve ${p.dates.at(-1)}. Hangilerinde oynayacaksın? Yanıt ver, not edeyim.`,
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,

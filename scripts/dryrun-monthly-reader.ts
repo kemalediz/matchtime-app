@@ -11,7 +11,7 @@
  *   node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-monthly-reader.ts [--first] [--late]
  *
  * `--first` runs the first case only (measure one call before the rest).
- * `--late` runs the six late-joiner cases only (2026-11-16).
+ * `--late` runs the nine games-count cases only (2026-11-16).
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it), through the exact
  * production call (`readMonthlyMessage`, `MONTHLY_READER_CALL`, the
  * production prompt and checks). Touches no database and sends nothing.
@@ -87,16 +87,21 @@ const NOV_RUNNING = `  November 2026 (month 11): under way. 5 games: Mon 2 Nov (
     11. Jon`;
 const OCT_RUNNING = `  October 2026 (month 10): under way. 4 games: Mon 5 Oct (played), Mon 12 Oct (played), Mon 19 Oct, Mon 26 Oct; 2 still to play: Mon 19 Oct, Mon 26 Oct.`;
 
-const ctx = (months: string[], week: MonthlyReaderContext["week"], lists?: MonthlyReaderContext["lists"]): MonthlyReaderContext => ({
+const ctx = (months: string[], week: MonthlyReaderContext["week"], cover?: MonthlyReaderContext["cover"]): MonthlyReaderContext => ({
   orgId: "org-vets-dry",
   members: MEMBERS,
   months,
   week,
-  ...(lists ? { lists } : {}),
+  ...(cover ? { cover } : {}),
 });
-/** Who is on November's list (the sender's "on the list yet?" line, 2026-11-16). */
-const NOV_OPEN_LIST = [{ label: "November 2026", userIds: ["Davide", "Steff", "Jordan", "Shane", "CJ", "Steve"].map(id) }];
-const NOV_RUNNING_LIST = [{ label: "November 2026", userIds: ["Davide", "Steff", "Jordan", "Shane", "CJ", "Steve", "Sam", "Craig", "Ben", "Kemal", "Jon"].map(id) }];
+/** What each regular on November covers (THE SENDER COVERS, 2026-11-16). */
+const NOV_DAYS = ["Mon 2 Nov", "Mon 9 Nov", "Mon 16 Nov", "Mon 23 Nov", "Mon 30 Nov"];
+const novCover = (played: number, regulars: Array<[string, number]>): MonthlyReaderContext["cover"] => [
+  { label: "November 2026", games: NOV_DAYS.map((day, i) => ({ day, played: i < played })), regulars: regulars.map(([first, covered]) => ({ userId: id(first), covered })) },
+];
+const NOV_OPEN_LIST = novCover(0, ["Davide", "Steff", "Jordan", "Shane", "CJ", "Steve"].map((f) => [f, 5] as [string, number]));
+// Kemal joined November late, when three games were left: he covers 3.
+const NOV_RUNNING_LIST = novCover(2, [...["Davide", "Steff", "Jordan", "Shane", "CJ", "Steve", "Sam", "Craig", "Ben", "Jon"].map((f) => [f, 5] as [string, number]), ["Kemal", 3]]);
 const OCT19 = ctx([OCT_RUNNING, NOV_OPEN.replace("sign-up open", "sign-up not open yet")], {
   game: "Mon 19 Oct 2026, 20:30",
   text: "📋 List for October: Mon 19 Oct, 20:30\n1. Davide De Souza\n2. Shane Walcountians\n3. CJ Barber\n4. Steff\n5. Kemal Ediz\n6.\n7. Jordan Daniels\n9. Steve\n10. Dean\n11. Sam Miles\n12. Ben\n\nPaid but can't play\n1. Serg",
@@ -345,7 +350,7 @@ const CASES: Case[] = [
  * the month's total. November under way on 10 Nov, three games still to play
  * (16, 23, 30); none of these senders is on its list yet. The early joiner,
  * in sign-up, still counts against the month's five. `--late` runs these
- * six only, once each.
+ * nine only, once each.
  */
 const LATE_CASES: Case[] = [
   C("late: except the last week", "I'm in for November except the last week", "Oumesh", NOV_WEEK3, "2026-11-10T12:00:00Z", signup("in", 11, 2)),
@@ -354,6 +359,23 @@ const LATE_CASES: Case[] = [
   C("late: not the 23rd", "In for November, not the 23rd", "Volkan", NOV_WEEK3, "2026-11-10T12:00:00Z", signup("in", 11, 2)),
   C("late: a full join", "In for the rest of November", "Emre", NOV_WEEK3, "2026-11-10T12:00:00Z", signup("in", 11, null)),
   C("early: except the last week is of the month's five", "I'm in for November except the last week", "Ollie", NOV_SIGNUP, "2026-10-27T12:00:00Z", signup("in", 11, 4)),
+  // A pay-as-you-go player on November becoming a regular: he covers the three left.
+  C("PAYG becoming a regular: except the last week", "I'm in for November as a regular now, except the last week", "Andrew", ctx([`${NOV_RUNNING}\n\n    Pay as you go:\n    12. Andrew`], NOV_WEEK3.week, NOV_RUNNING_LIST), "2026-11-10T12:00:00Z", signup("in", 11, 2)),
+  // His answer to the plain "Join November for the 3 games left?".
+  {
+    name: "plain join question: yes except the last week",
+    input: {
+      body: "yes except the last week",
+      sender: from("Oumesh"),
+      history: [],
+      reply: { at: at("2026-11-10T11:00:00Z"), text: "📋 Join November as a regular for the 3 games left, £22.50? Reply yes and I'll put you on it.", topic: null, match: null, author: null },
+      now: at("2026-11-10T12:00:00Z"),
+    },
+    ctx: NOV_WEEK3,
+    check: signup("in", 11, 2),
+  },
+  // Kemal is a regular who joined late and covers three.
+  C("a late joiner on the list changing his games", "Actually I'm in for November except the last week", "Kemal", NOV_WEEK3, "2026-11-10T12:00:00Z", signup("in", 11, 2)),
 ];
 
 async function main() {

@@ -47,7 +47,7 @@ export const MONTHLY_READER_MAX_TOKENS = 8_192;
  */
 export async function loadMonthlyReaderContext(args: { orgId: string; matchId: string | null; now?: Date }): Promise<MonthlyReaderContext> {
   const now = args.now ?? new Date();
-  const { loadLiveMonths, renderSignupList } = await import("./month-signup");
+  const { isRegularMember, loadLiveMonths, renderSignupList } = await import("./month-signup");
   const { loadMonthlyWeek, renderWeekList } = await import("./monthly-week");
   const months = await loadLiveMonths(args.orgId, now);
   const week = args.matchId ? await loadMonthlyWeek(args.matchId) : null;
@@ -109,7 +109,13 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     seedable,
     members,
     months: monthBlocks,
-    lists: months.map((m) => ({ label: labelOf(m), userIds: m.members.filter((x) => !x.out).map((x) => x.userId) })),
+    // What each REGULAR covers (2026-11-16): a pay-as-you-go or bench row is
+    // not on the list as a regular, so its player covers the games left.
+    cover: months.map((m) => ({
+      label: labelOf(m),
+      games: m.kickoffs.map((k) => ({ day: day(k), played: k.getTime() <= now.getTime() })),
+      regulars: m.members.filter((x) => isRegularMember(x)).map((x) => ({ userId: x.userId, covered: x.gamesCovered })),
+    })),
     week: liveWeek ? { game: formatLondon(liveWeek.matchDate, "EEE d MMM yyyy, HH:mm"), text: (await renderWeekList(liveWeek)).text } : null,
   };
 }

@@ -1517,6 +1517,7 @@ async function handleAnalyzeRequest(request: Request) {
         sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
         senderWhatsAppName: m.authorName ?? null,
         needHeader,
+        text: m.body,
         ...mode,
       });
     } catch (err) {
@@ -1533,7 +1534,8 @@ async function handleAnalyzeRequest(request: Request) {
       intent: "month_signup_list",
       action: res.applied.length > 0 ? `month-signup:${res.applied.length}` : "none",
       reasoning: `month sign-up list, read by the monthly reader: ${notes.join("; ")}`,
-      react: res.changed ? "✅" : null,
+      // No ✅ while his games are asked about (2026-11-16): they were not recorded.
+      react: res.changed && !res.asked ? "✅" : null,
       reply: null,
     });
     return true;
@@ -1637,7 +1639,8 @@ async function handleAnalyzeRequest(request: Request) {
         intent: "monthly_list",
         action: res.applied.length > 0 ? `monthly-list:${res.applied.length}` : "none",
         reasoning: `monthly list, read by the monthly reader: ${notes.join("; ")}`,
-        react: res.changed && res.failures.length === 0 ? "✅" : null,
+        // No ✅ while somebody's games are asked about (2026-11-16).
+        react: res.changed && res.failures.length === 0 && !res.asked ? "✅" : null,
         reply: null,
       });
     }
@@ -1681,7 +1684,7 @@ async function handleAnalyzeRequest(request: Request) {
       const sender = senderById.get(m.waMessageId)!;
       let res: Awaited<ReturnType<typeof monthSignup.handleSignupMessage>> = null;
       try {
-        res = await monthSignup.handleSignupMessage({ orgId: org.id, ask: reading, sender: { userId: sender.userId } });
+        res = await monthSignup.handleSignupMessage({ orgId: org.id, ask: reading, sender: { userId: sender.userId }, text: m.body });
       } catch (err) {
         console.error(`[analyze] month sign-up ${m.waMessageId} failed:`, err);
       }
@@ -1693,7 +1696,7 @@ async function handleAnalyzeRequest(request: Request) {
         reasoning: res.locked
           ? `month sign-up (${res.choice}): not changed, the player says they have paid; they are told by DM`
           : res.asked
-            ? `month sign-up (${res.choice}): his games do not fit the games left, so nothing is stored; he is asked by DM which of them he will play`
+            ? `month sign-up (${res.choice}): his games do not fit the games he covers, so nothing is stored for them; he is asked by DM which of them he will play`
             : `month sign-up (${res.choice}), read by the monthly reader: ${res.changed ? `now ${res.outcome}` : `already ${res.outcome}`}`,
         // No ✅ for a commitment that was not recorded (2026-11-16).
         react: res.locked || res.asked ? null : "✅",

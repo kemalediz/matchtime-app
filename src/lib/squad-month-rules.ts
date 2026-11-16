@@ -196,24 +196,44 @@ export function checkGamesCommitted(
   return { ok: true, value: games === gamesCovered ? null : games };
 }
 
-export type LateJoinGames = { kind: "all" } | { kind: "some"; games: number } | { kind: "ask" };
+export type GamesFit = { kind: "all" } | { kind: "some"; games: number } | { kind: "ask" };
 
 /**
- * A LATE JOINER'S COMMITMENT (2026-11-16): somebody joining a month
- * already under way covers only the games LEFT, so the games he commits to
- * must fit those. The reader gives a count only for FEWER than all (null:
+ * THE ONE RULE FOR A GAMES COUNT (2026-11-16): a player's count is checked
+ * against THE GAMES HE COVERS, whoever he is (`gamesCoveredBy` in
+ * `month-signup.ts`): a regular's row's games; anybody joining or becoming
+ * a regular now (a newcomer, a pay-as-you-go or bench player), the games
+ * still to play. The reader gives a count only for FEWER than all (null:
  * every game), so:
- *   - no count: every game left;
- *   - a count below the games left: those games;
- *   - a count at or above the games left does not fit: a partial phrase
- *     counted against the month's total, or a misreading. It is never
- *     stored as "every game" (`checkGamesCommitted` would): he is asked
- *     which of the games left he will play.
+ *   - no count: every game he covers;
+ *   - a count below them: those games;
+ *   - one game covered and a count of 1: that one game, so every game;
+ *   - any other count does not fit (at or above what he covers: a partial
+ *     phrase counted against something else, or a misreading). It is never
+ *     stored, least of all as "every game" (`checkGamesCommitted` would):
+ *     he is asked which of the games he covers he will play.
  */
-export function fitLateJoinGames(games: number | null, gamesLeft: number): LateJoinGames {
+export function fitGamesCommitted(games: number | null, covers: number): GamesFit {
   if (games === null) return { kind: "all" };
-  if (isWholeNumber(games) && games >= 1 && games < gamesLeft) return { kind: "some", games };
+  if (covers === 1 && games === 1) return { kind: "all" };
+  if (isWholeNumber(games) && games >= 1 && games < covers) return { kind: "some", games };
   return { kind: "ask" };
+}
+
+/**
+ * A JOINER'S ANSWER to "which of them will you play?", read against the
+ * games that question LISTED (2026-11-16): `fit` is his answer checked
+ * against them (`fitGamesCommitted(answer, listed)`). A listed game played
+ * before he answered was one of his ("all but the last one" of three, the
+ * first played since, is one more game): it is taken off his count, and
+ * what is left is checked against the games he now covers. "none": all he
+ * chose has been played, there is nothing to join for.
+ */
+export function joinerGamesFromAnswer(fit: GamesFit, listed: number, playedSince: number): GamesFit | { kind: "none" } {
+  if (fit.kind !== "some" || playedSince <= 0) return fit;
+  const games = fit.games - playedSince;
+  if (games <= 0) return { kind: "none" };
+  return fitGamesCommitted(games, listed - playedSince).kind === "some" ? { kind: "some", games } : { kind: "all" };
 }
 
 /** share x (games paid for - credits applied). null while no share is set; never negative. */

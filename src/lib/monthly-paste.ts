@@ -77,6 +77,9 @@ export interface MonthlyPasteResult {
   /** Whatever the member typed around the list ("can't make it lads"),
    *  for the rest of the pipeline. "" when the message was only a list. */
   residual: string;
+  /** A regular's games on it did not fit the games he covers: not recorded,
+   *  and he is asked which he will play (2026-11-16). No ✅. */
+  asked?: boolean;
 }
 
 /**
@@ -497,11 +500,23 @@ export async function handleMonthlyPaste(args: {
 
   // "4 only" beside a regular: their own line, or an organiser's paste.
   // Anybody else's note is left alone. The one setter works out the money.
-  for (const g of outcome.games) {
-    if (!g.self && !senderIsAdmin) continue;
+  // Checked against the games HE covers (2026-11-16): one that does not fit
+  // is not recorded, and his own line gets the "which of them?" question.
+  let asked = false;
+  const gamesFor = outcome.games.filter((g) => g.self || senderIsAdmin);
+  if (gamesFor.length > 0) {
     // Loaded here: month-signup imports this module's neighbours.
-    const { commitMonthGames } = await import("./month-signup");
-    if (await commitMonthGames(week.monthId, g.userId, g.games)) applied.push(`games:${g.games}:${g.userId}`);
+    const { guardedRegularGames, loadSignupMonth } = await import("./month-signup");
+    const month = await loadSignupMonth(week.monthId);
+    for (const g of gamesFor) {
+      if (!month) break;
+      const done = await guardedRegularGames({ month, userId: g.userId, games: g.games, self: g.self, original: args.text ?? null, now });
+      if (done === "stored") applied.push(`games:${g.games}:${g.userId}`);
+      else if (done === "asked") {
+        asked = true;
+        applied.push(`games-asked:${g.userId}`);
+      }
+    }
   }
 
   // The member who brought guests is told who was added, once per paste.
@@ -598,12 +613,13 @@ export async function handleMonthlyPaste(args: {
   }
 
   return {
-    // Asking who somebody is changes nothing yet.
-    changed: applied.some((x) => !x.startsWith("asked-who:")),
+    // Asking who somebody is, or about his games, changes nothing yet.
+    changed: applied.some((x) => !x.startsWith("asked-who:") && !x.startsWith("games-asked:")),
     applied,
     ignored: outcome.ignored,
     notAdded: outcome.notAdded,
     failures,
     residual: args.reading.residual,
+    asked,
   };
 }
