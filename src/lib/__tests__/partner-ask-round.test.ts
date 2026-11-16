@@ -136,7 +136,7 @@ describe("requestPartnerAsk: the chosen number and the round", () => {
     dbMock.clubPartnership.findUnique.mockResolvedValue({ ...PAIRS.p1, partnerApproval: "standing" });
     dbMock.partnerAsk.findUnique.mockResolvedValue({ id: "ask1", status: "awaiting-approval", askerOrgId: "fnf", partnerOrgId: "sutton", matchId: "m1", places: 1, roundId: "r1", volunteerUserIds: [], pickedUserIds: [] });
     await requestPartnerAsk({ askerOrgId: "fnf", matchId: "m1", partnershipId: "p1", requestedByUserId: "admin", via: "button", places: 1, roundId: "r1", now: NOW });
-    expect(groupLines()[0].text).toContain("*FNF* need 1 player");
+    expect(groupLines()[0].text).toContain("*FNF* are *1 short*");
     const posted = dbMock.partnerAsk.updateMany.mock.calls.find((c) => c[0].data.status === "posted");
     expect(posted?.[0].data.places).toBeUndefined();
   });
@@ -293,7 +293,7 @@ describe("cancelPartnerRound: an organiser cancels by hand (Kemal, 2026-10-22)",
     expect(dbMock.partnerAsk.updateMany).toHaveBeenCalledWith({ where: { id: "a1", status: "posted" }, data: { status: "cancelled", reason: "organiser-cancelled", closedAt: NOW } });
     expect(dbMock.partnerAsk.updateMany).toHaveBeenCalledWith({ where: { id: "a2", status: "awaiting-approval" }, data: { status: "cancelled", reason: "organiser-cancelled", closedAt: NOW } });
     // Only the group that saw the ask hears about it.
-    expect(groupLines()).toEqual([{ orgId: "sutton", kind: "group", text: "*FNF* no longer need a player, thanks all." }]);
+    expect(groupLines()).toEqual([{ orgId: "sutton", kind: "group", text: "👍 *FNF* no longer need a player, thanks all." }]);
     // v1 was on the bench: stood down, told he is not needed.
     expect(attMock.cancelAttendance).toHaveBeenCalledWith("v1", "m1", expect.objectContaining({ cause: "partner-ask" }));
     const dms = dbMock.botJob.create.mock.calls.map((c) => c[0].data).filter((d) => d.kind === "dm");

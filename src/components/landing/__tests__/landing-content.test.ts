@@ -272,9 +272,12 @@ describe("landing content: every claim is present", () => {
     expect(spotlight("short-of-players").footnote).toContain(`opening town by town, for players ${POOL_MIN_AGE} and over`);
   });
 
-  it("short of players: an example ask that keeps the number private", () => {
+  it("short of players: an example ask that keeps the number private, answered by replying IN or the link (2026-11-16)", () => {
     const chat = spotlight("short-of-players").chat;
-    expect(chat?.lines.some((l) => /Your number is not shared/.test(l.text))).toBe(true);
+    expect(chat?.lines.some((l) => /Your number stays private/.test(l.text))).toBe(true);
+    expect(chat?.lines.some((l) => /Reply IN to this message, or tap the link/.test(l.text))).toBe(true);
+    // Never a price in the example (the post itself never has one).
+    expect(chat?.lines.some((l) => /£/.test(l.text))).toBe(false);
   });
 
   it("never overclaims filling a squad", () => {

@@ -466,7 +466,11 @@ export default async function AdminGuidePage() {
         <code>@Match Time find players from partner clubs for Thursday</code>)
         or on the match page. MatchTime never asks by itself. Players who
         answer go on your bench as guests. When a partner club is short, its
-        ask can be posted in your group, and your players can answer it.
+        ask can be posted in your group, and your players can answer it by
+        replying <code>IN</code>{" "}to that post or tapping its link. MatchTime
+        confirms with them by DM, so your group stays quiet. An{" "}
+        <code>IN</code>{" "}that isn&apos;t a reply to the ask is still for your
+        own game.
       </p>
 
       <h3 id="player-pool">Short of players? The player pool</h3>

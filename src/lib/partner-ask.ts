@@ -59,6 +59,7 @@ import {
   closedStatus,
   isPartnerPaused,
   movedWindows,
+  askPostDay,
   partnerReachable,
   roundKey,
   roundPartners,
@@ -492,10 +493,17 @@ async function postAsk(askId: string, approverUserId: string | null, now: Date):
   // P4: the post asks for the organiser's number (the round's), never more
   // than the places still open. The ask's own `places` is never rewritten.
   const places = Math.max(1, Math.min(ask.places, open));
-  // Volunteers answer MatchTime by DM (2026-10-21): the post carries the
-  // tap-to-DM link with this ask's code, and nothing else reaches the group.
+  // Volunteers reply IN to the post or tap its tap-to-DM link with this
+  // ask's code (2026-10-21, 2026-11-16); MatchTime answers them by DM and
+  // nothing else reaches the group. The post never states a price.
+  const f = await factsFor(match, asker.name, places, partner.language);
   const text = t(partner.language).xask_post({
-    ...(await factsFor(match, asker.name, places, partner.language)),
+    asker: f.asker,
+    places: f.places,
+    day: f.day,
+    venue: f.venue,
+    format: f.format,
+    when: askPostDay(partner.language, match.date, now),
     link: askDmLink({ number: matchtimeWaNumber(), lang: partner.language, askId }),
     prefill: askDmPrefill(partner.language, askRefCode(askId)),
   });

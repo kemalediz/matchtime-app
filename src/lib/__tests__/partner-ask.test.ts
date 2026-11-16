@@ -153,18 +153,27 @@ describe("requestPartnerAsk", () => {
     expect(told).toEqual(["fnf", "sutton"]);
   });
 
-  it("2026-10-21 (Kemal): the post asks for a PRIVATE message to MatchTime, with a tap-to-DM link carrying the ask's code; his number is not shared", async () => {
+  it("2026-11-16 (Kemal): the short post: reply IN or tap the link carrying the ask's code; tonight; no price; his number stays private", async () => {
     vi.stubEnv("MATCHTIME_WA_NUMBER", "447700900555");
     try {
       dbMock.clubPartnership.findUnique.mockResolvedValue({ ...PARTNERSHIP, partnerApproval: "standing" });
-      dbMock.partnerAsk.findUnique.mockResolvedValue({ id: "ask1", status: "awaiting-approval", askerOrgId: "fnf", partnerOrgId: "sutton", matchId: "m1" });
+      dbMock.partnerAsk.findUnique.mockResolvedValue({ id: "ask1", status: "awaiting-approval", askerOrgId: "fnf", partnerOrgId: "sutton", matchId: "m1", places: 1 });
       await request();
       const text: string = dbMock.botJob.create.mock.calls[0][0].data.text;
       const { askRefCode } = await import("../partner-ask-ref");
-      expect(text).toContain(`https://wa.me/447700900555?text=${encodeURIComponent(`IN (ref ${askRefCode("ask1")})`)}`);
-      expect(text).toContain("MatchTime will confirm with you by private message. Your number is not shared with FNF.");
-      // Never the old wording: no reply in the group, no organiser messaging him.
-      expect(text).not.toMatch(/Reply to this message|their organisers will confirm/);
+      const link = `https://wa.me/447700900555?text=${encodeURIComponent(`IN (ref ${askRefCode("ask1")})`)}`;
+      // Posted six hours before kickoff, the same London day: "tonight".
+      expect(text).toBe(
+        [
+          "⚽ *FNF* are *1 short* for tonight!",
+          "🗓 Fri 16 Oct, 20:30",
+          "📍 Goals Sutton, 9-a-side",
+          `🙋 Fancy it? Reply *IN* to this message, or tap 👉 ${link}`,
+          "🔒 MatchTime confirms with you by DM. Your number stays private.",
+        ].join("\n"),
+      );
+      // Never a price (the match has an £8 fee) and no organiser messaging him.
+      expect(text).not.toMatch(/£|their organisers will confirm/);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -178,7 +187,7 @@ describe("requestPartnerAsk", () => {
       await request();
       const text: string = dbMock.botJob.create.mock.calls[0][0].data.text;
       const { askRefCode } = await import("../partner-ask-ref");
-      expect(text).toContain(`Send MatchTime a private message: *IN (ref ${askRefCode("ask1")})*`);
+      expect(text).toContain(`Reply *IN* to this message, or send MatchTime a private message: *IN (ref ${askRefCode("ask1")})*`);
       expect(text).not.toContain("wa.me");
     } finally {
       vi.unstubAllEnvs();

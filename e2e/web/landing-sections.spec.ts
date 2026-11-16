@@ -56,7 +56,7 @@ test("the short-of-players section names who is asked, in order, and keeps numbe
   await expect(steps.nth(1)).toContainText("partner clubs");
   await expect(steps.nth(2)).toContainText("player pool");
   await expect(section.getByText(/Phone numbers are never shared between clubs/)).toBeVisible();
-  await expect(section.getByText(/Your number is not shared with Riverside FC/)).toBeVisible();
+  await expect(section.getByText(/Reply IN to this message, or tap the link\. .*Your number stays private\./)).toBeVisible();
 });
 
 test("the desktop For clubs menu jumps to the short-of-players and admin group sections", async ({ page }) => {

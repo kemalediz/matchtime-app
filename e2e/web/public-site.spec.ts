@@ -145,6 +145,26 @@ test("the player guide explains the friend link and the real tag (2026-10-31)", 
   expect(await guide.innerText()).not.toMatch(/[—–]|waiting list/i);
 });
 
+test("the guides say a partner club's ask is answered by replying IN to it or tapping its link (2026-11-16)", async ({ page }) => {
+  await page.goto("/help/player");
+  const player = page.locator("article");
+  const heading = page.getByRole("heading", { name: "A partner club is a player short", exact: true });
+  await heading.scrollIntoViewIfNeeded();
+  await expect(heading).toBeVisible();
+  // The sentences carry <code>IN</code>, so they are read as the guide's
+  // text with its spacing normalised (and the space after the code element
+  // must really be there: the page writes it explicitly).
+  const playerText = ((await player.textContent()) ?? "").replace(/\s+/g, " ");
+  expect(playerText).toContain("Reply IN to that post, or tap its link, and MatchTime confirms with you by DM.");
+  expect(playerText).toContain("An IN that isn't a reply to the ask is for your own club's game, as always.");
+  expect(playerText).not.toMatch(/[—–]/);
+
+  await page.goto("/help/admin");
+  const adminText = ((await page.locator("article").textContent()) ?? "").replace(/\s+/g, " ");
+  expect(adminText).toContain("your players can answer it by replying IN to that post or tapping its link.");
+  expect(adminText).not.toMatch(/[—–]/);
+});
+
 test("the organiser guide explains quiet hours, off for a new club, by settings or a tag (2026-10-31)", async ({ page }) => {
   await page.goto("/help/admin");
   const heading = page.getByRole("heading", { name: "9. Quiet hours", exact: true });

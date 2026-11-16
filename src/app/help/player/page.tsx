@@ -269,6 +269,16 @@ export default function PlayerGuidePage() {
         directly. If you haven&apos;t paid, you&apos;ll get a reminder.
       </p>
 
+      <h3 id="partner-asks">A partner club is a player short</h3>
+      <p>
+        Your club may be paired with nearby clubs. When one of them is short,
+        MatchTime can post its ask in your group. Fancy a game? Reply{" "}
+        <code>IN</code>{" "}to that post, or tap its link, and MatchTime confirms
+        with you by DM. Your number isn&apos;t shared with the other club. An{" "}
+        <code>IN</code>{" "}that isn&apos;t a reply to the ask is for your own
+        club&apos;s game, as always.
+      </p>
+
       <h3>Played for a partner club?</h3>
       <p>
         If you played for another club through a partner club ask, MatchTime

@@ -2841,7 +2841,11 @@ async function handleAnalyzeRequest(request: Request) {
         ? { applies: false, reply: null }
         : await unresolvedSenderNudge({
             senderResolved: !!sender.userId,
-            attendanceRelevant: engineOutcome.action !== "none",
+            // A reply to a partner club's ask is about THAT club's game, and
+            // is answered by DM only (2026-11-16): a sender MatchTime cannot
+            // identify is ignored there, as the ask's link path ignores him,
+            // never told in this group to give his name for "joining" here.
+            attendanceRelevant: engineOutcome.action !== "none" && engineOutcome.intent !== "partner_volunteer",
             matchId: nextMatchForReply?.id ?? null,
             authorName: msg.authorName,
             dropping: engineOutcome.intent === "out",

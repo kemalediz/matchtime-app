@@ -497,12 +497,13 @@ const SHORT_OF_PLAYERS: Spotlight = {
     ],
   },
   chat: {
-    caption: "An ask in a partner club's group, then the private reply",
+    caption: "An ask in a partner club's group, a reply, then the private confirmation",
     lines: [
-      // strings.en.ts xask_post, with a fictional club.
+      // strings.en.ts xask_post (2026-11-16), with a fictional club, on one
+      // line: this bubble does not break lines.
       {
         from: "bot",
-        text: "⚽ Riverside FC need 1 player: Tue 20 Oct, 20:00 at Riverside Sports Centre (7-a-side). Fancy a game? Tap here to tell MatchTime privately. MatchTime will confirm with you by private message. Your number is not shared with Riverside FC.",
+        text: "⚽ Riverside FC are 1 short for tomorrow! 🗓 Tue 20 Oct, 20:00 📍 Riverside Sports Centre, 7-a-side 🙋 Fancy it? Reply IN to this message, or tap the link. 🔒 MatchTime confirms with you by DM. Your number stays private.",
       },
       { from: "player", text: "IN" },
       // strings.en.ts xask_vol_in.

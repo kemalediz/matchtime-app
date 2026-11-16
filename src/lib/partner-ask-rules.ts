@@ -20,6 +20,8 @@
  */
 import type { ClubRole } from "./club-partnership-rules";
 import { t } from "./i18n/t";
+import { dayLabel, weekdayLabel } from "./i18n/dates";
+import { computeProximity } from "./proximity";
 
 /** D12: at most this many asks a London day into one partner group. */
 export const PARTNER_ASKS_PER_DAY = 2;
@@ -287,4 +289,22 @@ export function gamesOverlap(a: { kickoff: Date; durationMins: number }, b: { ki
 export function withPartnerOffer(text: string, partners: string[] | null, link: string, lang: string | null): string {
   if (!partners || partners.length === 0) return text;
   return `${text}\n\n${t(lang).xask_offer_line({ partners: partners.join(", "), link })}`;
+}
+
+/**
+ * WHEN THE GAME IS, AS THE POST'S HEADLINE SAYS IT (Kemal, 2026-11-16):
+ * "are *6 short* for tomorrow!". The calendar-day distance is the shared
+ * proximity helper's (`computeProximity`, London days), never worked out
+ * here: the same London day is tonight, the next is tomorrow, a day later
+ * in the week is its weekday ("Tuesday" / "Salı"), and a week or more away
+ * the date ("Tue 24 Nov"), so a bare weekday can never mean this week's.
+ * The full date and time are on the post's own line below it.
+ */
+export type AskPostDay = { kind: "tonight" } | { kind: "tomorrow" } | { kind: "day"; label: string };
+
+export function askPostDay(lang: string | null | undefined, kickoff: Date, now: Date): AskPostDay {
+  const { daysOut } = computeProximity(kickoff, "en", now);
+  if (daysOut <= 0) return { kind: "tonight" };
+  if (daysOut === 1) return { kind: "tomorrow" };
+  return { kind: "day", label: daysOut < 7 ? weekdayLabel(lang, kickoff) : dayLabel(lang, kickoff) };
 }

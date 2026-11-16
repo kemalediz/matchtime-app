@@ -97,6 +97,18 @@ test('tagged "how do I bring a friend?" → how the friend link works', async ({
   expect(r.reply).not.toMatch(/[—–]/);
 });
 
+// 2026-11-16 (Kemal): a partner club's ask is answered by replying IN to
+// it, or by tapping its link.
+test('tagged "help partners" → a player can reply IN to a partner club\'s ask or tap its link', async ({ request, db }) => {
+  const sim = await group(request, db);
+  const r = await sim.post("pete", "@Match Time help partners", { tag: true, ...asHelp("partners") });
+  expect(r.intent).toBe("help");
+  expect(r.reply).toMatch(/\*Partner clubs: how it works\*/);
+  expect(r.reply).toContain("reply IN to that post or tap its link, and MatchTime confirms with you by DM");
+  expect(r.reply).toContain("An IN that isn't a reply to the ask is for our own game.");
+  expect(r.reply).not.toMatch(/[—–]/);
+});
+
 test('tagged bare "help" lists the friend topic', async ({ request, db }) => {
   const sim = await group(request, db);
   const r = await sim.post("pete", "@Match Time help", { tag: true, ...asHelp() });
