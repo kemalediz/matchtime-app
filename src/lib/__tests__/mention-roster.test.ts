@@ -32,7 +32,7 @@ const tagOfNewbie = {
   authorName: "Olly",
   body: "@Match Time @128539798032620 is IN",
   mentions: [LID],
-  mentionNames: [{ jid: LID, name: "Nico", phone: "447700900555" }],
+  mentionNames: [{ jid: LID, name: "Nico", phone: "447700900555", pushname: "Nico" }],
 };
 
 beforeEach(() => {

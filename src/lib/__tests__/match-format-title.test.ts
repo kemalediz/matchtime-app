@@ -21,6 +21,12 @@ describe("matchFormatTitle", () => {
     expect(matchFormatTitle("7'ye 7 futbol", 12)).toBe("6'ya 6 futbol");
   });
 
+  it("Turkish: only the dative size form is a size; \"7'de 7\" and a time are not", () => {
+    expect(matchFormatTitle("Saat 7'de 7 kişi", 16)).toBe("Saat 7'de 7 kişi");
+    expect(matchFormatTitle("Pazartesi 20'de 20 kişi", 16)).toBe("Pazartesi 20'de 20 kişi");
+    expect(matchFormatTitle("5'e 5 halı saha", 12)).toBe("6'ya 6 halı saha");
+  });
+
   it("a match with no override keeps the activity's name exactly", () => {
     expect(matchFormatTitle("Football 7-a-side", 14)).toBe("Football 7-a-side");
     expect(matchFormatTitle("7'ye 7 futbol", 14)).toBe("7'ye 7 futbol");

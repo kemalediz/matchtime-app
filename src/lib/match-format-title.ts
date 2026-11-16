@@ -19,8 +19,9 @@ import { t } from "./i18n/t";
 
 /** "7-a-side", "7 a side", "7aside", any case. Group 1 is the number. */
 const EN_SIZE = /(?<!\d)(\d{1,2})(\s*-?\s*a\s*-?\s*side)(?![a-z])/i;
-/** "7'ye 7", the Turkish form (`perSideTr`). */
-const TR_SIZE = /(?<!\d)(\d{1,2})['’][a-zçğıöşü]{1,3} (\d{1,2})(?!\d)/i;
+/** "7'ye 7", "8'e 8", "6'ya 6", "9'a 9": the Turkish size, always the
+ *  dative (`perSideTr`). No other suffix: "7'de 7 kişi" is a time. */
+const TR_SIZE = /(?<!\d)(\d{1,2})['’](?:ya|ye|a|e) (\d{1,2})(?![\d\p{L}])/iu;
 
 /** The players a side `maxPlayers` makes, or null when it is no whole number. */
 function perSideOf(maxPlayers: number | null | undefined): number | null {

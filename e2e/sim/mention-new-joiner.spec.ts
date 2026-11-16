@@ -49,14 +49,14 @@ test("joined, then tagged by LID in the organiser's next batch: he is recognised
   const userId = await join(request, g, phone);
 
   // The organiser's message, as the Pi forwards it: the raw LID token, and
-  // beside it his phone and WhatsApp name. The extractor is shown the body
+  // beside it his phone and his own WhatsApp profile name (pushname). The extractor is shown the body
   // AFTER naming, so its canned facts are keyed by the named body: on a
   // build that leaves the tag raw it extracts nothing.
   const id = nextMsgId();
   setRouterStub({ floor: false, routes: { [id]: "other_att" } });
   setExtractorStub({ bodies: { "@Match Time @Nico Newman is IN": otherFacts("Nico Newman", "in") } });
   const r = await g.postBatch([
-    { waMessageId: id, player: "alice", body: RAW_TAG, tag: true, mentions: [{ jid: LID, name: "Nico Newman", phone }] },
+    { waMessageId: id, player: "alice", body: RAW_TAG, tag: true, mentions: [{ jid: LID, name: "Nico Newman", phone, pushname: "Nico Newman" }] },
   ]);
 
   const stored = await db.one<{ body: string }>(`SELECT body FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [id]);
@@ -78,7 +78,7 @@ test("THE VETS SHAPE: his own \"In\" and the organiser's tag in ONE batch, the t
   setRouterStub({ floor: false, routes: { [tagId]: "other_att", [inId]: "self_att" } });
   setExtractorStub({ bodies: { "@Match Time @Nico is IN": otherFacts("Nico", "in"), In: selfIn() } });
   const r = await g.postBatch([
-    { waMessageId: tagId, player: "alice", body: RAW_TAG, tag: true, mentions: [{ jid: LID, name: "Nico", phone }] },
+    { waMessageId: tagId, player: "alice", body: RAW_TAG, tag: true, mentions: [{ jid: LID, name: "Nico Plumber", phone }] },
     { waMessageId: inId, author: { name: "Nico", phone }, body: "In" },
   ]);
 

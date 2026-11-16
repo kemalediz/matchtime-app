@@ -75,7 +75,7 @@ export interface AdminSquadChangeInput {
   lang: string | null | undefined;
   messageId: string;
   text: string;
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
   senderUserId: string;
   senderName: string | null;
   sentAt: Date | null;

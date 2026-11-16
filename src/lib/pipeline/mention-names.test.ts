@@ -394,7 +394,7 @@ describe("namesForNamelessMembers: a nameless member the batch can name", () => 
     authorName: "Olly",
     body: "@Match Time @128539798032620 is IN",
     mentions: [LID],
-    mentionNames: [{ jid: LID, name: "Nico", phone: "447700900555" }],
+    mentionNames: [{ jid: LID, name: "Nico", phone: "447700900555", pushname: "Nico" }],
   };
 
   it("RED on main: the roster without nameless members leaves the mention raw, phone and all", () => {
@@ -421,7 +421,23 @@ describe("namesForNamelessMembers: a nameless member the batch can name", () => 
   it("a phone mention (@c.us) carries its phone in the jid", () => {
     const names = namesForNamelessMembers({
       nameless: [NEWBIE],
-      messages: [{ body: "@447700900555 in", mentions: ["447700900555@c.us"], mentionNames: [{ jid: "447700900555@c.us", name: "Nico" }] }],
+      messages: [{ body: "@447700900555 in", mentions: ["447700900555@c.us"], mentionNames: [{ jid: "447700900555@c.us", name: "Nico", pushname: "Nico" }] }],
+    });
+    expect(names.get("u-new")).toBe("Nico");
+  });
+
+  it("never a tag's plain name: it can be an address-book label on the bot's phone, so no pushname, no name", () => {
+    const names = namesForNamelessMembers({
+      nameless: [NEWBIE],
+      messages: [{ body: "@1 in", mentions: [LID], mentionNames: [{ jid: LID, name: "Nico Plumber", phone: "447700900555" }] }],
+    });
+    expect(names.size).toBe(0);
+  });
+
+  it("the tag's pushname, not its address-book name, is the one taken", () => {
+    const names = namesForNamelessMembers({
+      nameless: [NEWBIE],
+      messages: [{ body: "@1 in", mentions: [LID], mentionNames: [{ jid: LID, name: "Nico Plumber", pushname: "Nico", phone: "447700900555" }] }],
     });
     expect(names.get("u-new")).toBe("Nico");
   });
@@ -430,7 +446,7 @@ describe("namesForNamelessMembers: a nameless member the batch can name", () => 
     for (const bad of ["447700900555", "Match Time", "N", "  "]) {
       const names = namesForNamelessMembers({
         nameless: [NEWBIE],
-        messages: [{ body: "@1 in", mentions: [LID], mentionNames: [{ jid: LID, name: bad, phone: "447700900555" }] }],
+        messages: [{ body: "@1 in", mentions: [LID], mentionNames: [{ jid: LID, name: bad, pushname: bad, phone: "447700900555" }] }],
       });
       expect(names.size, bad).toBe(0);
     }

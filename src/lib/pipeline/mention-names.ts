@@ -85,6 +85,11 @@ export interface MentionNameInput {
   jid: string;
   name?: string;
   phone?: string;
+  /** The person's OWN WhatsApp profile name (pushname), when the Pi could
+   *  tell it apart from `name` (2026-11-16). `name` may instead be an
+   *  address-book label on the bot's phone, so only this one is ever
+   *  saved as a player's name (`namesForNamelessMembers`). */
+  pushname?: string;
 }
 
 /** A LID the server has stored against a phone or a member. */
@@ -328,11 +333,16 @@ export interface NamelessMember {
  *
  * The name is the one his first post would give him, by the same rule
  * (`usableWhatsAppName`): his own WhatsApp name as a SENDER in this
- * batch first, else the WhatsApp name the Pi saw for a tag of his phone.
- * Both are his self-chosen profile name, the name the group-join route
- * already accepts for a joiner. Only a phone match counts: a name alone
- * names nobody here. Pure; the caller writes the name (only while the row
- * still has none) and puts the member on the roster.
+ * batch first, else his own profile name (`pushname`) the Pi sent with a
+ * tag of his phone. Never a tag's plain `name`: the Pi fills it from
+ * `pushname || name || shortName`, and the last two can be a label in the
+ * bot phone's address book, which must never become a player's name.
+ * Only a name that may be SAVED is returned: the caller writes it (only
+ * while the row still has none) and puts the member on the roster. A name
+ * used for this batch alone would be worse than none: the body would say
+ * "@Nico is IN" while the member is still nameless, and the engine
+ * provisions a NEW member for an organiser's IN it cannot match
+ * (`pipeline/engine.ts`), a duplicate. Only a phone match counts. Pure.
  */
 export function namesForNamelessMembers(args: {
   nameless: NamelessMember[];
@@ -364,7 +374,7 @@ export function namesForNamelessMembers(args: {
       if (!mn || typeof mn.jid !== "string") continue;
       const phone = PHONE_JID.test(mn.jid) ? digitsOf(mn.jid) : typeof mn.phone === "string" ? mn.phone.replace(/\D/g, "") : "";
       const id = byPhone.get(phone);
-      const name = usableWhatsAppName(typeof mn.name === "string" ? mn.name : null);
+      const name = usableWhatsAppName(typeof mn.pushname === "string" ? mn.pushname : null);
       if (id && name && !fromMentions.has(id)) fromMentions.set(id, name);
     }
   }

@@ -560,7 +560,7 @@ export interface GroupMessageForServer {
   /** The sender's LID, bare digits, when the author is LID-addressed. */
   senderLid?: string;
   timestamp: string;
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
   /** Every mentioned JID, raw, the bot's included (2026-11-09), as the
    *  analyze door already sends them: the server counts a tag it has no
    *  name or phone for ("@Match Time DM these people"). */
@@ -825,6 +825,7 @@ async function readMentionContact(driver: WaDriver, jid: string): Promise<RawMen
         asOptionalString(safeRead(c, "name")) ??
         asOptionalString(safeRead(c, "shortName")),
       phone: asOptionalString(safeRead(c, "number")),
+      pushname: asOptionalString(safeRead(c, "pushname")),
     };
   } catch {
     return { jid };

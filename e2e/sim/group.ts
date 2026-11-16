@@ -483,7 +483,7 @@ export interface BatchItem {
    * contact lookup said (`mentionNames`: a name and, for a LID, a phone).
    * The bot's own mention is NOT listed: tag the bot with `tag`.
    */
-  mentions?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentions?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
 }
 
 /** One line of the "Recent chat history" block the Pi keeps in memory

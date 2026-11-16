@@ -380,7 +380,7 @@ interface InboundMessage {
    */
   /** `phone` (2026-09-30): the phone behind a LID mention, when the Pi
    *  was told it. An entry carries a name, a phone, or both. */
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string; pushname?: string }>;
   /** The text of the message this one REPLIES to (a WhatsApp quoted
    *  reply), when the Pi forwards it. No Pi build sends it yet (monthly
    *  squad, slice 3): until one does, a bare "IN" in reply to the month's
