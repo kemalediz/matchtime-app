@@ -458,7 +458,9 @@ async function postNewList(a: {
  * meantime made it go out with him still on the bench and a place "open".
  * Rendered again from the database with the same renderer, the stored text
  * updated to what goes out, and the "list shown" bookkeeping recorded for
- * it. Any failure, or nothing to render, sends the text as queued.
+ * it. Any failure, or nothing to render, sends the text as queued. A job
+ * already handed to the Pi (its `botjob-<id>` claim row exists) is left
+ * exactly as it went: the group sees that text, not a later one.
  */
 export async function freshFormatListText(
   job: { id: string; text: string; matchId: string | null },
@@ -466,6 +468,7 @@ export async function freshFormatListText(
 ): Promise<string> {
   if (!job.matchId) return job.text;
   try {
+    if (await botJobClaimed(job.id)) return job.text;
     const match = await db.match.findUnique({
       where: { id: job.matchId },
       select: { id: true, date: true, maxPlayers: true, activity: { select: { orgId: true, org: { select: { language: true, squadMode: true } } } } },
@@ -495,5 +498,43 @@ export async function freshFormatListText(
   } catch (err) {
     console.error(`[format-resize] list job ${job.id}: not rendered again, sent as queued:`, err instanceof Error ? err.message : "failed");
     return job.text;
+  }
+}
+
+/** Whether a BotJob has been handed to the Pi: its `botjob-<id>` claim row. */
+async function botJobClaimed(jobId: string): Promise<boolean> {
+  const row = await db.sentNotification.findUnique({ where: { key: `botjob-${jobId}` }, select: { key: true } });
+  return !!row;
+}
+
+/**
+ * Two lists queued for one match (two switches before the Pi sent the
+ * first): only the NEWEST goes out, so the group never gets two identical
+ * lists (both are rendered at send time). An older one not yet handed to
+ * the Pi is closed as the scheduler closes a team sheet it will not send
+ * (`sentAt` set, never emitted) and its `aboutKey` says why. True when this
+ * job is not to be sent. Fails open: any error sends it.
+ */
+export async function formatListJobSuperseded(
+  job: { id: string; orgId: string; createdAt: Date; aboutKey: string | null },
+  now: Date,
+): Promise<boolean> {
+  if (!job.aboutKey) return false;
+  try {
+    const newer = await db.botJob.findFirst({
+      where: { orgId: job.orgId, kind: "group", sentAt: null, aboutKey: job.aboutKey, createdAt: { gt: job.createdAt } },
+      select: { id: true },
+    });
+    if (!newer) return false;
+    if (await botJobClaimed(job.id)) return false;
+    const { count } = await db.botJob.updateMany({
+      where: { id: job.id, sentAt: null },
+      data: { sentAt: now, aboutKey: `${job.aboutKey}:superseded` },
+    });
+    if (count > 0) console.log(`[format-resize] list job ${job.id}: a newer list (${newer.id}) for the same match is queued, not sent`);
+    return true;
+  } catch (err) {
+    console.error(`[format-resize] list job ${job.id}: newer-list check failed, sending:`, err instanceof Error ? err.message : "failed");
+    return false;
   }
 }

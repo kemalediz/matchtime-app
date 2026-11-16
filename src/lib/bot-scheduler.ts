@@ -784,6 +784,9 @@ export async function computeDuePosts(
           text: job.text,
         });
       } else if (job.kind === "group") {
+        // Two lists queued for one match: only the newest goes out (Vets,
+        // 2026-11-16); the older is closed, never sent.
+        if (isFormatListJob(job) && (await (await import("./format-resize")).formatListJobSuperseded(job, now))) continue;
         out.push({
           kind: "group-message",
           key,
