@@ -253,21 +253,6 @@ function partnersOn(features: HelpFeatures): boolean {
   return (features.partners?.active ?? 0) > 0;
 }
 
-/** Payments are on when the club collects match fees, or, for a monthly
- *  club, when it tracks payments: its month's payments are live then (the
- *  priced list, players saying they paid, the collector's PAID ALL, the
- *  reminders: month-payment.ts, gated on `paymentMessagesOn`; the admin
- *  group's `paid` gate is the same). Round 2 of the review of #605. */
-function paymentsOn(features: HelpFeatures): boolean {
-  return features.paymentCollection === true || (features.monthly === true && features.paymentTracking === true);
-}
-
-/** The monthly club whose payments are on without card collection: the
- *  month's payments, by bank transfer to the collector, are what it has. */
-function monthPaymentsOnly(features: HelpFeatures): boolean {
-  return paymentsOn(features) && features.paymentCollection !== true;
-}
-
 function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
   if (topic === "schedule" || topic === "badges" || topic === "settings") return true;
   // The friend link works only while attendance is on (`decideThirdPartyIn`).
@@ -279,7 +264,7 @@ function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
   // still has only that flag is shown how fee collection works and how to
   // switch it on, which is true of it, rather than an explainer of a
   // setting nobody can find.
-  if (topic === "payments") return paymentsOn(features);
+  if (topic === "payments") return features.paymentCollection === true;
   return features[HELP_TOPIC_FEATURE[topic]] === true;
 }
 
@@ -410,9 +395,7 @@ export function buildHelpReply(
           ? s.onbHelpAvailabilityMonthly
           : topic === "availability" && picks
             ? s.onbHelpAvailabilityOrganiserPicks
-            : topic === "payments" && monthPaymentsOnly(features)
-              ? s.onbHelpPaymentsMonthly
-              : s.onbHelpExplainer({ topic });
+            : s.onbHelpExplainer({ topic });
     // The friend link (#488, 2026-10-31) is part of saying who plays: a
     // player's friend joins by his own link (friend-link/rules.ts); an
     // organiser's add stays direct (D1).

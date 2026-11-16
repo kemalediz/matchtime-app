@@ -66,7 +66,6 @@ import { PAY_METHOD_SELECT, availablePayMethods, directPayInstructions } from ".
 import { payCollectorName } from "./direct-payment";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { isSameRecurringFixture } from "./match-slot";
-import { momAnnouncementSuperseded } from "./mom-announcement-stop";
 import { buildMomAnnouncement, buildMomPickedAnnouncement } from "./mom-announcement";
 import { organisersPickMom } from "./mom-chooser";
 import { computeBadgeAnnouncements } from "./badge-announcement-scheduler";
@@ -3861,10 +3860,23 @@ async function computeForMatch(
       // and why it sits where it does relative to the lookback.
       const tooStale = ageDays > MOM_ANNOUNCE_MAX_AGE_DAYS;
 
-      // The club's next fixture has kicked off, so this would read as
-      // tonight's result. ONE rule, shared with the last-MoM answer, which
-      // reads a match given up on here as decided (mom-announcement-stop.ts).
-      const supersededByNextFixture = momAnnouncementSuperseded(m, siblingMatches, now);
+      // The club plays weekly, so once the next fixture has kicked off
+      // "here is your Man of the Match" reads as tonight's result. A
+      // sibling only counts when it starts at least a day later: a format
+      // switch can leave a co-timed ghost match under the other format's
+      // activity (the 2026-06-27 ghost bug), and a ghost must never
+      // silence a real announcement. Fixture identity is the same one the
+      // announce/evening rollover guard uses, so a format-switched
+      // successor still counts.
+      const supersededByNextFixture = siblingMatches.some(
+        (s) =>
+          s.id !== m.id &&
+          s.status !== "CANCELLED" &&
+          (s.activityId === m.activityId ||
+            isSameRecurringFixture(s.activity, m.activity)) &&
+          s.date.getTime() >= m.date.getTime() + 24 * 60 * 60 * 1000 &&
+          s.date.getTime() <= now.getTime(),
+      );
 
       const canAnnounce =
         !sentKeys.has(key) && !tooStale && !supersededByNextFixture;

@@ -50,7 +50,7 @@ import {
   loadTeamOfSeason,
 } from "../player-stats";
 import { GROUP_RATINGS_MIN_GAMES } from "./stats-answer";
-import { lastMomFacts, momTallyAsAnnounced, type LastMomFacts, type MomMatchRecord } from "./last-mom";
+import { lastMomFacts, type LastMomFacts, type MomMatchRecord } from "./last-mom";
 import { matchRatingsFrom, type LastMatchRatings } from "./unified-answer";
 import { organisersPickMom } from "../mom-chooser";
 import { resolveTeamLabels } from "../team-labels";
@@ -130,9 +130,7 @@ const LAST_MOM_LOOKBACK = 10;
  * THE LAST MAN OF THE MATCH (2026-11-10, `last-mom.ts` decides). The club's
  * newest matches that have MoMVote rows, not cancelled, already kicked off;
  * each one's votes counted per player voted FOR (who voted is never
- * selected), as announced when its result was posted (only the votes
- * recorded by then), the club's chooser, and the club's later matches for
- * the scheduler's next-fixture stop.
+ * selected), whether its result was posted, and the club's chooser.
  */
 export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFacts> {
   const [org, matches] = await Promise.all([
@@ -147,56 +145,33 @@ export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFact
         redScore: true,
         yellowScore: true,
         teamLabels: true,
-        activityId: true,
-        activity: { select: { orgId: true, venue: true, dayOfWeek: true, ratingWindowHours: true, sport: { select: { teamLabels: true } } } },
+        activity: { select: { sport: { select: { teamLabels: true } } } },
       },
     }),
   ]);
   if (matches.length === 0) return { last: null, openVoteDate: null, recent: [] };
   const ids = matches.map((m) => m.id);
-  const oldest = matches[matches.length - 1].date;
-  const [votes, posted, fixtures] = await Promise.all([
-    // One row per voter, the player voted for and when (never who voted):
-    // an announced result is counted as it was announced
-    // (`momTallyAsAnnounced`, round 2 of the review of #605).
-    db.moMVote.findMany({ where: { matchId: { in: ids } }, select: { matchId: true, playerId: true, createdAt: true } }),
-    // The post's time: the claim that sends it writes the row
-    // (due-posts/route.ts), right after the tally was counted.
-    db.sentNotification.findMany({ where: { key: { in: ids.map((id) => `${id}:mom-announcement`) } }, select: { key: true, createdAt: true } }),
-    // The club's matches since the oldest one read, for the next-fixture
-    // stop (review 2026-11-15): the scheduler gives up on an announcement
-    // once the next fixture kicks off, votes or none. Read as the
-    // scheduler reads its siblings: not historical, not cancelled.
-    db.match.findMany({
-      where: { activity: { orgId }, isHistorical: false, ...NOT_CANCELLED, date: { gt: oldest, lte: now } },
-      select: { id: true, date: true, status: true, activityId: true, activity: { select: { orgId: true, venue: true, dayOfWeek: true } } },
-    }),
+  const [counts, posted] = await Promise.all([
+    db.moMVote.groupBy({ by: ["matchId", "playerId"], where: { matchId: { in: ids } }, _count: { playerId: true } }),
+    db.sentNotification.findMany({ where: { key: { in: ids.map((id) => `${id}:mom-announcement`) } }, select: { key: true } }),
   ]);
   const users = await db.user.findMany({
-    where: { id: { in: [...new Set(votes.map((v) => v.playerId))] } },
+    where: { id: { in: [...new Set(counts.map((c) => c.playerId))] } },
     select: { id: true, name: true },
   });
   const nameOf = new Map(users.map((u) => [u.id, u.name ?? "?"]));
-  const postedAt = new Map(posted.map((p) => [p.key, p.createdAt]));
+  const announced = new Set(posted.map((p) => p.key));
   const records: MomMatchRecord[] = matches.map((m) => ({
-    id: m.id,
     date: m.date,
-    activityId: m.activityId,
-    fixture: { orgId: m.activity.orgId, venue: m.activity.venue, dayOfWeek: m.activity.dayOfWeek },
-    // The window submitMoMVote accepts votes in (actions/ratings.ts).
-    voteClosesAt: new Date(m.date.getTime() + m.activity.ratingWindowHours * 60 * 60 * 1000),
     teamLabels: resolveTeamLabels({ teamLabels: m.teamLabels }, org, m.activity.sport, org?.language),
     redScore: m.redScore,
     yellowScore: m.yellowScore,
-    tally: [
-      ...momTallyAsAnnounced(
-        votes.filter((v) => v.matchId === m.id).map((v) => ({ playerId: v.playerId, at: v.createdAt })),
-        postedAt.get(`${m.id}:mom-announcement`) ?? null,
-      ),
-    ].map(([playerId, n]) => ({ userId: playerId, name: nameOf.get(playerId) ?? "?", votes: n })),
-    announced: postedAt.has(`${m.id}:mom-announcement`),
+    tally: counts
+      .filter((c) => c.matchId === m.id)
+      .map((c) => ({ userId: c.playerId, name: nameOf.get(c.playerId) ?? "?", votes: c._count.playerId })),
+    announced: announced.has(`${m.id}:mom-announcement`),
   }));
-  return lastMomFacts(records, { now, organisersPick: organisersPickMom(org), fixtures });
+  return lastMomFacts(records, { now, organisersPick: organisersPickMom(org) });
 }
 
 /** One named player's chemistry, as the stats page shows it. */

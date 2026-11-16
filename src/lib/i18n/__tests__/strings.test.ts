@@ -343,7 +343,6 @@ const SAMPLES: SampleArgs = {
   onbHelpExplainer: { topic: "teams" },
   onbHelpOrganisersExplainer: { topic: "availability", organiserPicks: true },
   onbHelpAvailabilityMonthly: null,
-  onbHelpPaymentsMonthly: null,
   onbHelpAvailabilityOrganiserPicks: null,
   onbHelpFriendLink: null,
   onbHelpFriend: { fees: true },

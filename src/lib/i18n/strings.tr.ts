@@ -1305,10 +1305,6 @@ export const tr: Strings = {
     `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
     `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
 
-  onbHelpPaymentsMonthly:
-    `💷 *Aylık ödeme nasıl çalışır*\n` +
-    `Organizatörler ayın ücretini belirleyince, her düzenli oyuncunun o ayki tutarını paylaşırım. Ödemeyi parayı toplayan kişiye banka havalesiyle yaparsınız: parayı hiçbir zaman ben almam ve aylık ödeme için bağlantı göndermem.\n` +
-    `Ödediniz mi? Bana ödediğinizi yazın, parayı toplayan kişi onaylar. Henüz ödemeyenlere hatırlatırım.`,
   onbHelpAvailabilityMonthly:
     `⚽ *Kadro ve katılım nasıl çalışır*\n` +
     `Bu grup aylık kadroyla oynuyor. Ayın ücretini ödediyseniz ayın listesindesiniz ve tüm maçlardasınız, bir şey yazmanıza gerek yok. Bir maça gelemiyorsanız *yokum* yazın, yeriniz başkasına açılır.\n` +
