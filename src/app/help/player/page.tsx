@@ -1,4 +1,6 @@
-export const metadata = { title: "Player guide" };
+import { ownPageUrlMetadata } from "@/lib/page-canonical";
+
+export const metadata = { title: "Player guide", ...ownPageUrlMetadata("/help/player") };
 
 export default function PlayerGuidePage() {
   return (

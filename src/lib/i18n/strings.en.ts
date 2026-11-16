@@ -1254,7 +1254,8 @@ export const en = {
    *  else: the rest is one topic away. The word in bold is the topic word
    *  (`onbHelpTopicWord`). `off`: switched off here, an organiser's menu
    *  only. `monthly`: a monthly squad's list is the month's, not In or Out. */
-  onbHelpMenu: (p: { topics: Array<MenuTopic<HelpMenuTopic>>; monthly?: boolean; dm?: boolean }): string => {
+  /** `exampleTopic`: the topic named in "e.g. help <topic>", one that is on. */
+  onbHelpMenu: (p: { topics: Array<MenuTopic<HelpMenuTopic>>; exampleTopic: HelpMenuTopic; monthly?: boolean; dm?: boolean }): string => {
     const one: Record<HelpMenuTopic, string> = {
       availability: p.monthly ? "who's on this month's list" : "saying in, out or maybe",
       friend: "bringing a friend to play",
@@ -1272,8 +1273,8 @@ export const en = {
     return [
       `ℹ️ *MatchTime help*`,
       p.dm
-        ? `Message me *help* and a topic to learn more, e.g. *help payments*`
-        : `Tag me with *help* and a topic to learn more, e.g. *@Match Time help teams*`,
+        ? `Message me *help* and a topic to learn more, e.g. *help ${p.exampleTopic}*`
+        : `Tag me with *help* and a topic to learn more, e.g. *@Match Time help ${p.exampleTopic}*`,
       ``,
       ...p.topics.map(({ topic, off }) => `${HELP_MENU_ICON[topic]} *${topic}*: ${one[topic]}${off ? " (off here)" : ""}`),
       p.dm ? `❓ Anything else: just ask` : `❓ Anything else: just tag me and ask`,
@@ -1598,7 +1599,7 @@ export const en = {
     const one: Record<HqMenuTopic, string> = {
       squad: "who's in, out or on the bench",
       teams: "making and changing the teams",
-      players: "finding players when you're short",
+      players: p.squad ? "finding players when you're short" : "how players join your monthly squad",
       game: p.squad ? "cancel, resize or move a game" : "resize or move a game",
       settings: "quiet hours, player numbers and the settings page",
       graphics: "the poster and the team sheet",
@@ -1670,6 +1671,25 @@ export const en = {
     const head = { squad: "📋 *Squad*", teams: "🟥🟦 *Teams*", players: "📣 *Finding players*", game: "🗓️ *The game*", settings: "⚙️ *Settings*", graphics: "🖼️ *Graphics*", payments: "💷 *Payments*" }[p.topic];
     return [`${head}: tag me in every message here (type *@*, pick *Match Time*), for example:`, ...lines].join("\n");
   },
+
+  /** "help players" in a MONTHLY club's admin group (review 2026-11-15):
+   *  how players join the month, each line only while it is true.
+   *  The tagged add: month-newcomers.ts `applyMonthAdd` (HQ is one of its
+   *  doors). `attendance`: IN for pay as you go and the friend link need
+   *  it. `pool`: the pool is open for the club, asked from the match page
+   *  (pool/ask-round.ts). */
+  hq_help_players_monthly: (p: { attendance: boolean; pool: boolean }): string =>
+    [
+      `👥 *How players join your monthly squad*:`,
+      `📋 *"@Match Time add Tom to the November list, he's paid"*: a regular for the month's games still to play, and on the next game's squad.`,
+      ...(p.attendance
+        ? [
+            `🙋 Pay as you go: a player can say *In* in the players' group to take an open place, and pays for that game only.`,
+            `👥 A player can bring a friend: they say so in the players' group and I DM them a link for their friend, which takes an open place (on the bench if it's full).`,
+          ]
+        : []),
+      ...(p.pool ? [`🌍 A place still open? Ask nearby players from the MatchTime player pool from the match page.`] : []),
+    ].join("\n"),
 
   // ── The safe YES in the admin group (2026-10-16, admin-group-confirm-rules.ts) ──
 

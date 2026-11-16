@@ -1299,7 +1299,8 @@ function cases(lang: Lang): Case[] {
   add("R151 composeJoinDm / possible duplicate", composeJoinDm(lang, { kind: "first", club: "MT Test", name: "Hamzah Khan", link: { kind: "suggest", names: ["Hamzah", "Hamza"] } }, "https://mt.example/r/players"));
   // ── 1.4c "help badges" (2026-10-01): NEW cases ──────────────────────
   add("R152 buildHelpReply / badges / group", buildHelpReply("badges", ALL_ON, lang, { audience: "group" }));
-  add("R152 buildHelpReply / badges / player", buildHelpReply("badges", ALL_ON, lang, { audience: "player" }));
+  // A player's DM, as dm-help.ts asks it (`dm: true`, review 2026-11-15).
+  add("R152 buildHelpReply / badges / player", buildHelpReply("badges", ALL_ON, lang, { audience: "player", dm: true }));
   add("R152 buildHelpReply / badges / unknown name", buildHelpReply("badges", ALL_ON, lang, { audience: "group", badgeQuery: "golden boot" }));
   for (const name of ["On the board", "Regular", "Iron Man", "Man of the Match", "MoM Machine", "Masterclass", "Mr Reliable", "Above the Curve"]) {
     add(`R152 buildHelpReply / badges / ${name}`, buildHelpReply("badges", ALL_ON, lang, { audience: "group", badgeQuery: name }));

@@ -203,7 +203,7 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
         `🏅 *badges*: what your badges mean`,
         `⏰ *reminders*: what I remind you about`,
         `💷 *payments*: paying the match fee`,
-        `🤝 *partners*: playing with partner clubs`,
+        // No partner clubs: off, so not on a player's menu (2026-11-15).
         `📅 *schedule*: when and where you play`,
         `❓ Anything else: just tag me and ask`,
       ].join("\n"),
@@ -344,7 +344,9 @@ describe("what is not switched on is for organisers, not the players' group", ()
   const PAY_OFF: HelpFeatures = { ...ALL_ON, paymentTracking: false, paymentCollection: false };
   const FNF_PAY_OFF: HelpFeatures = { ...FNF, paymentTracking: false, paymentCollection: false };
 
-  it("group bare help with payments off: no not-on line, payments only as a topic word, in English and Turkish", () => {
+  // Since 2026-11-15 (Kemal) a player's menu lists only what is on: an off
+  // payments topic is not on it at all; an organiser's marks it off.
+  it("group bare help with payments off: no not-on line and no payments topic, in English and Turkish", () => {
     for (const f of [PAY_OFF, FNF_PAY_OFF, FEATURE_SETS.allOff, FEATURE_SETS.noTeamsNoPay]) {
       const en = buildHelpReply(null, f, "en", { audience: "group" });
       const tr = buildHelpReply(null, f, "tr", { audience: "group" });
@@ -353,8 +355,8 @@ describe("what is not switched on is for organisers, not the players' group", ()
         expect(out).not.toMatch(/\((off here|burada kapalı)\)/);
         expect(out).not.toContain("Want to collect match fees");
       }
-      expect(en).toContain(`💷 *payments*: paying the match fee\n`);
-      expect(tr).toContain(`💷 *ödeme*: maç ücretini ödemek\n`);
+      expect(en).not.toContain(`💷 *payments*`);
+      expect(tr).not.toContain(`💷 *ödeme*`);
     }
   });
 
@@ -370,14 +372,13 @@ describe("what is not switched on is for organisers, not the players' group", ()
     expect(buildHelpReply(null, FNF_PAY_OFF, "en", { audience: "admin", links: LINKS })).toMatch(NOT_ON_EN);
   });
 
-  it("group bare help is otherwise the admin's text without the markers and the settings topic", () => {
+  it("group bare help is otherwise the admin's text without the off topics and the settings topic", () => {
     for (const lang of ["en", "tr"]) {
       const group = buildHelpReply(null, PAY_OFF, lang, { audience: "group" });
       const admin = buildHelpReply(null, PAY_OFF, lang, { audience: "admin", links: LINKS });
       const asPlayer = admin
         .split("\n")
-        .filter((l) => !l.startsWith("⚙️"))
-        .map((l) => l.replace(/ \((off here|burada kapalı)\)$/, ""));
+        .filter((l) => !l.startsWith("⚙️") && !/ \((off here|burada kapalı)\)$/.test(l));
       expect(asPlayer).toEqual(group.split("\n"));
     }
   });

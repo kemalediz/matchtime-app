@@ -326,7 +326,7 @@ const SAMPLES: SampleArgs = {
   onbFeatureLabel: { key: "attendance", englishLabel: "Attendance tracking" },
   onbDayName: { dow: 2 },
   onbHowToUseMe: { attendance: true, teamBalancing: true, momVoting: true, playerRating: true, statsQa: true, reminders: true, bench: true, paymentTracking: true },
-  onbHelpMenu: { topics: [{ topic: "availability" }, { topic: "teams" }, { topic: "payments", off: true }, { topic: "settings" }] },
+  onbHelpMenu: { topics: [{ topic: "availability" }, { topic: "teams" }, { topic: "payments", off: true }, { topic: "settings" }], exampleTopic: "teams" },
   help_back: { dm: false },
   onbHelpTopicWord: { topic: "teams" },
   onbHelpNotOn: null,
@@ -351,6 +351,7 @@ const SAMPLES: SampleArgs = {
   onbHelpMonthListOrganiser: null,
   hq_help_menu: { squad: true, topics: [{ topic: "squad" }, { topic: "players" }, { topic: "game" }, { topic: "pool", off: true }] },
   hq_help_topic: { topic: "players", squad: true, graphics: true, picks: true, paid: true, free: true, pool: true },
+  hq_help_players_monthly: { attendance: true, pool: true },
   hq_confirm_teams: { day: "Fri 16 Oct" },
   hq_confirm_list: null,
   hq_confirm_which: { items: ["ITEM_A", "ITEM_B"] },
@@ -2326,7 +2327,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "reminder", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome", "band"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "reminder", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome", "band", "exampleTopic"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

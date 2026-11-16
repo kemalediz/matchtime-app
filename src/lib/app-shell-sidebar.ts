@@ -1,5 +1,6 @@
 import { PRIVACY_PATH } from "./privacy-policy";
 import { PLAYERS_PAGE_PATH, isPoolPage } from "./pool/paths";
+import { CONTACT_PATH } from "./site-operator";
 
 export type SessionStatus = "authenticated" | "unauthenticated" | "loading";
 
@@ -9,7 +10,8 @@ export type SessionStatus = "authenticated" | "unauthenticated" | "loading";
  * - Auth routes, magic links, join links and onboarding are always
  *   full-bleed: they have their own background.
  * - Public marketing pages (the landing page at `/`, the players' page at
- *   `/players`, the pricing page, the help guides and the privacy policy)
+ *   `/players`, the pricing page, the help guides, the contact page and
+ *   the privacy policy)
  *   are full-bleed for signed-out visitors, so an empty app sidebar does
  *   not appear next to them. Signed-in users keep the sidebar there.
  * - The player pool's pages (/play, /play/manage) are always full-bleed:
@@ -34,6 +36,7 @@ export function shouldShowSidebar(pathname: string | null, status: SessionStatus
     !!pathname?.startsWith("/help/") ||
     pathname === PRIVACY_PATH ||
     pathname === PLAYERS_PAGE_PATH ||
+    pathname === CONTACT_PATH ||
     pathname === "/pricing";
   const signedOut = status === "unauthenticated";
   const isPublicMarketing = isMarketingPath && signedOut;

@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { WebAnalytics } from "@/components/web-analytics";
 import { SITE_META } from "@/components/landing/landing-content";
 import { OPERATOR_LEGAL_NAME, OPERATOR_URL } from "@/lib/site-operator";
+import { SITE_OPEN_GRAPH } from "@/lib/page-canonical";
 
 // Inter for body copy — tightly hinted, great on every device at every
 // size. `--font-geist-sans` kept as the CSS variable name so we don't
@@ -45,13 +46,11 @@ export const metadata: Metadata = {
   creator: OPERATOR_LEGAL_NAME,
   publisher: OPERATOR_LEGAL_NAME,
   applicationName: "MatchTime",
-  openGraph: {
-    type: "website",
-    url: SITE_URL,
-    siteName: "MatchTime",
-    title: SITE_META.title,
-    description: SITE_META.ogDescription,
-  },
+  // No og:url and no canonical here: a layout cannot know the page's own
+  // URL, and setting the home page here made every page claim the home page
+  // as canonical (review 2026-11-15). Public pages set their own with
+  // ownPageUrlMetadata; a page without one names none.
+  openGraph: SITE_OPEN_GRAPH,
   twitter: {
     card: "summary_large_image",
     title: SITE_META.title,
@@ -66,9 +65,6 @@ export const metadata: Metadata = {
       "max-image-preview": "large",
       "max-snippet": -1,
     },
-  },
-  alternates: {
-    canonical: SITE_URL,
   },
   // Meta Business domain verification for matchtime.ai (2026-11-07). The
   // value is public by design: Meta reads it from <head> on the home page.

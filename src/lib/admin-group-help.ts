@@ -147,7 +147,13 @@ export function buildHqTopicLines(topic: HqHelpTopic, p: HqHelpGates & { lang: s
  * (its settings could not be read): the HQ topics and payments, no marker.
  */
 export function buildHqHelp(p: HqHelpGates & { lang: string | null | undefined; features?: HelpFeatures }): string {
-  const hqTopics = HQ_HELP_TOPICS.filter((tp) => tp !== "payments" && buildHqTopicLines(tp, p) !== "");
+  // A monthly club's "help players" always has lines: how players join the
+  // month (`hqHelpTopicReply`, review of #605), so the menu lists it. With
+  // its settings unread, the gates say it (`squad` is off only for monthly).
+  const monthly = p.features ? p.features.monthly === true : !p.squad;
+  const hqTopics = HQ_HELP_TOPICS.filter(
+    (tp) => tp !== "payments" && (buildHqTopicLines(tp, p) !== "" || (tp === "players" && monthly)),
+  );
   const askable: readonly HelpTopic[] = p.features ? helpTopicsAskable(p.features) : ["payments"];
   const off = new Set(p.features ? helpTopicsOff(p.features) : []);
   const more = HQ_MORE_TOPICS.filter((tp) => askable.includes(tp));
@@ -211,7 +217,35 @@ export async function hqHelpTopicReply(args: {
         ...(args.club ? { club: args.club } : {}),
       })
     : "";
-  return [own, explainer, t(args.lang).help_back({})].filter(Boolean).join("\n\n");
+  const monthlyJoin = hq === "players" && args.features.squadMode === "monthly" ? await monthlyJoinLines(args) : "";
+  return [own, monthlyJoin, explainer, t(args.lang).help_back({})].filter(Boolean).join("\n\n");
+}
+
+/**
+ * "help players" for a MONTHLY club (review 2026-11-15): the "Finding
+ * players" lines are the weekly squad's commands, so a monthly club with
+ * no organiser picks had nothing but the way back to the menu. How players
+ * join the month instead, each line only while it is true for the club
+ * (`hq_help_players_monthly`): the organiser's tagged add, IN for pay as
+ * you go and the friend link while attendance is on, the pool while it is
+ * open for the club (`helpFeaturesFrom`'s pool, the one rule).
+ */
+async function monthlyJoinLines(args: {
+  orgId: string;
+  lang: string | null | undefined;
+  features: OrgFeatures;
+  poolEnv?: Record<string, string | undefined>;
+  club?: HelpClubFacts;
+}): Promise<string> {
+  let poolOpen = false;
+  try {
+    const club = args.club ?? (await (await import("./help-club-facts")).loadHelpClubFacts(args.orgId, args.poolEnv ?? {}));
+    poolOpen = helpFeaturesFrom(args.features, club).pool?.open === true;
+  } catch (err) {
+    // The pool line is left out rather than the answer.
+    console.error(`[admin-group] ${args.orgId}: help players pool read failed:`, err);
+  }
+  return t(args.lang).hq_help_players_monthly({ attendance: args.features.attendance === true, pool: poolOpen });
 }
 
 /**

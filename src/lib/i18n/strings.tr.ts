@@ -1096,8 +1096,8 @@ export const tr: Strings = {
     return [
       `ℹ️ *MatchTime yardım*`,
       p.dm
-        ? `Daha fazlası için bana *yardım* ve bir konu yazın, örneğin *yardım ödeme*`
-        : `Daha fazlası için beni *yardım* ve bir konuyla etiketleyin, örneğin *@Match Time yardım takımlar*`,
+        ? `Daha fazlası için bana *yardım* ve bir konu yazın, örneğin *yardım ${HELP_WORD_TR[p.exampleTopic]}*`
+        : `Daha fazlası için beni *yardım* ve bir konuyla etiketleyin, örneğin *@Match Time yardım ${HELP_WORD_TR[p.exampleTopic]}*`,
       ``,
       ...p.topics.map(({ topic, off }) => `${HELP_MENU_ICON[topic]} *${HELP_WORD_TR[topic]}*: ${one[topic]}${off ? " (burada kapalı)" : ""}`),
       p.dm ? `❓ Başka bir şey: sormanız yeter` : `❓ Başka bir şey: beni etiketleyip sormanız yeter`,
@@ -1329,7 +1329,7 @@ export const tr: Strings = {
     const one: Record<HqMenuTopic, string> = {
       squad: "kim var, kim yok, kim yedekte",
       teams: "takımları kurmak ve değiştirmek",
-      players: "eksik kaldığınızda oyuncu bulmak",
+      players: p.squad ? "eksik kaldığınızda oyuncu bulmak" : "oyuncular aylık kadronuza nasıl katılır",
       game: p.squad ? "bir maçı iptal etmek, formatını ya da saatini değiştirmek" : "bir maçın formatını ya da saatini değiştirmek",
       settings: "sessiz saatler, oyuncu sayıları ve ayarlar sayfası",
       graphics: "poster ve takım listesi görseli",
@@ -1389,6 +1389,18 @@ export const tr: Strings = {
     return [`${head}: burada her mesajda beni etiketleyin (*@* yazıp *Match Time*'ı seçin), örneğin:`, ...lines].join("\n");
   },
 
+  hq_help_players_monthly: (p) =>
+    [
+      `👥 *Oyuncular aylık kadronuza nasıl katılır*:`,
+      `📋 *"@Match Time Tom'u Kasım listesine ekle, ödedi"*: ayın kalan maçları için düzenli oyuncu olur ve bir sonraki maçın kadrosuna girer.`,
+      ...(p.attendance
+        ? [
+            `🙋 Maç başı ödeyenler: bir oyuncu boş bir yeri almak için oyuncu grubunda *varım* yazabilir, sadece o maçın ücretini öder.`,
+            `👥 Bir oyuncu arkadaşını getirebilir: oyuncu grubunda söyler, ben de ona arkadaşı için bir bağlantı gönderirim. Arkadaşı boş bir yeri alır (kadro doluysa yedeğe girer).`,
+          ]
+        : []),
+      ...(p.pool ? [`🌍 Hâlâ boş yer mi var? Maç sayfasından yakındaki MatchTime oyuncu havuzu oyuncularına sorun.`] : []),
+    ].join("\n"),
   hq_confirm_teams: (p) => `Bu EVET, ${p.day} için önerilen takımlara mı?`,
   hq_confirm_list: `Bu EVET, buraya yapıştırılan kadro listesine mi?`,
   hq_confirm_which: (p) => `Bu EVET hangisi için: ${p.items.join(", ")}? O mesaja *@Match Time EVET* diye cevap verin.`,

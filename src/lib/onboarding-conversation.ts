@@ -332,7 +332,9 @@ export function buildHelpReply(
   const topicUrl = helpLink(ctx, "topic", topic);
   const title = (key: SettingInfoKey) => settingInfo(lang, key).title;
 
-  if (topic === "badges") return buildBadgeHelp(ctx.badgeQuery, lang, { dm: ctx.audience !== "group" });
+  // Only a DM drops the tag: in any group, the players' or the admin group,
+  // an untagged "help badges" is ignored, whoever asks (review 2026-11-15).
+  if (topic === "badges") return buildBadgeHelp(ctx.badgeQuery, lang, { dm: ctx.dm === true });
   if (topic === "schedule") {
     return s.onbHelpSchedule({
       audience: ctx.audience,
@@ -418,13 +420,29 @@ export function buildHelpReply(
   }
 
   // Bare help: the topics, one line each (Kemal, 2026-11-10: "only one
-  // liner explanation for each"). Every topic this club can ask about, off
-  // ones too: each says how it works and how to switch it on when asked.
-  // An organiser also gets the settings topic, and sees which are off here
-  // ("(off here)"); a player is not nagged with that (FNF, 2026-10-15).
+  // liner explanation for each"). An organiser gets every topic this club
+  // can ask about, off ones too, marked "(off here)", and the settings
+  // topic: each says how to switch it on when asked. A player, in the group
+  // or by DM, gets only what is switched on for the club (Kemal,
+  // 2026-11-15): nothing to read about that his club does not use.
   const off = new Set(admin ? helpTopicsOff(features) : []);
-  const topics = helpTopicsAskable(features)
-    .filter((tp) => tp !== "settings" || admin)
-    .map((tp) => (off.has(tp) ? { topic: tp, off: true } : { topic: tp }));
-  return s.onbHelpMenu({ topics, ...(features.monthly ? { monthly: true } : {}), ...(ctx.dm ? { dm: true } : {}) });
+  const listed = (admin ? helpTopicsAskable(features) : HELP_TOPIC_ORDER.filter((tp) => topicIsOn(tp, features)))
+    .filter((tp) => tp !== "settings" || admin);
+  const topics = listed.map((tp) => (off.has(tp) ? { topic: tp, off: true } : { topic: tp }));
+  return s.onbHelpMenu({
+    topics,
+    exampleTopic: menuExample(listed, features, ctx.dm === true),
+    ...(features.monthly ? { monthly: true } : {}),
+    ...(ctx.dm ? { dm: true } : {}),
+  });
+}
+
+/** The topic the menu's "e.g. help <topic>" names: one that is on for the
+ *  club (review 2026-11-15). Teams in a group and payments by DM, as
+ *  before, when on; otherwise the first topic listed that is on (badges
+ *  and the schedule always are). */
+function menuExample(listed: readonly HelpTopic[], features: HelpFeatures, dm: boolean): HelpTopic {
+  const preferred: HelpTopic = dm ? "payments" : "teams";
+  const on = listed.filter((tp) => topicIsOn(tp, features));
+  return on.includes(preferred) ? preferred : (on[0] ?? "badges");
 }

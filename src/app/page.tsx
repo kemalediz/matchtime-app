@@ -26,6 +26,12 @@ import { ResultScore } from "@/components/match/result-score";
 import { connectFocusFor } from "@/lib/connect-focus-server";
 import { CONNECT_FOCUS_HOME } from "@/lib/connect-focus";
 import { NOT_CANCELLED } from "@/lib/played-match";
+import { ownPageUrlMetadata } from "@/lib/page-canonical";
+
+// The home page's own canonical and og:url (they used to sit in the root
+// layout, where every page inherited them: review 2026-11-15). Its
+// og:image is still opengraph-image.png, attached by the file itself.
+export const metadata = ownPageUrlMetadata("/", { imageFromFile: true });
 
 function getGreeting(hour: number): string {
   if (hour < 5) return "Good night";
