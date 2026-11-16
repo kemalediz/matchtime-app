@@ -16,17 +16,19 @@
  * the page, a bundle or the sitemap. A stranger has to be able to write to
  * MatchTime; that is the whole point of the pool's WhatsApp-first sign-up.
  *
- * STAFF TESTS (2026-11-16; rounds 3 and 4 of #607). A sign-up TICKED as a
- * test (`staffTest: true`, the box /play shows only a MatchTime staff
+ * STAFF TESTS (2026-11-16, #607). A sign-up TICKED as a test (`staffTest:
+ * true`, the box /play and a friend link show only a MatchTime staff
  * session) and made with a VERIFIED MatchTime staff session
- * (`User.isSuperadmin`: `isPoolStaffSession`) is made and answered exactly as any other, and
- * stored with `PoolProfile.staffTest`, so it is in none of the owner's or
- * clubs' numbers, and the answer says `staffTest: true` so the page counts
- * no analytics sign-up for it. NEVER from the staff cookie: it is unsigned,
- * and a staff test also hides the profile from a club's Guest players page.
- * A real person signing up on a staff phone signed out is an ordinary
- * sign-up. Asked only for a form that is valid. Staff tests still receive
- * offers, so the whole path can be tested; they are just not counted.
+ * (`User.isSuperadmin`: `isPoolStaffSession`) is made and answered exactly
+ * as any other, and stored with `PoolProfile.staffTest`: it is then left
+ * out of the pool's MEASUREMENTS only (the funnel's sent and confirmed, the
+ * codes page's "All time", the pool funnel page, the offer health), and
+ * the answer says `staffTest: true` so the page counts no analytics
+ * sign-up. Everywhere operational he is a player like any other. Never
+ * from the staff cookie: it is unsigned, and the statistics must not be
+ * hideable by hand. A real newcomer signed up on a staff phone with the
+ * tick taken off, or signed out, is a real sign-up. Asked only for a form
+ * that is valid.
  */
 import { NextResponse } from "next/server";
 import { poolRequestIp } from "@/lib/pool/request-ip";

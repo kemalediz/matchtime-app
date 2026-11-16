@@ -61,31 +61,45 @@ scenarios("saying yes to a pool offer", () => {
     pool.expectSent(await pool.collect(), []);
   });
 
-  // Round 5 of #607: Kemal testing end to end. His yes works exactly as
-  // anyone's (his place, his DM), but the club is never told about a staff
-  // test: no HQ post, no players' group post, in or out. His place carries
-  // the offer's flag, so it stays out of every count.
-  scenario("a staff test says yes: his place and his DM as anyone's, the place flagged, and no post to the club's HQ or group, in or out", async ({ pool, page }) => {
-    const fnf = await openClub(pool, "fnf", { name: "FNF", hq: true });
-    const kemal = await poolPlayer(pool, "kemal", { name: "Kemal Test", at: near(fnf) });
-    await pool.db.run(`UPDATE "PoolProfile" SET "staffTest" = true WHERE "userId" = $1`, [kemal.userId]);
-    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
-    await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
-    const offer = ex.sent.find((m) => m.to === "kemal")!;
-    expect(await pool.db.one(`SELECT "staffTest" FROM "PoolOffer" WHERE "userId" = $1`, [kemal.userId])).toEqual({ staffTest: true });
-
-    expect(await tapOffer(pool, page, tapLinkIn(offer), "yes")).toBe("in");
-    const sent = await pool.collect();
-    pool.expectSent(sent, [{ to: "kemal", channel: "dm", purpose: "pool-placed", text: /✅ You're in: \*FNF\*/ }]);
-    expect(await pool.db.one(`SELECT source, result, "staffTest" FROM "GuestPlace" WHERE "matchId" = $1 AND "userId" = $2`, [fnf.group.matchId, kemal.userId])).toEqual({
-      source: "pool",
-      result: "booked",
-      staffTest: true,
-    });
-
-    pool.note("he gives the place back: still no post to the club");
-    expect(await tapOffer(pool, page, tapLinkIn(offer), "pull-out")).not.toBe("in");
-    expect((await pool.collect()).filter((m) => m.channel !== "dm")).toEqual([]);
+  // #607, final scope: a MatchTime staff test is a player like any other in
+  // every operational flow. Only the pool's measurements leave him out.
+  // The same ask and yes, once for a real player and once for a staff test:
+  // the same messages to the same people (HQ included), the same place, the
+  // same round. Only his offer carries the flag (for the offer health).
+  scenario("a staff test's yes is exactly a real player's: the same messages, HQ post included, the same place and round", async ({ pool, page }) => {
+    const run = async (key: string, staff: boolean) => {
+      const club = await openClub(pool, key, { name: "FNF", hq: true });
+      const player = await poolPlayer(pool, `${key}-ali`, { name: "Ali Kaya", at: near(club) });
+      if (staff) await pool.db.run(`UPDATE "PoolProfile" SET "staffTest" = true WHERE "userId" = $1`, [player.userId]);
+      const ex = await organiserAsks(pool, page, club, { places: 1, now: at(club.kickoff, -8) });
+      await pollPlatform(pool, { now: at(club.kickoff, -8) });
+      const offer = ex.sent.find((m) => m.to === `${key}-ali`)!;
+      const state = await tapOffer(pool, page, tapLinkIn(offer), "yes");
+      const shape = (list: Array<{ to: string; channel?: string | null; purpose?: string | null; text: string }>) =>
+        list.map((m) => ({
+          to: m.to.replace(key, "CLUB"),
+          channel: m.channel,
+          purpose: m.purpose,
+          text: m.text.replace(/https?:\/\/\S+/g, "LINK"),
+        }));
+      return {
+        asked: shape(ex.sent),
+        state,
+        afterYes: shape(await pool.collect()),
+        attendance: await pool.db.one(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [club.group.matchId, player.userId]),
+        place: await pool.db.one(`SELECT source, result FROM "GuestPlace" WHERE "matchId" = $1 AND "userId" = $2`, [club.group.matchId, player.userId]),
+        ask: await askOf(pool, club),
+        offerFlag: (await pool.db.one<{ staffTest: boolean }>(`SELECT "staffTest" FROM "PoolOffer" WHERE "userId" = $1`, [player.userId]))!.staffTest,
+      };
+    };
+    const real = await run("fnfreal", false);
+    const staff = await run("fnfstaff", true);
+    expect(real.afterYes.some((m) => m.channel === "hq")).toBe(true);
+    const { offerFlag: realFlag, ask: realAsk, ...realOps } = real;
+    const { offerFlag: staffFlag, ask: staffAsk, ...staffOps } = staff;
+    expect(staffOps).toEqual(realOps);
+    expect({ status: staffAsk?.status, closeReason: staffAsk?.closeReason }).toEqual({ status: realAsk?.status, closeReason: realAsk?.closeReason });
+    expect([realFlag, staffFlag]).toEqual([false, true]);
   });
 
   scenario("in Turkish: the page, his details and the organisers' notice in each one's language", async ({ pool, page }) => {

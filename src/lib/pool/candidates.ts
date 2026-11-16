@@ -44,39 +44,12 @@ export interface FindOptions {
 export interface FoundCandidates {
   ctx: PoolMatchContext | null;
   selection: Selection;
-  /** The MatchTime staff tests among the profiles read (`PoolProfile.staffTest`,
-   *  round 3 of #607). They stay candidates, so Kemal can test the whole
-   *  offer path, but no organiser's number counts them (`countedPoolCandidates`). */
-  staffTestUserIds: ReadonlySet<string>;
 }
-
-const NONE: ReadonlySet<string> = new Set();
 
 const closed = (gate: Selection["gate"], ctx: PoolMatchContext | null = null): FoundCandidates => ({
   ctx,
   selection: { gate, eligible: [], excluded: {} },
-  staffTestUserIds: NONE,
 });
-
-/** How many candidates an organiser's number counts: every eligible one
- *  but a MatchTime staff test. */
-export function countedPoolCandidates(found: FoundCandidates): number {
-  return found.selection.eligible.filter((e) => !found.staffTestUserIds.has(e.userId)).length;
-}
-
-/**
- * The band the organiser SEES (round 4 of #607). Whether the pool can be
- * asked is decided by every eligible candidate, staff tests included
- * (`selection.eligible`, as the round itself counts them), so the band is
- * "none" only when nobody at all is eligible. Its size counts real players
- * only: when the only candidates are staff tests it reads "a few", and a
- * staff test never lifts it to "5+".
- */
-export function shownPoolBand(found: FoundCandidates): PoolNearBand {
-  if (found.selection.eligible.length === 0) return "none";
-  const real = countedPoolCandidates(found);
-  return real === 0 ? "few" : nearBand(real);
-}
 
 export async function findPoolCandidates(matchId: string, opts: FindOptions = {}): Promise<FoundCandidates> {
   const now = opts.now ?? new Date();
@@ -121,7 +94,6 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       userId: true,
       status: true,
       consentAt: true,
-      staffTest: true,
       maxMiles: true,
       areaLat: true,
       areaLng: true,
@@ -130,8 +102,7 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       availability: { select: { day: true, fromMin: true, toMin: true } },
     },
   });
-  if (profiles.length === 0) return { ctx, selection: selectCandidates(ctx, [], now), staffTestUserIds: NONE };
-  const staffTestUserIds: ReadonlySet<string> = new Set(profiles.filter((p) => p.staffTest).map((p) => p.userId as string));
+  if (profiles.length === 0) return { ctx, selection: selectCandidates(ctx, [], now) };
 
   const userIds = profiles.map((p) => p.userId as string);
   const kickoff = ctx.kickoff;
@@ -187,7 +158,7 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
 
   const rows = candidateRowsOf(
     matchId,
-    profiles.map(({ staffTest: _staffTest, ...p }) => ({ ...p, userId: p.userId as string, phoneNumber: p.user?.phoneNumber ?? null })),
+    profiles.map((p) => ({ ...p, userId: p.userId as string, phoneNumber: p.user?.phoneNumber ?? null })),
     {
       clubMemberIds: new Set(members.map((m) => m.userId)),
       onMatchIds: new Set(onMatch.map((a) => a.userId)),
@@ -199,13 +170,13 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       ownGames: ownGames.map((g) => ({ userId: g.userId, matchDate: g.match.date })),
     },
   );
-  return { ctx, selection: selectCandidates(ctx, rows, now), staffTestUserIds };
+  return { ctx, selection: selectCandidates(ctx, rows, now) };
 }
 
-/** "Players near you" for the organiser: the band shown, never who
- *  (`shownPoolBand`). */
+/** "Players near you" for the organiser: the band, never who. */
 export async function poolNearBand(matchId: string, opts: FindOptions = {}): Promise<PoolNearBand> {
-  return shownPoolBand(await findPoolCandidates(matchId, opts));
+  const found = await findPoolCandidates(matchId, opts);
+  return nearBand(found.selection.eligible.length);
 }
 
 /** How many more pool DMs may go at `now` (POOL_PLATFORM_CAPS). A hint

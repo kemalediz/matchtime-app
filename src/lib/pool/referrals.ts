@@ -46,8 +46,7 @@ const PLAYED_MATCH = { status: "COMPLETED", isHistorical: false } as const;
 
 export async function stampPlayedReferrals(now: Date = new Date()): Promise<{ counted: number }> {
   const waiting = await db.poolProfile.findMany({
-    // A MatchTime staff test (2026-11-16) is never a friend who counts.
-    where: { referrerUserId: { not: null }, referralCountedAt: null, userId: { not: null }, status: { not: "pending-verify" }, staffTest: false },
+    where: { referrerUserId: { not: null }, referralCountedAt: null, userId: { not: null }, status: { not: "pending-verify" } },
     select: { id: true, userId: true, referrerUserId: true },
     orderBy: { createdAt: "asc" },
     take: STAMP_BATCH,
@@ -55,8 +54,7 @@ export async function stampPlayedReferrals(now: Date = new Date()): Promise<{ co
   if (waiting.length === 0) return { counted: 0 };
   const userIds = waiting.map((w) => w.userId!);
   const [places, games] = await Promise.all([
-    // A staff test's place is not a game for anyone's badge (round 5 of #607).
-    db.guestPlace.findMany({ where: { userId: { in: userIds }, staffTest: false }, select: { userId: true, matchId: true, result: true, settledAt: true } }),
+    db.guestPlace.findMany({ where: { userId: { in: userIds } }, select: { userId: true, matchId: true, result: true, settledAt: true } }),
     db.attendance.findMany({ where: { userId: { in: userIds }, status: "CONFIRMED", match: PLAYED_MATCH }, select: { userId: true, matchId: true } }),
   ]);
 
@@ -82,7 +80,7 @@ export async function stampPlayedReferrals(now: Date = new Date()): Promise<{ co
 async function friendsPlayedBy(referrerIds: readonly string[]): Promise<{ counts: Map<string, number>; profiles: Map<string, { status: string; showRecognition: boolean }> }> {
   const [friends, referrers] = await Promise.all([
     db.poolProfile.findMany({
-      where: { referrerUserId: { in: [...referrerIds] }, referralCountedAt: { not: null }, userId: { not: null }, staffTest: false },
+      where: { referrerUserId: { in: [...referrerIds] }, referralCountedAt: { not: null }, userId: { not: null } },
       select: { userId: true, referrerUserId: true, referralCountedAt: true },
     }),
     db.poolProfile.findMany({ where: { userId: { in: [...referrerIds] } }, select: { userId: true, status: true, showRecognition: true, referrerUserId: true } }),
@@ -129,7 +127,7 @@ async function homeClubsOf(userIds: readonly string[]): Promise<Map<string, stri
 export async function loadClubReferralAwards(orgId: string, eligibleUserIds: ReadonlySet<string>): Promise<{ awards: ReferralAward[]; silent: ReferralAward[] }> {
   if (eligibleUserIds.size === 0) return { awards: [], silent: [] };
   const withFriends = await db.poolProfile.findMany({
-    where: { referrerUserId: { in: [...eligibleUserIds] }, referralCountedAt: { not: null }, staffTest: false },
+    where: { referrerUserId: { in: [...eligibleUserIds] }, referralCountedAt: { not: null } },
     select: { referrerUserId: true },
     distinct: ["referrerUserId"],
   });

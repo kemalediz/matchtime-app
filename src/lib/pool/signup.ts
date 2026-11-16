@@ -46,8 +46,9 @@ export async function createPoolSignup(args: {
   friendLink?: { id: string; issuedByUserId: string; kickoff: Date };
   /** 2026-11-16 (rounds 3 and 4 of #607): ticked as a test, with a verified
    *  MatchTime staff session (`/api/play/signup`, `isPoolStaffSession`),
-   *  never from the staff cookie. Stored on the profile; no number counts
-   *  it. Nothing else about the sign-up changes. */
+   *  never from the staff cookie. Stored on the profile; the pool's
+   *  measurements leave it out (#607). Nothing else about the sign-up
+   *  changes: operationally he is a player like any other. */
   staffTest?: boolean;
   now?: Date;
 }): Promise<PoolSignupResult> {

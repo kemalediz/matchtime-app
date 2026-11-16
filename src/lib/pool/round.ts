@@ -40,7 +40,7 @@ import { db } from "../db";
 import { appUrl } from "../app-url";
 import { loadPartnerAskSettings } from "../club-partnership";
 import { OPEN_ASK_STATUSES, askWindows } from "../partner-ask-rules";
-import { loadRoundFill, loadRoundFillShown } from "../partner-ask-round";
+import { loadRoundFill } from "../partner-ask-round";
 import { askPlacesOpen } from "../monthly-week-asks";
 import { queuePlatformDm } from "../platform-jobs";
 import { pausesForIgnored } from "./caps";
@@ -214,7 +214,7 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
     if (shortlist.length === 0) return 0;
     const profiles = await db.poolProfile.findMany({
       where: { userId: { in: shortlist.map((p) => p.userId) } },
-      select: { userId: true, language: true, user: { select: { phoneNumber: true } } },
+      select: { userId: true, language: true, staffTest: true, user: { select: { phoneNumber: true } } },
     });
     const byUser = new Map(profiles.map((p) => [p.userId as string, p]));
     const prepared: Array<{ userId: string; distanceMiles: number; phone: string; lang: ReturnType<typeof normaliseLang>; manageLink: string; staffTest: boolean }> = [];
@@ -228,9 +228,9 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
         phone,
         lang: normaliseLang(profile.language),
         manageLink: await buildPoolManageLink(c.userId),
-        // The offer carries the staff test flag itself (round 4 of #607), so
-        // it stays out of every count after his profile is erased.
-        staffTest: found.staffTestUserIds.has(c.userId),
+        // A MatchTime staff test is offered exactly as anyone (#607); the
+        // offer only carries the flag, for the owner's offer health.
+        staffTest: profile.staffTest === true,
       });
     }
 
@@ -356,12 +356,6 @@ export async function cancelPoolAsk(args: { orgId: string; matchId: string; roun
 /** The round's fill for a pool ask (one definition: partner-ask-round.ts). */
 export function poolAskFill(ask: { id: string; roundId: string | null; matchId: string; places: number }) {
   return loadRoundFill({ id: ask.id, roundId: ask.roundId, matchId: ask.matchId, places: ask.places, volunteerUserIds: [], pickedUserIds: [] });
-}
-
-/** The same round's fill as the match page SHOWS it (round 5 of #607): a
- *  MatchTime staff test with a place is not found (`loadRoundFillShown`). */
-export function poolAskShownFill(ask: { id: string; roundId: string | null; matchId: string; places: number }) {
-  return loadRoundFillShown({ id: ask.id, roundId: ask.roundId, matchId: ask.matchId, places: ask.places, volunteerUserIds: [], pickedUserIds: [] });
 }
 
 /**

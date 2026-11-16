@@ -9,10 +9,12 @@
  * results of his games. Never a name, a number, an area or a distance
  * (`__tests__/funnel-loader.test.ts` pins the selects).
  *
- * STAFF TESTS (2026-11-16; rounds 3 and 4 of #607): a sign-up ticked as a
+ * STAFF TESTS (#607): this page is a MEASUREMENT, so a sign-up ticked as a
  * test from a verified MatchTime staff session (`PoolProfile.staffTest`)
- * is left out of every count here; its offers by their own flag
- * (`PoolOffer.staffTest`), so an erased profile stays out.
+ * is left out of every count here, and the offer health leaves out offers
+ * made to staff tests by the offer's own flag (`PoolOffer.staffTest`).
+ * Operationally a staff test is a player like any other (offers, rounds,
+ * places, posts, pages): nothing outside the measurements leaves him out.
  */
 import { db } from "../db";
 import { ORDINARY_MEMBER_WHERE } from "../guest-membership";
@@ -44,7 +46,7 @@ async function loadProfiles(): Promise<FunnelProfileFact[]> {
   const [offers, places] = userIds.length
     ? await Promise.all([
         db.poolOffer.groupBy({ by: ["userId"], where: { userId: { in: userIds }, sentAt: { not: null } }, _count: { _all: true } }),
-        db.guestPlace.findMany({ where: { userId: { in: userIds }, source: "pool", staffTest: false }, select: { userId: true, orgId: true, matchId: true, result: true, settledAt: true } }),
+        db.guestPlace.findMany({ where: { userId: { in: userIds }, source: "pool" }, select: { userId: true, orgId: true, matchId: true, result: true, settledAt: true } }),
       ])
     : [[], []];
 

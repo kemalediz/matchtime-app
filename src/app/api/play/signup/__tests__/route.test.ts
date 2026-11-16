@@ -79,7 +79,7 @@ describe("the short form", () => {
 });
 
 // Round 3 of #607: the staff cookie is unsigned, so anyone could set it by
-// hand. A staff test hides a profile from the club's Guest players page, so
+// hand. A staff test leaves a sign-up out of the pool's statistics, so
 // it is set only for a VERIFIED MatchTime staff session (User.isSuperadmin),
 // never from the cookie. Round 4: and only when the sign-up is TICKED as a
 // test, so a real newcomer Kemal signs up at the pitch is a real sign-up.

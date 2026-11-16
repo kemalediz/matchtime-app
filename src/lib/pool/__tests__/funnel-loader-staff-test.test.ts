@@ -59,15 +59,6 @@ describe("loadPoolFunnel: no staff test sign-up in any count", () => {
     expect(wheres(dbMock.db.poolProfile.findMany).some((w) => w.staffTest === true)).toBe(false);
   });
 
-  // Round 5: the funnel's "played" and "became members" read guest places;
-  // a staff test's place (a real person booked by a staff test's link) is
-  // not a game for them.
-  it("the funnel's games leave out a staff test's guest place", async () => {
-    dbMock.db.poolProfile.findMany.mockImplementation(async (a: Args) => (a.where.staffTest === false && !("status" in a.where) ? [{ userId: "u1", createdAt: NOW, status: "active", sports: [] }] : []));
-    await loadPoolFunnel(parseFunnelQuery({}, NOW), NOW);
-    expect(wheres(dbMock.db.guestPlace.findMany)[0]).toMatchObject({ userId: { in: ["u1"] }, source: "pool", staffTest: false });
-  });
-
   it("with no staff-test offer anywhere, the jobs are read as before", async () => {
     await loadPoolFunnel(parseFunnelQuery({}, NOW), NOW);
     expect(wheres(dbMock.db.platformJob.findMany)[0]).not.toHaveProperty("NOT");

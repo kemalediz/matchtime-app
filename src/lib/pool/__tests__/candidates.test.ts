@@ -22,7 +22,7 @@ const dbMock = vi.hoisted(() => {
 });
 vi.mock("../../db", () => ({ db: dbMock }));
 
-import { countedPoolCandidates, findPoolCandidates, poolNearBand, poolPlatformRoom, shownPoolBand } from "../candidates";
+import { findPoolCandidates, poolNearBand, poolPlatformRoom } from "../candidates";
 import { POOL_PLATFORM_CAPS } from "../caps";
 
 const NOW = new Date("2026-10-27T10:00:00Z");
@@ -129,26 +129,6 @@ describe("poolNearBand: the organiser gets a band and nothing else", () => {
   });
   it("the pool closed: none", async () => {
     expect(await poolNearBand("m1", { now: NOW, env: {} })).toBe("none");
-  });
-  // Round 3 of #607: a MatchTime staff test may still RECEIVE offers, so
-  // Kemal can test the whole path, but no organiser's number counts him.
-  // Round 4: whether an ask can go out is decided by EVERY eligible
-  // candidate; only the band shown leaves staff tests out, and it reads "a
-  // few" when they are all there is, so Kemal can still test an ask.
-  it("a staff test stays a candidate for offers; alone, the band shown is a few, and he is never counted as a real player", async () => {
-    dbMock.poolProfile.findMany.mockResolvedValue([{ ...PROFILE("kemal", 51.37), staffTest: true }]);
-    const found = await findPoolCandidates("m1", { now: NOW, env: ON });
-    expect(found.selection.eligible.map((e) => e.userId)).toEqual(["kemal"]);
-    expect(countedPoolCandidates(found)).toBe(0);
-    expect(shownPoolBand(found)).toBe("few");
-    expect(await poolNearBand("m1", { now: NOW, env: ON })).toBe("few");
-    expect(dbMock.poolProfile.findMany.mock.calls[0][0].select).toMatchObject({ staffTest: true });
-  });
-  it("with an ordinary player too, only he is counted", async () => {
-    dbMock.poolProfile.findMany.mockResolvedValue([{ ...PROFILE("kemal", 51.37), staffTest: true }, { ...PROFILE("ali", 51.365), staffTest: false }]);
-    const found = await findPoolCandidates("m1", { now: NOW, env: ON });
-    expect(found.selection.eligible).toHaveLength(2);
-    expect(countedPoolCandidates(found)).toBe(1);
   });
 });
 

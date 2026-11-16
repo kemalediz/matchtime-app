@@ -15,13 +15,6 @@
  * anyone holding (or who held) a guest membership here. A partner guest from
  * before the pool has no `GuestPlace` row; his games are his attendance rows
  * on this club's matches (he is no member, so each one is a guest game).
- *
- * STAFF TESTS (rounds 2 to 4 of #607, 2026-11-16). The Guest players page
- * and its CSV pass `leaveOutStaffTests`: a MatchTime staff test is then in
- * none of the club's numbers, not as a guest, not as a game, not as an
- * offer an ask reached. Read off the rows' own flags (`GuestPlace.staffTest`,
- * `PoolOffer.staffTest`), which outlive his profile. The callers that ask
- * about named people (an invitation, a match's guest card) do not.
  */
 import { GUEST_MEMBER_WHERE, guestSourceOf, isGuestMembership } from "../guest-membership";
 import { db } from "../db";
@@ -56,48 +49,27 @@ export interface GuestFacts {
 const isMemberRow = (m: { leftAt: Date | null; guestMatchId: string | null; guestFromOrgId: string | null }) =>
   m.leftAt === null && !isGuestMembership(m);
 
-export async function loadGuestFacts(
-  orgId: string,
-  opts: { userIds?: string[]; report?: boolean; now?: Date; leaveOutStaffTests?: boolean } = {},
-): Promise<GuestFacts> {
+export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; report?: boolean; now?: Date } = {}): Promise<GuestFacts> {
   const onlyUsers = opts.userIds ? { userId: { in: opts.userIds } } : {};
-  const leaveOut = opts.leaveOutStaffTests === true;
 
-  const [allGuestMemberships, allPlacesHere] = await Promise.all([
+  const [guestMemberships, placesHere] = await Promise.all([
     db.membership.findMany({
       where: { orgId, ...onlyUsers, ...GUEST_MEMBER_WHERE },
       select: { userId: true, guestFromOrgId: true, guestVia: true },
     }),
     db.guestPlace.findMany({
       where: { orgId, ...onlyUsers },
-      select: { userId: true, matchId: true, source: true, fromOrgId: true, result: true, settledAt: true, staffTest: true },
+      select: { userId: true, matchId: true, source: true, fromOrgId: true, result: true, settledAt: true },
     }),
   ]);
 
-  // Staff tests (round 4 of #607), read off the rows' own flags so an erased
-  // profile stays out: a staff test's place is left out; a person is left
-  // out when every place of his here was a staff test's, or his live
-  // profile is one. A real person keeps his own games.
-  const staffIds = new Set<string>();
-  if (leaveOut) {
-    const real = new Set(allPlacesHere.filter((p) => !p.staffTest).map((p) => p.userId));
-    for (const p of allPlacesHere) if (p.staffTest && !real.has(p.userId)) staffIds.add(p.userId);
-    const live = await db.poolProfile.findMany({ where: { staffTest: true, userId: { not: null } }, select: { userId: true } });
-    for (const p of live) staffIds.add(p.userId!);
-  }
-  const guestMemberships = allGuestMemberships.filter((m) => !staffIds.has(m.userId));
-  const placesHere = allPlacesHere.filter((p) => !staffIds.has(p.userId) && !(leaveOut && p.staffTest));
   const userIds = [...new Set([...guestMemberships.map((m) => m.userId), ...placesHere.map((p) => p.userId)])];
 
   const [asks, partnerAsks] = opts.report
     ? await Promise.all([
         db.poolAsk.findMany({
           where: { orgId },
-          select: {
-            matchId: true,
-            status: true,
-            _count: { select: { offers: { where: { sentAt: { not: null }, ...(leaveOut ? { staffTest: false } : {}) } } } },
-          },
+          select: { matchId: true, status: true, _count: { select: { offers: { where: { sentAt: { not: null } } } } } },
         }),
         db.partnerAsk.findMany({ where: { askerOrgId: orgId }, select: { matchId: true, status: true, volunteerUserIds: true } }),
       ])
@@ -133,9 +105,7 @@ export async function loadGuestFacts(
   ]);
   const blockedHere = new Set(clubBlocks.map((b) => b.userId));
 
-  // Every place here, staff tests included (round 5 of #607): a staff-test
-  // place left out of the games must not come back as a "legacy" game.
-  const recordedHere = new Set(allPlacesHere.map((p) => `${p.matchId}:${p.userId}`));
+  const recordedHere = new Set(placesHere.map((p) => `${p.matchId}:${p.userId}`));
   const legacy = legacyAttendance.filter((a) => !recordedHere.has(`${a.matchId}:${a.userId}`));
 
   const matchIds = [

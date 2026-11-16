@@ -279,16 +279,9 @@ describe("slice L7: a partner guest's game is a GuestPlace too", () => {
     expect(dbMock.guestPlace.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { matchId_userId: { matchId: "m-fnf", userId: "ali" } },
-        create: { orgId: "fnf", matchId: "m-fnf", userId: "ali", source: "partner", fromOrgId: "sutton", partnerAskId: "ask1", staffTest: false },
+        create: { orgId: "fnf", matchId: "m-fnf", userId: "ali", source: "partner", fromOrgId: "sutton", partnerAskId: "ask1" },
       }),
     );
-  });
-
-  // Round 5 of #607: a partner place that replaces a staff test's pool
-  // place on the same match is a real partner guest's: the flag goes.
-  it("a partner place replacing a staff test's pool place on the same match clears the staff test flag", async () => {
-    await handlePartnerVolunteer(write(), NOW);
-    expect(dbMock.guestPlace.upsert.mock.calls[0][0].update).toMatchObject({ source: "partner", poolOfferId: null, staffTest: false });
   });
 
   it("an ordinary member of the asking club gets no guest place", async () => {

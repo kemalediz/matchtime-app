@@ -21,7 +21,7 @@ export async function GET(request: Request): Promise<Response> {
   const query = parseGuestPageQuery(Object.fromEntries(new URL(request.url).searchParams));
   const orgId = membership.orgId;
   const lang = normaliseLang(membership.org.language);
-  const facts = await loadGuestFacts(orgId, { report: true, leaveOutStaffTests: true });
+  const facts = await loadGuestFacts(orgId, { report: true });
   const report = buildGuestReport({ orgId, now: new Date(), games: facts.games, asks: facts.asks, matches: facts.matches, members: facts.members }, query);
   const csv = guestReportCsv(report, {
     header: reportHeader(lang),

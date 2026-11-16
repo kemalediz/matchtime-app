@@ -11,9 +11,9 @@
  *                                visits from the counts: harmless if forged.
  *   isPoolStaffSession()         for a sign-up (`/api/play/signup`): a staff
  *                                TEST is kept on the profile for good and
- *                                hides it from the club's Guest players
- *                                page, so only a VERIFIED staff session
- *                                makes one, never the cookie.
+ *                                leaves it out of the pool's statistics,
+ *                                so only a VERIFIED staff session makes
+ *                                one, never the cookie.
  *
  * A lookup that fails is not staff: a count is never lost, and a sign-up
  * never becomes a staff test, because of it. Never throws.

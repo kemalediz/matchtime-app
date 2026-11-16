@@ -60,7 +60,6 @@ type Env = Record<string, string | undefined>;
 
 const OFFER_SELECT = {
   id: true,
-  staffTest: true,
   poolAskId: true,
   matchId: true,
   orgId: true,
@@ -205,15 +204,8 @@ async function recordOf(userId: string) {
 }
 
 /** The club is told once, where it can see it (`guest-notice.ts`): HQ (or
- *  the admins' DMs) with the turn-up line, or its players' group without.
- *  Never about a MatchTime staff test (round 5 of #607): Kemal testing end
- *  to end must not post "took a place" to a club's real HQ or group. His
- *  own DMs and the match page are as for anyone. */
+ *  the admins' DMs) with the turn-up line, or its players' group without. */
 async function tellClubOnce(o: LoadedOffer, key: string, text: { hq: string; group: string }, now: Date): Promise<void> {
-  if (o.staffTest) {
-    console.log(`[pool] offer ${o.id}: a staff test, the club is not told (${key})`);
-    return;
-  }
   await tellClubAboutPoolGuest({ orgId: o.orgId, matchId: o.matchId, key, now, hqText: text.hq, groupText: text.group });
 }
 
@@ -240,8 +232,6 @@ export async function acceptOffer(offerId: string, now: Date = new Date(), env?:
     benchPickMode: o.ask.org.benchPickMode,
     fill: () => poolAskFill({ id: o.ask.id, roundId: o.ask.roundId, matchId: o.matchId, places: o.ask.places }),
     now,
-    // His place carries the offer's staff test flag (round 4 of #607).
-    staffTest: o.staffTest,
   });
   if (placed.kind === "gone") {
     await db.poolOffer.updateMany({ where: { id: o.id, outcome: "accepted" }, data: { outcome: "filled", resolvedAt: now } });

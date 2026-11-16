@@ -13,7 +13,7 @@
  *   the second wave only while places are open.
  */
 import { scenario, scenarios, expect } from "./fixtures";
-import { askOf, at, far, near, offersOf, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn, tapOffer } from "./offers-world";
+import { askOf, at, far, near, offersOf, openClub, organiserAsks, pollPlatform, poolPlayer } from "./offers-world";
 
 const OFFER_EN = /⚽ \*FNF\* needs 1 player for a 7-a-side football game/;
 
@@ -196,34 +196,6 @@ scenarios("a club asks the MatchTime player pool", () => {
     const ask = await askOf(pool, fnf);
     expect(ask?.roundId).toBeTruthy();
     expect(await pool.db.count(`SELECT count(*) FROM "PartnerAsk" WHERE "roundId" = $1`, [ask!.roundId])).toBe(1);
-  });
-
-  // Round 5 of #607 (the reviewer's case): a round asking a partner club and
-  // the pool, where the only pool player near is a MatchTime staff test. He
-  // may be asked and take a place (Kemal testing end to end), but the round
-  // the organiser sees never counts him as found.
-  scenario("partner club and pool, the only pool player a staff test: he is asked and takes a place, and the round shows 0 found", async ({ pool, page }) => {
-    const fnf = await openClub(pool, "fnf", { name: "FNF" });
-    const pid = await partnerClub(pool, fnf);
-    const kemal = await poolPlayer(pool, "kemal", { name: "Kemal Test", at: near(fnf) });
-    await pool.db.run(`UPDATE "PoolProfile" SET "staffTest" = true WHERE "userId" = $1`, [kemal.userId]);
-    const t0 = at(fnf.kickoff, -8);
-
-    const ex = await organiserAsks(pool, page, fnf, { places: 2, now: t0, partnershipIds: [pid] });
-    expect(ex.json.partner).toMatchObject({ asked: 1 });
-    expect(ex.json.pool).toMatchObject({ ok: true, waveSent: true });
-    await pollPlatform(pool, { now: t0 });
-    const offer = ex.sent.find((m) => m.purpose === "pool-offer" && m.to === "kemal")!;
-    expect(offer).toBeTruthy();
-
-    expect(await tapOffer(pool, page, tapLinkIn(offer), "yes")).toBe("in");
-    expect(await pool.db.one(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [fnf.group.matchId, kemal.userId])).toEqual({ status: "CONFIRMED" });
-
-    pool.note("the organiser looks at the match page: the round, partners and the pool, 0 found");
-    await page.goto(`/matches/${fnf.group.matchId}`);
-    const round = page.getByTestId("partner-ask-round");
-    await expect(round).toHaveAttribute("data-placed", "0", { timeout: 30_000 });
-    await expect(round).toContainText("Asking for 2 players: 0 found so far");
   });
 
   scenario("partner clubs only ticked: the partner club is asked now, the pool is not asked at all", async ({ pool, page }) => {

@@ -118,8 +118,8 @@ export function poolVisitDay(now: Date): string {
  * when signed out), and the beacon counts nothing for
  * it, nor for a request that carries a staff session. The cookie is
  * unsigned: forged, it only hides that browser's own visits. A STAFF TEST
- * sign-up (`PoolProfile.staffTest`, 2026-11-16), which no number counts
- * and the Guest players page leaves out, needs a verified staff session,
+ * sign-up (`PoolProfile.staffTest`, 2026-11-16), which the pool's
+ * measurements leave out (#607), needs a verified staff session,
  * never the cookie (round 3 of #607, `staff-request.ts`). Nothing about
  * the person is stored either way.
  *

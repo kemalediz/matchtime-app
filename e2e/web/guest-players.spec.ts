@@ -302,39 +302,6 @@ test("Report: the CSV download matches the table", async ({ page }) => {
   for (const s of SECRETS) expect(csv).not.toContain(s);
 });
 
-// Round 4 of #607: a MatchTime staff test whose profile was erased (his
-// guest membership, his place and his offer stay) is still in none of the
-// club's numbers, by the rows' own flags.
-test("an erased staff test's place, membership and offer are in no tab, number or CSV", async ({ page, db }) => {
-  const STAFF = `${P}-staff`;
-  await db.run(`INSERT INTO "User" (id,name,email,onboarded,"isActive","updatedAt") VALUES ($1,'Kemal Staff',$2,true,true,now())`, [STAFF, `${STAFF}@e2e-test.invalid`]);
-  await db.run(`INSERT INTO "Membership" (id,"userId","orgId",role,"guestVia","guestMatchId","leftAt","createdAt") VALUES ($1,$2,$3,'PLAYER','pool',$4,now(),now())`, [`${P}-m-staff`, STAFF, ORG_ID, MATCH.rate]);
-  await db.run(`INSERT INTO "Attendance" (id,"matchId","userId",status,position,"createdAt","updatedAt") VALUES ($1,$2,$3,'CONFIRMED'::"AttendanceStatus",8,now(),now())`, [`${P}-a-staff`, MATCH.rate, STAFF]);
-  await db.run(`INSERT INTO "GuestPlace" (id,"orgId","matchId","userId",source,result,"resultAt","staffTest","updatedAt") VALUES ($1,$2,$3,$4,'pool','played',now(),true,now())`, [`${P}-g-staff`, ORG_ID, MATCH.rate, STAFF]);
-  await db.run(
-    `INSERT INTO "PoolOffer" (id,"poolAskId","matchId","orgId","userId","distanceMiles","sentAt","expiresAt",outcome,"resolvedAt","staffTest") VALUES ($1,$2,$3,$4,$5,1.2,now(),now(),'accepted',now(),true)`,
-    [`${P}-o-staff`, `${P}-k1`, MATCH.rate, ORG_ID, STAFF],
-  );
-  try {
-    expect(await db.one(`SELECT count(*)::int AS n FROM "PoolProfile" WHERE "userId" = $1`, [STAFF])).toEqual({ n: 0 });
-    await signInAs(page, U.admin, "/admin/guests?tab=history");
-    await expect(page.getByTestId("guest-history-row")).toHaveCount(3, { timeout: 30_000 });
-    await expect(page.locator("body")).not.toContainText("Kemal S");
-    await page.goto("/admin/guests?tab=report&period=season");
-    await expect(page.getByTestId("guest-report-total").locator("td")).toHaveText(["5", "6", "3", "1", "1", "2", "1", "50%"], { timeout: 30_000 });
-    const download = page.waitForEvent("download");
-    await page.getByTestId("guest-report-csv").click();
-    const csv = readFileSync((await (await download).path())!, "utf8");
-    expect(csv).toContain("Total,5,6,3,1,1,2,1,50%");
-  } finally {
-    await db.run(`DELETE FROM "PoolOffer" WHERE id = $1`, [`${P}-o-staff`]);
-    await db.run(`DELETE FROM "GuestPlace" WHERE id = $1`, [`${P}-g-staff`]);
-    await db.run(`DELETE FROM "Attendance" WHERE id = $1`, [`${P}-a-staff`]);
-    await db.run(`DELETE FROM "Membership" WHERE id = $1`, [`${P}-m-staff`]);
-    await db.run(`DELETE FROM "User" WHERE id = $1`, [STAFF]);
-  }
-});
-
 test("the match page tags guests; an organiser's tag opens the card", async ({ page }) => {
   await signInAs(page, U.admin, `/matches/${MATCH.upcoming}`);
   const section = page.getByTestId("attendance-section");

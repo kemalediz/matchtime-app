@@ -84,10 +84,11 @@ test.describe("English", () => {
     expect(row!.friendLinkId).toBeTruthy();
   });
 
-  // Round 5 of #607: the friend link's page shows a MatchTime staff session
-  // the same "This is a test sign-up" tick as /play. A ticked sign-up there
-  // is a staff test, and the place it books carries the flag.
-  test("a MatchTime staff session sees the test tick; a ticked friend-link sign-up books a flagged guest place", async ({ page, db, request }) => {
+  // #607: the friend link's page shows a MatchTime staff session the same
+  // "This is a test sign-up" tick as /play. A ticked sign-up there is a
+  // staff test (left out of the pool's statistics), and is booked into the
+  // game exactly as anyone's.
+  test("a MatchTime staff session sees the test tick; a ticked friend-link sign-up is a staff test, booked into the game as anyone", async ({ page, db, request }) => {
     await db.run(`UPDATE "User" SET "isSuperadmin" = true WHERE id = $1`, [U.admin]);
     try {
       const token = await seedLink(db);
@@ -105,15 +106,16 @@ test.describe("English", () => {
       const prefill = (await page.getByTestId("pool-prefill").innerText()).trim();
       expect(await db.one(`SELECT "staffTest", source FROM "PoolProfile" WHERE "confirmCode" = $1`, [code])).toEqual({ staffTest: true, source: "friend" });
 
-      // His own WhatsApp code books him: the place is a staff test's.
+      // His own WhatsApp code books him, as anyone: a pool guest place, and his profile a staff test.
       const res = await request.post("/api/whatsapp/dm-reply", {
         headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
         data: { phone: "447700911811", body: prefill, waMessageId: `e2e-friend-staff-${Date.now()}` },
       });
       expect(res.status()).toBe(200);
       await expect
-        .poll(async () => db.one(`SELECT "staffTest", source FROM "GuestPlace" WHERE "matchId" = $1 AND "friendLinkId" IS NOT NULL`, [MATCH.upcoming]), { timeout: 15_000 })
-        .toEqual({ staffTest: true, source: "pool" });
+        .poll(async () => db.one(`SELECT source, result FROM "GuestPlace" WHERE "matchId" = $1 AND "friendLinkId" IS NOT NULL`, [MATCH.upcoming]), { timeout: 15_000 })
+        .toEqual({ source: "pool", result: "booked" });
+      expect(await db.one(`SELECT p."staffTest", p.status FROM "PoolProfile" p JOIN "User" u ON u.id = p."userId" WHERE u."phoneNumber" = '+447700911811'`)).toEqual({ staffTest: true, status: "active" });
     } finally {
       await db.run(`UPDATE "User" SET "isSuperadmin" = false WHERE id = $1`, [U.admin]);
     }

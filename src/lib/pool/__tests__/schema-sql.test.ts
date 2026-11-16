@@ -449,21 +449,19 @@ describe("the staff test migration (2026-11-16)", () => {
     expect(read(STAFF)).toMatch(/EVERY insert into "PoolProfile"/);
     expect(read(STAFF)).toMatch(/every update of a "PoolProfile" that returns the row/i);
   });
-  // Round 4 of #607: the flag also goes on the rows that outlive the
-  // profile (an erased profile's offers and guest places stay), so a deleted
-  // staff test never comes back into a count.
-  it("adds the flag to the profile, its offers and its guest places, false for every existing row", () => {
-    expect([...sql.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN IF NOT EXISTS "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`)).toEqual([
-      "PoolProfile.staffTest",
-      "PoolOffer.staffTest",
-      "GuestPlace.staffTest",
-    ]);
-    for (const t of ["PoolProfile", "PoolOffer", "GuestPlace"]) {
+  // #607, final scope: a staff test is a player like any other in every
+  // operational flow; only the MEASUREMENTS leave him out. The profile's
+  // flag serves the funnel steps, the codes page and the pool funnel page;
+  // the offer's flag serves the offer health. Nothing else carries it.
+  it("adds the flag to the profile and to its offers only, false for every existing row", () => {
+    expect([...sql.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN IF NOT EXISTS "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`)).toEqual(["PoolProfile.staffTest", "PoolOffer.staffTest"]);
+    for (const t of ["PoolProfile", "PoolOffer"]) {
       expect(sql).toContain(`ALTER TABLE "${t}" ADD COLUMN IF NOT EXISTS "staffTest" BOOLEAN NOT NULL DEFAULT false;`);
       expect(read("prisma/schema.prisma")).toMatch(new RegExp(`model ${t} \\{[^}]*staffTest\\s+Boolean\\s+@default\\(false\\)`));
     }
+    expect(read("prisma/schema.prisma")).not.toMatch(/model GuestPlace \{[^}]*staffTest/);
+    expect(sql).not.toContain("GuestPlace");
     expect(read(STAFF)).toMatch(/EVERY insert into "PoolOffer"/);
-    expect(read(STAFF)).toMatch(/EVERY insert into "GuestPlace"/);
   });
   it("is additive, idempotent and one transaction with no data written", () => {
     expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);

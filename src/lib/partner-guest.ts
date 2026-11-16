@@ -767,10 +767,8 @@ export async function tellGuestsMoved(askId: string, now: Date = new Date()): Pr
 async function recordPartnerGuestPlace(a: { orgId: string; matchId: string; userId: string; fromOrgId: string; partnerAskId: string }): Promise<void> {
   await db.guestPlace.upsert({
     where: { matchId_userId: { matchId: a.matchId, userId: a.userId } },
-    // A partner guest is never a staff test: replacing a staff test's pool
-    // place on the same match clears the flag (round 5 of #607).
-    create: { orgId: a.orgId, matchId: a.matchId, userId: a.userId, source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId, staffTest: false },
-    update: { source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId, poolOfferId: null, result: "booked", resultAt: null, resultById: null, settledAt: null, staffTest: false },
+    create: { orgId: a.orgId, matchId: a.matchId, userId: a.userId, source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId },
+    update: { source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId, poolOfferId: null, result: "booked", resultAt: null, resultById: null, settledAt: null },
   });
 }
 
@@ -795,9 +793,6 @@ export interface PoolGuestWrite {
   /** The round's fill (`pool/round.ts` `poolAskFill`), read under the lock. */
   fill: () => Promise<RoundFill | null>;
   now: Date;
-  /** The offer was made to a MatchTime staff test (`PoolOffer.staffTest`,
-   *  round 4 of #607): his place carries the flag too. */
-  staffTest?: boolean;
 }
 
 export type PoolGuestPlaced =
@@ -824,7 +819,7 @@ export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced
     benchPickMode: w.benchPickMode,
     fill: w.fill,
     logRef: `pool offer ${w.offerId}`,
-    place: { poolOfferId: w.offerId, friendLinkId: null, staffTest: w.staffTest === true },
+    place: { poolOfferId: w.offerId, friendLinkId: null },
     event: {
       cause: "pool-ask",
       actorKind: "player",
@@ -842,17 +837,7 @@ export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced
  * member now): a guest of this club for this match, under the club's rule,
  * one at a time per match. No round: he was vouched for, not offered.
  */
-export async function placeFriendGuest(w: {
-  linkId: string;
-  userId: string;
-  orgId: string;
-  matchId: string;
-  benchPickMode: string | null;
-  issuedByUserId: string;
-  /** The friend link's sign-up was a ticked staff test (round 4 of #607):
-   *  the place carries the flag, whoever's number confirmed it. */
-  staffTest?: boolean;
-}): Promise<PoolGuestPlaced> {
+export async function placeFriendGuest(w: { linkId: string; userId: string; orgId: string; matchId: string; benchPickMode: string | null; issuedByUserId: string }): Promise<PoolGuestPlaced> {
   return placeGuestOnMatch({
     userId: w.userId,
     orgId: w.orgId,
@@ -860,7 +845,7 @@ export async function placeFriendGuest(w: {
     benchPickMode: w.benchPickMode,
     fill: null,
     logRef: `friend link ${w.linkId}`,
-    place: { poolOfferId: null, friendLinkId: w.linkId, staffTest: w.staffTest === true },
+    place: { poolOfferId: null, friendLinkId: w.linkId },
     event: {
       cause: "friend-link",
       actorKind: "player",
@@ -880,7 +865,7 @@ async function placeGuestOnMatch(w: {
   benchPickMode: string | null;
   fill: (() => Promise<RoundFill | null>) | null;
   logRef: string;
-  place: { poolOfferId: string | null; friendLinkId: string | null; staffTest: boolean };
+  place: { poolOfferId: string | null; friendLinkId: string | null };
   event: AttendanceEventContext;
 }): Promise<PoolGuestPlaced> {
   try {

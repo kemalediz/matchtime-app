@@ -38,23 +38,3 @@ export async function poolRoundShare(matchId: string, roundKey: string): Promise
     return null;
   }
 }
-
-/**
- * The MatchTime staff tests who accepted an offer of the round's pool asks
- * (round 4 of #607): read off the offer's own flag (`PoolOffer.staffTest`),
- * so a deleted profile changes nothing. For the number SHOWN on the match
- * page only; the round's fill (`poolRoundShare`) counts them, since they
- * truly hold a place. Never throws: a failed read is none.
- */
-export async function poolRoundStaffTestIds(matchId: string, roundKey: string): Promise<string[]> {
-  try {
-    const offers = await db.poolOffer.findMany({
-      where: { matchId, outcome: "accepted", staffTest: true, ask: { OR: [{ roundId: roundKey }, { id: roundKey }] } },
-      select: { userId: true },
-    });
-    return [...new Set(offers.map((o) => o.userId))];
-  } catch (err) {
-    console.error(`[pool] round ${roundKey}: staff tests not read:`, err instanceof Error ? err.message : "failed");
-    return [];
-  }
-}
