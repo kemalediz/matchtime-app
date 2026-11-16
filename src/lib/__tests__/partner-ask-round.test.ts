@@ -136,7 +136,7 @@ describe("requestPartnerAsk: the chosen number and the round", () => {
     dbMock.clubPartnership.findUnique.mockResolvedValue({ ...PAIRS.p1, partnerApproval: "standing" });
     dbMock.partnerAsk.findUnique.mockResolvedValue({ id: "ask1", status: "awaiting-approval", askerOrgId: "fnf", partnerOrgId: "sutton", matchId: "m1", places: 1, roundId: "r1", volunteerUserIds: [], pickedUserIds: [] });
     await requestPartnerAsk({ askerOrgId: "fnf", matchId: "m1", partnershipId: "p1", requestedByUserId: "admin", via: "button", places: 1, roundId: "r1", now: NOW });
-    expect(groupLines()[0].text).toContain("*FNF* are *1 short*");
+    expect(groupLines()[0].text).toContain("*FNF* need *1 player*");
     const posted = dbMock.partnerAsk.updateMany.mock.calls.find((c) => c[0].data.status === "posted");
     expect(posted?.[0].data.places).toBeUndefined();
   });

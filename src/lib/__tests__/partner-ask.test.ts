@@ -14,8 +14,8 @@ const dbMock = vi.hoisted(() => {
     match: { findUnique: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
     attendance: { count: vi.fn() },
     membership: { findUnique: vi.fn() },
-    partnerAsk: { count: vi.fn(), create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
-    botJob: { create: vi.fn(), delete: vi.fn() },
+    partnerAsk: { count: vi.fn(), create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+    botJob: { create: vi.fn(), delete: vi.fn(), updateMany: vi.fn() },
     sentNotification: { create: vi.fn(), findUnique: vi.fn() },
     $transaction: vi.fn(),
     $executeRaw: vi.fn(),
@@ -38,6 +38,7 @@ import {
   requestPartnerAsk,
   stampPartnerAskPost,
   answerClosedPartnerAskYes,
+  freshAskPostText,
   cancelPartnerRound,
   sweepPartnerAsks,
 } from "../partner-ask";
@@ -165,7 +166,7 @@ describe("requestPartnerAsk", () => {
       // Posted six hours before kickoff, the same London day: "tonight".
       expect(text).toBe(
         [
-          "⚽ *FNF* are *1 short* for tonight!",
+          "⚽ *FNF* need *1 player* for tonight!",
           "🗓 Fri 16 Oct, 20:30",
           "📍 Goals Sutton, 9-a-side",
           // The activity's £8 fee, as the old post showed it.
@@ -597,5 +598,44 @@ describe("answerClosedPartnerAskYes", () => {
     expect(await answerClosedPartnerAskYes({ orgId: "sutton", askId: "ask1", lang: "en", now: NOW })).toBeNull();
     dbMock.partnerAsk.findUnique.mockResolvedValue({ ...base, status: "cancelled" });
     expect(await answerClosedPartnerAskYes({ orgId: "other", askId: "ask1", lang: "en", now: NOW })).toBeNull();
+  });
+});
+
+// 2026-11-16 (review of #612): the post's day word ("tomorrow") was fixed
+// when it was queued, and a held post can go out on a later day. When it
+// goes out on another London day, or more than 6 hours later, it is
+// rendered again at send time.
+describe("freshAskPostText: the post as it goes out", () => {
+  const POSTED = { id: "ask1", status: "posted", askerOrgId: "fnf", partnerOrgId: "sutton", matchId: "m1", places: 1, postJobId: "job1" };
+  const BUILT_EVENING_BEFORE = new Date(KICKOFF.getTime() - 24 * H);
+
+  it("sent the same day it was built, within 6 hours: exactly as built, nothing read", async () => {
+    const job = { id: "job1", createdAt: new Date(NOW.getTime() - H), text: "AS BUILT" };
+    expect(await freshAskPostText(job, NOW)).toBe("AS BUILT");
+    expect(dbMock.partnerAsk.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("built the evening before ('tomorrow'), sent on match day: 'tonight', and the job's text updated to match", async () => {
+    dbMock.partnerAsk.findFirst.mockResolvedValue(POSTED);
+    dbMock.partnerAsk.findUnique.mockResolvedValue(POSTED);
+    const job = { id: "job1", createdAt: BUILT_EVENING_BEFORE, text: "⚽ *FNF* need *1 player* for tomorrow!" };
+    const text = await freshAskPostText(job, NOW);
+    expect(text.split("\n")[0]).toBe("⚽ *FNF* need *1 player* for tonight!");
+    expect(text).toContain("🗓 Fri 16 Oct, 20:30");
+    expect(dbMock.partnerAsk.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { postJobId: "job1" } }));
+    expect(dbMock.botJob.updateMany).toHaveBeenCalledWith({ where: { id: "job1", sentAt: null }, data: { text } });
+  });
+
+  it("an ask that is no longer posted: the text as built (the sweep decides what happens to it)", async () => {
+    dbMock.partnerAsk.findFirst.mockResolvedValue({ ...POSTED, status: "filled" });
+    const job = { id: "job1", createdAt: BUILT_EVENING_BEFORE, text: "AS BUILT" };
+    expect(await freshAskPostText(job, NOW)).toBe("AS BUILT");
+    expect(dbMock.botJob.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("a read that fails: the text as built, never a lost post", async () => {
+    dbMock.partnerAsk.findFirst.mockRejectedValue(new Error("db down"));
+    const job = { id: "job1", createdAt: BUILT_EVENING_BEFORE, text: "AS BUILT" };
+    expect(await freshAskPostText(job, NOW)).toBe("AS BUILT");
   });
 });

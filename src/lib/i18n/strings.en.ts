@@ -5896,6 +5896,8 @@ export const en = {
   // send then. `when` is the game's day relative to the post
   // (`askPostDay`), `day` its full date and time. Short and catchy
   // (2026-11-16): four asks in the old three-sentence form drew nobody.
+  // "need N players", never "N short": `places` is the organiser's number
+  // capped at the open places, so it can be less than the whole gap.
   // `fee` is what a guest pays (`feeLabel`, "£5"), shown as its own line
   // whenever the old post showed it, so nobody is surprised after saying
   // IN; null, no line. His number never goes to the asking club (D7).
@@ -5910,10 +5912,10 @@ export const en = {
     link: string | null;
     prefill: string;
   }) => {
-    const when = p.when.kind === "tonight" ? "tonight" : p.when.kind === "tomorrow" ? "tomorrow" : p.when.label;
+    const when = p.when.kind === "day" ? p.when.label : p.when.kind;
     const how = p.link ? `tap 👉 ${p.link}` : `send MatchTime a private message: *${p.prefill}*`;
     return [
-      `⚽ *${p.asker}* are *${p.places} short* for ${when}!`,
+      `⚽ *${p.asker}* need *${p.places === 1 ? "1 player" : `${p.places} players`}* for ${when}!`,
       `🗓 ${p.day}`,
       `📍 ${p.venue}${p.format ? `, ${p.format}` : ""}`,
       ...(p.fee ? [`💷 ${p.fee} a game`] : []),

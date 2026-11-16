@@ -105,7 +105,7 @@ test("the partner's owner approves once: posted in their group; a second answer 
   expect(post?.kind).toBe("group");
   // 2026-11-16: the short post. Volunteers reply IN to it in the group or
   // tap its tap-to-DM link; either way MatchTime answers them privately.
-  expect(post?.text).toMatch(/^⚽ \*.+\* are \*1 short\* for /);
+  expect(post?.text).toMatch(/^⚽ \*.+\* need \*1 player\* for /);
   expect(post?.text).toContain("🙋 Fancy it? Reply *IN* to this message, or tap 👉 https://wa.me/");
   expect(post?.text).toContain("🔒 MatchTime confirms with you by DM. Your number stays private.");
   // The guest fee, when the game has one, is its own line under the venue.

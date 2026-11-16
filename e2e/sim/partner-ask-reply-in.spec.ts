@@ -53,7 +53,12 @@ interface World {
 /** The asking club (first come, no HQ) and its partner, with one ask posted
  *  in the partner's group two hours ago. The partner's own game is two
  *  days after the asking club's, so nobody's own game overlaps. */
-async function world(request: APIRequestContext, db: TestDb, opts: { status?: "posted" | "filled" } = {}): Promise<World> {
+async function world(
+  request: APIRequestContext,
+  db: TestDb,
+  /** `weekOld`: posted, played and closed a week ago (filled). */
+  opts: { status?: "posted" | "filled"; weekOld?: boolean } = {},
+): Promise<World> {
   const n = ++seq;
   const asker = await createGroup(request, db, {
     name: "Friday Night Football",
@@ -83,11 +88,14 @@ async function world(request: APIRequestContext, db: TestDb, opts: { status?: "p
      VALUES ($1,$2,$3,'active',now(),now(),$4,now(),now())`,
     [pairId, asker.orgId, partner.orgId, asker.player("owner").userId],
   );
-  const kickoff = (await db.one<{ date: Date }>(`SELECT date FROM "Match" WHERE id = $1`, [asker.matchId]))!.date;
-  const status = opts.status ?? "posted";
+  const WEEK = 7 * 24 * 3600_000;
+  const kickoff = opts.weekOld
+    ? new Date(Date.now() - WEEK)
+    : (await db.one<{ date: Date }>(`SELECT date FROM "Match" WHERE id = $1`, [asker.matchId]))!.date;
+  const status = opts.weekOld ? "filled" : (opts.status ?? "posted");
   await db.run(
     `INSERT INTO "PartnerAsk" (id,"partnershipId","askerOrgId","partnerOrgId","matchId",places,status,"requestedVia","postedAt","postWaMessageId","postBy","closesAt","closedAt","createdAt","updatedAt")
-     VALUES ($1,$2,$3,$4,$5,2,$9,'button',now() - interval '2 hours',$6,$7,$8,$10,now(),now())`,
+     VALUES ($1,$2,$3,$4,$5,2,$9,'button',$11,$6,$7,$8,$10,now(),now())`,
     [
       askId,
       pairId,
@@ -99,13 +107,15 @@ async function world(request: APIRequestContext, db: TestDb, opts: { status?: "p
       new Date(kickoff.getTime() - 4 * 3600_000),
       kickoff,
       status,
-      status === "posted" ? null : new Date(),
+      status === "posted" ? null : opts.weekOld ? kickoff : new Date(),
+      // UTC wall time: the column has no time zone.
+      new Date(opts.weekOld ? kickoff.getTime() - 4 * 3600_000 : Date.now() - 2 * 3600_000),
     ],
   );
   await asker.drainOutbound();
   await partner.drainOutbound();
   const postText = [
-    "⚽ *Friday Night Football* are *2 short* for Tuesday!",
+    "⚽ *Friday Night Football* need *2 players* for Tuesday!",
     "🗓 Tue 17 Nov, 20:00",
     "📍 Sim Venue, 7-a-side",
     "🙋 Fancy it? Reply *IN* to this message, or tap 👉 https://wa.me/447700900555?text=IN",
@@ -196,4 +206,51 @@ test("a newcomer to the group (a number not on the roster) is the club's member 
   expect(await rowOf(db, w.partner.matchId, nina!.id)).toBeNull();
   expect(r.dms).toEqual([{ phone: "447700900951", text: expect.stringMatching(/^✅ Thanks Nina, you're in for \*Friday Night Football\*: /) }]);
   expect(r.groupPosts).toEqual([]);
+});
+
+// ── Review of #612 (2026-11-16) ─────────────────────────────────────────
+
+test("a reply IN to a WEEK-OLD ask post: the link path's 'place has gone' DM, and his own club's game untouched (no ✅)", async ({ request, db }) => {
+  const w = await world(request, db, { weekOld: true });
+  const dan = w.partner.player("dan");
+  const r = await w.partner.postBatch([
+    { player: "dan", body: "IN", route: "self_att", facts: selfIn(), quote: { id: w.postId, text: w.postText, fromMatchTime: true } },
+  ]);
+  expect(r.dms).toEqual([{ phone: digits(dan.phone), text: "*Friday Night Football*'s place has gone now, thanks for offering." }]);
+  expect(await rowOf(db, w.partner.matchId, dan.userId)).toBeNull();
+  expect(await rowOf(db, w.asker.matchId, dan.userId)).toBeNull();
+  expect(await volunteersOf(db, w.askId)).toEqual([]);
+  expect(r.results[0]).toMatchObject({ intent: "partner_volunteer", reply: null, react: null });
+  expect(r.groupPosts).toEqual([]);
+});
+
+test("a number MatchTime knows from another club, not on this club's list: the link path's 'I don't know you here yet' DM to that number; the group hears nothing", async ({ request, db }) => {
+  const w = await world(request, db);
+  // Alice plays for the ASKING club; her number is on file there.
+  const alice = w.asker.player("alice");
+  const r = await w.partner.postBatch([
+    { author: { name: alice.name, phone: digits(alice.phone) }, body: "IN", route: "self_att", facts: selfIn(), quote: { id: w.postId, text: w.postText, fromMatchTime: true } },
+  ]);
+  expect(r.dms).toEqual([
+    {
+      phone: digits(alice.phone),
+      text: "I can only put Monday Vets players on another club's list, and I don't know you here yet. Message one of Monday Vets's organisers.",
+    },
+  ]);
+  expect(await volunteersOf(db, w.askId)).toEqual([]);
+  expect(await rowOf(db, w.partner.matchId, alice.userId)).toBeNull();
+  expect(r.results[0]).toMatchObject({ reply: null, react: null });
+  expect(r.groupPosts).toEqual([]);
+});
+
+test("a number MatchTime does not know, with no name to go on: ignored, as the link path ignores a number it doesn't know", async ({ request, db }) => {
+  const w = await world(request, db);
+  const r = await w.partner.postBatch([
+    { author: { name: null, phone: "447700900962" }, body: "IN", route: "self_att", facts: selfIn(), quote: { id: w.postId, text: w.postText, fromMatchTime: true } },
+  ]);
+  expect(await db.one(`SELECT id FROM "User" WHERE "phoneNumber" = '+447700900962'`)).toBeFalsy();
+  expect(await volunteersOf(db, w.askId)).toEqual([]);
+  expect(r.dms).toEqual([]);
+  expect(r.groupPosts).toEqual([]);
+  expect(r.results[0]).toMatchObject({ reply: null });
 });

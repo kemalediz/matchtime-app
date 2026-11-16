@@ -4295,10 +4295,17 @@ export const tr: Strings = {
   fc_not_live: "Yakındaki kulüpleri bulma, kulübünüz onaylandığında ve MatchTime oyuncu grubunuza eklendiğinde açılır.",
   // ─── Partner kulüpten oyuncu isteme (slice S2, 2026-10-16) ──────────
   xask_post: (p) => {
-    const when = p.when.kind === "tonight" ? "bu akşam" : p.when.kind === "tomorrow" ? "yarın" : `${p.when.label} günü`;
+    const when =
+      p.when.kind === "tonight"
+        ? "bu akşamki maç"
+        : p.when.kind === "today"
+          ? "bugünkü maç"
+          : p.when.kind === "tomorrow"
+            ? "yarın"
+            : `${p.when.label} günü`;
     const how = p.link ? `dokun 👉 ${p.link}` : `MatchTime'a özelden yaz: *${p.prefill}*`;
     return [
-      `⚽ *${p.asker}* ${when} *${p.places} kişi eksik*!`,
+      `⚽ *${p.asker}* ${when} için *${p.places} oyuncu* arıyor!`,
       `🗓 ${p.day}`,
       `📍 ${p.venue}${p.format ? `, ${p.format}` : ""}`,
       ...(p.fee ? [`💷 Maç başı ${p.fee}`] : []),

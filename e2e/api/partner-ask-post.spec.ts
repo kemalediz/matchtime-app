@@ -44,6 +44,46 @@ test.afterAll(() => {
   resetDb();
 });
 
+// 2026-11-16 (review of #612): the post's day word ("tomorrow") was fixed
+// when it was queued. A post held past its day (here by a Pi that does not
+// forward quoted ids, then a day later one that does) is rendered again at
+// SEND time, and the job's text is updated to what went out.
+test("a post queued a day earlier is rendered again when it goes out", async ({ request, db }) => {
+  const P2 = "e2e-xpost-held";
+  const G2 = "120363999000000082@g.us";
+  await db.run(
+    `INSERT INTO "Organisation" (id,name,slug,"inviteCode","approvalStatus","whatsappGroupId","whatsappBotEnabled","createdAt","updatedAt")
+     VALUES ($1,'Held Posters',$1,$2,'approved',$3,true,now(),now())`,
+    [P2, `${P2}-invite`, G2],
+  );
+  await db.run(
+    `INSERT INTO "ClubPartnership" (id,"askerOrgId","partnerOrgId",status,"askerAcceptedAt","partnerAcceptedAt","createdByUserId","createdAt","updatedAt")
+     VALUES ('e2e-xpost-held-pair',$1,$2,'active',now(),now(),$3,now(),now())`,
+    [ORG_ID, P2, U.admin],
+  );
+  const STALE = "⚽ *E2E Test FC* need *1 player* for STALE-DAY!";
+  await db.run(
+    `INSERT INTO "BotJob" (id,"orgId",kind,text,"pollOptions","createdAt") VALUES ('e2e-xpost-held-job',$1,'group',$2,ARRAY[]::text[],now() - interval '1 day')`,
+    [P2, STALE],
+  );
+  const match = await db.one<{ date: Date }>(`SELECT date FROM "Match" WHERE id = $1`, [MATCH.upcoming]);
+  await db.run(
+    `INSERT INTO "PartnerAsk" (id,"partnershipId","askerOrgId","partnerOrgId","matchId",places,status,"requestedVia","postedAt","postJobId","postBy","closesAt","createdAt","updatedAt")
+     VALUES ('e2e-xpost-held-ask','e2e-xpost-held-pair',$1,$2,$3,1,'posted','button',now() - interval '1 day','e2e-xpost-held-job',$4,$5,now(),now())`,
+    [ORG_ID, P2, MATCH.upcoming, new Date(match!.date.getTime() - 4 * 3600_000), match!.date],
+  );
+
+  const out = await poll(request, G2);
+  const post = out.find((i) => i.key === "botjob-e2e-xpost-held-job");
+  expect(post?.kind).toBe("group-message");
+  expect(post?.text).not.toBe(STALE);
+  expect(post?.text).toMatch(/^⚽ \*E2E Test FC\* need \*1 player\* for [^\n]+!\n🗓 /);
+  expect((await db.one<{ text: string }>(`SELECT text FROM "BotJob" WHERE id = 'e2e-xpost-held-job'`))?.text).toBe(post?.text);
+
+  // Out of the way of the next case (one open ask per match and partner).
+  await db.run(`UPDATE "PartnerAsk" SET status = 'cancelled', "closedAt" = now() WHERE id = 'e2e-xpost-held-ask'`);
+});
+
 test("the post goes out in the partner's group, its id comes back, and a filled place closes it with one line", async ({ request, db }) => {
   await db.run(
     `INSERT INTO "Organisation" (id,name,slug,"inviteCode","approvalStatus","whatsappGroupId","whatsappBotEnabled","createdAt","updatedAt")

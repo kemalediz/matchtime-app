@@ -787,7 +787,10 @@ export async function computeDuePosts(
         out.push({
           kind: "group-message",
           key,
-          text: job.text,
+          // A partner club's ask going out on a later day than it was
+          // queued is rendered again now, so "tomorrow" is never a day late
+          // (review of #612, `freshAskPostText`). Every other job as queued.
+          text: partnerAskPostJobIds.has(job.id) ? await (await import("./partner-ask")).freshAskPostText(job, now) : job.text,
           // Real tags (2026-11-03): "@<phone>" in the text, the phones here.
           ...(job.mentions?.length ? { mentions: [...job.mentions] } : {}),
         });

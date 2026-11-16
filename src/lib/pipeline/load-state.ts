@@ -30,6 +30,7 @@ import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
 import type { RatingProgress } from "../rating-progress-answer";
 import type { ClubSnapshot, PartnerAskView, SquadState } from "./types";
 import { gamesOverlap } from "../partner-ask-rules";
+import { bareWhatsAppId } from "../quoted-message";
 import { loadPlayerNames } from "../player-display-name";
 
 /** Statuses `selectRegistrationMatch` considers, plus COMPLETED so the
@@ -39,6 +40,12 @@ const LOOKBACK_DAYS = 30;
 export async function loadSquadState(
   orgId: string,
   now: Date = new Date(),
+  opts: {
+    /** The WhatsApp ids the batch's replies quote (review of #612): a
+     *  partner ask posted here under one of them is loaded whatever its
+     *  age, so a reply to an old ask post is never read as an own-club IN. */
+    quotedIds?: readonly string[];
+  } = {},
 ): Promise<SquadState> {
   const features = await getOrgFeatures(orgId);
 
@@ -308,8 +315,9 @@ export async function loadSquadState(
   // still recognised as about it ("that place has gone"). Only asks whose
   // post's id came back can be matched by a reply. Read-only, one indexed
   // query; empty for every club no partner has asked. Never fails the
-  // state: before the migration, nothing.
-  const partnerAsks = await loadPartnerAskViews(orgId, now);
+  // state: before the migration, nothing. Plus, whatever their age, the
+  // asks whose posts this batch's replies quote (review of #612).
+  const partnerAsks = await loadPartnerAskViews(orgId, now, opts.quotedIds ?? []);
   // Review L1: members playing for a partner club as a guest at a time
   // overlapping this club's active match. Empty for nearly every club.
   const guestElsewhere = match ? await loadGuestElsewhere(orgId, match.date, now) : {};
@@ -519,7 +527,11 @@ export async function loadPaymentSnapshot(
 }
 
 
-async function loadPartnerAskViews(orgId: string, now: Date): Promise<PartnerAskView[]> {
+async function loadPartnerAskViews(orgId: string, now: Date, quotedIds: readonly string[] = []): Promise<PartnerAskView[]> {
+  // The posts replies quote, as bare stanza ids: the stored id is the
+  // serialised key ("true_<group>_<id>"), so it CONTAINS the bare one, and
+  // `quotedPartnerAsk` then compares the two exactly.
+  const quoted = [...new Set(quotedIds.map((id) => bareWhatsAppId(id)).filter((id): id is string => !!id))];
   try {
     const rows = await db.partnerAsk.findMany({
       where: {
@@ -532,6 +544,10 @@ async function loadPartnerAskViews(orgId: string, now: Date): Promise<PartnerAsk
           // filled, until its game is over (S4).
           { postWaMessageId: { not: null }, closesAt: { gte: now } },
           { postWaMessageId: { not: null }, closedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } },
+          // Review of #612: an ask of ANY age whose post a reply in this
+          // batch quotes. Not open, so its writer answers "that place has
+          // gone" and the club's own game is never touched.
+          ...quoted.map((id) => ({ postWaMessageId: { contains: id } })),
         ],
       },
       select: { id: true, status: true, closesAt: true, postWaMessageId: true, askerOrgId: true, postedAt: true },

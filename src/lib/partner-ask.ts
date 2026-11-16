@@ -60,6 +60,7 @@ import {
   isPartnerPaused,
   movedWindows,
   askPostDay,
+  askPostStale,
   partnerReachable,
   roundKey,
   roundPartners,
@@ -480,15 +481,15 @@ async function partnerOwnGameThatDay(partnerOrgId: string, kickoff: Date): Promi
 /** Post an ask that is still waiting, or one with standing permission.
  *  A compare-and-set on the status, in one transaction with its BotJob,
  *  so it can never post twice. Returns false when it was not posted. */
-async function postAsk(askId: string, approverUserId: string | null, now: Date): Promise<boolean> {
-  const ask = await db.partnerAsk.findUnique({ where: { id: askId } });
-  if (!ask || ask.status !== "awaiting-approval") return false;
+/** The post's words for an ask, as they read at `now`. Null when the ask,
+ *  either club or the match is gone. */
+async function askPostText(ask: { id: string; askerOrgId: string; partnerOrgId: string; matchId: string; places: number }, now: Date) {
   const [asker, partner, match] = await Promise.all([
     db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { name: true } }),
     db.organisation.findUnique({ where: { id: ask.partnerOrgId }, select: { id: true, language: true } }),
     db.match.findUnique({ where: { id: ask.matchId }, select: MATCH_SELECT }) as Promise<AskMatch | null>,
   ]);
-  if (!asker || !partner || !match) return false;
+  if (!asker || !partner || !match) return null;
   const open = await placesOpen(match.id);
   // P4: the post asks for the organiser's number (the round's), never more
   // than the places still open. The ask's own `places` is never rewritten.
@@ -500,11 +501,20 @@ async function postAsk(askId: string, approverUserId: string | null, now: Date):
   const text = t(partner.language).xask_post({
     ...(await factsFor(match, asker.name, places, partner.language)),
     when: askPostDay(partner.language, match.date, now),
-    link: askDmLink({ number: matchtimeWaNumber(), lang: partner.language, askId }),
-    prefill: askDmPrefill(partner.language, askRefCode(askId)),
+    link: askDmLink({ number: matchtimeWaNumber(), lang: partner.language, askId: ask.id }),
+    prefill: askDmPrefill(partner.language, askRefCode(ask.id)),
   });
+  return { text, partnerOrgId: partner.id };
+}
+
+async function postAsk(askId: string, approverUserId: string | null, now: Date): Promise<boolean> {
+  const ask = await db.partnerAsk.findUnique({ where: { id: askId } });
+  if (!ask || ask.status !== "awaiting-approval") return false;
+  const built = await askPostText(ask, now);
+  if (!built) return false;
+  const { text, partnerOrgId } = built;
   return db.$transaction(async (tx) => {
-    const job = await tx.botJob.create({ data: { orgId: partner.id, kind: "group", text }, select: { id: true } });
+    const job = await tx.botJob.create({ data: { orgId: partnerOrgId, kind: "group", text }, select: { id: true } });
     const done = await tx.partnerAsk.updateMany({
       where: { id: askId, status: "awaiting-approval" },
       data: {
@@ -518,7 +528,7 @@ async function postAsk(askId: string, approverUserId: string | null, now: Date):
       await tx.botJob.delete({ where: { id: job.id } });
       return false;
     }
-    console.log(`[partner-ask] ${askId}: posted to ${partner.id} as job ${job.id}`);
+    console.log(`[partner-ask] ${askId}: posted to ${partnerOrgId} as job ${job.id}`);
     return true;
   });
 }
@@ -598,6 +608,37 @@ export async function declinePartnerAsk(args: { askId: string; userId: string; n
     text: t(a.asker.language).xask_declined_notice_asker({ partner: a.partner.name, day: dayCommaTimeLabel(a.asker.language, a.match.date) }),
   });
   return { ok: true, outcome: "declined" };
+}
+
+/**
+ * THE POST AS IT GOES OUT (review of #612, 2026-11-16). The day word
+ * ("tonight", "tomorrow") was fixed when the post was queued, and a held
+ * post can go out later (a Pi that does not forward quoted ids yet, a
+ * midnight in between). The dispatcher (`bot-scheduler.ts`) calls this for
+ * an ask's post just before handing it to the Pi: sent on the London day it
+ * was built and within 6 hours (`askPostStale`), it is exactly as built and
+ * nothing is read; otherwise it is rendered again at send time, and the
+ * job's text is updated to what goes out (a reply's context reads it). An
+ * ask no longer posted, or any failure: the text as built, never a lost
+ * post. Never throws.
+ */
+export async function freshAskPostText(job: { id: string; createdAt: Date; text: string }, now: Date): Promise<string> {
+  if (!askPostStale(job.createdAt, now)) return job.text;
+  try {
+    const ask = await db.partnerAsk.findFirst({
+      where: { postJobId: job.id },
+      select: { id: true, status: true, askerOrgId: true, partnerOrgId: true, matchId: true, places: true },
+    });
+    if (!ask || ask.status !== "posted") return job.text;
+    const built = await askPostText(ask, now);
+    if (!built || built.text === job.text) return job.text;
+    await db.botJob.updateMany({ where: { id: job.id, sentAt: null }, data: { text: built.text } });
+    console.log(`[partner-ask] ${ask.id}: post job ${job.id} rendered again at send time`);
+    return built.text;
+  } catch (err) {
+    console.error(`[partner-ask] job ${job.id}: not rendered again, sent as built:`, err instanceof Error ? err.message : "failed");
+    return job.text;
+  }
 }
 
 /** Stamp the post's WhatsApp id when the Pi acknowledges its BotJob. */
