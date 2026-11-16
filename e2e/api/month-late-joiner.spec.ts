@@ -990,22 +990,26 @@ for (const c of [
   });
 }
 
-test("hole 4 (round 5): Max types 'except the last week', Mia answers 'all but the last one': both missed a played game, both store from-now-on + actually played", async ({ request, db }) => {
+test("hole 4 (round 5): Mia types a count, Max answers the question 'just the last one': both missed a played game, and both store the same", async ({ request, db }) => {
   test.skip(!PLAYED || leftOf(PLAYED).length < 2, "needs a month this calendar month with two games played and two still to play");
   const c = PLAYED!;
   const [n, played, left] = [c.games.length, pastOf(c).length - 1, leftOf(c)];
-  const max = `Max in for ${monthName(c)} except the last week`;
-  const mia = `Mia in for ${monthName(c)} except the last week`;
-  setMonthlyReaderStub({ bodies: { [max]: signup(c, n - 1), [mia]: signup(c, n), "all but the last one": signup(c, left.length - 1) } });
-  expect(await say(request, c, P.max, max)).toMatchObject({ react: "✅" });
-  expect(await say(request, c, P.mia, mia)).toMatchObject({ react: null });
-  // The question says how many he has ACTUALLY played, and lists only the games left.
-  expect(await dms(db, c, P.mia)).toEqual([gamesAsk(c, n, played, left)]);
-  expect(await dmReply(request, P.mia, "all but the last one")).toMatchObject({ handled: "month-join-yes" });
-  const want = left.length - 1 + played;
-  expect(await monthRow(db, c, P.max)).toMatchObject({ gamesCommitted: want });
+  // The same games, said two ways: the games he actually played plus one more.
+  const want = played + 1;
+  const mia = `Mia in for ${monthName(c)}, ${want} games`;
+  const max = `Max in for ${monthName(c)}, all ${n} of them except some`;
+  setMonthlyReaderStub({ bodies: { [mia]: signup(c, want), [max]: signup(c, n), "just the last one": signup(c, 1) } });
+  // Mia's count is read against the games she covers, as a total: stored as read.
+  expect(await say(request, c, P.mia, mia)).toMatchObject({ react: "✅" });
+  // Max's does not fit: he is asked, told how many he has ACTUALLY played, with only the games left listed.
+  expect(await say(request, c, P.max, max)).toMatchObject({ react: null });
+  expect(await dms(db, c, P.max)).toEqual([gamesAsk(c, n, played, left)]);
+  // His answer is about the games left: stored is it plus the games he actually played.
+  expect(await dmReply(request, P.max, "just the last one")).toMatchObject({ handled: "month-join-yes" });
   expect(await monthRow(db, c, P.mia)).toMatchObject({ gamesCommitted: want, amountDuePence: want * SHARE });
+  expect(await monthRow(db, c, P.max)).toMatchObject({ gamesCommitted: want, amountDuePence: want * SHARE });
 });
+
 
 test("hole 4 (round 5): Pax, a leaver who says he paid for 2, answers the plain join question 'yes except the last week': checked and saved against the games left he was asked about", async ({ request, db }) => {
   const body = `IN FOR ${monthName(EN).toUpperCase()} again please`;

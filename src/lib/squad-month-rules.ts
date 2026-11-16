@@ -225,23 +225,28 @@ export function fitGamesCommitted(games: number | null, covers: number, minGames
 }
 
 /**
- * ONE RULE FOR THE GAMES BEHIND HIM (2026-11-16): what is stored is the
- * games he says he will play FROM NOW ON plus the games he has ACTUALLY
- * played this month (`gamesPlayedBy`), never the kickoffs that have passed.
+ * ONE RULE FOR THE GAMES BEHIND HIM (2026-11-16). Two ways a count comes,
+ * and they agree:
  *
- * `commitmentFromCount`: a count read against the games he covers (the
- * reader's THE SENDER COVERS, those played included): from now on it is
- * the count less the covered games already behind him. `commitmentFromAnswer`:
- * his answer to "which of them?", which lists only the games still to play.
- * Both: nothing from now on, or no game still to play left out, is asked
- * about; every game still to play is every game; a commitment at or above
- * the games he covers is asked about (it cannot be stored).
+ * `commitmentFromCount`: a count the reader read against THE GAMES HE
+ * COVERS (the prompt's HOW MANY GAMES: a TOTAL, the covered games already
+ * behind him included; "4 only" is 4, "except the last week" is one fewer
+ * than he covers). Stored AS READ. It must be above the games he has
+ * ACTUALLY played (`gamesPlayedBy`) while games are left, and below what
+ * he covers; else he is asked. A non-regular covers only the games still
+ * to play, so his count is already from now on (played 0).
+ *
+ * `commitmentFromAnswer`: his answer to "which of them?", which lists only
+ * the games still to play: stored is the answer plus the games he has
+ * actually played. Both: every game is every game; a commitment at or
+ * above the games he covers is asked about (it cannot be stored).
  */
 export function commitmentFromCount(p: { count: number | null; cover: GamesCover; played: number }): GamesFit {
   if (p.count === null) return { kind: "all" };
   if (p.cover.covers === 1 && p.count === 1) return { kind: "all" };
   if (!isWholeNumber(p.count) || p.count < 1 || p.count >= p.cover.covers) return { kind: "ask" };
-  return fromNow(p.count - p.cover.pastCovered, p.cover.remaining.length, p.played, p.cover.covers);
+  if (p.cover.remaining.length > 0 && p.count <= Math.max(0, p.played)) return { kind: "ask" };
+  return { kind: "some", games: p.count };
 }
 
 export function commitmentFromAnswer(p: { answer: number | null; listed: number; played: number; covers: number }): GamesFit {

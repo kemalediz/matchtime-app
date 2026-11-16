@@ -70,33 +70,42 @@ describe("fitGamesCommitted: a regular cannot commit to fewer games than he has 
   });
 });
 
-describe("one rule for the games behind him: from now on + actually played, never the kickoffs passed", () => {
+describe("one rule for the games behind him: a count against his cover as read; an answer about the games left plus the games actually played", () => {
   const K = [2, 9, 16, 23, 30].map((d) => new Date(Date.UTC(2026, 10, d, 20)));
-  const now = new Date(Date.UTC(2026, 10, 12, 12)); // two played, three still to play
-  const full = coverFor({ kickoffs: K, rowCovered: 5, now });
+  const afterThird = new Date(Date.UTC(2026, 10, 18, 12)); // three behind him, two still to play
+  const afterSecond = new Date(Date.UTC(2026, 10, 12, 12)); // two behind him, three still to play
 
-  it("Max and Mia (a full-month regular who played 1 of the 2 behind him) store the same for 'except the last week'", () => {
-    // Max types it: the reader counts 4 of his 5; from now on that is 2.
-    const max = commitmentFromCount({ count: 4, cover: full, played: 1 });
-    // Mia answers "all but the last one" to the question listing the 3 left.
-    const mia = commitmentFromAnswer({ answer: 2, listed: 3, played: 1, covers: 5 });
-    expect(max).toEqual({ kind: "some", games: 3 });
-    expect(mia).toEqual(max);
+  it("Mia types '2 games', Max answers 'just the last one' (5-game month, 3 behind, 1 actually played): both store 2", () => {
+    const cover = coverFor({ kickoffs: K, rowCovered: 5, now: afterThird });
+    const mia = commitmentFromCount({ count: 2, cover, played: 1 });
+    const max = commitmentFromAnswer({ answer: 1, listed: cover.remaining.length, played: 1, covers: 5 });
+    expect(mia).toEqual({ kind: "some", games: 2 });
+    expect(max).toEqual(mia);
   });
 
-  it("nothing from now on (a count no higher than the covered games behind him) is asked about", () => {
-    expect(commitmentFromCount({ count: 2, cover: full, played: 2 })).toEqual({ kind: "ask" });
+  it("'3 only' with 2 covered games behind him and 1 actually played: 3, as read", () => {
+    expect(commitmentFromCount({ count: 3, cover: coverFor({ kickoffs: K, rowCovered: 5, now: afterSecond }), played: 1 })).toEqual({ kind: "some", games: 3 });
+  });
+
+  it("'except the last week' of his 5 is 4, as read", () => {
+    expect(commitmentFromCount({ count: 4, cover: coverFor({ kickoffs: K, rowCovered: 5, now: afterSecond }), played: 2 })).toEqual({ kind: "some", games: 4 });
+  });
+
+  it("a count no higher than the games he has actually played, games still left: asked", () => {
+    const cover = coverFor({ kickoffs: K, rowCovered: 5, now: afterSecond });
+    expect(commitmentFromCount({ count: 2, cover, played: 2 })).toEqual({ kind: "ask" });
+    expect(commitmentFromCount({ count: 1, cover, played: 2 })).toEqual({ kind: "ask" });
     expect(commitmentFromAnswer({ answer: 0, listed: 3, played: 2, covers: 5 })).toEqual({ kind: "ask" });
   });
 
   it("every game still to play is every game; at or above his cover is asked about", () => {
     expect(commitmentFromAnswer({ answer: 3, listed: 3, played: 1, covers: 5 })).toEqual({ kind: "ask" });
     expect(commitmentFromAnswer({ answer: null, listed: 3, played: 1, covers: 5 })).toEqual({ kind: "all" });
-    expect(commitmentFromCount({ count: 5, cover: full, played: 2 })).toEqual({ kind: "ask" });
+    expect(commitmentFromCount({ count: 5, cover: coverFor({ kickoffs: K, rowCovered: 5, now: afterSecond }), played: 2 })).toEqual({ kind: "ask" });
   });
 
-  it("a joiner has nothing behind him: his count as it is", () => {
-    const joiner = coverFor({ kickoffs: K, rowCovered: null, now });
+  it("a non-regular covers only the games still to play: his count is from now on, nothing added", () => {
+    const joiner = coverFor({ kickoffs: K, rowCovered: null, now: afterSecond });
     expect(commitmentFromCount({ count: 2, cover: joiner, played: 0 })).toEqual({ kind: "some", games: 2 });
   });
 
@@ -104,6 +113,7 @@ describe("one rule for the games behind him: from now on + actually played, neve
     expect(commitmentFromAnswer({ answer: 1, listed: 2, played: 2, covers: 2 })).toEqual({ kind: "ask" });
   });
 });
+
 
 describe("coverFor: the games he covers, those still to play, and those behind him", () => {
   const K = [2, 9, 16, 23, 30].map((d) => new Date(Date.UTC(2026, 10, d, 20)));
