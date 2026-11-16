@@ -78,7 +78,7 @@ import {
   type SignupPaidClaim,
   type SignupRosterMember,
 } from "./month-signup-rules";
-import { carryFromMonthStart, isBreakMonth, londonMonthStart, monthStartToDate, normaliseSquadMode } from "./squad-month-rules";
+import { carryFromMonthStart, fitLateJoinGames, isBreakMonth, londonMonthStart, monthStartToDate, normaliseSquadMode } from "./squad-month-rules";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { dayLabel, monthNameLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
@@ -708,6 +708,9 @@ export async function applySignup(args: {
   actorUserId: string | null;
   /** An OWNER or ADMIN changing somebody on /admin/months. */
   byOrganiser?: boolean;
+  /** The games a late joiner commits to, fewer than the games left (the
+   *  caller checked them). Null or omitted: every game. */
+  games?: number | null;
   now?: Date;
 }): Promise<ApplySignupResult> {
   const now = args.now ?? new Date();
@@ -833,6 +836,13 @@ export async function applySignup(args: {
     } catch (err) {
       console.error(`[month-signup] working out what ${args.userId} owes for ${month.id} failed (the organiser can set the price again):`, err);
     }
+  }
+
+  // A late joiner's games (2026-11-16), already checked against the games
+  // left by the caller (`fitLateJoinGames`): recorded BEFORE he and the
+  // organisers are told below, so they hear his games, not every game left.
+  if (args.games != null && decision.kind === "write" && decision.outcome === "regular") {
+    await commitMonthGames(month.id, args.userId, args.games);
   }
 
   const phone = member.user.phoneNumber?.replace(/^\+/, "") ?? null;
@@ -1119,8 +1129,14 @@ export async function handleSignupPaste(args: {
   // Joining a month under way rests on more than one reading of a pasted
   // list (review of #465): he is asked by DM to confirm, and joins on his
   // yes (`month-join-dm.ts`).
+  // With games beside his name ("Dan except the last week", 2026-11-16)
+  // the question is which of the games left he will play: a plain yes to
+  // "join for the games left?" would stand for every one of them.
   if (joiningLate && outcome.self && args.sender.userId) {
-    if (await askToJoinMonth({ month, userId: args.sender.userId, now })) applied.push(`join-asked:${args.sender.name ?? args.sender.userId}`);
+    const which = outcome.self.games !== null;
+    if (await askToJoinMonth({ month, userId: args.sender.userId, now, which })) {
+      applied.push(`${which ? "join-which-asked" : "join-asked"}:${args.sender.name ?? args.sender.userId}`);
+    }
     outcome = { ...outcome, self: null };
   }
   if (outcome.self && args.sender.userId) {
@@ -1230,6 +1246,9 @@ export interface SignupMessageResult {
   changed: boolean;
   locked: boolean;
   outcome: SignupOutcome;
+  /** Nothing was recorded: his games did not fit the games left, and he is
+   *  asked by DM which of them he will play. No ✅ for it. */
+  asked?: boolean;
 }
 
 /**
@@ -1259,9 +1278,29 @@ export async function handleSignupMessage(args: {
   // A month under way (review of #465): somebody new joins on the reading
   // that names this month; somebody who was on it and left is asked by DM
   // to confirm first, never put back on by one reading.
-  if (hasStarted(month, now) && month.members.some((x) => x.userId === args.sender.userId && x.out)) {
-    const asked = await askToJoinMonth({ month, userId: args.sender.userId, now });
-    return { monthId: month.id, choice: ask.choice, changed: asked, locked: false, outcome: "out" };
+  //
+  // A LATE JOINER covers only the games LEFT (2026-11-16): the games he
+  // commits to must fit those (`fitLateJoinGames`). One that does not
+  // ("except the last week" counted against the month's total) is never
+  // stored as every game: he is asked once by DM which of the games left
+  // he will play, nothing is stored and there is no ✅ until he answers.
+  let lateGames: number | null = null;
+  if (hasStarted(month, now) && !month.members.some((x) => x.userId === args.sender.userId && !x.out)) {
+    const fit = fitLateJoinGames(ask.games, gamesLeftIn(month, now));
+    const wasOut = month.members.some((x) => x.userId === args.sender.userId && x.out);
+    // Coming back with a partial count: the same one question, so his yes
+    // never stands for every game.
+    if (fit.kind === "ask" || (wasOut && fit.kind === "some")) {
+      if (!(await askToJoinMonth({ month, userId: args.sender.userId, now, which: true }))) {
+        console.info(`[month-signup] ${args.sender.userId}'s games for ${month.id} do not fit the games left, and he was asked already: nothing stored`);
+      }
+      return { monthId: month.id, choice: ask.choice, changed: false, locked: false, outcome: "out", asked: true };
+    }
+    if (wasOut) {
+      const asked = await askToJoinMonth({ month, userId: args.sender.userId, now });
+      return { monthId: month.id, choice: ask.choice, changed: asked, locked: false, outcome: "out" };
+    }
+    if (fit.kind === "some") lateGames = fit.games;
   }
   const res = await applySignup({
     monthId: month.id,
@@ -1270,37 +1309,59 @@ export async function handleSignupMessage(args: {
     days: ask.days,
     source: "reply",
     actorUserId: args.sender.userId,
+    games: lateGames,
     now,
   });
   if (!res.ok) return null;
-  // "except the last week": the games they commit to, for a regular.
+  // "except the last week": the games they commit to, for a regular
+  // (a late joiner's were recorded by `applySignup`, before he was told).
   let games = false;
-  if (res.outcome === "regular" && ask.games !== null) games = await commitMonthGames(month.id, args.sender.userId, ask.games);
+  if (res.outcome === "regular" && ask.games !== null && lateGames === null) games = await commitMonthGames(month.id, args.sender.userId, ask.games);
   return { monthId: month.id, choice: ask.choice, changed: res.changed || games, locked: res.locked, outcome: res.outcome };
+}
+
+/** The games still to play: what a regular who joins now covers (`applySignup`). */
+export function gamesLeftIn(month: Pick<SignupMonth, "kickoffs">, now: Date): number {
+  return month.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
 }
 
 /** The SentNotification kind of an open "join for the games left?" ask. */
 export const MONTH_JOIN_ASK_KIND = "month-join-ask";
+/** The same ask when his games did not fit the games left: "which of them
+ *  will you play?" (2026-11-16). Answered through the same reply handler. */
+export const MONTH_JOIN_WHICH_KIND = "month-join-which";
 export const monthJoinAskKey = (orgId: string, monthId: string, userId: string) => `${signupKeyPrefix(orgId)}join-ask:${monthId}:${userId}`;
 
 /**
  * Ask a player by DM to confirm joining a month under way for the games
- * left (review of #465). Once per month and player. True when asked.
+ * left (review of #465). Once per month and player, whichever question it
+ * is. True when asked.
+ *
+ * `which` (2026-11-16): the games he committed to did not fit the games
+ * left, so the question is which of them (with their dates) he will play.
  */
-export async function askToJoinMonth(p: { month: SignupMonth; userId: string; now: Date }): Promise<boolean> {
+export async function askToJoinMonth(p: { month: SignupMonth; userId: string; now: Date; which?: boolean }): Promise<boolean> {
   const { month, userId, now } = p;
-  const left = month.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
+  const left = gamesLeftIn(month, now);
   if (left === 0) return false;
   const user = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
   const phone = user?.phoneNumber?.replace(/^\+/, "");
   if (!phone) return false;
-  // No price while the club neither tracks nor collects payments
-  // (2026-11-03, `payment-messages.ts`): the ask is for the games only.
-  const flags = await db.organisation.findUnique({ where: { id: month.orgId }, select: PAYMENT_FLAGS_SELECT });
-  const price = month.sharePerGamePence != null && paymentMessagesOn(flags) ? `£${((month.sharePerGamePence * left) / 100).toFixed(2)}` : null;
-  const text = t(month.language).msu_dm_join_ask({ month: monthNameLabel(month.language, month.firstKickoff), games: left, price });
+  const monthName = monthNameLabel(month.language, month.firstKickoff);
+  let text: string;
+  if (p.which) {
+    const dates = month.kickoffs.filter((k) => k.getTime() > now.getTime()).map((k) => dayLabel(month.language, k));
+    text = t(month.language).msu_dm_join_which({ month: monthName, games: left, dates });
+  } else {
+    // No price while the club neither tracks nor collects payments
+    // (2026-11-03, `payment-messages.ts`): the ask is for the games only.
+    const flags = await db.organisation.findUnique({ where: { id: month.orgId }, select: PAYMENT_FLAGS_SELECT });
+    const price = month.sharePerGamePence != null && paymentMessagesOn(flags) ? `£${((month.sharePerGamePence * left) / 100).toFixed(2)}` : null;
+    text = t(month.language).msu_dm_join_ask({ month: monthName, games: left, price });
+  }
+  const kind = p.which ? MONTH_JOIN_WHICH_KIND : MONTH_JOIN_ASK_KIND;
   try {
-    await db.sentNotification.create({ data: { key: monthJoinAskKey(month.orgId, month.id, userId), kind: MONTH_JOIN_ASK_KIND, targetUser: userId, text } });
+    await db.sentNotification.create({ data: { key: monthJoinAskKey(month.orgId, month.id, userId), kind, targetUser: userId, text } });
   } catch {
     return false; // asked already
   }

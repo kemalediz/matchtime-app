@@ -4822,6 +4822,14 @@ export const en = {
   /** To a player asked to confirm joining a month under way (review of #465). */
   msu_dm_join_ask: (p: { month: string; games: number; price: string | null }): string =>
     `📋 Join ${p.month} as a regular for the ${p.games} ${p.games === 1 ? "game" : "games"} left${p.price ? `, ${p.price}` : ""}? Reply yes and I'll put you on it.`,
+  /** To a player joining a month under way whose commitment did not fit the
+   *  games left ("except the last week" read as every game left): the one
+   *  question, which of them he will play (2026-11-16). `dates` are the
+   *  games left, already written. */
+  msu_dm_join_which: (p: { month: string; games: number; dates: string[] }): string =>
+    p.games === 1
+      ? `📋 ${p.month} has 1 game left: ${p.dates.join(", ")}. Will you play it? Reply and I'll put you on the list for it.`
+      : `📋 ${p.month} has ${p.games} games left: ${p.dates.slice(0, -1).join(", ")} and ${p.dates.at(-1)}. Which of them will you play? Reply and I'll put you on the list for those.`,
   /** To a member whose paste had more new players than one paste may add. */
   mwk_dm_paste_guests_refused: (p: { names: string[] }): string =>
     `📋 One list can only add a few new players, so I didn't add ${p.names.join(", ")}. An organiser can add them.`,

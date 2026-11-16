@@ -1692,8 +1692,11 @@ async function handleAnalyzeRequest(request: Request) {
         action: res.changed ? `month-signup:${res.outcome}` : "none",
         reasoning: res.locked
           ? `month sign-up (${res.choice}): not changed, the player says they have paid; they are told by DM`
-          : `month sign-up (${res.choice}), read by the monthly reader: ${res.changed ? `now ${res.outcome}` : `already ${res.outcome}`}`,
-        react: res.locked ? null : "✅",
+          : res.asked
+            ? `month sign-up (${res.choice}): his games do not fit the games left, so nothing is stored; he is asked by DM which of them he will play`
+            : `month sign-up (${res.choice}), read by the monthly reader: ${res.changed ? `now ${res.outcome}` : `already ${res.outcome}`}`,
+        // No ✅ for a commitment that was not recorded (2026-11-16).
+        react: res.locked || res.asked ? null : "✅",
         reply: null,
       });
     }

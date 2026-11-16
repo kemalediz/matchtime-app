@@ -21,6 +21,7 @@ import {
   buildMonthlyReaderUserTurn,
   MONTHLY_READER_SCHEMA,
   MONTHLY_READER_SYSTEM,
+  monthHeadLine,
   parseMonthlyReading,
   type MonthlyReaderContext,
   type MonthlyReaderInput,
@@ -86,14 +87,15 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
   });
 
   const day = (d: Date) => formatLondon(d, "EEE d MMM");
+  const labelOf = (m: (typeof months)[number]) => formatLondon(m.kickoffs[0] ?? m.firstKickoff, "MMMM yyyy");
   const monthBlocks = months.map((m) => {
-    const label = formatLondon(m.kickoffs[0] ?? m.firstKickoff, "MMMM yyyy");
+    const label = labelOf(m);
     const started = m.startedMidMonth || now.getTime() >= m.firstKickoff.getTime();
     const state = m.open ? "sign-up open" : started ? "under way" : "sign-up closed, not started yet";
-    const games = m.kickoffs.map((k) => `${day(k)}${k.getTime() < now.getTime() ? " (played)" : ""}`);
-    const left = m.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
+    // "Still to play" is exactly the games a joiner now covers (`applySignup`'s gamesLeft).
+    const games = m.kickoffs.map((k) => ({ day: day(k), played: k.getTime() <= now.getTime() }));
     return [
-      `  ${label} (month ${m.monthNumber}): ${state}. ${m.kickoffs.length} games: ${games.join(", ")}; ${left} still to play.`,
+      monthHeadLine({ label, monthNumber: m.monthNumber, state, games }),
       `  Its list as MatchTime has it:`,
       ...renderSignupList(m).text.split("\n").map((l) => `    ${l}`),
     ].join("\n");
@@ -107,6 +109,7 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     seedable,
     members,
     months: monthBlocks,
+    lists: months.map((m) => ({ label: labelOf(m), userIds: m.members.filter((x) => !x.out).map((x) => x.userId) })),
     week: liveWeek ? { game: formatLondon(liveWeek.matchDate, "EEE d MMM yyyy, HH:mm"), text: (await renderWeekList(liveWeek)).text } : null,
   };
 }

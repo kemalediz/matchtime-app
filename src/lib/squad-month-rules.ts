@@ -196,6 +196,26 @@ export function checkGamesCommitted(
   return { ok: true, value: games === gamesCovered ? null : games };
 }
 
+export type LateJoinGames = { kind: "all" } | { kind: "some"; games: number } | { kind: "ask" };
+
+/**
+ * A LATE JOINER'S COMMITMENT (2026-11-16): somebody joining a month
+ * already under way covers only the games LEFT, so the games he commits to
+ * must fit those. The reader gives a count only for FEWER than all (null:
+ * every game), so:
+ *   - no count: every game left;
+ *   - a count below the games left: those games;
+ *   - a count at or above the games left does not fit: a partial phrase
+ *     counted against the month's total, or a misreading. It is never
+ *     stored as "every game" (`checkGamesCommitted` would): he is asked
+ *     which of the games left he will play.
+ */
+export function fitLateJoinGames(games: number | null, gamesLeft: number): LateJoinGames {
+  if (games === null) return { kind: "all" };
+  if (isWholeNumber(games) && games >= 1 && games < gamesLeft) return { kind: "some", games };
+  return { kind: "ask" };
+}
+
 /** share x (games paid for - credits applied). null while no share is set; never negative. */
 export function amountDuePence(p: {
   sharePence: number | null | undefined;

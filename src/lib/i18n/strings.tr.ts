@@ -3468,6 +3468,10 @@ export const tr: Strings = {
   mwk_dm_paste_guests_refused: (p) => `📋 Bir listeyle ancak birkaç yeni oyuncu eklenebilir, bu yüzden ${p.names.join(", ")} eklenmedi. Bir organizatör ekleyebilir.`,
   msu_dm_join_ask: (p) =>
     `📋 Kalan ${p.games} maç için ${p.month} ayına düzenli oyuncu olarak katılmak ister misin${p.price ? ` (${p.price})` : ""}? Evet yazarsan seni ekliyorum.`,
+  msu_dm_join_which: (p) =>
+    p.games === 1
+      ? `📋 ${p.month} ayında 1 maç kaldı: ${p.dates.join(", ")}. Oynayacak mısın? Yanıt ver, seni o maç için listeye ekleyeyim.`
+      : `📋 ${p.month} ayında ${p.games} maç kaldı: ${p.dates.slice(0, -1).join(", ")} ve ${p.dates.at(-1)}. Hangilerinde oynayacaksın? Yanıt ver, seni o maçlar için listeye ekleyeyim.`,
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,

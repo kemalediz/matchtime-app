@@ -19,7 +19,7 @@ const ctx: MonthlyReaderContext = {
     { ref: "p1", userId: "u-davide", name: "Davide De Souza", aliases: [], organiser: true },
     { ref: "p2", userId: "u-oumesh", name: "Oumesh Sauba", aliases: [], organiser: false },
   ],
-  months: ["  November 2026 (month 11): under way. 5 games: Mon 2 Nov (played), Mon 9 Nov (played), Mon 16 Nov, Mon 23 Nov, Mon 30 Nov; 3 still to play."],
+  months: ["  November 2026 (month 11): under way. 5 games: Mon 2 Nov (played), Mon 9 Nov (played), Mon 16 Nov, Mon 23 Nov, Mon 30 Nov; 3 still to play: Mon 16 Nov, Mon 23 Nov, Mon 30 Nov."],
   week: { game: "Mon 16 Nov 2026, 20:30", text: "📋 List for November: Mon 16 Nov, 20:30\n1. Davide De Souza" },
   seedable: false,
 };
