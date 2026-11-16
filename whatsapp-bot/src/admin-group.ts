@@ -63,10 +63,8 @@ export interface AdminGroupInboundDeps {
   /** Place an emoji on a message by its id: the driver's `sendReaction`,
    *  the same path the players' group reacts through. Never throws. */
   sendReaction?(waMessageId: string, emoji: string): Promise<ReactionOutcome>;
-  /** Deleted for everyone by now (`smart-analysis.ts` `isDeletedLocally`, 2026-11-15)? */
+  /** Deleted for everyone, or edited, by now (`smart-analysis.ts` `isDeletedLocally`, 2026-11-15)? */
   isDeleted?(messageId: string, senderPhone: string): boolean;
-  /** Hand an unsent reply's claim back (`releaseInstruction`). */
-  release?(key: string): Promise<void>;
   log?(line: string): void;
 }
 
@@ -118,14 +116,14 @@ export async function routeAdminGroupInbound(
     if (!msg) return "admin-group";
     const answer = await deps.postAdminGroupMessage(msg);
     log(`[admin-group] forwarded ${msg.messageId} from ${head.from}`);
-    // Deleted for everyone while the server answered (2026-11-15): no tick
-    // and no reply on it, and the reply's claim is handed back.
+    // Deleted or edited while the server answered (2026-11-15): no tick on
+    // it. The reply still goes (it may carry the squad or the teams), posted
+    // plainly, never as a quote of the message.
     if (deps.isDeleted?.(msg.messageId, msg.senderPhone)) {
-      log(`[admin-group] ${msg.messageId} was deleted for everyone while it was answered: no react, no reply`);
-      if (answer?.replyKey && deps.release) await deps.release(answer.replyKey).catch(() => {});
-      return "admin-group";
+      log(`[admin-group] ${msg.messageId} was deleted or edited while it was answered: no reaction on it`);
+    } else {
+      await postReaction(deps, msg.messageId, answer);
     }
-    await postReaction(deps, msg.messageId, answer);
     await postReply(deps, answer);
     return "admin-group";
   }

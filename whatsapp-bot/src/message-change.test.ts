@@ -12,7 +12,7 @@
  * ones. Simulated numbers, made-up people.
  */
 import { describe, it, expect, vi } from "vitest";
-import type { InboundMessage, MessageChangeEvent } from "./driver.js";
+import type { MessageChangeEvent } from "./driver.js";
 import {
   bareOf,
   bodyForServer,
@@ -52,7 +52,6 @@ function deps(over: Partial<MessageChangeDeps> = {}) {
       order.push(`local:${c.kind}`);
       return { buffered: 1, history: 1, quotes: 0 };
     }),
-    readEdit: vi.fn(async () => ({ text: "ask @Ali Example", mentions: ["447700900456@c.us"], mentionNames: [{ jid: "447700900456@c.us", name: "Ali" }], botMentioned: false })),
     record: vi.fn((c: LocalMessageChange) => {
       order.push("record");
       recorded.push(c);
@@ -99,7 +98,7 @@ describe("the Pi's own copies, by id and group, never by text", () => {
     expect(deleteApplies(by("447700900999"), SAM_ID, SAM)).toBe(false);
   });
 
-  it("bodyForServer: a delete by ids and sender; an edit with its words and mentions", () => {
+  it("bodyForServer: a delete by ids, sender and admin flag; an edit by ids and sender, never words", () => {
     expect(bodyForServer({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: true })).toEqual({
       kind: "revoke",
       chatId: GROUP,
@@ -108,9 +107,13 @@ describe("the Pi's own copies, by id and group, never by text", () => {
       senderJids: [`${SAM}@c.us`],
       senderPhone: SAM,
     });
-    expect(
-      bodyForServer({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [], senderPhone: SAM, byAdmin: false, text: "", mentions: ["x@c.us"], mentionNames: [{ jid: "x@c.us" }] }),
-    ).toEqual({ kind: "edit", chatId: GROUP, messageId: TARGET, text: "", mentions: ["x@c.us"], mentionNames: [{ jid: "x@c.us" }], senderJids: [], senderPhone: SAM });
+    expect(bodyForServer({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [], senderPhone: SAM, byAdmin: false })).toEqual({
+      kind: "edit",
+      chatId: GROUP,
+      messageId: TARGET,
+      senderJids: [],
+      senderPhone: SAM,
+    });
   });
 });
 
@@ -131,20 +134,16 @@ describe("handleMessageChange", () => {
     expect(d.record).toHaveBeenCalled();
   });
 
-  it("an edit is read from its new content exactly as an inbound message is (mentions named, bot tag found)", async () => {
-    const { d, recorded, logs } = deps();
-    const view = { body: "ask @447700900456" } as unknown as InboundMessage;
-    await handleMessageChange(revoke({ kind: "edit", text: "ask @447700900456 my private words", edited: view }), d);
-    expect(d.readEdit).toHaveBeenCalledWith(view);
-    expect(recorded[0]).toMatchObject({ kind: "edit", text: "ask @Ali Example", mentions: ["447700900456@c.us"], mentionNames: [{ jid: "447700900456@c.us", name: "Ali" }], botMentioned: false });
-    expect(logs.join("\n")).not.toContain("private");
+  it("an edit is recorded as a purge: which message and who, never an admin's, never words", async () => {
+    const { d, recorded } = deps();
+    await handleMessageChange(revoke({ kind: "edit", byAdmin: true }), d);
+    expect(recorded[0]).toEqual({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
   });
 
-  it("an edit that left no text is recorded as no text, so it clears", async () => {
+  it("a delete whose admin status could not be read is recorded as such, for the outbox to check again", async () => {
     const { d, recorded } = deps();
-    await handleMessageChange(revoke({ kind: "edit", text: "" }), d);
-    expect(d.readEdit).not.toHaveBeenCalled();
-    expect(recorded[0]).toMatchObject({ kind: "edit", text: "" });
+    await handleMessageChange(revoke({ adminUnknown: true }), d);
+    expect(recorded[0]).toMatchObject({ kind: "revoke", byAdmin: false, adminUnknown: true });
   });
 
   it("a failed post is left to the outbox's retries ('queued'), and never throws", async () => {

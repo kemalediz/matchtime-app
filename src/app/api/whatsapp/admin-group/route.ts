@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
   const [quote] = await withoutDeletedQuotes(
     groupId,
-    [{ quotedMessageId: str(body.quotedMessageId), quotedAuthorPhone: str(body.quotedAuthorPhone), quotedText: body.quotedText }],
+    [{ quotedMessageId: str(body.quotedMessageId), quotedAuthorPhone: str(body.quotedAuthorPhone), quotedAuthorJid: str(body.quotedAuthorJid), quotedText: body.quotedText }],
     "quotedText",
   );
   body.quotedText = quote.quotedText;

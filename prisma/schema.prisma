@@ -2704,26 +2704,31 @@ model GroupMessage {
   createdAt      DateTime     @default(now())
 
   @@index([orgId, timestamp])
+  @@index([waChatId, createdAt])
 }
 
 
-/// A WhatsApp message deleted for everyone (2026-11-15, the tombstone).
-/// One row per deleted message: its chat (group JID) and its BARE WhatsApp
-/// id, and who sent the delete. Every writer of a member's words checks it
-/// AFTER writing and takes the words out again if it applies
-/// (`src/lib/message-change.ts` `enforceDeletes`), and every edit checks it
-/// first, so a delete wins whatever order the message, the delete and an
-/// edit arrive in. A delete applies to a message only when it came from a
-/// group admin (`byAdmin`, read by the Pi from the group's metadata) or
-/// from the message's own author (one of `senderJids` / `senderPhones`).
-/// Holds ids and phones, never words. RETENTION 14 days from `deletedAt`,
-/// pruned on every write. Migration 20261116120000_deleted_messages.
+/// A WhatsApp message deleted for everyone, or edited by its author
+/// (2026-11-15, the tombstone). An edit is a purge: MatchTime forgets the
+/// original words and never stores the new ones. One row per message: its
+/// chat (group JID), its BARE WhatsApp id, and who sent the delete or edit.
+/// Every writer of a member's words clears again AFTER writing
+/// (`src/lib/message-change.ts` `enforceDeletes`), and the hourly
+/// /api/cron/bot-health sweep enforces every recent row, so it wins in
+/// whatever order things arrive. It applies to a copy only when it came
+/// from a group admin (`byAdmin`, a delete only, read by the Pi from the
+/// group's metadata) or from the message's own author (one of `senderJids` /
+/// `senderPhones`). Holds ids and phones, never words. RETENTION 14 days
+/// from `deletedAt`, pruned by the sweep. Migration
+/// 20261116120000_deleted_messages.
 model DeletedMessage {
   id           String   @id @default(cuid())
   chatId       String
   /// The bare WhatsApp id (the `<id>` of `<fromMe>_<chat>_<id>_<participant>`).
   waMessageId  String
   byAdmin      Boolean  @default(false)
+  /// "deleted" once any delete for everyone was seen, else "edited".
+  reason       String   @default("deleted")
   /// Every spelling of the deleters seen, `<digits>@c.us` / `<digits>@lid`.
   senderJids   String[] @default([])
   /// The deleters' phones, digits only.

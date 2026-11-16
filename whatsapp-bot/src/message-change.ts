@@ -21,15 +21,19 @@
  *   4. one post to `/api/whatsapp/message-change`; a failure is left to the
  *      outbox's retries with backoff, across restarts.
  *
- * WHO MAY DELETE: a group admin (`byAdmin`, from the group's metadata), or
- * the message's own author. WHO MAY EDIT: the author only; anyone else's
- * edit changes nothing. Both are decided against each stored copy here and
- * on the server, never trusted from the notice alone.
+ * AN EDIT IS A PURGE (round 3): when the AUTHOR edits a message, MatchTime
+ * forgets the original words exactly as for a delete, through the same
+ * path, and never keeps the new ones. No edited text is read, held,
+ * written to the outbox or posted. A message still waiting in the batch is
+ * taken out of it, not analysed.
  *
- * AN EDIT is read from its new content exactly as an inbound message is
- * (`readGroupMessageForServer`: the bot's own tag found, mentions named
- * from the contacts), so the batch, the recent chat and the server all get
- * the same words, mentions and tag. An edit that left no text clears it.
+ * WHO: a delete from a group admin (`byAdmin`, from the group's metadata)
+ * or the message's own author; an edit from its author only. Anything else
+ * changes nothing. Decided against each stored copy here and on the
+ * server, never trusted from the notice alone. When the group's admins
+ * could not be read, the delete is kept as `adminUnknown` and the outbox
+ * checks again on its retries; it applies to the sender's own messages
+ * meanwhile, and to others' only once the sender is known to be an admin.
  *
  * NOTHING HERE SENDS, REPLIES, REACTS OR ANALYSES: its only effects are the
  * injected ones. A DM is not posted: the server keeps no member's DM text
@@ -37,7 +41,7 @@
  *
  * Logs carry ids and counts, never the words.
  */
-import type { InboundMessage, MessageChangeEvent } from "./driver.js";
+import type { MessageChangeEvent } from "./driver.js";
 import type { MessageChangeBody } from "./api.js";
 import { legacyJid, parseKey } from "./baileys/key.js";
 
@@ -49,21 +53,10 @@ export interface LocalMessageChange {
   messageId: string;
   senderJids: string[];
   senderPhone: string | null;
-  /** The sender is an admin of the group (a delete may then take anyone's message). */
+  /** The sender is an admin of the group (a delete may then take anyone's message). Never for an edit. */
   byAdmin: boolean;
-  /** An edit's words, read as inbound text is; "" when it left none. */
-  text?: string;
-  mentions?: string[];
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
-  botMentioned?: boolean;
-}
-
-/** An edit's new content, read as an inbound message is. */
-export interface ReadEdit {
-  text: string;
-  mentions?: string[];
-  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
-  botMentioned: boolean;
+  /** Whether the sender is an admin could not be read yet: checked again by the outbox. */
+  adminUnknown?: boolean;
 }
 
 /** A WhatsApp message id: never '@', never a space. */
@@ -117,22 +110,11 @@ export function bodyForServer(c: LocalMessageChange): MessageChangeBody {
   if (c.kind === "revoke") {
     return { kind: "revoke", chatId: c.groupId, messageId: c.messageId, byAdmin: c.byAdmin, senderJids: c.senderJids, senderPhone: c.senderPhone };
   }
-  return {
-    kind: "edit",
-    chatId: c.groupId,
-    messageId: c.messageId,
-    text: c.text ?? "",
-    ...(c.mentions?.length ? { mentions: c.mentions } : {}),
-    ...(c.mentionNames?.length ? { mentionNames: c.mentionNames } : {}),
-    senderJids: c.senderJids,
-    senderPhone: c.senderPhone,
-  };
+  return { kind: "edit", chatId: c.groupId, messageId: c.messageId, senderJids: c.senderJids, senderPhone: c.senderPhone };
 }
 
 export interface MessageChangeDeps {
   applyLocally(change: LocalMessageChange): { buffered: number; history: number; quotes: number };
-  /** An edit's new content read as inbound text is (`readGroupMessageForServer`). */
-  readEdit(view: InboundMessage): Promise<ReadEdit | null>;
   /** Into the durable outbox; returns its key. */
   record(change: LocalMessageChange): string;
   /** One post; true when the server took it. */
@@ -153,33 +135,16 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     deps.log(`${tag}: a DM; MatchTime keeps no DM text for later answers, nothing to change`);
     return "dm";
   }
-  let local: LocalMessageChange = {
+  const isDelete = change.kind === "revoke";
+  const local: LocalMessageChange = {
     kind: change.kind,
     groupId: change.chatId,
     messageId: change.messageId,
     senderJids: change.senderJids,
     senderPhone: change.senderPhone,
-    byAdmin: change.byAdmin === true,
+    byAdmin: isDelete && change.byAdmin === true,
+    ...(isDelete && change.adminUnknown ? { adminUnknown: true } : {}),
   };
-  if (change.kind === "edit") {
-    let read: ReadEdit | null = null;
-    if (change.edited && change.text) {
-      try {
-        read = await deps.readEdit(change.edited);
-      } catch {
-        read = null;
-      }
-    }
-    local = read
-      ? {
-          ...local,
-          text: read.text,
-          botMentioned: read.botMentioned,
-          ...(read.mentions?.length ? { mentions: read.mentions } : {}),
-          ...(read.mentionNames?.length ? { mentionNames: read.mentionNames } : {}),
-        }
-      : { ...local, text: change.text ?? "", botMentioned: false };
-  }
   try {
     const counts = deps.applyLocally(local);
     const key = deps.record(local);

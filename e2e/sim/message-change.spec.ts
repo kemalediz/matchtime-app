@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import { createGroup, type SimGroup } from "./group";
-import { clearExtractorStub, clearPipelineStubs, clearRouterStub, engineOn, selfOut } from "../helpers/stub";
+import { clearExtractorStub, clearPipelineStubs, clearRouterStub, engineOn, selfIn, selfOut } from "../helpers/stub";
 import { E2E } from "../helpers/env";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
@@ -62,6 +62,12 @@ async function change(request: APIRequestContext, body: Record<string, unknown>)
 function revokeBy(g: SimGroup, key: string, bare: string, chatId = g.groupId, byAdmin = false) {
   const phone = digits(g.player(key).phone);
   return { kind: "revoke", chatId, messageId: bare, byAdmin, senderJids: [`${phone}@c.us`], senderPhone: phone };
+}
+
+/** An author's edit as the Pi posts it: no words. */
+function editBy(g: SimGroup, key: string, bare: string, chatId = g.groupId) {
+  const phone = digits(g.player(key).phone);
+  return { kind: "edit", chatId, messageId: bare, senderJids: [`${phone}@c.us`], senderPhone: phone };
 }
 
 /** Dan's secret and Pete's ordinary line, analysed and stored. */
@@ -135,24 +141,20 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     expect(answer!.user).not.toContain("4321");
   });
 
-  test("edited by its author: the next recent chat carries the new words, never the old", async ({ request, db }) => {
+  test("edited by its author: a purge. The next recent chat has neither the old words nor the new", async ({ request, db }) => {
     const g = await createGroup(request, db, { attendance: [{ key: "pete", status: "CONFIRMED" as const }] });
     const bare = await storeTwoLines(g);
-    const dan = g.player("dan");
-    const r = await change(request, {
-      kind: "edit",
-      chatId: g.groupId,
-      messageId: bare,
-      text: "see you all at 8",
-      senderJids: [`${digits(dan.phone)}@c.us`],
-      senderPhone: digits(dan.phone),
-    });
+    // Even if a Pi sent the new words, they are never stored.
+    const r = await change(request, { ...editBy(g, "dan", bare), text: "see you all at 8" });
     expect(r).toMatchObject({ ok: true, analyzed: 1, refused: 0 });
+    expect(await db.one(`SELECT reason FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare])).toEqual({ reason: "edited" });
 
     await g.postBatch([{ player: "pete", body: "@Match Time out", tag: true, route: "self_att", facts: selfOut() }]);
     const call = calls().find((c) => c.user.endsWith("@Match Time out"));
-    expect(recentChatOf(call!.user)).toEqual([`${dan.name}: see you all at 8`, `${g.player("pete").name}: ${OTHER}`]);
+    expect(recentChatOf(call!.user)).toEqual([`${g.player("pete").name}: ${OTHER}`]);
     expect(JSON.stringify(calls())).not.toContain("4321");
+    expect(JSON.stringify(calls())).not.toContain("see you all at 8");
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE body LIKE '%see you all at 8%'`)).toBe(0);
   });
 
   test("HQ: a deleted organiser's message leaves the log, and the next HQ answer is shown the chat without it", async ({ request, db }) => {
@@ -198,7 +200,7 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     // The delete lands first: nothing was ever stored, so only the tombstone holds it.
     expect(await change(request, revokeBy(g, "dan", bare))).toMatchObject({ ok: true, analyzed: 0 });
     const Q = "@Match Time is that right?";
-    await g.postBatch([{ player: "pete", body: Q, tag: true, ...Q_OPEN, quote: { id: bare, text: SECRET } }]);
+    await g.postBatch([{ player: "pete", body: Q, tag: true, ...Q_OPEN, quote: { id: bare, text: SECRET, authorJid: `${digits(g.player("dan").phone)}@c.us` } }]);
     expect(calls().some((c) => c.user.includes(Q))).toBe(true);
     expect(JSON.stringify(calls())).not.toContain("4321");
   });
@@ -208,7 +210,7 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     const bare = await storeTwoLines(g);
     await change(request, revokeBy(g, "dan", bare));
     const Q = "@Match Time what did he mean?";
-    await g.postBatch([{ player: "pete", body: Q, tag: true, ...Q_OPEN, quote: { id: storedId(g.groupId, bare, g.player("dan").phone), text: SECRET } }]);
+    await g.postBatch([{ player: "pete", body: Q, tag: true, ...Q_OPEN, quote: { id: storedId(g.groupId, bare, g.player("dan").phone), text: SECRET, authorJid: `${digits(g.player("dan").phone)}@c.us` } }]);
     expect(calls().some((c) => c.user.includes(Q))).toBe(true);
     expect(JSON.stringify(calls())).not.toContain("4321");
   });
@@ -246,7 +248,7 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     const del = revokeBy(g, "dan", bare);
     expect(await change(request, del)).toMatchObject({ analyzed: 1 });
     // The Pi's retry of the same delete (its first answer was lost): the same, idempotent.
-    expect(await change(request, del)).toMatchObject({ ok: true, analyzed: 1, archived: 0, hq: 0 });
+    expect(await change(request, del)).toMatchObject({ ok: true, analyzed: 0, archived: 0, hq: 0 });
     await change(request, { kind: "edit", chatId: g.groupId, messageId: bare, text: "my door code is 4321, sorry", senderJids: [`${digits(dan.phone)}@c.us`], senderPhone: digits(dan.phone) });
     expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE body LIKE '%4321%'`)).toBe(0);
     expect(await db.count(`SELECT count(*)::int AS c FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare])).toBe(1);
@@ -341,5 +343,103 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
       expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "waMessageId" = $1 AND body IS NOT NULL`, [id])).toBe(0);
       expect(await db.count(`SELECT count(*)::int AS c FROM "GroupMessage" WHERE "waMessageId" = $1 AND body <> ''`, [id])).toBe(0);
     }
+  });
+
+  // ── Round 3: an edit is a purge, and the cases the second reviews proved ──
+
+  test("an edit landing while its batch is analysed: nothing of the original is left stored", async ({ request, db }) => {
+    const g = await createGroup(request, db, { features: { squadFromList: true } });
+    for (let i = 0; i < 3; i++) {
+      const bare = bareId();
+      const id = storedId(g.groupId, bare, g.player("dan").phone);
+      await Promise.all([g.postBatch([{ player: "dan", body: `${SECRET} #${i}`, route: "none", waMessageId: id }]), change(request, editBy(g, "dan", bare))]);
+      expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "waMessageId" = $1 AND body IS NOT NULL`, [id])).toBe(0);
+      expect(await db.count(`SELECT count(*)::int AS c FROM "GroupMessage" WHERE "waMessageId" = $1 AND body <> ''`, [id])).toBe(0);
+    }
+  });
+
+  test("edits reordered or repeated by retries, an edit then a delete, a delete then an edit: always the same purge", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    for (const order of [["edit", "edit"], ["edit", "revoke"], ["revoke", "edit"]]) {
+      const bare = await storeTwoLines(g);
+      for (const kind of order) await change(request, kind === "edit" ? { ...editBy(g, "dan", bare), text: `edit ${kind}` } : revokeBy(g, "dan", bare));
+      expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "groupId" = $1 AND body LIKE '%4321%'`, [g.groupId])).toBe(0);
+      const t = await db.one<{ reason: string }>(`SELECT reason FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare]);
+      expect(t?.reason).toBe(order.includes("revoke") ? "deleted" : "edited");
+    }
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE body LIKE 'edit %'`)).toBe(0);
+  });
+
+  test("an edit by somebody else is ignored entirely", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = await storeTwoLines(g);
+    expect(await change(request, editBy(g, "pete", bare))).toMatchObject({ ok: true, analyzed: 0, refused: 1 });
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE body = $1`, [SECRET])).toBe(1);
+  });
+
+  test("HQ: the original and its author's edit arriving together never leave the original behind", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const HQ = `${g.groupId.replace("@g.us", "")}-hq3@g.us`;
+    await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [g.orgId, HQ]);
+    const alice = g.player("alice");
+    for (let i = 0; i < 6; i++) {
+      const bare = bareId();
+      const id = storedId(HQ, bare, alice.phone);
+      const post = request.post("/api/whatsapp/admin-group", {
+        headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+        data: { channel: "admin-group", botMentioned: false, groupId: HQ, messageId: id, text: `${SECRET} #${i}`, senderPhone: digits(alice.phone), timestamp: String(Math.floor(Date.now() / 1000)) },
+      });
+      const [res] = await Promise.all([post, change(request, editBy(g, "alice", bare, HQ))]);
+      expect(res.status()).toBe(200);
+      expect(await db.count(`SELECT count(*)::int AS c FROM "AdminGroupMessage" WHERE "waMessageId" = $1`, [id])).toBe(0);
+    }
+  });
+
+  test("a FORGED delete (neither the author nor an admin) changes nothing: the quote of the message still reaches the model", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = await storeTwoLines(g);
+    expect(await change(request, revokeBy(g, "pete", bare))).toMatchObject({ ok: true, analyzed: 0 });
+    const Q = "@Match Time is the code right?";
+    await g.postBatch([{ player: "pete", body: Q, tag: true, ...Q_OPEN, quote: { id: bare, text: SECRET, authorJid: `${digits(g.player("dan").phone)}@c.us` } }]);
+    expect(JSON.stringify(calls().filter((c) => c.user.includes(Q)))).toContain("4321");
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "groupId" = $1 AND body = $2`, [g.groupId, SECRET])).toBe(1);
+  });
+
+  test("Ali IN, Sam IN, Sam deletes while the batch is analysed: the batch's squad post still comes back", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = bareId();
+    const [res] = await Promise.all([
+      g.postBatch([
+        { player: "pete", body: "in", route: "self_att", facts: selfIn() },
+        { player: "dan", body: "in for me", route: "self_att", facts: selfIn(), waMessageId: storedId(g.groupId, bare, g.player("dan").phone) },
+        { player: "felix", body: "@Match Time who's in?", tag: true, route: "question", facts: { ...EMPTY, topic: "squad", kind: "list" } },
+      ]),
+      change(request, revokeBy(g, "dan", bare)),
+    ]);
+    const spoke = res.results.filter((r) => (r.reply ?? "").length > 0);
+    expect(spoke.length + res.groupPosts.length, "the squad post is still said").toBeGreaterThan(0);
+    expect(JSON.stringify([spoke.map((r) => r.reply), res.groupPosts])).toContain(g.player("pete").name.split(" ")[0]);
+    expect((await g.attendanceOf("pete"))?.status).toBe("CONFIRMED");
+  });
+
+  test("the hourly sweep: a delete whose request died before its own clear is enforced, once", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = await storeTwoLines(g);
+    const id = storedId(g.groupId, bare, g.player("dan").phone);
+    // The tombstone was written, the request that should have cleared the copy died.
+    await db.run(
+      `INSERT INTO "DeletedMessage" (id, "chatId", "waMessageId", "byAdmin", reason, "senderJids", "senderPhones", "deletedAt") VALUES ($1, $2, $3, false, 'deleted', $4, $5, now())`,
+      [`e2e-tomb-${bare}`, g.groupId, bare, [`${digits(g.player("dan").phone)}@c.us`], [digits(g.player("dan").phone)]],
+    );
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "waMessageId" = $1 AND body IS NOT NULL`, [id])).toBe(1);
+    const sweep = async () => {
+      const res = await request.get("/api/cron/bot-health", { headers: { authorization: `Bearer ${E2E.CRON_SECRET}` } });
+      expect(res.status(), await res.text()).toBe(200);
+      return (await res.json()).deletes as { checked: number; cleared: number };
+    };
+    expect((await sweep()).cleared).toBeGreaterThanOrEqual(1);
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE "waMessageId" = $1 AND body IS NOT NULL`, [id])).toBe(0);
+    expect(await db.one(`SELECT body FROM "GroupMessage" WHERE "waMessageId" = $1`, [id])).toBeNull();
+    expect((await sweep()).cleared).toBe(0);
   });
 });

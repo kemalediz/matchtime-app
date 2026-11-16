@@ -66,7 +66,7 @@ async function started() {
     sockets[sockets.length - 1].emit("messages.upsert", { messages: [m], type: "notify" });
     for (let i = 0; i < 6; i++) await tick();
   };
-  return { driver, changes, messages, logs, errors, upsert };
+  return { driver, changes, messages, logs, errors, upsert, sock: () => sockets[sockets.length - 1] };
 }
 
 function wa(message: Record<string, unknown>, key: Partial<proto.IMessageKey> = {}): WAMessage {
@@ -109,31 +109,33 @@ describe("onMessageChange", () => {
     expect(t.changes[0]).toMatchObject({ kind: "revoke", byAdmin: true, senderJids: [ADMIN_LID, "447700900124@c.us"] });
   });
 
-  it("with no group metadata to read, a delete is not an admin's", async () => {
+  it("with no group metadata to read, a delete's admin status is UNKNOWN (kept to be checked again), never 'not an admin' for good", async () => {
     const t = await started();
     await t.upsert(wa(revoke, { remoteJid: "120363000000009999@g.us", participant: ADMIN_LID, participantAlt: ADMIN_PN }));
-    expect(t.changes[0]).toMatchObject({ kind: "revoke", byAdmin: false });
+    expect(t.changes[0]).toMatchObject({ kind: "revoke", byAdmin: false, adminUnknown: true });
   });
 
-  it("a group edit: the new text and the edited message itself travel on the event; the log never carries the words", async () => {
+  it("isGroupAdmin answers the re-check: true, false, or null when it still cannot be read", async () => {
     const t = await started();
-    await t.upsert(wa(editOf({ extendedTextMessage: { text: "my new secret words @447700900456", contextInfo: { mentionedJid: ["447700900456@s.whatsapp.net"] } } })));
+    expect(await t.driver.isGroupAdmin!(GROUP, [ADMIN_LID])).toBe(true);
+    expect(await t.driver.isGroupAdmin!(GROUP, [PLAYER_LID])).toBe(false);
+    t.sock().groupError = new Error("rate-overlimit");
+    expect(await t.driver.isGroupAdmin!("120363000000009999@g.us", [ADMIN_LID])).toBeNull();
+  });
+
+  it("a group edit: handed up as WHICH message was edited, never its new words; never an admin's", async () => {
+    const t = await started();
+    const calls = t.sock().metadataCalls.length;
+    await t.upsert(wa(editOf({ extendedTextMessage: { text: "my new secret words @447700900456", contextInfo: { mentionedJid: ["447700900456@s.whatsapp.net"] } } }), { participant: ADMIN_LID, participantAlt: ADMIN_PN }));
     expect(t.messages).toEqual([]);
-    expect(t.changes[0]).toMatchObject({ kind: "edit", chatId: GROUP, messageId: TARGET, text: "my new secret words @447700900456", senderPhone: "447700900123" });
-    const view = t.changes[0].edited as unknown as { body: string; from: string; mentionedIds: string[]; id: { _serialized: string } };
-    expect(view.body).toBe("my new secret words @447700900456");
-    expect(view.from).toBe(GROUP);
-    expect(view.mentionedIds).toEqual(["447700900456@c.us"]);
-    // The view is the EDITED message (the target's id), not the notice.
-    expect(view.id._serialized).toContain(TARGET);
+    expect(t.changes).toEqual([
+      { kind: "edit", chatId: GROUP, isGroup: true, messageId: TARGET, senderJids: [ADMIN_LID, "447700900124@c.us"], senderPhone: "447700900124", byAdmin: false, fromMe: false },
+    ]);
+    // No admin lookup for an edit: only its author may edit.
+    expect(t.sock().metadataCalls.length).toBe(calls);
+    expect(JSON.stringify(t.changes)).not.toContain("secret");
     expect([...t.logs, ...t.errors].join("\n")).not.toContain("secret");
     expect(t.logs.some((l) => /an edit of 3EB0AAAABBBBCCCC0001/.test(l))).toBe(true);
-  });
-
-  it("an edit that removed a caption is handed up with no text", async () => {
-    const t = await started();
-    await t.upsert(wa(editOf({ imageMessage: { mimetype: "image/jpeg" } })));
-    expect(t.changes[0]).toMatchObject({ kind: "edit", text: "" });
   });
 
   it("a delete from MatchTime's own phone (an admin on the bot's number) is handed up, as an admin's", async () => {

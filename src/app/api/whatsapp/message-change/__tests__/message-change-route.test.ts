@@ -54,7 +54,7 @@ describe("POST /api/whatsapp/message-change", () => {
   it("400 for a body that is not a group message change", async () => {
     expect((await post("not json")).status).toBe(400);
     expect((await post({ kind: "revoke", chatId: "447700900123@c.us", messageId: "3EB0AAAA" })).status).toBe(400);
-    expect((await post({ kind: "edit", chatId: G, messageId: "3EB0AAAA" })).status).toBe(400);
+    expect((await post({ kind: "edit", chatId: G })).status).toBe(400);
     expect(apply).not.toHaveBeenCalled();
   });
 
@@ -66,10 +66,11 @@ describe("POST /api/whatsapp/message-change", () => {
     expect(touched).toEqual([]);
   });
 
-  it("an edit carries its text and sender to the store, and never back in the answer", async () => {
+  it("an edit is a purge: applied with its sender, and any words the Pi sent are never passed on or answered back", async () => {
     const r = await post({ kind: "edit", chatId: G, messageId: "3EB0AAAA", text: "late, sorry", senderJids: ["447700900123@c.us"], senderPhone: "447700900123" });
     expect(r.status).toBe(200);
-    expect(apply).toHaveBeenCalledWith({ kind: "edit", chatId: G, messageId: "3EB0AAAA", text: "late, sorry", senderJids: ["447700900123@c.us"], senderPhone: "447700900123" });
+    expect(apply).toHaveBeenCalledWith({ kind: "edit", chatId: G, messageId: "3EB0AAAA", byAdmin: false, senderJids: ["447700900123@c.us"], senderPhone: "447700900123" });
+    expect(JSON.stringify(apply.mock.calls)).not.toContain("late, sorry");
     expect(JSON.stringify(r.json)).not.toContain("late, sorry");
   });
 

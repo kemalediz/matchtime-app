@@ -11,10 +11,16 @@
  * server has taken is kept a day more, so a late copy of the message (a
  * replay after a reconnect) is still held to it (`smart-analysis.ts`).
  *
+ * A delete whose sender's admin status could not be read (`adminUnknown`)
+ * is checked again before each retry (`recheckAdmin`); it is posted
+ * meanwhile (it applies to the sender's own messages) but stays pending
+ * until the answer is known, then posted once more as an admin's if it is,
+ * and the Pi's own record updated (`onResolved`).
+ *
  * The file is the dm-pacer's kind (`dm-pacer.ts`): JSON beside the bot,
  * written atomically, 0600, gitignored, never touched by `deploy-pi.sh`'s
- * `git pull`. It holds ids and phones, and an edit's new words until the
- * day is out. Bounded: OUTBOX_MAX entries (the oldest taken changes go
+ * `git pull`. It holds ids and phones, never a word of any message (an
+ * edit is a purge and carries none). Bounded: OUTBOX_MAX entries (the oldest taken changes go
  * first), and a change the server has not taken in GIVE_UP_MS is dropped
  * with a CRITICAL line naming its id. Logs carry ids only.
  */
@@ -95,6 +101,10 @@ export function createMessageChangeOutbox(deps: {
   io: JsonIO | null;
   now(): number;
   post(change: LocalMessageChange): Promise<boolean>;
+  /** Is the delete's sender a group admin? Null while it still cannot be read. */
+  recheckAdmin?(change: LocalMessageChange): Promise<boolean | null>;
+  /** A delete now known to be an admin's: the Pi's own record is updated. */
+  onResolved?(change: LocalMessageChange): void;
   log(line: string): void;
   error(line: string): void;
 }): MessageChangeOutbox {
@@ -134,11 +144,35 @@ export function createMessageChangeOutbox(deps: {
 
   async function send(e: Entry): Promise<boolean> {
     e.attempts++;
+    if (e.change.adminUnknown && deps.recheckAdmin) {
+      let admin: boolean | null = null;
+      try {
+        admin = await deps.recheckAdmin(e.change);
+      } catch {
+        admin = null;
+      }
+      if (admin !== null) {
+        const { adminUnknown: _u, ...settled } = e.change;
+        void _u;
+        e.change = { ...settled, byAdmin: admin };
+        deps.log(`[message-change] ${tag(e)}: the sender's admin status is now known (${admin ? "an admin" : "not an admin"})`);
+        if (admin) deps.onResolved?.(e.change);
+      }
+    }
     let ok = false;
     try {
-      ok = await deps.post(e.change);
+      const { adminUnknown: _u, ...body } = e.change;
+      void _u;
+      ok = await deps.post(body);
     } catch {
       ok = false;
+    }
+    if (ok && e.change.adminUnknown) {
+      // Applied to the sender's own messages; kept until we know whether they are an admin.
+      e.nextAt = deps.now() + backoffMs(e.attempts);
+      deps.log(`[message-change] ${tag(e)}: posted; whether the sender is a group admin is checked again in ${Math.round(backoffMs(e.attempts) / 1000)}s`);
+      save();
+      return false;
     }
     if (ok) {
       e.takenAt = deps.now();

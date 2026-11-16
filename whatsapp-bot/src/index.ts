@@ -59,7 +59,6 @@ import {
   postAdminGroupMessage,
   postAdminGroupLink,
   postMessageChange,
-  releaseInstruction,
 } from "./api.js";
 import {
   ackReply,
@@ -562,6 +561,13 @@ async function main() {
       // Shadow mode refuses every write here: nothing to retry.
       return !!r && (r.ok === true || r.shadowMode === true);
     },
+    // A delete whose sender's admin status could not be read is checked
+    // again on each retry; once known to be an admin's, the Pi's own
+    // record takes it too (2026-11-15).
+    recheckAdmin: async (c) => (driver.isGroupAdmin ? driver.isGroupAdmin(c.groupId, c.senderJids) : null),
+    onResolved: (c) => {
+      applyMessageChangeLocally(c);
+    },
     log: (l) => console.log(l),
     error: (l) => console.error(l),
   });
@@ -720,7 +726,6 @@ async function main() {
             return m ? adjustForServer(m) : null;
           },
           isDeleted: (id, phone) => isDeletedLocally(head.from, id, phone),
-          release: releaseInstruction,
           postAdminGroupMessage,
           postAdminGroupLink,
           reply: (text) => driver.sendText(head.from, text),
@@ -832,11 +837,6 @@ async function main() {
   driver.onMessageChange?.(async (change) => {
     await handleMessageChange(change, {
       applyLocally: applyMessageChangeLocally,
-      // An edit's new content, read exactly as an inbound message is.
-      readEdit: async (view) => {
-        const r = await readGroupMessageForServer(driver, view);
-        return r ? { text: r.text, botMentioned: r.botMentioned, mentions: r.mentions, mentionNames: r.mentionNames } : null;
-      },
       record: (c) => messageChanges.record(c),
       attempt: (key) => messageChanges.attempt(key),
       whenFlushIdle: (groupId) => whenFlushIdle(groupId),
@@ -960,7 +960,15 @@ async function main() {
   // the join when the adder's switch was on, else what the live buffer
   // holds. Best-effort: any failure returns [] and the intro still goes
   // out. See history-capture.ts.
-  const collectHistoryForServer = createHistoryCollector({ driver });
+  const collectHistoryForServer = createHistoryCollector({
+    driver,
+    // A message deleted or edited in the buffer is never captured (2026-11-15).
+    isDeleted: (groupId, m) => {
+      const author = asString(safeRead(m, "author")) ?? "";
+      const phone = author.endsWith("@c.us") ? author.replace("@c.us", "") : null;
+      return isDeletedLocally(groupId, resolveWaMessageId(m).waMessageId, phone);
+    },
+  });
   // A club's own group never has shared history read, even on a re-add:
   // the same check the bot-added flow answers "already monitored" with.
   driver.ignoreJoinHistoryWhen?.(isMonitoredGroup);

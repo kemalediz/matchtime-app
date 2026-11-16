@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { makeDb, row, type Row } from "./fake-message-db";
 
-const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias"];
+const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias", "organisation"];
 const T: Record<string, Row[]> = {};
 const fake = makeDb(T, NAMES, { deletedMessage: [["chatId", "waMessageId"]] });
 vi.mock("@/lib/db", () => ({
@@ -52,6 +52,7 @@ const gid = (bare: string, phone: string, chat = G) => `false_${chat}_${bare}_${
 beforeEach(() => {
   for (const k of NAMES) T[k] = [];
   T.user.push({ id: "u-sam", name: "Sam Sample" }, { id: "u-ali", name: "Ali Example" });
+  T.organisation.push({ id: ORG, whatsappGroupId: G, adminGroupId: HQ });
   // The players' group: Sam's secret, then Ali's line.
   T.analyzedMessage.push(
     row({ waMessageId: gid("SAMMSG000001", SAM), orgId: ORG, groupId: G, authorUserId: "u-sam", authorPhone: SAM, authorName: "Sam", body: SECRET, handledBy: "none", createdAt: ago(30) }),
@@ -117,14 +118,14 @@ describe("after a delete for everyone", () => {
   });
 });
 
-describe("after an edit", () => {
-  it("every reader shows the edited text and never the original", async () => {
-    const edit = { kind: "edit" as const, text: "running 10 mins late", senderJids: [`${SAM}@c.us`], senderPhone: SAM };
+describe("after an edit by its author (a purge)", () => {
+  it("no reader shows the original words, and no new words were stored", async () => {
+    const edit = { kind: "edit" as const, byAdmin: false, senderJids: [`${SAM}@c.us`], senderPhone: SAM };
     await applyMessageChange({ ...edit, chatId: G, messageId: "SAMMSG000001" });
     await applyMessageChange({ ...edit, chatId: HQ, messageId: "SAMHQ0000001" });
     const all = await everythingShown();
     expect(all).not.toContain("4321");
-    expect(all.split("running 10 mins late").length - 1).toBeGreaterThanOrEqual(9);
+    expect(all).toContain(KEEP);
   });
 });
 
@@ -151,7 +152,7 @@ describe("what a delete or an edit leaves for the follow-ups", () => {
     expect(await latestAskFromRecords({ orgId: ORG, where: "group", now: new Date() })).not.toBeNull();
     expect(await latestAskFromRecords({ orgId: ORG, where: "hq", now: new Date() })).not.toBeNull();
     await applyMessageChange({ kind: "revoke", chatId: G, messageId: "SAMASK000001", ...BY_SAM });
-    await applyMessageChange({ kind: "edit", chatId: HQ, messageId: "SAMASKHQ0001", text: "never mind, sorted", senderJids: [`${SAM}@c.us`], senderPhone: SAM });
+    await applyMessageChange({ kind: "edit", chatId: HQ, messageId: "SAMASKHQ0001", byAdmin: false, senderJids: [`${SAM}@c.us`], senderPhone: SAM });
     expect(await latestAskFromRecords({ orgId: ORG, where: "group", now: new Date() })).toBeNull();
     expect(await latestAskFromRecords({ orgId: ORG, where: "hq", now: new Date() })).toBeNull();
   });

@@ -71,6 +71,7 @@ export interface InboundMessage {
  * `messageId` is the BARE WhatsApp id of the message deleted or edited
  * (not the notice's own id). The sender fields name whoever sent the
  * notice: for a delete in a group that can be an admin, not the author.
+ * An edit is a purge: it carries no words, old or new.
  */
 export interface MessageChangeEvent {
   kind: "revoke" | "edit";
@@ -78,24 +79,19 @@ export interface MessageChangeEvent {
   chatId: string;
   isGroup: boolean;
   messageId: string;
-  /** An edit's new text or caption. Never logged. */
-  text?: string;
   /** Every spelling of the notice's sender we know, `@c.us`/`@lid`. */
   senderJids: string[];
   senderPhone: string | null;
   /**
-   * The sender is an admin of the group, as its metadata says (round 2,
-   * 2026-11-15). A delete applies to somebody else's message only then:
-   * WhatsApp's own clients let a group admin delete anyone's message, and
-   * anyone else only their own. False when the metadata could not be read.
+   * The sender is an admin of the group, as its metadata says. A delete
+   * applies to somebody else's message only then: WhatsApp's own clients
+   * let a group admin delete anyone's message, and anyone else only their
+   * own. Always false for an edit (only its author may edit).
    */
   byAdmin: boolean;
-  /**
-   * An edit's NEW content as an inbound message (the edited message's id,
-   * the new words, the new mentions), so it is read exactly as an inbound
-   * message is. Absent for a delete, and for an edit that left no text.
-   */
-  edited?: InboundMessage;
+  /** The group's metadata could not be read: whether the sender is an admin
+   *  is checked again later (`isGroupAdmin`), never taken as "no" for good. */
+  adminUnknown?: boolean;
   fromMe: boolean;
 }
 
@@ -314,6 +310,12 @@ export interface WaDriver {
    * (`message-change.ts`). Optional because only Baileys implements it.
    */
   onMessageChange?(handler: (change: MessageChangeEvent) => void | Promise<void>): void;
+
+  /**
+   * Is one of these spellings an admin of the group? Null when the group's
+   * metadata cannot be read. Used to check a delete again (2026-11-15).
+   */
+  isGroupAdmin?(groupId: string, jids: string[]): Promise<boolean | null>;
 
   /**
    * Somebody (possibly the bot) was added to a group.

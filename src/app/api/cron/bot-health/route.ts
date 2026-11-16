@@ -44,6 +44,7 @@ import { assessBotHealth, type HealthCounters, type HeartbeatSnapshot } from "@/
 import { HEALTH_KIND_PREFIX, recordHealthFindings } from "@/lib/ops-alerts";
 import { isNoneBucketShadowEnabled } from "@/lib/pipeline/gate";
 import { NONE_SHADOW_BATCH_PREFIX } from "@/lib/pipeline/none-shadow";
+import { sweepRecentTombstones } from "@/lib/message-change";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -200,5 +201,11 @@ export async function GET(request: Request) {
     console.error("[bot-health] could not close alerts for unmonitored clubs:", err);
   }
 
-  return NextResponse.json({ ok: true, checked: orgs.length, report });
+  // THE DELETE AND EDIT SAFETY SWEEP (2026-11-15): every message deleted
+  // or edited in the last 14 days is enforced against the stores again, for
+  // an analyze request that died before its own clear. Idempotent, bounded,
+  // indexed; never throws (`message-change.ts`).
+  const deletes = await sweepRecentTombstones(now);
+
+  return NextResponse.json({ ok: true, checked: orgs.length, report, deletes });
 }

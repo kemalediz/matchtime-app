@@ -202,26 +202,23 @@ describe("routeAdminGroupInbound", () => {
     });
   });
 
-  it("deleted for everyone while the server answered (2026-11-15): no tick and no reply on it, and the reply's claim is handed back", async () => {
+  it("deleted or edited while the server answered (2026-11-15): no tick on it, but the reply (it may carry the squad or the teams) still goes", async () => {
     const sendReaction = vi.fn(async () => ({ ok: true as const }));
-    const release = vi.fn(async () => {});
     let deleted = false;
     const { d, replies } = deps(
       {
         postAdminGroupMessage: vi.fn(async () => {
           deleted = true; // the delete lands while the server is answering
-          return { replyText: "About that door code...", react: "👍", replyKey: "hqreply:org:1" };
+          return { replyText: "Teams for Tuesday: ...", react: "👍", replyKey: "hqreply:org:1" };
         }),
         sendReaction,
         isDeleted: (id: string) => deleted && id === "m1",
-        release,
       },
       [HQ],
     );
-    expect(await routeAdminGroupInbound(d, { from: HQ, body: "my door code is 4321" })).toBe("admin-group");
+    expect(await routeAdminGroupInbound(d, { from: HQ, body: "x" })).toBe("admin-group");
     expect(sendReaction).not.toHaveBeenCalled();
-    expect(replies).toEqual([]);
-    expect(release).toHaveBeenCalledWith("hqreply:org:1");
+    expect(replies).toEqual(["Teams for Tuesday: ..."]);
   });
 
   it("a message deleted before it was read is not forwarded at all (read gives nothing)", async () => {

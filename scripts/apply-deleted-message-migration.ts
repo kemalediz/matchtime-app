@@ -1,6 +1,7 @@
 /**
  * Apply prisma/migrations/20261116120000_deleted_messages (the tombstone of
- * a WhatsApp message deleted for everyone, kept 14 days).
+ * a WhatsApp message deleted for everyone or edited by its author, kept 14
+ * days, and the GroupMessage ("waChatId", "createdAt") index).
  *
  *   npx tsx scripts/apply-deleted-message-migration.ts            # DRY RUN
  *   npx tsx scripts/apply-deleted-message-migration.ts --apply    # do it
@@ -14,10 +15,11 @@
  * so a re-run is a no-op.
  *
  * WHAT IT DOES, all additive: CREATE TABLE "DeletedMessage" (new, empty, no
- * foreign key), one unique index ("chatId", "waMessageId") and one index
- * ("deletedAt", for the pruning). It rewrites, backfills, drops or renames
- * nothing. The dry run prints the table's state and the AnalyzedMessage row
- * count; the apply checks that count is unchanged.
+ * foreign key), one unique index ("chatId", "waMessageId"), one index
+ * ("deletedAt", for the pruning), and CREATE INDEX on the existing
+ * "GroupMessage" ("waChatId", "createdAt"). It rewrites, backfills, drops
+ * or renames nothing. The dry run prints the state; the apply checks every
+ * object is in place.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -47,13 +49,14 @@ async function main() {
   const state = async () => {
     const table: any = await db.$queryRawUnsafe(`SELECT to_regclass('"DeletedMessage"')::text AS t;`);
     const unique: any = await db.$queryRawUnsafe(`SELECT to_regclass('"DeletedMessage_chatId_waMessageId_key"')::text AS t;`);
+    const archiveIdx: any = await db.$queryRawUnsafe(`SELECT to_regclass('"GroupMessage_waChatId_createdAt_idx"')::text AS t;`);
     const analyzed: any = await db.$queryRawUnsafe(`SELECT COUNT(*)::int AS n FROM "AnalyzedMessage";`);
-    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", analyzedRows: analyzed[0].n };
+    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", analyzedRows: analyzed[0].n };
   };
 
   const todo = statements(readFileSync(FILE, "utf8"));
   const before = await state();
-  console.log(`BEFORE: DeletedMessage=${before.table}  unique index=${before.unique}  (AnalyzedMessage rows: ${before.analyzedRows})`);
+  console.log(`BEFORE: DeletedMessage=${before.table}  unique index=${before.unique}  GroupMessage index=${before.archiveIdx}  (AnalyzedMessage rows: ${before.analyzedRows})`);
   if (!APPLY) {
     console.log(`(dry run: ${todo.length} statements would run; pass --apply to make the change)`);
     for (const s of todo) console.log(`  ${s.split("\n")[0]}`);
@@ -67,8 +70,8 @@ async function main() {
   });
 
   const after = await state();
-  console.log(`AFTER:  DeletedMessage=${after.table}  unique index=${after.unique}  (AnalyzedMessage rows: ${after.analyzedRows})`);
-  if (after.table === "MISSING" || after.unique === "MISSING") throw new Error("DeletedMessage is not complete");
+  console.log(`AFTER:  DeletedMessage=${after.table}  unique index=${after.unique}  GroupMessage index=${after.archiveIdx}  (AnalyzedMessage rows: ${after.analyzedRows})`);
+  if (after.table === "MISSING" || after.unique === "MISSING" || after.archiveIdx === "MISSING") throw new Error("the migration is not complete");
   console.log("table and indexes in place; nothing else touched");
   await db.$disconnect();
 }

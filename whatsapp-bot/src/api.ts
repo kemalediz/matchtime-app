@@ -521,19 +521,11 @@ export async function postGroupPostability(body: {
 
 // ─────────────── Deletes and edits (2026-11-15) ───────────────────────
 
-/** A group message deleted for everyone, or edited (message-change.ts). */
+/** A group message deleted for everyone, or edited (message-change.ts).
+ *  An edit is a purge: it carries no words, old or new. */
 export type MessageChangeBody =
   | { kind: "revoke"; chatId: string; messageId: string; byAdmin: boolean; senderJids: string[]; senderPhone: string | null }
-  | {
-      kind: "edit";
-      chatId: string;
-      messageId: string;
-      text: string;
-      mentions?: string[];
-      mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
-      senderJids: string[];
-      senderPhone: string | null;
-    };
+  | { kind: "edit"; chatId: string; messageId: string; senderJids: string[]; senderPhone: string | null };
 
 /** Counts only: the server never sends the words back. */
 export interface MessageChangeResponse {
@@ -596,6 +588,8 @@ export interface AdminGroupForward {
    *  (unverified) and phone. Absent for a reply to MatchTime. */
   quotedAuthorName?: string;
   quotedAuthorPhone?: string;
+  /** The quoted message's author as WhatsApp named it, `@c.us` or `@lid` (2026-11-15). */
+  quotedAuthorJid?: string;
 }
 
 export interface AdminGroupAnswer {
@@ -716,6 +710,8 @@ export interface AnalyzeInboundMessage {
    *  (unverified) and phone. Absent for a reply to MatchTime. */
   quotedAuthorName?: string;
   quotedAuthorPhone?: string;
+  /** The quoted message's author as WhatsApp named it, `@c.us` or `@lid` (2026-11-15). */
+  quotedAuthorJid?: string;
 }
 
 export interface AnalyzeInboundHistory {

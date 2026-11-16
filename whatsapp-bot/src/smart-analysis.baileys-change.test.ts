@@ -25,7 +25,7 @@ vi.mock("./api.js", () => ({
   ackInstruction: async () => {},
 }));
 
-const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, readGroupMessageForServer, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
+const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
 const { handleMessageChange } = await import("./message-change.js");
 
 const GROUP = "120363000000007700@g.us";
@@ -76,10 +76,6 @@ async function wired() {
   driver.onMessageChange!(async (change) => {
     await handleMessageChange(change, {
       applyLocally: applyMessageChangeLocally,
-      readEdit: async (view) => {
-        const r = await readGroupMessageForServer(driver, view);
-        return r ? { text: r.text, botMentioned: r.botMentioned, mentions: r.mentions, mentionNames: r.mentionNames } : null;
-      },
       record: (c) => {
         outbox.push(c);
         return "k";
@@ -143,18 +139,16 @@ describe("the Baileys driver, the local record and the batch together", () => {
     expect(posted().messages.map((m) => m.body)).toEqual([SECRET]);
   });
 
-  it("an edit by its author: the batch carries the new words and the mentions read from the NEW content", async () => {
+  it("an edit by its author is a purge: the message leaves the batch (it is not analysed), and no new words go anywhere", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00021", { conversation: SECRET }));
-    await t.upsert(
-      wa("3EB0NOTICE000021", editOf("3EB0BAILEYS00021", { extendedTextMessage: { text: "ask @158055467598022", contextInfo: { mentionedJid: [ALI_LID] } } })),
-    );
+    await t.upsert(wa("3EB0BAILEYS00022", { conversation: "see you at 8" }, { lid: ALI_LID, pn: ALI_PN }));
+    await t.upsert(wa("3EB0NOTICE000021", editOf("3EB0BAILEYS00021", { extendedTextMessage: { text: "my new words" } })));
+    expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00021", byAdmin: false })]);
+    expect(JSON.stringify(t.outbox)).not.toContain("my new words");
     await _test_flushNow(GROUP);
-    const m = posted().messages[0];
-    expect(m.body).toBe("ask @158055467598022");
-    expect(m.mentions).toEqual([ALI_LID]);
-    expect(posted().history.map((h) => h.body)).toEqual(["ask @158055467598022"]);
-    expect(JSON.stringify(posted())).not.toContain("4321");
+    expect(posted().messages.map((m) => m.body)).toEqual(["see you at 8"]);
+    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toMatch(/4321|my new words/);
   });
 
   it("an edit by somebody else is ignored", async () => {

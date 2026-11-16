@@ -307,7 +307,7 @@ describe("postMessageChange (2026-11-15)", () => {
   it("an older server (404), an error or a network failure is null, and never throws or logs the words", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     fetchMock.mockResolvedValueOnce(res(404, {}));
-    expect(await postMessageChange({ kind: "edit", chatId: G, messageId: "3EB0AAAA0001", text: "private words", senderJids: [], senderPhone: null })).toBeNull();
+    expect(await postMessageChange({ kind: "edit", chatId: G, messageId: "3EB0AAAA0001", senderJids: ["447700900123@c.us"], senderPhone: null })).toBeNull();
     fetchMock.mockResolvedValueOnce(res(500, {}));
     expect(await postMessageChange({ kind: "revoke", chatId: G, messageId: "3EB0AAAA0001" })).toBeNull();
     fetchMock.mockRejectedValueOnce(new Error("ECONNRESET"));

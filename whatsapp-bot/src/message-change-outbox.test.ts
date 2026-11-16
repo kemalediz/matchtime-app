@@ -14,14 +14,14 @@ import { backoffMs, createMessageChangeOutbox, OUTBOX_MAX } from "./message-chan
 import type { LocalMessageChange } from "./message-change.js";
 
 const G = "120363000000000000@g.us";
-const change = (messageId: string, kind: "revoke" | "edit" = "revoke"): LocalMessageChange => ({
+const change = (messageId: string, kind: "revoke" | "edit" = "revoke", extra: Partial<LocalMessageChange> = {}): LocalMessageChange => ({
   kind,
   groupId: G,
   messageId,
   senderJids: ["447700900123@c.us"],
   senderPhone: "447700900123",
   byAdmin: false,
-  ...(kind === "edit" ? { text: "new words" } : {}),
+  ...extra,
 });
 
 function memoryFile(initial: unknown = null): JsonIO & { saved: unknown } {
@@ -35,13 +35,21 @@ function memoryFile(initial: unknown = null): JsonIO & { saved: unknown } {
   return f;
 }
 
-function setup(opts: { file?: ReturnType<typeof memoryFile>; ok?: () => boolean } = {}) {
+function setup(opts: { file?: ReturnType<typeof memoryFile>; ok?: () => boolean; recheck?: () => Promise<boolean | null> } = {}) {
   let t = 1_763_200_000_000;
   const file = opts.file ?? memoryFile();
-  const post = vi.fn(async () => (opts.ok ? opts.ok() : true));
+  const post = vi.fn(async (_c: LocalMessageChange) => (opts.ok ? opts.ok() : true));
+  const resolved = vi.fn();
   const logs: string[] = [];
-  const box = createMessageChangeOutbox({ io: file, now: () => t, post, log: (l) => logs.push(l), error: (l) => logs.push(`ERR ${l}`) });
-  return { box, file, post, logs, advance: (ms: number) => (t += ms), now: () => t };
+  const box = createMessageChangeOutbox({
+    io: file,
+    now: () => t,
+    post,
+    ...(opts.recheck ? { recheckAdmin: opts.recheck, onResolved: resolved } : {}),
+    log: (l) => logs.push(l),
+    error: (l) => logs.push(`ERR ${l}`),
+  });
+  return { box, file, post, resolved, logs, advance: (ms: number) => (t += ms), now: () => t };
 }
 
 describe("the outbox", () => {
@@ -124,6 +132,37 @@ describe("the outbox", () => {
     const saved = t.file.saved as { entries: unknown[] };
     expect(saved.entries.length).toBeLessThanOrEqual(OUTBOX_MAX);
     expect(JSON.stringify(saved)).toContain("KEEPME000001");
+  });
+
+  it("no edit's words are ever in the file: an edit is a purge", async () => {
+    const t = setup();
+    await t.box.attempt(t.box.record(change("MSG000000020", "edit")));
+    expect(JSON.stringify(t.file.saved)).not.toMatch(/"text"|mention/);
+  });
+
+  it("a delete whose admin status could not be read stays pending and is checked again on its retry: posted as an admin's once it is known", async () => {
+    const answers: Array<boolean | null> = [null, true];
+    const t = setup({ recheck: async () => answers.shift() ?? null });
+    const key = t.box.record(change("MSG000000021", "revoke", { adminUnknown: true }));
+    // First attempt: still unknown. Posted (it applies to the sender's own message meanwhile) but kept.
+    expect(await t.box.attempt(key)).toBe(false);
+    expect(t.post).toHaveBeenLastCalledWith(expect.objectContaining({ messageId: "MSG000000021", byAdmin: false }));
+    expect(t.box.pending()).toBe(1);
+    t.advance(backoffMs(1));
+    await t.box.drainDue();
+    expect(t.post).toHaveBeenLastCalledWith(expect.objectContaining({ messageId: "MSG000000021", byAdmin: true }));
+    expect(t.post.mock.calls.at(-1)?.[0]).not.toHaveProperty("adminUnknown");
+    expect(t.resolved).toHaveBeenCalledWith(expect.objectContaining({ messageId: "MSG000000021", byAdmin: true }));
+    expect(t.box.pending()).toBe(0);
+  });
+
+  it("a re-check that finds the sender is NOT an admin settles it as the sender's own delete", async () => {
+    const t = setup({ recheck: async () => false });
+    const key = t.box.record(change("MSG000000022", "revoke", { adminUnknown: true }));
+    expect(await t.box.attempt(key)).toBe(true);
+    expect(t.post).toHaveBeenLastCalledWith(expect.objectContaining({ byAdmin: false }));
+    expect(t.resolved).not.toHaveBeenCalled();
+    expect(t.box.pending()).toBe(0);
   });
 
   it("a corrupt or missing file is an empty outbox, never a crash", () => {

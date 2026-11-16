@@ -51,31 +51,21 @@ describe("readMessageChange: a delete for everyone", () => {
   });
 });
 
-describe("readMessageChange: an edit", () => {
-  it("a text edited: the new text, and the new content itself (its mentions are read from it)", () => {
-    const r = readMessageChange(wa(edit({ extendedTextMessage: { text: "  in, ask @447700900456  ", contextInfo: { mentionedJid: ["447700900456@s.whatsapp.net"] } } })));
-    expect(r).toMatchObject({ kind: "edit", chatJid: GROUP, targetId: TARGET, text: "in, ask @447700900456" });
-    expect(r?.kind === "edit" && r.content?.extendedTextMessage?.contextInfo?.mentionedJid).toEqual(["447700900456@s.whatsapp.net"]);
+describe("readMessageChange: an edit (a purge: only WHICH message, never its new words)", () => {
+  it("a text edited: the edited message's id, and nothing of the new content", () => {
+    const r = readMessageChange(wa(edit({ extendedTextMessage: { text: "new secret words" } })));
+    expect(r).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
+    expect(JSON.stringify(r)).not.toContain("secret");
   });
 
-  it("a conversation and a caption edited", () => {
-    expect(readMessageChange(wa(edit({ conversation: "new words" })))?.kind === "edit").toBe(true);
-    expect(readMessageChange(wa(edit({ conversation: "new words" })))).toMatchObject({ text: "new words" });
-    expect(readMessageChange(wa(edit({ imageMessage: { caption: "the new caption", mimetype: "image/jpeg" } })))).toMatchObject({ text: "the new caption" });
+  it("inside the editedMessage wrapper, and an edit of a caption or of anything else", () => {
+    expect(readMessageChange(wa({ editedMessage: { message: edit({ conversation: "wrapped edit" }) } }))).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
+    expect(readMessageChange(wa(edit({ imageMessage: { mimetype: "image/jpeg" } })))).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
+    expect(readMessageChange(wa(edit({ stickerMessage: { mimetype: "image/webp" } })))).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
   });
 
-  it("the edit as WhatsApp sends it, inside the editedMessage wrapper", () => {
-    const m = wa({ editedMessage: { message: edit({ conversation: "wrapped edit" }) } });
-    expect(readMessageChange(m)).toMatchObject({ kind: "edit", chatJid: GROUP, targetId: TARGET, text: "wrapped edit" });
-  });
-
-  it("an edit that leaves no text (a caption removed) is an edit to no text, never ignored", () => {
-    expect(readMessageChange(wa(edit({ imageMessage: { mimetype: "image/jpeg" } })))).toMatchObject({ kind: "edit", text: "" });
-    expect(readMessageChange(wa(edit({ conversation: "   " })))).toMatchObject({ kind: "edit", text: "" });
-  });
-
-  it("an edit to something we cannot read at all is nothing", () => {
-    expect(readMessageChange(wa(edit({ stickerMessage: { mimetype: "image/webp" } })))).toBeNull();
+  it("an edit that names no message is nothing", () => {
+    expect(readMessageChange(wa({ protocolMessage: { type: P.MESSAGE_EDIT, editedMessage: { conversation: "x" } } }))).toBeNull();
   });
 });
 

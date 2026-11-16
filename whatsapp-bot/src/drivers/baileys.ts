@@ -855,33 +855,20 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   }
 
   /**
-   * Is one of these spellings an admin of the group (round 2, 2026-11-15)?
-   * Its roster from the cache, else ONE `groupMetadata` read, as every
-   * roster read here is. False when it cannot be read: a delete is then
-   * applied only to the sender's own messages.
+   * Is one of these spellings an admin of the group (2026-11-15)? Its
+   * roster from the cache, else ONE `groupMetadata` read, as every roster
+   * read here is. NULL when it cannot be read: the delete is then kept and
+   * checked again on its retry, never taken as "not an admin" for good.
    */
-  async function senderIsGroupAdmin(groupJid: string, senderJids: string[]): Promise<boolean> {
+  async function senderIsGroupAdmin(groupJid: string, senderJids: string[]): Promise<boolean | null> {
     if (senderJids.length === 0) return false;
     try {
       const meta = await readRoster(groupJid, "onMessageChange");
       return (meta.participants ?? []).some((p) => isAdminParticipant(p) && legacyIdsOf(p).some((id) => senderJids.includes(id)));
     } catch (err) {
-      log(`[baileys][msg] could not read ${groupJid}'s admins for a delete: ${errorText(err)}`);
-      return false;
+      log(`[baileys][msg] could not read ${groupJid}'s admins for a delete (checked again later): ${errorText(err)}`);
+      return null;
     }
-  }
-
-  /** An edit's new content as the edited message itself (its id, its author, the new words), or null. */
-  function editedView(notice: WAMessage, targetId: string, content: proto.IMessage, upsertType: string, senderPhone: string | null): BaileysInboundView | null {
-    const k = notice.key ?? {};
-    const edited = {
-      key: { remoteJid: k.remoteJid, fromMe: k.fromMe, id: targetId, participant: k.participant, participantAlt: k.participantAlt },
-      message: content,
-      messageTimestamp: notice.messageTimestamp,
-      pushName: notice.pushName,
-    } as WAMessage;
-    const mapped = mapInboundMessage(edited);
-    return mapped ? buildInboundView(edited, mapped, { upsertType, senderPhone }) : null;
   }
 
   function pollMessage(id: string): proto.IMessage | undefined {
@@ -1296,14 +1283,14 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         messageId: change.targetId,
         senderJids,
         senderPhone,
-        byAdmin: isGroup && change.kind === "revoke" ? await senderIsGroupAdmin(change.chatJid, senderJids) : false,
+        byAdmin: false,
         fromMe: key.fromMe === true,
       };
-      if (change.kind === "edit") {
-        // Set, not spread: this is an edit's words, not a text we send.
-        event.text = change.text;
-        const view = editedView(m, change.targetId, change.content, upsertType, senderPhone);
-        if (view) event.edited = view as InboundMessage;
+      // Only a delete may come from an admin; an edit is its author's or nothing.
+      if (isGroup && change.kind === "revoke") {
+        const admin = await senderIsGroupAdmin(change.chatJid, senderJids);
+        if (admin === null) event.adminUnknown = true;
+        else event.byAdmin = admin;
       }
       log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} byAdmin=${event.byAdmin} handed up as a change`);
       tally(what);
@@ -1894,6 +1881,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     onMessageChange(handler) {
       requireConnection("onMessageChange");
       changeHandlers.push(handler);
+    },
+
+    isGroupAdmin(groupId, jids) {
+      return senderIsGroupAdmin(groupId, jids);
     },
 
     onGroupJoin(handler) {
