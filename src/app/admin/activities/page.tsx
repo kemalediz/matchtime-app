@@ -110,13 +110,15 @@ export default function ActivitiesPage() {
   const [eMinWas, setEMinWas] = useState("");
   // And the most players (2026-11-03): the two boxes make the game's range.
   const [eMax, setEMax] = useState("");
+  // The club has no squad limit (open-squad.ts): no most, no sizes.
+  const [openSquad, setOpenSquad] = useState(false);
   const [eMaxWas, setEMaxWas] = useState("");
   const [ePlaces, setEPlaces] = useState(0);
   // What the two boxes allow, as typed: "With 12 to 16 players you can
   // play 6, 7 or 8 a side." Nothing while either box is not a valid even
   // number (the save says why).
   const rangeAllows = (() => {
-    if (!ePlaces) return null;
+    if (!ePlaces || openSquad) return null;
     const min = parsePlayersInput(eMin);
     const max = parsePlayersInput(eMax);
     if (!min.ok || !max.ok) return null;
@@ -146,7 +148,11 @@ export default function ActivitiesPage() {
   }, [loading, activities, feeLinkHandled]);
 
   useEffect(() => {
-    fetch("/api/org/settings").then((r) => r.json()).then((d) => setOrgId(d.id));
+    fetch("/api/org/settings").then((r) => r.json()).then((d) => {
+      setOrgId(d.id);
+      // No squad limit (open-squad.ts): the minimum is the only number.
+      setOpenSquad(d.weeklyRoutine?.openSquad === true);
+    });
     fetch("/api/sports").then((r) => (r.ok ? r.json() : [])).then((s: Sport[]) => {
       setSports(s);
       // Default the picker to Football 7-a-side if present, else first sport.
@@ -255,7 +261,7 @@ export default function ActivitiesPage() {
     // The range (2026-11-03): only a changed box is checked and sent, so a
     // minimum saved before minimums were even never blocks the rest.
     const minChanged = eMin.trim() !== eMinWas;
-    const maxChanged = eMax.trim() !== eMaxWas;
+    const maxChanged = !openSquad && eMax.trim() !== eMaxWas;
     const min = parsePlayersInput(eMin);
     const max = parsePlayersInput(eMax);
     if ((minChanged && !min.ok) || (maxChanged && !max.ok)) return toast.error(rangeError("not-a-number", minChanged && !min.ok ? "min" : "max"));
@@ -264,7 +270,8 @@ export default function ActivitiesPage() {
       max: maxChanged && max.ok ? max.value : null,
       normal: ePlaces,
     });
-    if (!checked.ok) return toast.error(rangeError(checked.error, checked.field));
+    // An open squad's minimum is any whole number from 2: the server checks it.
+    if (!openSquad && !checked.ok) return toast.error(rangeError(checked.error, checked.field));
     setESaving(true);
     try {
       await updateActivity(editId, {
@@ -347,7 +354,7 @@ export default function ActivitiesPage() {
                   {!a.feeSplitTotal && activityFeeText(a.feePerPlayer) && (
                     <span data-testid="activity-fee-row"> · {s.act_fee_row({ fee: activityFeeText(a.feePerPlayer) })}</span>
                   )}
-                  {(a.minPlayers != null || a.maxPlayers != null) && (
+                  {!openSquad && (a.minPlayers != null || a.maxPlayers != null) && (
                     <span data-testid="activity-player-range-row">
                       {" "}
                       · {ff.row({ sides: sidesInRange(playerRange({ minPlayers: a.minPlayers, maxPlayers: a.maxPlayers, playersPerTeam: a.sport.playersPerTeam })) })}
@@ -627,7 +634,7 @@ export default function ActivitiesPage() {
                     data-testid="activity-min-players"
                     type="number"
                     inputMode="numeric"
-                    step={2}
+                    step={openSquad ? 1 : 2}
                     value={eMin}
                     onChange={(e) => setEMin(e.target.value)}
                     placeholder={String(ePlaces)}
@@ -653,10 +660,12 @@ export default function ActivitiesPage() {
                     onChange={(e) => setEMax(e.target.value)}
                     placeholder={String(ePlaces)}
                     aria-describedby="activity-max-players-hint"
-                    className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    // No squad limit (open-squad.ts): there is no most.
+                    disabled={openSquad}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
                   />
                   <p id="activity-max-players-hint" data-testid="activity-max-players-hint" className="mt-1 text-xs text-slate-400">
-                    {ff.maxHint({ full: ePlaces })}
+                    {openSquad ? s.os_max_disabled : ff.maxHint({ full: ePlaces })}
                   </p>
                 </div>
                 {rangeAllows && (

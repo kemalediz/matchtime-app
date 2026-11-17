@@ -4968,6 +4968,8 @@ export const en = {
   os_join_lead: (p: { joins: Array<{ name: string; teamLabel: string }> }): string =>
     `➕ ${p.joins.map((j) => `*${j.name}* joins *${j.teamLabel}*`).join(", ")}.`,
   os_join_note: "(new)",
+  /** /admin/activities: the most box, disabled while the squad has no limit. */
+  os_max_disabled: "No most while the squad has no limit (Settings, Bench card).",
   /** /admin/settings, the Bench card. */
   os_setting_label: "No squad limit",
   os_setting_blurb: "Everyone who says IN plays: no bench, no number a side. MatchTime only asks for players below the game's minimum.",

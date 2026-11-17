@@ -3545,6 +3545,7 @@ export const tr: Strings = {
   os_already_off: (p) => `Değişiklik yok: kadronun zaten ${p.places} kişilik bir sınırı var.`,
   os_join_lead: (p) => `➕ ${p.joins.map((j) => `*${j.name}* *${j.teamLabel}* takıma katıldı`).join(", ")}.`,
   os_join_note: "(yeni)",
+  os_max_disabled: "Kadro sınırı yokken üst sınır da yok (Ayarlar, Yedekler kartı).",
   os_setting_label: "Kadro sınırı yok",
   os_setting_blurb: "VARIM yazan herkes oynar: yedek yok, takım başına sayı yok. MatchTime yalnızca maçın en az oyuncu sayısının altında oyuncu arar.",
   os_no_format:
