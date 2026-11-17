@@ -213,9 +213,42 @@ test.describe("A. a monthly club with no squad limit", () => {
     expect(list).toHaveLength(1);
     const text = list[0].text!;
     expect(text.startsWith(HEADER)).toBe(true);
-    expect(text).toContain("*Pay as you go:*\n4. Zeeshan\n5. Will\n6. Tom\n" + INVITE);
+    // Tom, past the format's six places, sits in the number Bilal vacated
+    // (the month's own rule), read the same way the reply path reads it.
+    expect(text).toContain("*Pay as you go:*\n4. Tom\n5. Zeeshan\n6. Will\n" + INVITE);
     expect(text).toContain("*Can't play:*\n1. Bilal");
     for (const i of next) expect(i.text ?? "").not.toMatch(/place open|places open|squad is full|First to say|Bench/i);
+  });
+
+  test("4. switched off mid-month by the owner's tag: nobody is bumped, and the month keeps room for every regular (review of #623)", async ({ request, db }) => {
+    // Four more regulars sign: eight regulars on a six-place format.
+    for (const [i, p] of [P.zee, P.will, P.tom].entries()) {
+      await db.run(`UPDATE "SquadMonthMember" SET kind = 'regular', slot = $3, "gamesCovered" = 4 WHERE "monthId" = $1 AND "userId" = $2`, [MONTH, p.id, 5 + i]);
+      await db.run(
+        `INSERT INTO "SquadMonthMember" (id, "monthId", "userId", kind, slot, "gamesCovered", source, "updatedAt")
+         VALUES ($1, $2, $3, 'regular', $4, 4, 'seed-list', now()) ON CONFLICT ("monthId", "userId") DO NOTHING`,
+        [`${MONTH}-${p.id}`, MONTH, p.id, 5 + i],
+      );
+    }
+    const before = (await rows(db, MATCH_ID)).filter((r) => r.status === "CONFIRMED").length;
+    const OFF_MSG = "@Match Time put the limit and the bench back";
+    engineOn({ [OFF_MSG]: { route: "admin_ops", facts: { action: "open_squad", openSquadOff: true, toMatchTime: true } } });
+    const waMessageId = msgId();
+    const res = await request.post("/api/whatsapp/analyze", {
+      headers: KEY,
+      data: { groupId: GROUP, messages: [{ waMessageId, body: OFF_MSG, authorPhone: digits(P.rob.phone), authorName: P.rob.name, timestamp: new Date().toISOString(), botMentioned: true }] },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    const reply = ((await res.json()).results as AnalyzeResult[]).find((r) => r.waMessageId === waMessageId);
+    expect(reply?.intent).toBe("open-squad-off");
+    expect((await db.one<{ on: boolean }>(`SELECT "openSquad" AS on FROM "Organisation" WHERE id = $1`, [ORG]))!.on).toBe(false);
+    // Nobody bumped from this week's game.
+    const after = await rows(db, MATCH_ID);
+    expect(after.filter((r) => r.status === "CONFIRMED")).toHaveLength(before);
+    expect(after.filter((r) => r.status === "BENCH")).toEqual([]);
+    // The month keeps room for its seven regulars still in the group (Bilal is out this week, still a regular).
+    const floor = await db.one<{ floor: number | null }>(`SELECT "regularCapFloor" AS floor FROM "SquadMonth" WHERE id = $1`, [MONTH]);
+    expect(floor?.floor).toBeGreaterThanOrEqual(7);
   });
 });
 
@@ -282,6 +315,58 @@ test.describe("B. switched by tagging MatchTime", () => {
     expect(all.filter((r) => r.status === "BENCH")).toEqual([]);
   });
 
+  test("4b. teams made: a late IN joins the smaller side with one post of the redrawn sheet; a drop moves nobody (review of #623)", async ({ request, db }) => {
+    engineOn({ in: { route: "self_att", facts: selfIn() }, out: { route: "self_att", facts: selfOut() } });
+    // The seven in, on a sheet of 4 Red and 3 Yellow.
+    const sheet: Array<[string, string]> = [
+      [U.admin, "RED"],
+      [U.collector, "RED"],
+      [U.player, "RED"],
+      [U.third, "RED"],
+      [U.bench, "YELLOW"],
+      [U.fresh, "YELLOW"],
+      [U.extra, "YELLOW"],
+    ];
+    for (const [i, [userId, team]] of sheet.entries()) {
+      await db.run(`INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES ($1, $2, $3, $4::"Team")`, [`e2e-os-ta-${i}`, MATCH.upcoming, userId, team]);
+    }
+    const teamOf = async (userId: string) =>
+      (await db.one<{ team: string }>(`SELECT team::text AS team FROM "TeamAssignment" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, userId]))?.team ?? null;
+
+    const rater = await pg(request, "in", "rater", false);
+    expect(rater.react, JSON.stringify(rater)).toBe("✅");
+    expect(await teamOf(U.rater)).toBe("YELLOW");
+    expect(rater.reply ?? "").toContain("joins *Yellow*");
+
+    const omar = await pg(request, "in", "omar1", false);
+    expect(omar.react).toBe("✅");
+    expect(await teamOf(U.omar1)).not.toBeNull();
+
+    const seats = async () => (await db.all<{ n: number }>(`SELECT count(*)::int AS n FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]))[0].n;
+    const before = await seats();
+    const out = await pg(request, "out", "rater", false);
+    expect(out.react).toBe("👋");
+    expect(await seats()).toBe(before);
+    expect(await teamOf(U.rater)).toBe("YELLOW");
+    expect(out.reply ?? "").not.toContain("joins");
+  });
+
+  test("4c. the safety net: a bench row left while the setting is on is promoted by the scheduler's sweep", async ({ request, db }) => {
+    await db.run(
+      `WITH a AS (
+         INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt")
+         VALUES ('e2e-os-dup', $1, $2, 'BENCH', 30, now()) RETURNING "matchId", "userId", status, position
+       )
+       INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "toStatus", "toPosition", cause, "actorKind")
+       SELECT 'e2e-os-dup-ev', "matchId", "userId", $3, status, position, 'test-fixture', 'system' FROM a`,
+      [MATCH.upcoming, U.dup, ORG_ID],
+    );
+    expect(await statusOf(db, MATCH.upcoming, U.dup)).toBe("BENCH");
+    const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`, { headers: KEY });
+    expect(res.status(), await res.text()).toBe(200);
+    expect(await statusOf(db, MATCH.upcoming, U.dup)).toBe("CONFIRMED");
+  });
+
   test("5. a player tagging it hears who can; untagged, nothing changes and nothing is said", async ({ request, db }) => {
     await db.run(`UPDATE "Organisation" SET "openSquad" = false WHERE id = $1`, [ORG_ID]);
     const player = await pg(request, ON, "player");
@@ -294,16 +379,16 @@ test.describe("B. switched by tagging MatchTime", () => {
 
   test("6. the limit put back in the admin group: nobody is bumped, and the next IN goes on the bench", async ({ request, db }) => {
     await db.run(`UPDATE "Organisation" SET "openSquad" = true, "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [ORG_ID, HQ]);
-    // Seven in on a five-place match, as test 4 left it.
+    // Past the five places, as tests 4 to 4c left it.
     const before = (await rows(db, MATCH.upcoming)).filter((r) => r.status === "CONFIRMED").length;
-    expect(before).toBe(7);
+    expect(before).toBeGreaterThan(5);
 
     const off = await hq(request, OFF);
     expect(off.outcome).toBe("hq-open-squad-off");
     expect(off.replyText).toContain("the squad has a limit again");
     expect(off.replyText).toContain("Everyone already in stays in");
     expect(await openSquadOn(db)).toBe(false);
-    expect((await rows(db, MATCH.upcoming)).filter((r) => r.status === "CONFIRMED")).toHaveLength(7);
+    expect((await rows(db, MATCH.upcoming)).filter((r) => r.status === "CONFIRMED")).toHaveLength(before);
 
     // The places are the format's again: Olivia's IN goes on the bench.
     const r = await pg(request, "in", "opt", false);
