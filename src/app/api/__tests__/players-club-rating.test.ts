@@ -47,7 +47,6 @@ function member(id: string, name: string, seedRating: number | null) {
   return {
     role: "PLAYER",
     leftAt: null,
-    createdAt: new Date("2026-04-18T00:00:00Z"),
     provisionallyAddedAt: null,
     seedRating,
     user: {

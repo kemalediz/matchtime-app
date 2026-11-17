@@ -91,7 +91,6 @@ function rosterRow(id: string, name: string) {
   return {
     role: "PLAYER",
     leftAt: null,
-    createdAt: new Date("2026-04-18T00:00:00Z"),
     provisionallyAddedAt: null,
     seedRating: 7,
     user: {

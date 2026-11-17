@@ -297,15 +297,24 @@ interface AttendanceReader {
   };
 }
 
+/**
+ * "Played at this club" as an Attendance filter: the definition above,
+ * in one place. Also read by the admin roster's Inactive badge
+ * (`club-member-activity.ts`), so that page and these tables agree.
+ */
+export function playedAttendanceWhere(orgId: string) {
+  return {
+    status: "CONFIRMED",
+    match: { activity: { orgId }, status: "COMPLETED", isHistorical: false },
+  } as const;
+}
+
 export async function loadLastPlayedByUser(
   db: AttendanceReader,
   orgId: string,
 ): Promise<Map<string, Date>> {
   const rows = (await db.attendance.findMany({
-    where: {
-      status: "CONFIRMED",
-      match: { activity: { orgId }, status: "COMPLETED", isHistorical: false },
-    },
+    where: playedAttendanceWhere(orgId),
     select: { userId: true, match: { select: { date: true } } },
   })) as Array<{ userId: string; match: { date: Date } | null }>;
   return lastPlayedFromRows(

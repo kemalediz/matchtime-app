@@ -8,10 +8,9 @@
  *
  *   - a member with a game at this club inside the window is active, even
  *     when his stale global flag says false;
- *   - a long-standing member with no game in the window is inactive, even
- *     when his global flag says true;
- *   - a member who joined inside the window and has not played yet is not
- *     inactive;
+ *   - a flag-true member who has not played keeps "active" (the fix only
+ *     rescues players, it makes nobody newly Inactive);
+ *   - a flag-false member with no game here stays inactive;
  *   - the whole roster costs ONE grouped attendance query.
  *
  * `next/server` is stubbed; auth, db and org are mocked. No live DB.
@@ -79,8 +78,8 @@ beforeEach(() => {
   authMock.mockResolvedValue({ user: { id: "admin-1" } });
   membershipFindMany.mockResolvedValue([
     member("ersan", false, LONG_AGO), // stale global false, played this week
-    member("akin", true, LONG_AGO), // global true, no game in months
-    member("newbie", true, new Date(Date.now() - 2 * 86_400_000)), // joined 2 days ago
+    member("akin", false, LONG_AGO), // global false, no game in months
+    member("walt", true, LONG_AGO), // global true, a long-standing member who never played
   ]);
   attendanceGroupBy.mockResolvedValue([{ userId: "ersan" }]);
 });
@@ -91,7 +90,7 @@ describe("GET /api/players: isActive from this club's real play", () => {
       getUserOrg.mockResolvedValue({ orgId: CLUB, role });
       const body = await call();
       const active = Object.fromEntries(body.players.map((p) => [p.id, p.isActive]));
-      expect(active).toEqual({ ersan: true, akin: false, newbie: true });
+      expect(active).toEqual({ ersan: true, akin: false, walt: true });
     });
   }
 
@@ -100,7 +99,7 @@ describe("GET /api/players: isActive from this club's real play", () => {
     await call();
     expect(attendanceGroupBy).toHaveBeenCalledTimes(1);
     const where = attendanceGroupBy.mock.calls[0][0].where;
-    expect(where.userId).toEqual({ in: ["ersan", "akin", "newbie"] });
+    expect(where.userId).toEqual({ in: ["ersan", "akin", "walt"] });
     expect(where.match.activity).toEqual({ orgId: CLUB });
   });
 });
