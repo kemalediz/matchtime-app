@@ -3849,6 +3849,10 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   // The message the batch's ONE composed squad post rides on, when there
   // is one (2026-10-30, read by the "never met with silence" pass).
   let squadPostCarrierId: string | null = null;
+  // Every reply the squad composer rewrote from the database: a dead end
+  // never replaces one (review of #617), or the list would be lost while
+  // the roster is recorded as shown.
+  const composedReplyIds = new Set<string>();
   if (nextMatchForReply) {
     try {
       const candidates: number[] = [];
@@ -4028,6 +4032,7 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
           }
           results[i].reply = text;
           composedIdx.push(i);
+          composedReplyIds.add(results[i].waMessageId);
         }
         // The group is about to see this list, so the scheduler must not
         // post the same one again (and its 30-minute floor counts from now).
@@ -4727,13 +4732,18 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   //   the fallback: each tagged dead end (by its outcome's intent, never
   //   the words, `dead-end-answer.ts`) is answered by the unified answer,
   //   which says what MatchTime can do instead. Not a message with several
-  //   instructions or a joined answer: its reply carries more than the line.
+  //   instructions, a joined answer, or a reply carrying the composed squad
+  //   post: each carries more than the line.
   if (unifiedAnswersEnabledForApiRequest(request) && !aiCapped) {
     const deadEnds = fresh.filter((m) => {
       const r = results.find((x) => x.waMessageId === m.waMessageId);
       return (
         !!r &&
         isDeadEnd(r, piMentionsBot(m)) &&
+        // The batch's squad post rides on the last result speaking: a
+        // reply carrying it, or any reply the composer wrote, stands.
+        m.waMessageId !== squadPostCarrierId &&
+        !composedReplyIds.has(m.waMessageId) &&
         !lateById.has(m.waMessageId) &&
         !alsoRoutesById.has(m.waMessageId) &&
         !answerBatch?.alsoAnswered.has(m.waMessageId)

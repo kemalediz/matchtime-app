@@ -519,13 +519,17 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
   L.push(`- Man of the Match is chosen by: ${state.features.momChosenBy === "organisers" ? "the organisers" : "the players' vote"}`);
   // Scores (2026-11-17, a dead end answered "I can't record a score from a
   // message", untrue): who may report and change one, as the score route
-  // decides it (`engine.ts` handleScore in the players' group,
-  // `admin-group-score.ts` in HQ).
-  // No example score: its digits would count as grounded numbers.
+  // decides it: the players' group by `engine.ts` handleScore (mayReport
+  // and mayCorrect: someone who played, or an admin); HQ by
+  // `admin-group-score.ts` (anyone there reports, only an organiser changes
+  // a recorded one); a DM records none. No example score: its digits would
+  // count as grounded numbers.
   L.push(
     audience === "organisers"
-      ? `- Scores: after a game, anyone here or in the players' group tags MatchTime with the score, and MatchTime records it for the last game played; only an organiser can change a score already recorded.`
-      : `- Scores: after a game, someone who played in it or an admin tags MatchTime with the score, and MatchTime records it for the last game played; a score already recorded is corrected the same way.`,
+      ? `- Scores: after a game, anyone in this group can tag MatchTime with the score, and MatchTime records it for the last game played; only an organiser can change a score already recorded. In the players' group, someone who played in that game or an admin can report it.`
+      : audience === "dm"
+        ? `- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.`
+        : `- Scores: after a game, someone who played in it or an admin tags MatchTime with the score, and MatchTime records it for the last game played. Someone who played in it or an admin can correct a recorded score the same way.`,
   );
   if (input.squadMode === "monthly") L.push(...MONTHLY_RULES);
   // What MatchTime does while the squad is not full (round 3, 2026-11-12:

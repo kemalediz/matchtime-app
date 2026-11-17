@@ -2814,6 +2814,30 @@ describe("several instructions in one HQ message", () => {
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
   });
 
+  // Review of #617, item 1: a part with no action inside a several-
+  // instruction message is not a dead end. The unified answer would say
+  // NOT DONE beside "Done: Luca on the bench".
+  it("UNIFIED_ANSWERS on, an admin part read as 'other' beside a squad change: no unified answer, the squad reply", async () => {
+    const otherAdmin = model((req) =>
+      req.label === "extractor:admin"
+        ? { action: "other", payerRef: "", count: 0, coveredRefs: [], phrase: "", note: "", lookbackMatches: 0, toMatchTime: true }
+        : { action: "generate", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [], sides: { red: [], yellow: [] }, toMatchTime: true },
+    );
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: "NOT DONE answer" });
+    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: otherAdmin }, unifiedAnswers: true });
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    expect(r?.replyText).not.toContain("NOT DONE answer");
+    expect(r?.replyText).toContain("Done: Luca on the bench, Zak in.");
+  });
+
+  it("UNIFIED_ANSWERS on, a score part that is not a score beside a squad change: no unified answer", async () => {
+    hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-not-understood", replyText: "I didn't catch what you'd like me to do." });
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: "NOT DONE answer" });
+    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["score"]), extractorModel: byExtractor }, unifiedAnswers: true });
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    expect(r?.replyText).toContain("Done: Luca on the bench, Zak in.");
+  });
+
   it("no part did anything, UNIFIED_ANSWERS on: the unified answer, once", async () => {
     squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
     switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-not-a-suggestion", replyText: null });

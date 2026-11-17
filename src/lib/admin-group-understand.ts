@@ -1374,13 +1374,16 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         console.log(`[admin-group] ${messageId}: admin_ops read as ${facts.kind === "admin" ? facts.action : facts.kind}, not done from HQ`);
         // Nothing MatchTime has does it ("other", or nothing read): a dead
         // end. A known action done elsewhere keeps "not from this group".
-        if (facts.kind !== "admin" || facts.action === "other") return deadEnd(notHere);
+        // One part of several is not a dead end: the message's other parts
+        // speak for it, and "no part did anything" is decided below.
+        if (!several && (facts.kind !== "admin" || facts.action === "other")) return deadEnd(notHere);
         return notHere();
       }
       case "score": {
-        // Tagged, and not a score after all: a dead end (2026-11-17).
+        // Tagged, and not a score after all: a dead end (2026-11-17), but
+        // never one part of several (review of #617).
         const r = await scoreHere();
-        return r?.outcome === "hq-not-understood" ? deadEnd(() => r) : r;
+        return !several && r?.outcome === "hq-not-understood" ? deadEnd(() => r) : r;
       }
       case "unsure": {
         // While MatchTime waits for the score, a message the router could

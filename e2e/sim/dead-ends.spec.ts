@@ -173,6 +173,42 @@ async function club(request: Parameters<typeof createGroup>[0], db: Parameters<t
     expect(calls().filter((l) => l === "unified-answer").length).toBe(before);
   });
 
+  // Review of #617, item 2: the batch's squad post rides on the LAST result
+  // already speaking. When that is a dead end, its reply carries the
+  // composed list, and replacing it would lose the list while the roster
+  // is recorded as shown. Such a result keeps its reply.
+  test("a squad change plus a tagged dead end as the last speaker: the squad post is kept", async ({ request, db }) => {
+    // Ava (the organiser) puts Pip in: a row moved for someone else, which
+    // is the batch's squad post, carried by the last result speaking.
+    const grp = (await club(request, db)).attach(request);
+    const putIn = "@Match Time Pip is in";
+    setRouterStub({ floor: false, bodies: { [putIn]: "other_att", [BOOK]: "admin_ops" } });
+    setExtractorStub({
+      bodies: {
+        [putIn]: {
+          claims: [{ subject: "other", personRef: "Pip", personNamed: true, polarity: "in", tense: "present", contingent: false, conditionOn: "none", confidence: 0.95, replaces: "" }],
+          affirmation: "none",
+          sideRequests: [],
+        },
+      },
+      byExtractor: { admin: { [BOOK]: OTHER }, "unified-answer": { [BOOK]: { answer: BOOK_ANSWER } } },
+    });
+
+    const res = await grp.postBatch(
+      [
+        { player: "ava", body: putIn, tag: true },
+        { player: "noor", body: BOOK, tag: true },
+      ],
+      { headers: UNIFIED },
+    );
+
+    // The squad post went out, on the last result speaking: the dead end.
+    const carrier = res.results.find((r) => (r.reply ?? "").includes("Pip Pine"));
+    expect(carrier?.waMessageId).toBe(res.results[1].waMessageId);
+    // And its reply was not replaced by the unified answer.
+    expect(res.results.some((r) => (r.reply ?? "").includes(BOOK_ANSWER))).toBe(false);
+  });
+
   test("with UNIFIED_ANSWERS off nothing changes: the canned line", async ({ request, db }) => {
     const grp = (await club(request, db)).attach(request);
     arm({ routes: { [BOOK]: "admin_ops" }, admin: { [BOOK]: OTHER }, answers: { [BOOK]: BOOK_ANSWER } });
