@@ -620,7 +620,10 @@ export default async function AdminGuidePage() {
         <li>
           About an hour after the end, MatchTime asks for the score. Anyone who
           played, or an admin, can post it (<code>7-3</code>,{" "}
-          <code>we won 5-4</code>).
+          <code>we won 5-4</code>, <code>bibs 9, no bibs 4</code>). They can
+          call the teams whatever the club calls them; the first time a name
+          like &quot;bibs&quot; is used, MatchTime asks once which team it
+          was, and remembers it for the club&apos;s next games.
         </li>
         <li>
           From <strong>08:00 the next morning</strong>, everyone who played

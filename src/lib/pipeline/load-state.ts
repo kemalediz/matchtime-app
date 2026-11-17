@@ -23,6 +23,8 @@ import { loadReclaimUserIds } from "../squad-reclaim";
 import { selectRegistrationMatch } from "../registration-match-select";
 import { resolveTeamLabels } from "../team-labels";
 import { SCORE_ASK_KIND, parseScoreAskKey, scoreSwapKey } from "./score-ask";
+import { parseScoreAskNames } from "./score-sides";
+import { loadSideNames } from "./load-side-names";
 import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { totalPlayersFor } from "../format-switch";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
@@ -268,10 +270,21 @@ export async function loadSquadState(
       ? await db.sentNotification.findFirst({
           where: { kind: SCORE_ASK_KIND, matchId: completed.id },
           orderBy: { createdAt: "desc" },
-          select: { key: true, createdAt: true, targetUser: true },
+          select: { key: true, createdAt: true, targetUser: true, text: true },
         })
       : null;
   const scoreAsk = scoreAskRow ? parseScoreAskKey(scoreAskRow.key) : null;
+  // The name that question asked about, when it was "Which team was
+  // bibs?" (2026-11-17, `score-sides.ts`).
+  const scoreAskNames = scoreAskRow ? parseScoreAskNames(scoreAskRow.text) : null;
+  // What this club calls the played match's sides: its own, else the
+  // club's last used. Never fails the state: a failed read is no names.
+  const sideNames = completed
+    ? await loadSideNames(orgId, completed.id).catch((err) => {
+        console.error("[load-state] side names read failed:", err instanceof Error ? err.message : "failed");
+        return null;
+      })
+    : null;
   // Has this match's one bare "wrong way round" been used? Only asked
   // for a match that has a result: there is nothing to swap otherwise.
   const swapUsed =
@@ -374,9 +387,11 @@ export async function loadSquadState(
                   second: scoreAsk.second,
                   askedAt: scoreAskRow.createdAt.toISOString(),
                   askerUserId: scoreAskRow.targetUser ?? null,
+                  ...(scoreAskNames ?? {}),
                 },
               }
             : {}),
+          ...(sideNames ? { sideNames } : {}),
           earlierRecentResult,
           ...(swapUsed ? { swapUsed: true } : {}),
         }

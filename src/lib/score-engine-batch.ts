@@ -133,6 +133,7 @@ import { extractForRouteTraced } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import { SCORE_ENGINE_ROUTES, stepSevenOwnsRoute } from "./pipeline/route-flags";
+import { gameLinesFor, normaliseOwnedFacts, nameTheQuestions, learnFromResults } from "./score-side-names";
 import type {
   EngineInput,
   EngineMessage,
@@ -325,6 +326,9 @@ export async function runScoreBatch(args: {
   // reads it now (its `winner`, shown MatchTime's question as its last
   // post); WHO may answer stays the engine's fact check (`isScoreAnswer`).
   const playedMatch = state.completedMatch;
+  // THE GAME (2026-11-17, `score-sides.ts`): the played match's two sides,
+  // what this club also calls them and who was on each, for the extractor.
+  const game = gameLinesFor(state);
   const toExtract: ScoreBatchMessage[] = [];
   for (const m of candidates) {
     // A REPLY TO MATCHTIME'S POST ABOUT ANOTHER MATCH (review of #341,
@@ -349,6 +353,7 @@ export async function runScoreBatch(args: {
         history,
         lastBotPost,
         reply: m.reply ?? null,
+        game,
         now,
       });
       for (const d of res.degradations) {
@@ -424,6 +429,18 @@ export async function runScoreBatch(args: {
     ownedIds.add(m.waMessageId);
   }
   if (ownedIds.size === 0) return empty(degradations);
+
+  // THE CLUB'S NAMES FOR ITS SIDES (2026-11-17, `score-sides.ts`). A team
+  // reference the club's stored names place ("bibs"), or the extractor
+  // placed from THE GAME ("Dan's team"), becomes MatchTime's own name for
+  // that side before the engine reads it; an answer to "Which team was
+  // bibs?" gets the winner it means. The engine is unchanged.
+  const sideNotes = normaliseOwnedFacts({
+    state,
+    factsById,
+    ids: [...ownedIds],
+    senderOf: (id) => messages.find((m) => m.waMessageId === id)?.senderUserId ?? null,
+  });
 
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
   //
@@ -511,6 +528,11 @@ export async function runScoreBatch(args: {
   }
 
   // ── Stage 3b: APPLY ────────────────────────────────────────────────
+  // A question about a scoreline whose winning side's name means no side
+  // yet asks about that name ("Which team was bibs, Red or Yellow?"),
+  // remembered with the question so the answer can teach it.
+  const askNames = nameTheQuestions({ state, factsById, askWrites, result });
+
   const applied = await applyScoreWrites({ writes: scoreWrites, deps });
   const resultByMessage = new Map(applied.map((a) => [a.write.sourceMessageId, a]));
   for (const a of applied) {
@@ -549,11 +571,13 @@ export async function runScoreBatch(args: {
   for (const a of askWrites) {
     if (!deps.recordScoreAsk) continue;
     try {
+      const named = askNames.get(a.sourceMessageId);
       await deps.recordScoreAsk({
         matchId: a.matchId,
         first: a.first,
         second: a.second,
         askerUserId: a.askerUserId,
+        ...(named ? { name: named.name, ...(named.other ? { other: named.other } : {}) } : {}),
       });
     } catch (err) {
       degradations.push(
@@ -565,6 +589,11 @@ export async function runScoreBatch(args: {
   }
 
   // ── Stage 4: composition, AFTER the apply ──────────────────────────
+  // What a recorded result teaches about the names MatchTime asked about
+  // (bibs had the 9, Red got the 9: bibs is Red), remembered for the club.
+  // Shown in the acknowledgement too ("Red (bibs)").
+  await learnFromResults({ state, applied, result, deps, degradations, prefix: SCORE_APPLY_DEGRADED_PREFIX });
+
   const composed = compose(result);
   const utteranceByMessageId = new Map<string, string[]>();
   for (const u of composed.utterances) {
@@ -623,6 +652,7 @@ export async function runScoreBatch(args: {
       action: write?.ok ? "score" : react ? "react" : reply ? "reply" : "none",
       reasoning:
         `${SCORE_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}` +
+        (sideNotes.get(m.waMessageId)?.length ? `; ${sideNotes.get(m.waMessageId)!.join("; ")}` : "") +
         (failed ? `; the score write FAILED (${write?.error})` : ""),
       matchId: write?.write.matchId ?? null,
       eloApplied: write?.eloApplied ?? 0,

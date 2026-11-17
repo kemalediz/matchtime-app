@@ -168,6 +168,17 @@ function labelMatch(ref: string[], label: string): 0 | 1 | 2 {
   return 0;
 }
 
+/**
+ * How well does a team reference name `name`, in `labelMatch`'s terms (2:
+ * all its words, 1: a run of them, 0: no)? For the club's own names for
+ * its sides (`score-sides.ts`, 2026-11-17): the same whole-word rule as a
+ * side's label, so "bibs" names "bibs" fully and "no bibs" only in part.
+ */
+export function nameMatch(ref: string | null | undefined, name: string): 0 | 1 | 2 {
+  const w = words((ref ?? "").trim());
+  return w.length === 0 ? 0 : labelMatch(w, name);
+}
+
 /** Is this side still called by its colour (in either language)? */
 function calledByItsColour(label: string, side: TeamSide): boolean {
   const f = fold(label);

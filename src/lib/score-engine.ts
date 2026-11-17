@@ -123,7 +123,21 @@ export interface ScoreApplyDeps {
     second: number;
     /** Who posted the scoreline, or null when WhatsApp did not say. */
     askerUserId: string | null;
+    /** The winning side's name MatchTime asked about ("Which team was
+     *  bibs?", `score-sides.ts`), and the other side's name. Absent for a
+     *  plain "which team won?". */
+    name?: string;
+    other?: string;
   }) => Promise<void>;
+  /**
+   * Remember what this club calls each side, learned from a recorded
+   * result (2026-11-17, `score-sides.ts`): `names` are the match's whole
+   * set after merging, stored against `matchId` and read back for the
+   * next game as the club's last used. Optional for the same reason
+   * `recordScoreAsk` is: without it nothing is remembered and the next
+   * game asks again.
+   */
+  recordSideNames?: (args: { matchId: string; names: { red: string[]; yellow: string[] } }) => Promise<void>;
 }
 
 export interface ScoreWriteResult {

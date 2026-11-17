@@ -47,6 +47,7 @@ import { db as defaultDb } from "./db";
 import type { ScoreApplyDeps } from "./score-engine";
 import { reconcileMatchElo, setMatchScore } from "./match-elo";
 import { SCORE_ASK_KIND, SCORE_SWAP_KIND, scoreAskKey, scoreSwapKey } from "./pipeline/score-ask";
+import { SCORE_SIDE_NAMES_KIND, encodeSideNames, scoreAskNamesText, sideNamesKey } from "./pipeline/score-sides";
 import type { AdminOpsApplyDeps, PaidState } from "./admin-ops-engine";
 import type { TeamOpsApplyDeps } from "./team-ops-engine";
 import type { TeamClearDeps } from "./team-clear";
@@ -99,10 +100,13 @@ export function buildScoreApplyDeps(args: { db?: Db } = {}): ScoreApplyDeps {
       });
     },
 
-    async recordScoreAsk({ matchId, first, second, askerUserId }) {
+    async recordScoreAsk({ matchId, first, second, askerUserId, name, other }) {
       // One open question per match. The key carries the numbers and
       // `targetUser` who posted the scoreline (`score-ask.ts`), so
-      // replacing the pair is delete-then-create.
+      // replacing the pair is delete-then-create. `text` carries the name
+      // asked about, when the question is "Which team was bibs?"
+      // (`score-sides.ts`, 2026-11-17); null for "which team won?".
+      const names = scoreAskNamesText(name ? { name, ...(other ? { other } : {}) } : null);
       await db.sentNotification.deleteMany({ where: { kind: SCORE_ASK_KIND, matchId } });
       await db.sentNotification.create({
         data: {
@@ -110,7 +114,19 @@ export function buildScoreApplyDeps(args: { db?: Db } = {}): ScoreApplyDeps {
           kind: SCORE_ASK_KIND,
           matchId,
           targetUser: askerUserId,
+          ...(names ? { text: names } : {}),
         },
+      });
+    },
+
+    async recordSideNames({ matchId, names }) {
+      // One row per match (`sideNamesKey`), its text the club's names for
+      // the two sides. Delete-then-create so the newest row is the club's
+      // last used (`load-side-names.ts` reads it by `createdAt`).
+      const key = sideNamesKey(matchId);
+      await db.sentNotification.deleteMany({ where: { key } });
+      await db.sentNotification.create({
+        data: { key, kind: SCORE_SIDE_NAMES_KIND, matchId, text: encodeSideNames(names) },
       });
     },
 

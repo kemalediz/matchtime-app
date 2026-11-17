@@ -1822,7 +1822,7 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   // answers, by the one rule every group shares (`scoreRouteOverrides`,
   // `pipeline/load-awaiting-answer.ts`; the organisers' group uses it
   // too). Null on almost every batch.
-  const { scoreAnswerIds, scoreCorrectionIds } = await scoreRouteOverrides(
+  const { scoreAnswerIds, scoreCorrectionIds, awaitedScoreLine } = await scoreRouteOverrides(
     org.id,
     fresh.map((m) => ({
       id: m.waMessageId,
@@ -1888,6 +1888,8 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
             scoreAnswerIds,
             // A tagged correction of a recorded result, by its words.
             scoreCorrectionIds,
+            // The last game has finished with no score yet (2026-11-17).
+            awaitedScoreLine,
             // At the daily AI cap: floor only, no router call.
             capped: aiCapped,
             now: new Date(),

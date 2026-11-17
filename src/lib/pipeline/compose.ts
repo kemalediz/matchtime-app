@@ -67,6 +67,7 @@ import { joinChoice, joinList } from "../i18n/text";
 import { activityFeeText } from "../activity-fee";
 import { benchClause } from "../squad-count-line";
 import type { EngineResult, SquadState } from "./types";
+import { labelsWithSideNames } from "./score-sides";
 
 export interface Utterance {
   /** The message this answers, or null for the batch-level squad post. */
@@ -822,7 +823,13 @@ export function compose(result: EngineResult): ComposedOutput {
       // match called them (`completedMatch.teamLabels`); `state.teamLabels`
       // belongs to the upcoming match, which can carry its own names.
       case "score_ack": {
-        const [redLabel, yellowLabel] = state.completedMatch?.teamLabels ?? state.teamLabels;
+        // With the club's own names for the sides beside MatchTime's, when
+        // it has any ("Red (bibs)", 2026-11-17): a remembered name that is
+        // wrong this week is then plain to see, and corrected in a word.
+        const [redLabel, yellowLabel] = labelsWithSideNames(
+          state.completedMatch?.teamLabels ?? state.teamLabels,
+          state.completedMatch?.sideNames,
+        );
         utterances.push({
           messageId: sp.messageId,
           text: s.score_ack({ redLabel, red: sp.red, yellow: sp.yellow, yellowLabel }),
@@ -850,7 +857,11 @@ export function compose(result: EngineResult): ComposedOutput {
         const [redLabel, yellowLabel] = state.completedMatch?.teamLabels ?? state.teamLabels;
         utterances.push({
           messageId: sp.messageId,
-          text: s.score_ask_team({ first: sp.first, second: sp.second, redLabel, yellowLabel }),
+          // The winning side's name means no side yet: ask which side it
+          // was (2026-11-17, `score-sides.ts`). The answer is the winner.
+          text: sp.name
+            ? s.score_ask_side({ first: sp.first, second: sp.second, name: sp.name, redLabel, yellowLabel })
+            : s.score_ask_team({ first: sp.first, second: sp.second, redLabel, yellowLabel }),
         });
         break;
       }

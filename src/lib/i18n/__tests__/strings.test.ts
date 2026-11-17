@@ -173,6 +173,7 @@ const SAMPLES: SampleArgs = {
   score_ack: { redLabel: "Kırmızı", red: 3, yellow: 1, yellowLabel: "Sarı" },
   score_corrected: { redLabel: "Kırmızı", yellowLabel: "Sarı", oldRed: 9, oldYellow: 6, red: 6, yellow: 9 },
   score_ask_team: { first: 10, second: 7, redLabel: "Kırmızı", yellowLabel: "Sarı" },
+  score_ask_side: { first: 9, second: 4, name: "yelekliler", redLabel: "Kırmızı", yellowLabel: "Sarı" },
   score_already_recorded: { redLabel: "Kırmızı", red: 4, yellow: 4, yellowLabel: "Sarı" },
   score_recorded_hint: { redLabel: "Kırmızı", red: 9, yellow: 6, yellowLabel: "Sarı" },
   score_which_match: { kickoffLabel: "Sal 21:30" },

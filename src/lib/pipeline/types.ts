@@ -776,6 +776,12 @@ export interface ScoreFacts {
   winner?: string;
   /** The team a word says LOST ("reds lost 6-9", "kaybettik"). */
   loser?: string;
+  /** Which side the extractor read each team reference as, from THE GAME
+   *  (2026-11-17, `score-sides.ts`): the club's other names for a side,
+   *  a player listed on it ("Dan's team"). Only red or yellow; a name THE
+   *  GAME does not place is left out. Read only where code cannot place
+   *  the reference itself (`normaliseScoreFacts`). */
+  teamSides?: Array<{ team: string; side: "RED" | "YELLOW" }>;
   /** The player the message names as Man of the Match ("MoM Naim",
    *  "maçın adamı Naim"), verbatim (2026-10-18). A FACT only: who that is,
    *  and whether it is recorded, are `admin-group-score.ts`'s, and only
@@ -1222,7 +1228,21 @@ export interface SquadState {
      * clears it. `askerUserId` is who posted the scoreline, when known.
      * Who may answer, and for how long, is `score-ask.ts`.
      */
-    pendingScore?: { first: number; second: number; askedAt: string; askerUserId: string | null };
+    pendingScore?: {
+      first: number;
+      second: number;
+      askedAt: string;
+      askerUserId: string | null;
+      /** The name MatchTime asked about ("Which team was bibs?",
+       *  `score-sides.ts`), and the other side's name when the message gave
+       *  one. Absent for a plain "which team won?". */
+      name?: string;
+      other?: string;
+    };
+    /** What this club also calls each side, besides `teamLabels` (2026-11-17,
+     *  `score-sides.ts`): this match's own, else the club's last used.
+     *  Absent: none known. */
+    sideNames?: { red: string[]; yellow: string[] };
     /**
      * Another match of the club, with a recorded result, kicked off
      * inside the correction window. When the LATEST match has no result
@@ -1964,7 +1984,10 @@ export type SpeechIntent =
     }
   /** Two different numbers and no way to tell whose is whose. Asks,
    *  rather than guessing (the 2026-10-06 incident was a guess). */
-  | { kind: "score_ask_team"; messageId: string; first: number; second: number }
+  /** `name`: the winning side's name, which means no side yet ("bibs"):
+   *  the question becomes "Which team was bibs?" (`score-sides.ts`). Set by
+   *  the score batch, never by the engine. */
+  | { kind: "score_ask_team"; messageId: string; first: number; second: number; name?: string }
   /** A different result for a match that already has one, from somebody
    *  who may not change it or after the window. Says what is recorded
    *  and where an admin changes it. */

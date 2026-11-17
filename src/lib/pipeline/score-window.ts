@@ -11,3 +11,12 @@
  * engine.
  */
 export const SCORE_CORRECTION_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * How long after a game ENDS (kickoff plus its duration) MatchTime tells
+ * the router it is waiting for the score (2026-11-17, Vets: "@Match Time
+ * bibs 9, no bibs 4" was read as an instruction because nothing said a
+ * score was due). A day: the result comes that night or the next morning,
+ * and a line shown for longer only sits above unrelated chat.
+ */
+export const SCORE_AWAITED_WINDOW_MS = 24 * 60 * 60 * 1000;
