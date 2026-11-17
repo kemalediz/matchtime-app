@@ -711,6 +711,32 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
     return NextResponse.json({ ok: true, ...out });
   }
 
+  // ── Bringing a guest, and the guest's own DMs (2026-11-17) ─────────────
+  //   An organiser's contact card, or his "add him for tonight", by DM (the
+  //   guest card door, `lib/guest-card/door.ts`), and a guest an organiser
+  //   added giving his place back ("OUT", read by the DM availability
+  //   reader). Engages only for an organiser of a live club or such a guest;
+  //   for everybody else it is three indexed reads and the DM carries on.
+  {
+    const { handleGuestCardDms } = await import("@/lib/guest-card/guest-dm");
+    const guest = await handleGuestCardDms({
+      userId: user.id,
+      authorName: authorName ?? null,
+      text,
+      waMessageId,
+      replyPhone:
+        (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+        (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+        null,
+      quoted,
+      quotedText: parseDmQuote(body)?.text ?? null,
+    }).catch((err: unknown) => {
+      console.error("[dm-reply] guest card failed:", err instanceof Error ? err.message : "failed");
+      return null;
+    });
+    if (guest) return NextResponse.json({ ok: true, ...guest });
+  }
+
   // ── The partner club's ask by DM (2026-10-21), found by its code above ──
   //   IN or OUT is the DM resolver's call on his words with the code taken
   //   out; `handlePartnerVolunteer` (the one writer onto another club's

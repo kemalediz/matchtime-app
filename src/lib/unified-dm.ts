@@ -113,6 +113,12 @@ export async function loadUnifiedDmInput(args: {
   // MatchTime (ABOUT YOU, 2026-11-11).
   const mine = await soft("own stats", () => loadAskerOwnStats(orgId, userId));
   if (mine) own.push(mine);
+  // His game, when he is this club's guest (2026-11-17): the facts the
+  // welcome DM gave him (`guest-card/guest-dm.ts`), so "where is it?" and
+  // "how much?" are answered from the club's data.
+  const { guestGameBlock } = await import("./guest-card/guest-dm");
+  const guest = await soft("guest game", () => guestGameBlock(orgId, userId, now));
+  if (guest) own.push(guest);
   const fee = state.club?.feePerPlayer ?? null;
   const pay = await soft("own payments", () => loadMyPayments({ orgId, userId, upcomingFee: state.matchId ? fee : null }));
   if (pay) own.push(formatMyPaymentsBlock(pay.payments, args.lang, pay.payLinks).replace(/^YOUR PAYMENTS/, "THE ASKER'S OWN PAYMENTS"));

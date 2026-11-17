@@ -843,6 +843,41 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   // replayed under a fresh id lands inside the throttle window anyway.
   await recordGroupSightings(org.id, sightedUserIds(senderById.values()));
 
+  // ── BRINGING A GUEST (2026-11-17, `lib/guest-card/door.ts`) ──────────
+  //   An organiser's contact card is held, and his "add him for tonight"
+  //   (or a name and number) is read by the guest reader and the guest
+  //   added, with one reply: the same path as HQ and a DM. Those messages
+  //   leave the batch here; everything else carries on untouched, a
+  //   non-organiser's card included (the engine's vCard refusal). No card's
+  //   number is stored or reaches a model: its text becomes a label.
+  {
+    const { handleGuestCardsInBatch } = await import("@/lib/guest-card/door");
+    const { cardSafeText } = await import("@/lib/guest-card/vcard");
+    const guest = await handleGuestCardsInBatch({
+      orgId: org.id,
+      now: lateNow,
+      messages: fresh
+        .filter((m) => !lateById.has(m.waMessageId))
+        .map((m) => ({
+          waMessageId: m.waMessageId,
+          body: m.body,
+          quotedBody: m.quotedBody ?? null,
+          senderUserId: senderById.get(m.waMessageId)?.userId ?? null,
+          senderName: senderById.get(m.waMessageId)?.name ?? m.authorName,
+          tagged: piMentionsBot(m),
+        })),
+    });
+    for (const c of guest.consumed) {
+      const m = fresh.find((x) => x.waMessageId === c.waMessageId);
+      if (!m) continue;
+      await recordAnalysis({ orgId: org.id, groupId: body.groupId, msg: { ...m, body: c.storedBody }, handledBy: "fast-path", intent: c.intent, action: null, confidence: 1, reasoning: c.reasoning, authorUserId: senderById.get(m.waMessageId)?.userId ?? null });
+      results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: c.intent, react: null, reply: c.reply });
+    }
+    const gone = new Set(guest.consumed.map((c) => c.waMessageId));
+    if (gone.size > 0) fresh.splice(0, fresh.length, ...fresh.filter((m) => !gone.has(m.waMessageId)));
+    if (body.history) body.history = body.history.map((h) => ({ ...h, body: cardSafeText(h.body) }));
+  }
+
   // LATE MESSAGES SKIP EVERY PEEL (touch 2 of 4, see the late-message
   // block above). Put back, in arrival order, right before the router.
   const lateHeldOut: InboundMessage[] = [];

@@ -89,8 +89,9 @@ interface MediaNode {
  * Returns null for: a message that failed to decrypt (no content), a
  * message with no id, an empty or whitespace-only text, and every content
  * type this phase does not handle (reactions, which arrive on their own
- * event; protocol messages, which are edits and deletes; polls, locations,
- * contact cards). Those are later phases and must not be mistaken for text.
+ * event; protocol messages, which are edits and deletes; polls,
+ * locations). Those are later phases and must not be mistaken for text. A
+ * shared contact card is mapped, as type "vcard" (2026-11-17).
  *
  * Never throws. A malformed message is worth dropping; it is not worth
  * taking the upsert handler down, which would drop the rest of the batch
@@ -136,6 +137,16 @@ export function mapInboundMessage(msg: WAMessage): MappedInbound | null {
       return { ...base, type: "chat", body, hasMedia: false };
     }
 
+    // A SHARED CONTACT CARD (2026-11-17): its vCard is the message's text,
+    // cut to the lines the server reads (`compactVcard`), type "vcard".
+    // The server holds an organiser's card for his "add him for tonight"
+    // and refuses anyone else's, as it always refused a card's text.
+    if (contentType === "contactMessage" || contentType === "contactsArrayMessage") {
+      const body = contactCardsText(bag, contentType);
+      if (!body) return null;
+      return { ...base, type: "vcard", body, hasMedia: false };
+    }
+
     const type = mediaTypeName(contentType, bag);
     if (!type) return null;
 
@@ -145,6 +156,35 @@ export function mapInboundMessage(msg: WAMessage): MappedInbound | null {
     // Total, deliberately. One odd message must not cost the batch.
     return null;
   }
+}
+
+/** The vCard lines the server reads: the envelope, the name and the numbers.
+ *  Everything else on a card (a photo, an email, an address) never leaves
+ *  the Pi. Folded lines are unfolded first. Empty for no card. */
+export function compactVcard(vcard: string | null | undefined): string {
+  if (typeof vcard !== "string") return "";
+  const KEEP = new Set(["BEGIN", "VERSION", "N", "FN", "TEL", "END"]);
+  const lines = vcard
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n[ \t]/g, "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => {
+      const head = l.slice(0, Math.max(0, l.indexOf(":"))).split(";")[0];
+      return KEEP.has(head.slice(head.lastIndexOf(".") + 1).toUpperCase());
+    });
+  return lines.some((l) => /^BEGIN:VCARD/i.test(l)) ? lines.join("\n").slice(0, 2000) : "";
+}
+
+/** Every card a contact message carries, compacted, one after the other. */
+function contactCardsText(content: Record<string, unknown>, contentType: string): string {
+  if (contentType === "contactMessage") return compactVcard((content.contactMessage as { vcard?: string | null } | undefined)?.vcard);
+  const list = (content.contactsArrayMessage as { contacts?: Array<{ vcard?: string | null }> | null } | undefined)?.contacts ?? [];
+  return list
+    .map((c) => compactVcard(c?.vcard))
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 4000);
 }
 
 /** whatsapp-web.js's name for this media type, or null if we skip it. */
@@ -200,7 +240,11 @@ function readQuoted(content: Record<string, unknown>, contentType: string): { qu
     else {
       for (const node of Object.values(qm)) {
         if (node && typeof node === "object") {
-          const v = typeof node.text === "string" ? node.text : typeof node.caption === "string" ? node.caption : "";
+          // A quoted contact card is its vCard (2026-11-17): "add him for
+          // tonight" swipe-replied to the card names the card's person.
+          const vcard = (node as { vcard?: unknown }).vcard;
+          const card = typeof vcard === "string" ? compactVcard(vcard) : "";
+          const v = typeof node.text === "string" ? node.text : typeof node.caption === "string" ? node.caption : card;
           if (v) {
             text = v;
             break;

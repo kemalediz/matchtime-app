@@ -207,6 +207,10 @@ describe("(b) every line of the old full HQ help is in exactly one topic", () =>
   const menuLine = (l: string) =>
     l === "" || /^(🛠️|Tag me in every|Burada her mesajda|ℹ️|❓|Ask \*@Match Time what can you do|Bunu tekrar görmek)/u.test(l);
 
+  // Lines added to a topic after the snapshot, each named with its feature:
+  // the old help cannot have said them.
+  const addedSince = (l: string) => l.startsWith("👤 "); // bringing a guest by contact card (2026-11-17)
+
   it("for every club shape, EN and TR", () => {
     let checked = 0;
     for (const [key, full] of Object.entries(BEFORE)) {
@@ -219,7 +223,7 @@ describe("(b) every line of the old full HQ help is in exactly one topic", () =>
       }
       // And no topic says anything the old help did not say for that club.
       for (const [i, d] of details.entries()) {
-        for (const l of d.split("\n").slice(1)) expect(full.split("\n"), `${key} ${HQ_HELP_TOPICS[i]}: ${l}`).toContain(l);
+        for (const l of d.split("\n").slice(1)) if (!addedSince(l)) expect(full.split("\n"), `${key} ${HQ_HELP_TOPICS[i]}: ${l}`).toContain(l);
       }
     }
     expect(checked).toBeGreaterThan(300);

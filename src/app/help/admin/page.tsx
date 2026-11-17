@@ -385,6 +385,21 @@ export default async function AdminGuidePage() {
           When an organiser or admin adds someone, they go straight on the
           list, with no link.
         </li>
+        <li>
+          <strong>You bring a guest.</strong>{" "}Share his WhatsApp contact
+          with MatchTime and say he&apos;s playing, for example &quot;add him
+          for tonight&quot;: in the players&apos; group, in your organisers&apos;
+          group (tag MatchTime in the message after the contact) or in a
+          private message to MatchTime. You can also write his name and
+          number instead of sharing the contact. MatchTime adds him to that
+          game as a guest (in the squad, or on the bench if it&apos;s full),
+          replies to you once, and sends him one private message with the
+          day, kick-off time, format, venue and address with a map link, and
+          the fee if your club shows one. He can reply OUT if he can&apos;t
+          make it, or ask MatchTime anything about the game. He isn&apos;t
+          added to your WhatsApp group: you add him yourself once he has
+          played. His number is never shown in the group.
+        </li>
       </ol>
 
       <h3>Checking new players</h3>

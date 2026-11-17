@@ -190,3 +190,60 @@ describe("mapInboundMessage: what it refuses", () => {
     expect(mapInboundMessage({} as WAMessage)).toBeNull();
   });
 });
+
+/**
+ * A SHARED CONTACT CARD (2026-11-17). Its vCard becomes the message's text,
+ * cut down to the lines the server reads (the name and the numbers), so
+ * an organiser can share a guest's card and say "add him for tonight".
+ * The server holds an organiser's card and refuses anyone else's, as it
+ * always refused a card's text (`attendance-engine-batch.ts`).
+ */
+describe("mapInboundMessage: a shared contact card", () => {
+  const VCARD = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    "N:Ayoub;Abu;;;",
+    "FN:Abu Ayoub",
+    "ORG:Somewhere Ltd",
+    "item1.TEL;waid=447700900123:+44 7700 900123",
+    "item1.X-ABLabel:Mobile",
+    "EMAIL:abu@example.com",
+    "PHOTO;BASE64:AAAA",
+    "END:VCARD",
+  ].join("\n");
+
+  it("one card: type vcard, the name and number lines only", () => {
+    const m = mapInboundMessage(wa({ contactMessage: { displayName: "Abu Ayoub", vcard: VCARD } }));
+    expect(m).toMatchObject({ type: "vcard", hasMedia: false });
+    expect(m!.body).toBe(["BEGIN:VCARD", "VERSION:3.0", "N:Ayoub;Abu;;;", "FN:Abu Ayoub", "item1.TEL;waid=447700900123:+44 7700 900123", "END:VCARD"].join("\n"));
+  });
+
+  it("several cards at once: each one, in order", () => {
+    const second = VCARD.replace("Abu Ayoub", "Sami Kaya").replace(/447700900123/g, "447700900124").replace("7700 900123", "7700 900124");
+    const m = mapInboundMessage(
+      wa({ contactsArrayMessage: { displayName: "2 contacts", contacts: [{ displayName: "Abu Ayoub", vcard: VCARD }, { displayName: "Sami Kaya", vcard: second }] } }),
+    );
+    expect(m!.type).toBe("vcard");
+    expect(m!.body.match(/BEGIN:VCARD/g)).toHaveLength(2);
+    expect(m!.body).toContain("FN:Sami Kaya");
+  });
+
+  it("a card with no vCard at all is not a message", () => {
+    expect(mapInboundMessage(wa({ contactMessage: { displayName: "Abu Ayoub" } }))).toBeNull();
+  });
+
+  it("a reply to a card carries the card as the quoted text", () => {
+    const m = mapInboundMessage(
+      wa({
+        extendedTextMessage: {
+          text: "add him for tonight",
+          contextInfo: { stanzaId: "CARD1", participant: "447700900111@s.whatsapp.net", quotedMessage: { contactMessage: { displayName: "Abu Ayoub", vcard: VCARD } } },
+        },
+      }),
+    );
+    expect(m!.quoted!.id).toBe("CARD1");
+    expect(m!.quoted!.text).toContain("FN:Abu Ayoub");
+    expect(m!.quoted!.text).toContain("waid=447700900123");
+    expect(m!.quoted!.text).not.toContain("EMAIL");
+  });
+});

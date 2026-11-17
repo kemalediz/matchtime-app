@@ -856,6 +856,46 @@ export async function placeFriendGuest(w: { linkId: string; userId: string; orgI
   });
 }
 
+/**
+ * AN ORGANISER BROUGHT A GUEST (2026-11-17): he shared the guest's contact
+ * card, or wrote his name and number, and said he is playing
+ * (`guest-card/add.ts`). Placed exactly as a pool guest is: a guest of this
+ * club for this match (`guestVia = 'pool'`, no home club, so he is not a
+ * group member and the after-game flow sees a guest), under the club's
+ * rule and the per-match lock, with his `GuestPlace` (no offer, no friend
+ * link). The organiser's own add: an organiser-pick club lets it take a
+ * free place, as any organiser's add does. No round.
+ */
+export async function placeOrganiserGuest(w: { userId: string; orgId: string; matchId: string; benchPickMode: string | null; organiserUserId: string; sourceRef: string }): Promise<PoolGuestPlaced> {
+  return placeGuestOnMatch({
+    userId: w.userId,
+    orgId: w.orgId,
+    matchId: w.matchId,
+    benchPickMode: w.benchPickMode,
+    fill: null,
+    logRef: `organiser guest ${w.sourceRef}`,
+    place: { poolOfferId: null, friendLinkId: null },
+    actorIsAdmin: true,
+    event: {
+      cause: "admin-message",
+      actorKind: "admin",
+      actorUserId: w.organiserUserId,
+      sourceRef: `guest-card:${w.sourceRef}`,
+      note: "an organiser shared the guest's contact (or name and number) and said he is playing",
+    },
+  });
+}
+
+/** The organiser's guest gives his place back by DM (2026-11-17): the same
+ *  as a pool guest's (`withdrawGuestPlace`). True when there was a place. */
+export async function withdrawOrganiserGuest(args: { userId: string; matchId: string; orgId: string; result: "withdrawn" | "late-cancel"; now: Date }): Promise<boolean> {
+  return withdrawGuestPlace({
+    ...args,
+    logRef: `organiser guest ${args.matchId}`,
+    event: { cause: "self-attendance", actorKind: "player", actorUserId: args.userId, sourceRef: `guest-card-out:${args.matchId}`, note: "the organiser's guest said OUT by DM" },
+  });
+}
+
 /** The one guest writer behind both: the membership's guest marks, the
  *  row under the club's rule and the per-match lock, the GuestPlace. */
 async function placeGuestOnMatch(w: {
@@ -867,6 +907,8 @@ async function placeGuestOnMatch(w: {
   logRef: string;
   place: { poolOfferId: string | null; friendLinkId: string | null };
   event: AttendanceEventContext;
+  /** An organiser's own add (2026-11-17). Absent: a player's yes, as before. */
+  actorIsAdmin?: boolean;
 }): Promise<PoolGuestPlaced> {
   try {
     const mem = await db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: w.orgId } }, select: { leftAt: true, ...GUEST_MARKS } });
@@ -886,7 +928,7 @@ async function placeGuestOnMatch(w: {
           update: liveHere ? {} : { role: "PLAYER", leftAt: null, guestVia: "pool", guestFromOrgId: null, guestMatchId: w.matchId },
         });
       }
-      return registerAttendance(w.userId, w.matchId, { event, actorIsAdmin: false });
+      return registerAttendance(w.userId, w.matchId, { event, actorIsAdmin: w.actorIsAdmin === true });
     };
     let result: Awaited<ReturnType<typeof registerAttendance>>;
     let roundNowFull = false;
