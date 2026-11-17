@@ -171,6 +171,7 @@ import { isBillingPaused } from "./club-billing-rules";
 import { isClubSettingUp } from "./club-setup-rules";
 import { minimumToPlay, type GameFormat } from "./min-players";
 import { isSquadShort } from "./squad-short";
+import { openSquadMinimum, placesToFill } from "./open-squad";
 import { decideBenchSuggestion, formatUpOffered, isFormatListJob, planFormatUp, playerRange } from "./flex-format-rules";
 import { flexFormatCopy } from "./i18n/flex-format";
 import { joinAdminNames } from "./seed-nudge-rules";
@@ -1393,8 +1394,16 @@ async function computeForMatch(
   // (`match-format-title.ts`, 2026-11-16): a 7-a-side activity whose game
   // was switched to 8 a side is "Football 8-a-side" in its list, chases
   // and reminders. A club's own name with no size in it is unchanged.
-  const activity = { ...m.activity, name: matchFormatTitle(m.activity.name, m.maxPlayers) };
+  //
+  // OPEN SQUAD (2026-11-17, open-squad.ts): no size at all ("Football"),
+  // no places, and the minimum is the only number. `need` below is then
+  // how many are short of the minimum, so every post that asks for
+  // players asks only while the game cannot be played, and every "full"
+  // branch is a squad at or above its minimum, which says nothing.
+  const openSquad = features.openSquad === true;
+  const activity = { ...m.activity, name: matchFormatTitle(m.activity.name, m.maxPlayers, { openSquad }) };
   const sport = activity.sport;
+  const minimum = openSquadMinimum({ minPlayers: activity.minPlayers ?? null, playersPerTeam: sport.playersPerTeam });
   /**
    * A club on "monthly" whose month MatchTime does not hold yet (no
    * SquadMonth for this match; the Vets group, 3 Nov 2026). The squad
@@ -1424,8 +1433,10 @@ async function computeForMatch(
   const bench = m.attendances
     .filter((a) => a.status === "BENCH")
     .sort((a, b) => a.position - b.position);
-  const maxPlayers = m.maxPlayers;
-  const need = Math.max(0, maxPlayers - confirmed.length);
+  /** The places. An open squad's "places" are its minimum: every chase,
+   *  roster count and ask below reads it as the number to reach. */
+  const maxPlayers = openSquad ? minimum : m.maxPlayers;
+  const need = placesToFill({ openSquad, confirmed: confirmed.length, maxPlayers: m.maxPlayers, minimum });
   /**
    * THE SQUAD IS SHORT (2026-11-04, squad-short.ts): below the game's own
    * minimum, or two full sides of its format when none is set. Every
@@ -1433,11 +1444,13 @@ async function computeForMatch(
    * offer and the chase notices to the admin channel. `need` stays the
    * open places, which the players' chases still ask to fill.
    */
-  const isShort = isSquadShort(confirmed.length, {
-    minPlayers: activity.minPlayers ?? null,
-    maxPlayers,
-    playersPerTeam: sport.playersPerTeam,
-  });
+  const isShort = openSquad
+    ? confirmed.length < minimum
+    : isSquadShort(confirmed.length, {
+        minPlayers: activity.minPlayers ?? null,
+        maxPlayers,
+        playersPerTeam: sport.playersPerTeam,
+      });
 
   // ── THE SAME SQUAD IS NOT LISTED TWICE (2026-10-06) ──────────────────
   //   Sutton FC, Tue 6 Oct: the analyze reply posted the squad at 07:28
@@ -1953,6 +1966,7 @@ async function computeForMatch(
         open: need,
         bench: bench.length,
         squadLockedToday,
+        openSquad,
       });
     }
 
@@ -2352,7 +2366,7 @@ async function computeForMatch(
       status: a.status as WeekStatus,
       position: a.position,
     }));
-    const weekList = buildWeekList({ members: monthly.members, rows, maxPlayers });
+    const weekList = buildWeekList({ members: monthly.members, rows, maxPlayers, openSquad });
     // The same renderer as every other place the list is shown, so its
     // hash matches a reply's or a member's matching paste.
     const { text, hash, nextSizePerSide } = await weekListPostText({
@@ -2366,6 +2380,8 @@ async function computeForMatch(
       paygPricePence: monthly.paygPricePence,
       organiserPicks: features.benchPickMode === "organiser",
       lang,
+      openSquad,
+      minimum,
     });
     const prefix = weekListKeyPrefix(matchId);
     const shown = await db.sentNotification.findMany({
@@ -2403,6 +2419,7 @@ async function computeForMatch(
               organiserPicks,
               compact: true,
               nextSizePerSide,
+              ...(openSquad ? { openSquad, short: need } : {}),
               lang,
             })
           : text;
@@ -2469,7 +2486,7 @@ async function computeForMatch(
     });
     const live =
       m.status === "UPCOMING" && now.getTime() < m.date.getTime() && !noMonthYet && (!monthly || monthly.seeded === true);
-    if (live && formatUpOffered({ range, organisers })) {
+    if (live && !openSquad && formatUpOffered({ range, organisers })) {
       const choseBench = bench.length >= 2 ? await loadChoseBench(db, matchId) : new Set<string>();
       const movable = bench.filter((a) => !choseBench.has(a.userId)).length;
       const decision = decideBenchSuggestion({
@@ -4143,10 +4160,15 @@ export async function requestBenchConfirmationOnDrop(
     where: { id: matchId },
     include: {
       attendances: true,
-      activity: { select: { org: { select: { benchPickMode: true, squadMode: true, featureBench: true } } } },
+      activity: { select: { org: { select: { benchPickMode: true, squadMode: true, featureBench: true, openSquad: true } } } },
     },
   });
   if (!match) return;
+
+  // An open squad (2026-11-17, open-squad.ts) has no places to open and
+  // no bench to fill them from: a drop just makes the squad smaller.
+  // Nothing is offered, to the bench or to the pay-as-you-go players.
+  if (match.activity?.org?.openSquad === true) return;
 
   // An organiser-pick club (slice 2b) opens no offer on a drop: the admins
   // pick (`organiser-pick.ts`), and only their fallback, when nobody picks

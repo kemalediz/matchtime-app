@@ -312,7 +312,13 @@ function placeRows(
  *  - a paid mark is shown as soon as it is CLAIMED (D3). Whether it is
  *    confirmed is the collector's business and is not on the list.
  */
-export function buildWeekList(args: { members: WeekMember[]; rows: WeekRow[]; maxPlayers: number }): WeekList {
+export function buildWeekList(args: {
+  members: WeekMember[];
+  rows: WeekRow[];
+  maxPlayers: number;
+  /** No squad limit (open-squad.ts): no place is ever "open". */
+  openSquad?: boolean;
+}): WeekList {
   const { members, rows, maxPlayers } = args;
   const { placed } = placeRows(members, rows, maxPlayers);
   const size = Math.max(maxPlayers, ...placed.keys());
@@ -336,7 +342,8 @@ export function buildWeekList(args: { members: WeekMember[]; rows: WeekRow[]; ma
     .map((r) => ({ userId: r.userId, name: r.name }));
 
   const confirmedCount = rows.filter((r) => r.status === "CONFIRMED").length;
-  return { slots, paidCantPlay, cantPlay, reserves, open: Math.max(0, maxPlayers - confirmedCount) };
+  const open = args.openSquad === true ? 0 : Math.max(0, maxPlayers - confirmedCount);
+  return { slots, paidCantPlay, cantPlay, reserves, open };
 }
 
 /** A regular is out this week: they dropped, or said beforehand they are away. */
@@ -831,6 +838,9 @@ export function reconcileMonthPaste(args: {
   members: WeekMember[];
   rows: WeekRow[];
   maxPlayers: number;
+  /** No squad limit (open-squad.ts): an organiser's paste adds every
+   *  guest on it; a member's, up to the per-paste cap. */
+  openSquad?: boolean;
   roster: PasteRosterMember[];
   /** 1 to 12: the month this week's match is in. */
   matchMonth: number;
@@ -917,7 +927,7 @@ export function reconcileMonthPaste(args: {
   const handled = new Set<string>();
   const senderIsClubPlayer = !!senderUserId && args.roster.some((m) => m.userId === senderUserId);
   // Guests: never more than the open places; a non-organiser at most the cap.
-  const openPlaces = Math.max(0, args.maxPlayers - rows.filter((r) => r.status === "CONFIRMED").length);
+  const openPlaces = args.openSquad === true ? Number.POSITIVE_INFINITY : Math.max(0, args.maxPlayers - rows.filter((r) => r.status === "CONFIRMED").length);
   const guestCap = senderIsAdmin ? openPlaces : Math.min(openPlaces, MAX_GUESTS_PER_PASTE);
   let guestsAdded = 0;
   let newPlayers = 0;

@@ -1382,6 +1382,8 @@ const SAMPLES: SampleArgs = {
   mwk_list_open: { open: 3, price: "£8" },
   mwk_list_open_organiser: { open: 3, price: "£8" },
   mwk_list_full: null,
+  mwk_list_open_squad: { price: "£8", short: 2 },
+  mwk_list_all_in_open: null,
   mwk_pool_group: { open: 3, when: "Mon 12 Oct, 20:00", price: "£8" },
   mwk_dm_sender_not_matched: { names: ["Gaz", "Tariq"] },
   msu_dm_join_ask: { month: "November", games: 3, price: "£22.50" },

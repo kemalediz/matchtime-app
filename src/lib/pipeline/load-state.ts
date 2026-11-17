@@ -411,6 +411,7 @@ export async function loadSquadState(
       benchPickMode: features.benchPickMode,
       listAnnouncer: features.listAnnouncer ?? "matchtime",
       momChosenBy: features.momChosenBy ?? "players",
+      openSquad: features.openSquad === true,
     },
     reclaimUserIds,
     smallerFormats,

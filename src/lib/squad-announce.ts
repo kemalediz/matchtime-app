@@ -49,7 +49,7 @@ export async function announceSquadFullIfJustFilled(
     where: { id: matchId },
     include: {
       // `org.language`: the words and the date label are the group's.
-      activity: { select: { name: true, orgId: true, org: { select: { language: true, squadMode: true } } } },
+      activity: { select: { name: true, orgId: true, org: { select: { language: true, squadMode: true, openSquad: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: { user: { select: { name: true } } },
@@ -59,6 +59,9 @@ export async function announceSquadFullIfJustFilled(
     },
   });
   if (!m) return null;
+  // An open squad (2026-11-17, open-squad.ts) is never full: no "Squad
+  // complete" post, whatever the count.
+  if (m.activity.org?.openSquad === true) return null;
   const confirmed = m.attendances.filter((a) => a.status === "CONFIRMED");
   const bench = m.attendances.filter((a) => a.status === "BENCH");
   if (confirmed.length < m.maxPlayers) return null;

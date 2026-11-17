@@ -1298,6 +1298,11 @@ export interface SquadState {
      *  the admin group's score handling only. Optional; absent means
      *  "players". */
     momChosenBy?: "players" | "organisers";
+    /** Open squad (2026-11-17, open-squad.ts): every IN takes a place,
+     *  never the bench; no format; the minimum is the only number. Read by
+     *  `applyClaim` through `canTakeFreePlace`, the rule `registerAttendance`
+     *  uses too. Optional; absent is off. */
+    openSquad?: boolean;
   };
   /**
    * RECLAIMS (slice 2b, 2026-10-01): players whose last move on this

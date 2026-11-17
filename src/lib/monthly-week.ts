@@ -44,6 +44,7 @@ import { matchFormatTitle } from "./match-format-title";
 import { loadPlayerNames } from "./player-display-name";
 import { FORMAT_UP_KEY_PREFIX, formatUpOffered, oneMoreForNextSize, playerRange } from "./flex-format-rules";
 import { organisersAnnounce } from "./list-announcer";
+import { openSquadMinimum, shortOfMinimum } from "./open-squad";
 import { londonMonthStart, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
 import {
   SEED_NOTE_PRIORITY,
@@ -285,6 +286,12 @@ export interface MonthlyWeek {
   teamsOut: boolean;
   members: WeekMember[];
   rows: WeekRow[];
+  /** No squad limit (2026-11-17, open-squad.ts): every regular is seeded,
+   *  no place is ever open or offered, and the list invites anyone else.
+   *  Optional so hand-built weeks keep their shape; absent is off. */
+  openSquad?: boolean;
+  /** The game's minimum (`openSquadMinimum`): an open squad's only number. */
+  minimum?: number;
 }
 
 /**
@@ -312,8 +319,10 @@ export async function loadMonthlyWeek(
           name: true,
           venue: true,
           dayOfWeek: true,
+          minPlayers: true,
+          sport: { select: { playersPerTeam: true } },
           org: {
-            select: { squadMode: true, monthCreditRule: true, paygPricePence: true, benchPickMode: true, language: true },
+            select: { squadMode: true, monthCreditRule: true, paygPricePence: true, benchPickMode: true, language: true, openSquad: true },
           },
         },
       },
@@ -326,6 +335,7 @@ export async function loadMonthlyWeek(
   // A closed month (slice 6) is frozen: nothing in the weekly flow reads
   // or writes it as a running one.
   if (!month || month.closed) return null;
+  const openSquad = match.activity.org.openSquad === true;
   return {
     matchId: match.id,
     orgId: match.activity.orgId,
@@ -336,8 +346,11 @@ export async function loadMonthlyWeek(
     seeded: match.rollingSeededAt != null && match.rollingSeededAt.getTime() >= month.createdAt.getTime(),
     maxPlayers: match.maxPlayers,
     // The size this game is played at, not the activity's usual one
-    // (`match-format-title.ts`): the list after "switch to 8side".
-    activityName: matchFormatTitle(match.activity.name, match.maxPlayers),
+    // (`match-format-title.ts`): the list after "switch to 8side". An open
+    // squad has no size at all ("Football").
+    activityName: matchFormatTitle(match.activity.name, match.maxPlayers, { openSquad }),
+    openSquad,
+    minimum: openSquadMinimum({ minPlayers: match.activity.minPlayers, playersPerTeam: match.activity.sport?.playersPerTeam ?? match.maxPlayers / 2 }),
     creditRule: normaliseCreditRule(match.activity.org.monthCreditRule),
     paygPricePence: match.activity.org.paygPricePence,
     pickMode: match.activity.org.benchPickMode,
@@ -433,7 +446,8 @@ export async function seedMonthlySquad(args: {
     const { write, markMonthly, promote, bump } = decideMonthlySeed({
       members,
       targetRows: targetRows.map((r) => ({ ...r, choseBench: choseBench.has(r.userId) })),
-      maxPlayers: week.maxPlayers,
+      // An open squad has no cap: every regular is put in, nobody is bumped.
+      maxPlayers: week.openSquad ? Number.POSITIVE_INFINITY : week.maxPlayers,
       protectedUserIds: organisers,
     });
     const event = (note: string) => ({
@@ -894,6 +908,8 @@ export async function ensureOpenPlaceOffers(matchId: string, now: Date = new Dat
   if (!week || !week.seeded || !(LIVE as readonly string[]).includes(week.matchStatus)) return 0;
   if (week.matchDate.getTime() <= now.getTime()) return 0;
   if (week.pickMode === "organiser") return 0;
+  // An open squad (open-squad.ts) has no places to offer: anyone says IN.
+  if (week.openSquad) return 0;
   // A first-come club fills from its bench first (2026-11-17,
   // `bench-fill.ts`), and only somebody waiting for a place (not on the
   // bench by choice) counts as the bench here: with nobody like that, the
@@ -1177,6 +1193,10 @@ export async function weekListPostText(p: {
   paygPricePence: number | null;
   organiserPicks: boolean;
   lang: string | null;
+  /** No squad limit (open-squad.ts): the invitation line, never the next
+   *  size, and how many more while below the minimum. */
+  openSquad?: boolean;
+  minimum?: number;
 }): Promise<{ text: string; hash: string; nextSizePerSide: number | null }> {
   const ids = [
     ...p.list.slots.map((x) => x.userId).filter((u): u is string => u !== null),
@@ -1194,7 +1214,9 @@ export async function weekListPostText(p: {
     cantPlay: p.list.cantPlay.map(named),
     reserves: p.list.reserves.map(named),
   };
-  const nextSizePerSide = await loadNextSizePerSide({ matchId: p.matchId, seeded: p.seeded, now: p.now ?? new Date(), list: p.list });
+  const openSquad = p.openSquad === true;
+  const nextSizePerSide = openSquad ? null : await loadNextSizePerSide({ matchId: p.matchId, seeded: p.seeded, now: p.now ?? new Date(), list: p.list });
+  const confirmed = p.list.slots.filter((x) => x.userId !== null).length;
   const text = buildWeekListPost({
     list,
     matchDate: p.matchDate,
@@ -1202,6 +1224,7 @@ export async function weekListPostText(p: {
     paygPricePence: p.paygPricePence,
     organiserPicks: p.organiserPicks,
     nextSizePerSide,
+    ...(openSquad ? { openSquad, short: shortOfMinimum(confirmed, p.minimum ?? 0) } : {}),
     lang: p.lang,
   });
   return { text, hash: weekListHash(text), nextSizePerSide };
@@ -1279,12 +1302,14 @@ export function renderWeekList(week: MonthlyWeek): Promise<{ text: string; hash:
     orgId: week.orgId,
     matchId: week.matchId,
     seeded: week.seeded,
-    list: buildWeekList({ members: week.members, rows: week.rows, maxPlayers: week.maxPlayers }),
+    list: buildWeekList({ members: week.members, rows: week.rows, maxPlayers: week.maxPlayers, openSquad: week.openSquad }),
     matchDate: week.matchDate,
     title: week.activityName,
     paygPricePence: week.paygPricePence,
     organiserPicks: week.pickMode === "organiser",
     lang: week.language,
+    openSquad: week.openSquad,
+    minimum: week.minimum,
   });
 }
 

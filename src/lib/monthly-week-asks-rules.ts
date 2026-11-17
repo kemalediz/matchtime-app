@@ -25,8 +25,24 @@
  */
 import type { WeekMember, WeekRow } from "./monthly-week-rules";
 
-export function monthlyPlacesOpen(w: { members: WeekMember[]; rows: WeekRow[]; maxPlayers: number; seeded: boolean }): number {
+export function monthlyPlacesOpen(w: {
+  members: WeekMember[];
+  rows: WeekRow[];
+  maxPlayers: number;
+  seeded: boolean;
+  /** No squad limit (open-squad.ts): an ask fills only the shortfall
+   *  below the game's minimum, counting the regulars still to be put in. */
+  openSquad?: boolean;
+  minimum?: number;
+}): number {
   const confirmed = w.rows.filter((r) => r.status === "CONFIRMED").length;
+  if (w.openSquad === true) {
+    const hasRow = new Set(w.rows.map((r) => r.userId));
+    const expected = w.seeded
+      ? 0
+      : w.members.filter((m) => !m.left && !hasRow.has(m.userId) && (m.kind === "regular" ? !m.absent : m.paygDated)).length;
+    return Math.max(0, (w.minimum ?? 0) - confirmed - expected);
+  }
   if (w.seeded) return Math.max(0, w.maxPlayers - confirmed);
   const hasRow = new Set(w.rows.map((r) => r.userId));
   const expected = w.members.filter(

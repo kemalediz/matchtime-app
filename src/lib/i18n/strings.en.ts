@@ -4896,6 +4896,14 @@ export const en = {
     `${p.open} ${p.open === 1 ? "place" : "places"} open${p.price ? `, ${p.price}` : ""}. Say *IN* to go on the bench, and the organisers will pick who plays.`,
   /** No place is free. */
   mwk_list_full: "The squad is full.",
+  /** OPEN SQUAD (2026-11-17, open-squad.ts): no limit, so no places open.
+   *  In place of the places line: anyone else is asked to say IN, with the
+   *  PAYG price when set; below the game's minimum, how many more it needs
+   *  first. `short` is 0 at or above the minimum. */
+  mwk_list_open_squad: (p: { price: string | null; short: number }): string =>
+    `${p.short > 0 ? `${p.short} more needed to play. ` : ""}Anyone else, say *IN* to play${p.price ? `, ${p.price}` : ""}.`,
+  /** Under an open squad's regulars: nobody's place "opens up". */
+  mwk_list_all_in_open: "You're all in, no need to say anything. Can't make it? Say *Out*.",
   /** A place opened and nobody is waiting: one line in the group. */
   mwk_pool_group: (p: { open: number; when: string; price: string | null }): string =>
     `🎟 ${p.open} ${p.open === 1 ? "place" : "places"} open for *${p.when}*${p.price ? `, ${p.price} PAYG` : ""}. ` +

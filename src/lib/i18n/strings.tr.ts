@@ -3504,6 +3504,9 @@ export const tr: Strings = {
   mwk_list_open_organiser: (p) =>
     `${p.open} yer boş${p.price ? `, ${p.price}` : ""}. Yedeğe girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.`,
   mwk_list_full: "Kadro tam.",
+  mwk_list_open_squad: (p) =>
+    `${p.short > 0 ? `Oynamak için ${p.short} kişi daha lazım. ` : ""}Başka gelmek isteyen *VARIM* yazsın${p.price ? `, ${p.price}` : ""}.`,
+  mwk_list_all_in_open: "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın.",
   mwk_pool_group: (p) => `🎟 *${p.when}* maçında ${p.open} yer açık${p.price ? `, maç başı ${p.price} (PAYG)` : ""}. İlk *VARIM* yazan alır.`,
   mwk_dm_sender_not_matched: (p) =>
     `📋 Yapıştırdığın listedeki ${p.names.join(", ")} adını bir oyuncuyla eşleştiremedim, bu yüzden kimseyi eklemedim. ` +

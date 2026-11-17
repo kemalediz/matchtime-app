@@ -2824,7 +2824,9 @@ export function decide(input: EngineInput): EngineResult {
         // never model-authored so they cannot be wrong; THIS one is
         // model-authored, so a figure that cannot be true is refused and
         // said out loud rather than quietly clamped and then announced.
-        if (count > state.maxPlayers) {
+        // An open squad has no format to cap it: the squad as it stands.
+        const creditCap = state.features.openSquad ? Math.max(state.maxPlayers, confirmedCount(w)) : state.maxPlayers;
+        if (count > creditCap) {
           degrade(
             `payment credit for ${count} players exceeds the format's ${state.maxPlayers}; refusing`,
           );
@@ -3398,7 +3400,9 @@ export function decide(input: EngineInput): EngineResult {
     confirmedBefore >= state.maxPlayers &&
     confirmedCount(w) < state.maxPlayers &&
     vacated.length > 0 &&
-    !organiserPickQuiet;
+    !organiserPickQuiet &&
+    // An open squad has no places to open (open-squad.ts).
+    state.features.openSquad !== true;
 
   // ═══════════════════════════════════════════════════════════════════
   // …AND A FOURTH ARM, IN FRONT OF ALL THREE (2026-09-15, same night)
@@ -3825,7 +3829,10 @@ function applyClaim(args: {
   // sound when the squad is full. Treating it as explicit regenerates
   // the 2026-08-31 incident: a bench row rendered beside four empty
   // slots.
-  const explicitBench = polarity === "bench" && !target.claim.contingent;
+  // OPEN SQUAD (2026-11-17, open-squad.ts): there is no bench, so a bench
+  // request is an IN like any other, and every IN takes a place.
+  const openSquad = state.features.openSquad === true;
+  const explicitBench = polarity === "bench" && !target.claim.contingent && !openSquad;
   const confirmed = confirmedCount(w);
   // WHO MAY TAKE A FREE PLACE (slice 2b): the one shared rule. For a
   // first-come club (every club until it chooses otherwise, Sutton FC
@@ -3838,6 +3845,7 @@ function applyClaim(args: {
     actorIsAdmin: args.actorIsAdmin === true,
     isReclaim: existing?.status === "DROPPED" && (state.reclaimUserIds ?? []).includes(userId),
     openBenchOffer: w.offers.length > 0,
+    openSquad,
   });
 
   if (existing && (existing.status === "CONFIRMED" || existing.status === "BENCH")) {

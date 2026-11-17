@@ -479,6 +479,20 @@ model Organisation {
   /// place to the whole waiting list, first to say IN) or "leave-empty".
   benchPickFallback String @default("bench-offer")
 
+  /// ─── Open squad (2026-11-17, the Vets) ────────────────────────────
+  /// "The main squad will always expand or shrink without any limits and
+  /// a bench, as the pitch is quite big to allow anyone." When true:
+  /// every IN is in, whatever the count (never the bench, never "full");
+  /// no format (no "7-a-side" in any post, no switching sizes); the teams
+  /// are whoever is in, split into two even sides; and the only number is
+  /// the game's minimum (`Activity.minPlayers`, else two full sides of the
+  /// sport's format), below which MatchTime chases and warns. The places
+  /// (`Match.maxPlayers`, `Activity.maxPlayers`) are left as they are and
+  /// simply not read as a cap, so switching this off falls back to the
+  /// activity's own format. Default false: every other club is unchanged.
+  /// Read through `OrgFeatures.openSquad`; rules in src/lib/open-squad.ts.
+  openSquad         Boolean @default(false)
+
   /// ─── Club fee billing (2026-10-01, slice B1) ──────────────────────
   /// Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 3 and 4.
   /// "exempt" | "trial" | "grace" | "subscribed" | "past_due" | "paused".

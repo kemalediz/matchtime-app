@@ -33,8 +33,17 @@ function perSideOf(maxPlayers: number | null | undefined): number | null {
  * The game's name for a post: `activityName` with the size in it, if
  * any, made the size this match is played at.
  */
-export function matchFormatTitle(activityName: string, maxPlayers: number | null | undefined): string {
+export function matchFormatTitle(
+  activityName: string,
+  maxPlayers: number | null | undefined,
+  /** An OPEN SQUAD (2026-11-17, open-squad.ts) has no format at all: the
+   *  size is taken out of the name ("Football 7-a-side" is "Football",
+   *  "7'ye 7 futbol" is "futbol"). A name that is nothing but a size is
+   *  kept rather than emptied. */
+  opts: { openSquad?: boolean } = {},
+): string {
   const name = typeof activityName === "string" ? activityName : "";
+  if (opts.openSquad === true) return nameWithoutSize(name);
   const perSide = perSideOf(maxPlayers);
   if (perSide === null) return name;
 
@@ -49,4 +58,25 @@ export function matchFormatTitle(activityName: string, maxPlayers: number | null
     return name.slice(0, en.index) + String(perSide) + en[2] + name.slice(en.index + en[0].length);
   }
   return name;
+}
+
+/** Every size in the name, either language, wherever it sits. */
+const EN_SIZE_ALL = new RegExp(EN_SIZE.source, "gi");
+const TR_SIZE_ALL = new RegExp(TR_SIZE.source, "giu");
+
+/**
+ * The name with its size taken out, and what is left tidied: brackets
+ * that held only the size, a separator left dangling, doubled spaces.
+ * This reads MatchTime's own data (the activity's name), never a
+ * player's words.
+ */
+function nameWithoutSize(name: string): string {
+  const stripped = name
+    .replace(TR_SIZE_ALL, (m: string, a: string, b: string) => (a === b ? " " : m))
+    .replace(EN_SIZE_ALL, " ")
+    .replace(/\(\s*\)|\[\s*\]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,;:.\-|/]+|[\s,;:.\-|/]+$/g, "")
+    .trim();
+  return stripped.length > 0 ? stripped : name;
 }

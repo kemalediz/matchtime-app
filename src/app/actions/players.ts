@@ -1119,12 +1119,16 @@ export async function addPlayerToMatch(
       date: true,
       status: true,
       activity: {
-        select: { name: true, orgId: true, matchDurationMins: true, sport: { select: { mvpLabel: true } } },
+        select: { name: true, orgId: true, matchDurationMins: true, sport: { select: { mvpLabel: true } }, org: { select: { openSquad: true } } },
       },
     },
   });
   if (!match) return { ok: false, error: "Match not found" };
   const orgId = match.activity.orgId;
+  // OPEN SQUAD (2026-11-17, open-squad.ts): no limit and no bench, so an
+  // add from this page is always to the squad.
+  const openSquad = match.activity.org?.openSquad === true;
+  if (openSquad) status = "CONFIRMED";
   await requireOrgAdmin(session.user.id, orgId);
   const { s, refusal } = await playerEditContext(session.user.id, orgId);
   if (refusal) return { ok: false, error: refusal.error };
@@ -1147,7 +1151,7 @@ export async function addPlayerToMatch(
   // and under the match's squad lock, so the count cannot race a fill.
   await db.$transaction(async (tx) => {
     if (upcoming) await lockTeamSlots(tx, matchId);
-    if (status === "CONFIRMED" && upcoming && priorRow?.status !== "CONFIRMED") {
+    if (status === "CONFIRMED" && upcoming && !openSquad && priorRow?.status !== "CONFIRMED") {
       const [confirmedNow, cap] = await Promise.all([
         tx.attendance.count({ where: { matchId, status: "CONFIRMED" } }),
         tx.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true } }),
