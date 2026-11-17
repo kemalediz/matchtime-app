@@ -1098,8 +1098,13 @@ export interface SquadState {
    *  null = no match to register anyone for, or registration is blocked
    *  because a previous match is still in flight. */
   matchId: string | null;
-  /** Format TOTAL across both teams (7-a-side → 14). Never per-team. */
+  /** Format TOTAL across both teams (7-a-side → 14). Never per-team. For
+   *  an OPEN SQUAD (open-squad.ts) there are no places: it is the game's
+   *  minimum, or the count when above it (load-state.ts). */
   maxPlayers: number;
+  /** An open squad's minimum to play (`openSquadMinimum`), for the answer
+   *  context. Absent for every other club. */
+  openSquadMinimum?: number;
   /** Pre-formatted for the composer, so it needs no clock and no
    *  timezone library: "Tue 21:30". */
   kickoffLabel: string;

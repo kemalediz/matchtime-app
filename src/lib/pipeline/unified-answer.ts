@@ -565,13 +565,26 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
   } else {
     const confirmed = namesByStatus(state, "CONFIRMED", fallback);
     const bench = namesByStatus(state, "BENCH", fallback);
-    const perSide = state.maxPlayers % 2 === 0 ? `, ${state.maxPlayers / 2} a side` : "";
-    L.push(`UPCOMING MATCH: ${state.matchLabel ?? state.kickoffLabel}${state.venue.trim() ? ` at ${state.venue.trim()}` : ""}, ${state.maxPlayers} players${perSide}`);
+    // No squad limit (2026-11-17, open-squad.ts): no places, no number a
+    // side, no bench; the fewest to play is the only number.
+    const openSquad = state.features.openSquad === true;
+    const where = `${state.matchLabel ?? state.kickoffLabel}${state.venue.trim() ? ` at ${state.venue.trim()}` : ""}`;
+    if (openSquad) {
+      L.push(`UPCOMING MATCH: ${where}. No squad limit at this club: everyone who says IN plays, there is no bench and no number a side, and the teams are whoever is in, split into two even sides.`);
+    } else {
+      const perSide = state.maxPlayers % 2 === 0 ? `, ${state.maxPlayers / 2} a side` : "";
+      L.push(`UPCOMING MATCH: ${where}, ${state.maxPlayers} players${perSide}`);
+    }
     if (state.cancelledMatch) L.push(`- This week's game on ${state.cancelledMatch.dayLabel} is CANCELLED; this is the next one.`);
     if (input.monthNotStarted) {
       L.push("- This club plays a monthly squad, and this month's list has not started yet: the squad comes from the month's list, so the count below is not the squad yet.");
     }
-    L.push(`- In the squad: ${confirmed.length} of ${state.maxPlayers}. Places left: ${Math.max(0, state.maxPlayers - confirmed.length)}. On the bench: ${bench.length}.`);
+    if (openSquad) {
+      const min = state.openSquadMinimum ?? state.maxPlayers;
+      L.push(`- In the squad: ${confirmed.length}. Fewest to play: ${min}. Players still needed to play: ${Math.max(0, min - confirmed.length)}.`);
+    } else {
+      L.push(`- In the squad: ${confirmed.length} of ${state.maxPlayers}. Places left: ${Math.max(0, state.maxPlayers - confirmed.length)}. On the bench: ${bench.length}.`);
+    }
     const hideNames = audience === "players" && state.features.listAnnouncer === "organisers";
     if (hideNames) {
       // Said as what MatchTime does not know, not only as what it may not
@@ -599,7 +612,7 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
           const r = rated.get(row.userId);
           return `  ${i + 1}. ${names[i]}${r ? ` (club rating ${d1(r.avg)}, no. ${r.rank})` : ""}`;
         });
-      L.push(`SQUAD (${confirmed.length} of ${state.maxPlayers}), in the order they joined, each with their place:`);
+      L.push(`SQUAD (${confirmed.length}${openSquad ? "" : ` of ${state.maxPlayers}`}), in the order they joined, each with their place:`);
       L.push(...(confirmed.length ? withRating("CONFIRMED", confirmed) : ["  nobody yet"]));
       L.push(`BENCH (${bench.length}), in order, each with their place:`);
       L.push(...(bench.length ? withRating("BENCH", bench) : ["  nobody"]));

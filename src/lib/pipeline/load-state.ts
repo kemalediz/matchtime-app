@@ -344,22 +344,24 @@ export async function loadSquadState(
   // shown is then the next one, and the post says so first. From the rows
   // already loaded (30 days, every status); the window is the helper's.
   const cancelled = cancelledMatchToMention(matches, match ? { id: match.id, date: match.date } : null, now);
+  // AN OPEN SQUAD (2026-11-17, open-squad.ts) has no places. What the
+  // composer and the answers count to is the game's minimum, or the count
+  // when it is above it, so "need N more" means "to play", nothing is ever
+  // "full", and no count reads as more than the game can hold. The engine
+  // never caps an open squad (`canTakeFreePlace`).
+  const openMinimum =
+    match && features.openSquad
+      ? openSquadMinimum({ minPlayers: match.activity.minPlayers ?? null, playersPerTeam: match.activity.sport.playersPerTeam })
+      : null;
 
   return {
     matchId: match?.id ?? null,
-    // AN OPEN SQUAD (2026-11-17, open-squad.ts) has no places. What the
-    // composer and the answers count to is the game's minimum, or the
-    // count when it is above it, so "need N more" means "to play", nothing
-    // is ever "full", and no count reads as more than the game can hold.
-    // The engine never caps an open squad (`canTakeFreePlace`).
     maxPlayers: match
-      ? features.openSquad
-        ? Math.max(
-            openSquadMinimum({ minPlayers: match.activity.minPlayers ?? null, playersPerTeam: match.activity.sport.playersPerTeam }),
-            rows.filter((r) => r.status === "CONFIRMED").length,
-          )
+      ? openMinimum !== null
+        ? Math.max(openMinimum, rows.filter((r) => r.status === "CONFIRMED").length)
         : match.maxPlayers
       : 0,
+    ...(openMinimum !== null ? { openSquadMinimum: openMinimum } : {}),
     kickoffLabel: match ? kickoffLabel(lang, match.date) : t(lang).no_match_label,
     matchLabel: match ? dayCommaTimeLabel(lang, match.date) : null,
     matchDayName: match ? weekdayLabel(lang, match.date) : null,

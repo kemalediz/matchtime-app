@@ -59,7 +59,7 @@ describe("help teams, no squad limit", () => {
 
 describe("helpFeaturesFrom", () => {
   it("carries the club's open squad; absent is off", () => {
-    const f = { ...BASE, listAnnouncer: null, benchPickMode: null, squadMode: "monthly" };
+    const f = { ...BASE, paymentCollection: false, listAnnouncer: null, benchPickMode: null, squadMode: "monthly" };
     expect(helpFeaturesFrom({ ...f, openSquad: true }).openSquad).toBe(true);
     expect(helpFeaturesFrom(f).openSquad).toBeUndefined();
   });
