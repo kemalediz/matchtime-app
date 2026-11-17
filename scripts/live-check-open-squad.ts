@@ -35,10 +35,11 @@
  *   node --env-file=.env ./node_modules/.bin/tsx scripts/live-check-open-squad.ts
  *   ONLY=<text> ...   the cases whose text contains it
  *
- * Estimated: about 150 model calls (a router and an extractor call per
- * case, one for each answer case), roughly $1.20 to $1.50 on the dev key,
- * from the per-call cost of the other admin checks' caps; not measured
- * here. Stops at MAX_USD = 2.
+ * Estimated: 55 cases, 108 model calls (53 router calls and 55 admin
+ * extractor calls; the 2 answer cases skip the router), about $0.25 to
+ * $0.50 on the dev key: Haiku 5.5 at $0.10 and $0.50 per million tokens,
+ * as `live-check-multi-instruction.ts` states it, with the admin prompt
+ * cached after the first call. Not measured here. Stops at MAX_USD = 2.
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). No database,
  * sends nothing. Prints each case PASS or FAIL with what came back, then
