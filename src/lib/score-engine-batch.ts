@@ -133,7 +133,7 @@ import { extractForRouteTraced } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import { SCORE_ENGINE_ROUTES, stepSevenOwnsRoute } from "./pipeline/route-flags";
-import { gameLinesFor, normaliseOwnedFacts, nameTheQuestions, learnFromResults } from "./score-side-names";
+import { gameLinesFor, normaliseOwnedFacts, nameTheQuestions, rememberSideNames } from "./score-side-names";
 import type {
   EngineInput,
   EngineMessage,
@@ -577,7 +577,9 @@ export async function runScoreBatch(args: {
         first: a.first,
         second: a.second,
         askerUserId: a.askerUserId,
-        ...(named ? { name: named.name, ...(named.other ? { other: named.other } : {}) } : {}),
+        ...(named
+          ? { name: named.name, ...(named.other ? { other: named.other } : {}), ...(named.noStore ? { noStore: named.noStore } : {}) }
+          : {}),
       });
     } catch (err) {
       degradations.push(
@@ -590,9 +592,10 @@ export async function runScoreBatch(args: {
 
   // ── Stage 4: composition, AFTER the apply ──────────────────────────
   // What a recorded result teaches about the names MatchTime asked about
-  // (bibs had the 9, Red got the 9: bibs is Red), remembered for the club.
-  // Shown in the acknowledgement too ("Red (bibs)").
-  await learnFromResults({ state, applied, result, deps, degradations, prefix: SCORE_APPLY_DEGRADED_PREFIX });
+  // (bibs had the 9, Red got the 9: bibs is Red), remembered for THIS game
+  // and shown in the acknowledgement ("Red (bibs)"); a corrected result
+  // rewrites or deletes them (review of #620).
+  await rememberSideNames({ state, applied, result, deps, degradations, prefix: SCORE_APPLY_DEGRADED_PREFIX });
 
   const composed = compose(result);
   const utteranceByMessageId = new Map<string, string[]>();

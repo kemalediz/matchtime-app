@@ -633,11 +633,14 @@ export const en = {
   // an example that named Yellow as the winner (review of PR #214).
   score_ask_team: (p: { first: number; second: number; redLabel: string; yellowLabel: string }): string =>
     `${p.first} - ${p.second}: which team won? Reply with the winning team: ${p.redLabel} or ${p.yellowLabel}.`,
-  /** The winning side's name means no side yet ("bibs 9, no bibs 4" before
-   *  the club's names are known, 2026-11-17, `score-sides.ts`). Asked once;
-   *  the answer records the result and is remembered for the club. */
-  score_ask_side: (p: { first: number; second: number; name: string; redLabel: string; yellowLabel: string }): string =>
-    `${p.first} - ${p.second}, thanks. Which team was "${p.name}": ${p.redLabel} or ${p.yellowLabel}? I'll remember it for next time.`,
+  /** The winning side's name means no side in THIS game yet ("bibs 9, no
+   *  bibs 4", 2026-11-17, `score-sides.ts`). Asked once per game; the answer
+   *  records the result. `lastLabel`: the side that name was in an earlier
+   *  game, a hint only (review of #620: which side wears the bibs changes). */
+  score_ask_side: (p: { first: number; second: number; name: string; redLabel: string; yellowLabel: string; lastLabel?: string }): string =>
+    p.lastLabel
+      ? `${p.first} - ${p.second}, thanks. Which team was "${p.name}" this time: ${p.redLabel} or ${p.yellowLabel}? Last time it was ${p.lastLabel}.`
+      : `${p.first} - ${p.second}, thanks. Which team was "${p.name}": ${p.redLabel} or ${p.yellowLabel}?`,
   /** A correction from somebody who may not make one, or too late. */
   score_already_recorded: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
     `That match is already recorded: ${resultEn(p)}. An admin can change it on the match page.`,
@@ -1529,7 +1532,7 @@ export const en = {
         `Want two players kept apart, or together? Say so when you ask for the teams (e.g. _"@Match Time generate the teams, keep Sam and Alex apart"_), or once they're out (e.g. _"@Match Time keep Sam and Alex apart"_) and I'll make the fewest swaps. If I can't do it, I'll tell you why.\n` +
         `Tired, ill, injured or flying? Tag me and say so (e.g. _"@Match Time I'm tired, go easy on my rating for this match"_). I'll tell you the adjustment I'll make, for that match only, and you can change it (e.g. _"@Match Time make it -1"_).\n` +
         `One short of two full sides? If the club has set the fewest it plays with, I make the teams from that number up, for example 7 against 6, balanced so the side a player down gets the stronger players.\n` +
-        `After the game, tag me with the score in your own words, whatever you call the teams (e.g. _"@Match Time bibs 9, no bibs 4"_ or _"@Match Time Dan's team won 5-3"_). If I can't tell which team you mean, I ask once and remember it for next time.\n` +
+        `After the game, tag me with the score in your own words, whatever you call the teams (e.g. _"@Match Time bibs 9, no bibs 4"_ or _"@Match Time Dan's team won 5-3"_). If I can't tell which team you mean, I ask once for that game and say what it was last time. To skip the question, an admin can name the teams in the settings (for example Bibs and No bibs).\n` +
         `Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.`,
       mom:
         `🏆 *Man of the Match: how it works*\n` +

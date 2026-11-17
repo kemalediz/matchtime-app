@@ -62,7 +62,8 @@ const NOW = new Date();
 const WHEN = "Mon 16 Nov 20:15";
 const EN: [string, string] = ["Red", "Yellow"];
 const BIBS: SideNames = { red: ["bibs"], yellow: ["no bibs"] };
-const ASK_BIBS = `9 - 4, thanks. Which team was "bibs": Red or Yellow? I'll remember it for next time.`;
+const ASK_BIBS = `9 - 4, thanks. Which team was "bibs": Red or Yellow?`;
+const ASK_BIBS_HINT = `9 - 4, thanks. Which team was "bibs" this time: Red or Yellow? Last time it was Red.`;
 
 const results: Array<Record<string, unknown>> = [];
 const tally: Record<string, [number, number]> = {};
@@ -109,6 +110,10 @@ const ROUTER: RouterCase[] = [
   { id: "R20", text: "@Match Time what was the score last week?", want: ["question"] },
   { id: "R21", text: "bibs 9 no bibs 4", want: ["score"], hq: true },
   { id: "R22", text: "5-3 to Yellows", want: ["score"], line: "off" },
+  // Review of #620, 3: untagged banter with numbers inside the waiting window.
+  { id: "RX1", text: "Red 2 Yellow 1 lol", want: ["none"] },
+  { id: "RX2", text: "9pm next week?", want: ["none"] },
+  { id: "RX3", text: "lost 3-0 on FIFA", want: ["none"] },
   { id: "R23", text: "great game lads", want: ["none"], line: "off" },
 ];
 
@@ -173,7 +178,7 @@ function playedState(over: Partial<NonNullable<SquadState["completedMatch"]>> = 
   return s;
 }
 
-type BatchWant = { red: number; yellow: number } | { ask: string } | "ask";
+type BatchWant = { red: number; yellow: number } | { ask: string } | "ask" | "report";
 interface BatchCase {
   id: string;
   text: string;
@@ -194,9 +199,24 @@ const BATCH: BatchCase[] = [
   { id: "B2", text: "@Match Time red", state: pendingBibs, lastBotPost: ASK_BIBS, want: { red: 9, yellow: 4 }, learns: BIBS },
   { id: "B3", text: "@Match Time bibs were red", state: pendingBibs, lastBotPost: ASK_BIBS, want: { red: 9, yellow: 4 }, learns: BIBS },
   { id: "B4", text: "@Match Time yellow", state: pendingBibs, lastBotPost: ASK_BIBS, want: { red: 4, yellow: 9 } },
+  // This game's own names (answered earlier tonight) record; an earlier
+  // game's are a hint only, so the next week asks (review of #620).
   { id: "B5", text: "@Match Time bibs 9, no bibs 4", state: () => playedState({ sideNames: BIBS }), want: { red: 9, yellow: 4 } },
   { id: "B6", text: "bibs 9, no bibs 4", tagged: false, state: () => playedState({ sideNames: BIBS }), want: { red: 9, yellow: 4 } },
-  { id: "B7", text: "@Match Time non bibs won 6-2", state: () => playedState({ sideNames: BIBS }), want: { red: 2, yellow: 6 } },
+  { id: "B7", text: "@Match Time non bibs won 6-2", state: () => playedState({ sideNames: BIBS }), want: { ask: "non bibs" } },
+  { id: "B5n", text: "@Match Time bibs 9, no bibs 4", state: () => playedState({ earlierSideNames: BIBS }), want: { ask: "bibs" } },
+  { id: "B6n", text: "bibs 9, no bibs 4", tagged: false, state: () => playedState({ earlierSideNames: BIBS }), want: { ask: "bibs" } },
+  {
+    id: "B19",
+    text: "@Match Time same",
+    state: () => playedState({
+      earlierSideNames: BIBS,
+      pendingScore: { first: 9, second: 4, askedAt: new Date(NOW.getTime() - 60_000).toISOString(), askerUserId: "u-ava", name: "bibs", other: "no bibs" },
+    }),
+    lastBotPost: ASK_BIBS_HINT,
+    want: { red: 9, yellow: 4 },
+    learns: BIBS,
+  },
   { id: "B8", text: "@Match Time no bibs 9,  bibs 4", state: () => playedState(), want: { ask: "no bibs" } },
   { id: "B9", text: "@Match Time Dan's team won 5-3", from: "cal", state: () => playedState(), want: { red: 3, yellow: 5 } },
   { id: "B10", text: "9-4 to Dan's team", tagged: false, state: () => playedState(), want: { red: 4, yellow: 9 } },
@@ -206,6 +226,23 @@ const BATCH: BatchCase[] = [
   { id: "B14", text: "@Match Time bibs won 7-2", state: () => playedState(), want: { ask: "bibs" } },
   { id: "B15", text: "@Match Time yellows won 5-3", state: () => playedState({}, ["Lions", "Tigers"]), want: { ask: "yellows" } },
   { id: "B16", text: "@Match Time yelekliler 9 yeleksizler 4", state: () => playedState({}, ["Kırmızı", "Sarı"], "tr"), want: { ask: "yelekliler" } },
+  // Review of #620, 2: a captain on both sides, or in neither line-up: ask.
+  {
+    id: "B17",
+    text: "@Match Time Dan's team won 5-3",
+    state: () => {
+      const st = playedState();
+      st.roster = st.roster.map((m) => (m.userId === "u-ava" ? { ...m, name: "Dan Hale" } : m));
+      return st;
+    },
+    want: { ask: "dan's team" },
+  },
+  { id: "B18", text: "@Match Time Zed's team won 5-3", state: () => playedState(), want: { ask: "zed's team" } },
+  // Review of #620, 3: untagged banter with numbers, from a participant,
+  // inside the waiting window, as if the router had sent it to score.
+  { id: "X1", text: "Red 2 Yellow 1 lol", from: "cal", tagged: false, state: () => playedState(), want: "report" },
+  { id: "X2", text: "9pm next week?", from: "cal", tagged: false, state: () => playedState(), want: "report" },
+  { id: "X3", text: "lost 3-0 on FIFA", from: "cal", tagged: false, state: () => playedState(), want: "report" },
 ];
 
 async function runBatch(c: BatchCase) {
@@ -251,11 +288,19 @@ async function runBatch(c: BatchCase) {
         : "asked which team won"
       : "nothing";
   let pass: boolean;
-  if (c.want === "ask") pass = !recorded[0] && !!asked[0] && !asked[0].name;
+  if (c.want === "report") pass = true;
+  else if (c.want === "ask") pass = !recorded[0] && !!asked[0] && !asked[0].name;
   else if ("ask" in c.want) pass = !recorded[0] && asked[0]?.name?.toLowerCase() === c.want.ask;
   else pass = recorded[0]?.red === c.want.red && recorded[0]?.yellow === c.want.yellow;
   if (c.learns) pass = pass && JSON.stringify(learned[0]) === JSON.stringify(c.learns);
-  const wanted = c.want === "ask" ? "asked which team won" : "ask" in c.want ? `asked about "${c.want.ask}"` : `Red ${c.want.red}, Yellow ${c.want.yellow}`;
+  const wanted =
+    c.want === "report"
+      ? "reported, not graded"
+      : c.want === "ask"
+        ? "asked which team won"
+        : "ask" in c.want
+          ? `asked about "${c.want.ask}"`
+          : `Red ${c.want.red}, Yellow ${c.want.yellow}`;
   record("batch", c.id, pass, `${JSON.stringify(c.text).padEnd(48)} -> ${got} (want ${wanted})${learned[0] ? `; learned ${JSON.stringify(learned[0])}` : ""}\n        reply: ${out?.reply ?? "(none)"}`, {
     got,
     reply: out?.reply ?? null,

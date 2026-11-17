@@ -25,18 +25,28 @@
  *     two sides by MatchTime's names, what this club also calls each, and
  *     who played on each (so "Dan's team" is the side Dan was on);
  *   - `normaliseScoreFacts`: before the engine reads the facts, a team
- *     reference the club's stored names place, or the extractor placed
- *     from THE GAME (`teamSides`), is rewritten as MatchTime's own name
- *     for that side. The engine (`score-teams.ts`) then resolves it as it
- *     always has, and is not touched;
+ *     reference CODE can place is rewritten as MatchTime's own name for
+ *     that side. The engine (`score-teams.ts`) then resolves it as it
+ *     always has, and is not touched. Code places a name from three
+ *     things only (review of #620): the club's or the match's own team
+ *     names (`score-teams.ts`, first), THIS match's own stored names, and
+ *     a player's team ("Dan's team") whose player the extractor names and
+ *     whose line-up in THE GAME is one side only. Never from an earlier
+ *     match's names: the side that wears the bibs changes from week to
+ *     week, and a remembered name recorded results the wrong way round
+ *     without asking. Never from the side the extractor SAYS a name is;
  *   - `sideQuestion`: when a name still means no side, the name MatchTime
  *     asks about. It is ALWAYS the winning side's name (the one beside the
  *     bigger number, or the one a word says won), so the answer to "Which
  *     team was bibs, Red or Yellow?" is the winner, and the engine's open
  *     "which team won?" question (`score-ask.ts`) reads it unchanged;
  *   - `learnedSideNames`: what the recorded result teaches (bibs had the 9,
- *     Red got the 9: bibs is Red), stored per match and read back for the
- *     next game as the club's last used names (`load-side-names.ts`).
+ *     Red got the 9: bibs is Red), stored for THAT match only
+ *     (`load-side-names.ts`). A player's team is never stored. The next
+ *     game asks again, and an earlier game's answer is only a hint in the
+ *     question ("Last time it was Red", `hintSide`);
+ *   - `sideNamesAfterCorrection`: a corrected result rewrites (the other
+ *     way round) or deletes the match's names.
  *
  * No word here is read from a person's message. A stored name is
  * compared with the extractor's team reference by `score-teams.ts`'s own
@@ -129,25 +139,66 @@ export function sideByNames(ref: string | null | undefined, names: SideNames | n
   return red > yellow ? "RED" : "YELLOW";
 }
 
-/** The side the extractor read for this reference from THE GAME. */
-function modelSide(ref: string, facts: ScoreFacts): TeamSide | null {
-  return facts.teamSides?.find((t) => fold(t.team) === fold(ref))?.side ?? null;
+/** The extractor's entry for this reference, if any. */
+function entryFor(ref: string, facts: ScoreFacts) {
+  return facts.teamSides?.find((t) => fold(t.team) === fold(ref)) ?? null;
+}
+
+/**
+ * The side the extractor says an ANSWER gives for a name MatchTime asked
+ * about ("red", answering "Which team was bibs?"). Read only for the
+ * answer to MatchTime's own question, never to place a name in a report.
+ */
+function answeredSideOf(ref: string, facts: ScoreFacts): TeamSide | null {
+  return entryFor(ref, facts)?.side ?? null;
+}
+
+/** THE GAME's line-ups, by display name, as the extractor was shown them. */
+export interface Lineups {
+  red: string[];
+  yellow: string[];
+}
+
+/**
+ * A player's team, placed by CODE (review of #620, 2): the extractor names
+ * the player the reference is named after, exactly as THE GAME lists them;
+ * the side is the line-up that player is on. A name on both sides, or on
+ * neither, places nothing, and MatchTime asks. The side the extractor said
+ * is not read.
+ */
+export function sideByPlayer(ref: string, facts: ScoreFacts, lineups: Lineups | null | undefined): TeamSide | null {
+  const player = (entryFor(ref, facts)?.player ?? "").trim();
+  if (!player || !lineups) return null;
+  const on = (list: string[]) => list.some((n) => fold(n) === fold(player));
+  const red = on(lineups.red);
+  const yellow = on(lineups.yellow);
+  if (red === yellow) return null;
+  return red ? "RED" : "YELLOW";
+}
+
+/** Does the extractor say this reference is named after a player? */
+function namesAPlayer(ref: string, facts: ScoreFacts): boolean {
+  return !!(entryFor(ref, facts)?.player ?? "").trim();
 }
 
 export interface SideContext {
   /** The played match's names, [red, yellow]. */
   labels: readonly [string, string];
-  /** What this club also calls each side. */
+  /** What this club called each side IN THIS MATCH (its own stored
+   *  names). Never an earlier match's: those are only a hint. */
   names: SideNames | null | undefined;
   /** The sender's side in the played match, or null. */
   senderTeam: TeamSide | null;
+  /** THE GAME's line-ups, for a player's team. */
+  lineups?: Lineups | null;
 }
 
 /**
- * The facts with every team reference the club's names or THE GAME place
- * rewritten as MatchTime's own name for that side, so the engine resolves
- * it. A reference the code already resolves (a side's name or colour) and
- * "us" / "them" are left as written: the engine knows the sender's side.
+ * The facts with every team reference code can place (this match's own
+ * names, a player's team by its line-up) rewritten as MatchTime's own name
+ * for that side, so the engine resolves it. A reference the code already
+ * resolves (a side's name or colour) and "us" / "them" are left as
+ * written: the engine knows the sender's side.
  *
  * `asked`: the names MatchTime asked about for this match's open question
  * (`sideQuestion`). A message with no numbers and no winner or loser that
@@ -156,7 +207,7 @@ export interface SideContext {
  */
 export function normaliseScoreFacts(
   facts: ScoreFacts,
-  ctx: SideContext & { asked?: { name: string; other?: string } | null },
+  ctx: SideContext & { asked?: { name: string; other?: string; noStore?: string[] } | null },
 ): { facts: ScoreFacts; mapped: string[] } {
   const out: ScoreFacts = { ...facts };
   const mapped: string[] = [];
@@ -165,15 +216,17 @@ export function normaliseScoreFacts(
     if (!ref || isSelfOrThem(ref)) continue;
     if (resolveTeamRef(ref, ctx.labels, ctx.senderTeam)) continue;
     const byNames = sideByNames(ref, ctx.names);
-    const s = byNames ?? modelSide(ref, facts);
+    const s = byNames ?? sideByPlayer(ref, facts, ctx.lineups);
     if (!s) continue;
     out[field] = labelOf(ctx.labels, s);
-    mapped.push(`${field} "${ref}" is ${labelOf(ctx.labels, s)} (${byNames ? "the club's name for it" : "read from THE GAME"})`);
+    mapped.push(
+      `${field} "${ref}" is ${labelOf(ctx.labels, s)} (${byNames ? "this game's own name for it" : `the line-up ${entryFor(ref, facts)?.player} is on`})`,
+    );
   }
   const asked = ctx.asked;
   if (asked && out.first === null && !(out.winner ?? "").trim() && !(out.loser ?? "").trim()) {
-    const named = modelSide(asked.name, facts);
-    const placedOther = asked.other ? modelSide(asked.other, facts) : null;
+    const named = answeredSideOf(asked.name, facts);
+    const placedOther = asked.other ? answeredSideOf(asked.other, facts) : null;
     const winner = named ?? (placedOther ? other(placedOther) : null);
     if (winner) {
       out.winner = labelOf(ctx.labels, winner);
@@ -184,11 +237,12 @@ export function normaliseScoreFacts(
 }
 
 /** A reference that is a name and means no side yet. */
-function unplaced(ref: string | undefined, ctx: SideContext): string | null {
+function unplaced(ref: string | undefined, ctx: SideContext, facts: ScoreFacts): string | null {
   const r = (ref ?? "").trim();
   if (!r || isSelfOrThem(r)) return null;
   if (resolveTeamRef(r, ctx.labels, ctx.senderTeam)) return null;
   if (sideByNames(r, ctx.names)) return null;
+  if (sideByPlayer(r, facts, ctx.lineups)) return null;
   return r;
 }
 
@@ -197,33 +251,82 @@ function unplaced(ref: string | undefined, ctx: SideContext): string | null {
  * engine's own "which team won?" is the right question. Always the
  * WINNING side's name: the one a word says won, else the one beside the
  * bigger number. `other` is the losing side's name, when the message
- * gave one, so the answer teaches both.
+ * gave one, so the answer teaches both. `noStore`: the asked names that
+ * are a player's team ("Dan's team"), which the answer records but which
+ * are never stored (review of #620).
  */
-export function sideQuestion(facts: ScoreFacts, ctx: SideContext): { name: string; other?: string } | null {
+export interface AskedNames {
+  name: string;
+  other?: string;
+  noStore?: string[];
+}
+
+export function sideQuestion(facts: ScoreFacts, ctx: SideContext): AskedNames | null {
   if (facts.first === null || facts.second === null || facts.first === facts.second) return null;
   const firstIsHigher = facts.first > facts.second;
   const said = (facts.winner ?? "").trim();
-  const name = said ? unplaced(said, ctx) : unplaced(firstIsHigher ? facts.firstTeam : facts.secondTeam, ctx);
+  const name = said ? unplaced(said, ctx, facts) : unplaced(firstIsHigher ? facts.firstTeam : facts.secondTeam, ctx, facts);
   if (!name) return null;
-  const otherName = unplaced(facts.loser, ctx) ?? unplaced(firstIsHigher ? facts.secondTeam : facts.firstTeam, ctx);
-  return otherName && fold(otherName) !== fold(name) ? { name, other: otherName } : { name };
+  const found =
+    unplaced(facts.loser, ctx, facts) ?? unplaced(firstIsHigher ? facts.secondTeam : facts.firstTeam, ctx, facts);
+  const otherName = found && fold(found) !== fold(name) ? found : null;
+  const noStore = [name, otherName].filter((n): n is string => !!n && namesAPlayer(n, facts));
+  return { name, ...(otherName ? { other: otherName } : {}), ...(noStore.length > 0 ? { noStore } : {}) };
 }
 
 /** The asked names as stored on the score question's row (`text`). */
-export function scoreAskNamesText(asked: { name: string; other?: string } | null | undefined): string | null {
+export function scoreAskNamesText(asked: AskedNames | null | undefined): string | null {
   if (!asked?.name) return null;
-  return JSON.stringify(asked.other ? { name: asked.name, other: asked.other } : { name: asked.name });
+  return JSON.stringify({
+    name: asked.name,
+    ...(asked.other ? { other: asked.other } : {}),
+    ...(asked.noStore && asked.noStore.length > 0 ? { noStore: asked.noStore } : {}),
+  });
 }
 
-export function parseScoreAskNames(text: string | null | undefined): { name: string; other?: string } | null {
+export function parseScoreAskNames(text: string | null | undefined): AskedNames | null {
   if (!text) return null;
   try {
     const raw = JSON.parse(text) as Record<string, unknown>;
     if (typeof raw?.name !== "string" || !raw.name.trim()) return null;
-    return typeof raw.other === "string" && raw.other.trim() ? { name: raw.name, other: raw.other } : { name: raw.name };
+    const noStore = cleanNames(raw.noStore) ?? [];
+    return {
+      name: raw.name,
+      ...(typeof raw.other === "string" && raw.other.trim() ? { other: raw.other } : {}),
+      ...(noStore.length > 0 ? { noStore } : {}),
+    };
   } catch {
     return null;
   }
+}
+
+/** An earlier game's side for the asked name: a HINT in the question
+ *  ("Last time it was Red"), never a reason to record without asking. */
+export function hintSide(name: string, earlier: SideNames | null | undefined): TeamSide | null {
+  return sideByNames(name, earlier);
+}
+
+/**
+ * What a CORRECTED result does to the match's own names (review of #620):
+ * the same pair the other way round swaps them; the same winner keeps
+ * them; anything else (other numbers and another winner, a draw either
+ * side) deletes them, so the next report is asked about.
+ */
+export function sideNamesAfterCorrection(
+  names: SideNames | null | undefined,
+  previous: { red: number; yellow: number },
+  next: { red: number; yellow: number },
+): { kind: "keep" } | { kind: "rewrite"; names: SideNames } | { kind: "delete" } {
+  if (!hasSideNames(names)) return { kind: "keep" };
+  const winner = (r: { red: number; yellow: number }): TeamSide | null =>
+    r.red === r.yellow ? null : r.red > r.yellow ? "RED" : "YELLOW";
+  const was = winner(previous);
+  const now = winner(next);
+  if (was && now && was === now) return { kind: "keep" };
+  if (was && now && samePair({ first: previous.red, second: previous.yellow }, { first: next.red, second: next.yellow })) {
+    return { kind: "rewrite", names: { red: [...names.yellow], yellow: [...names.red] } };
+  }
+  return { kind: "delete" };
 }
 
 /**
@@ -233,17 +336,18 @@ export function parseScoreAskNames(text: string | null | undefined): { name: str
  * about, and never from a draw.
  */
 export function learnedSideNames(
-  pending: { first: number; second: number; name?: string; other?: string },
+  pending: { first: number; second: number; name?: string; other?: string; noStore?: string[] },
   recorded: { red: number; yellow: number },
 ): SideNames | null {
   if (!pending.name) return null;
   if (recorded.red === recorded.yellow) return null;
   if (!samePair(pending, { first: recorded.red, second: recorded.yellow })) return null;
   const winner: TeamSide = recorded.red > recorded.yellow ? "RED" : "YELLOW";
+  const skip = new Set((pending.noStore ?? []).map(fold));
   const out: SideNames = { red: [], yellow: [] };
-  out[side(winner)].push(pending.name);
-  if (pending.other) out[side(other(winner))].push(pending.other);
-  return out;
+  if (!skip.has(fold(pending.name))) out[side(winner)].push(pending.name);
+  if (pending.other && !skip.has(fold(pending.other))) out[side(other(winner))].push(pending.other);
+  return hasSideNames(out) ? out : null;
 }
 
 const quoted = (names: string[]) => names.map((n) => `"${n}"`).join(" or ");
@@ -273,7 +377,7 @@ export function gameContextLines(g: {
   const line = (key: "red" | "yellow", label: string) => {
     const names = (g.names?.[key] ?? []).filter((n) => fold(n) !== fold(label));
     const parts = [`MatchTime calls it "${label}"`];
-    if (names.length > 0) parts.push(`this club also calls it ${quoted(names)}`);
+    if (names.length > 0) parts.push(`this club called it ${quoted(names)} in this game`);
     parts.push(g.players[key].length > 0 ? `players ${g.players[key].join(", ")}` : "no players on record");
     return `  ${key}: ${parts.join("; ")}`;
   };

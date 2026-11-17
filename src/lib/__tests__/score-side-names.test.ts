@@ -77,6 +77,7 @@ function deps(model: PipelineModel, state: SquadState, over: Partial<ScoreBatchD
   const recorded: Array<{ red: number; yellow: number }> = [];
   const asked: Array<Record<string, unknown>> = [];
   const names: Array<{ matchId: string; names: { red: string[]; yellow: string[] } }> = [];
+  const cleared: string[] = [];
   const d: ScoreBatchDeps = {
     model,
     loadState: async () => state,
@@ -84,9 +85,10 @@ function deps(model: PipelineModel, state: SquadState, over: Partial<ScoreBatchD
     reconcileElo: async () => ({ moved: 0 }),
     recordScoreAsk: async (a) => void asked.push({ ...a }),
     recordSideNames: async (a) => void names.push(a),
+    clearSideNames: async (matchId) => void cleared.push(matchId),
     ...over,
   };
-  return { d, recorded, asked, names };
+  return { d, recorded, asked, names, cleared };
 }
 
 const msg = (body: string, over: Partial<ScoreBatchMessage> = {}): ScoreBatchMessage => ({
@@ -123,7 +125,7 @@ describe("the first time: one question, then the answer records and is remembere
   it('"bibs 9, no bibs 4" with no stored names asks which team was bibs, and records nothing', async () => {
     const r = await run(played(), { [BIBS_BODY]: BIBS_FACTS }, msg(BIBS_BODY));
     expect(r.recorded).toEqual([]);
-    expect(r.outcome?.reply).toBe('9 - 4, thanks. Which team was "bibs": Red or Yellow? I\'ll remember it for next time.');
+    expect(r.outcome?.reply).toBe('9 - 4, thanks. Which team was "bibs": Red or Yellow?');
     expect(r.outcome?.reply).not.toMatch(/can't/i);
     expect(r.asked).toEqual([{ matchId: "game-1", first: 9, second: 4, askerUserId: "u-ava", name: "bibs", other: "no bibs" }]);
     expect(r.names).toEqual([]);
@@ -134,7 +136,7 @@ describe("the first time: one question, then the answer records and is remembere
     state.features.language = "tr";
     const body = "@Match Time yelekliler 9 yeleksizler 4";
     const r = await run(state, { [body]: score({ first: 9, second: 4, firstTeam: "yelekliler", secondTeam: "yeleksizler" }) }, msg(body));
-    expect(r.outcome?.reply).toBe('9 - 4, teşekkürler. "yelekliler" hangi takımdı: Kırmızı mı, Sarı mı? Bir dahaki sefere hatırlarım.');
+    expect(r.outcome?.reply).toBe('9 - 4, teşekkürler. "yelekliler" hangi takımdı: Kırmızı mı, Sarı mı?');
   });
 
   const answered = (over: Partial<NonNullable<SquadState["completedMatch"]>> = {}) =>
@@ -184,32 +186,105 @@ describe("the first time: one question, then the answer records and is remembere
   });
 });
 
-describe("the next week: the same words record straight away", () => {
-  const nextWeek = () => played({ id: "game-2", sideNames: { red: ["bibs"], yellow: ["no bibs"] } });
+// REVIEW OF #620, 1 (blocking): the side that wears the bibs changes from
+// week to week, so an earlier game's names never record a result. They are
+// a hint in the question; MatchTime asks for this game.
+describe("the next week: MatchTime asks again, with last time's answer as a hint", () => {
+  const nextWeek = () => played({ id: "game-2", earlierSideNames: { red: ["bibs"], yellow: ["no bibs"] } });
 
-  it("records Red 9 Yellow 4 with no question, and THE GAME showed the names", async () => {
+  it("asks, says what it was last time, and records nothing", async () => {
     const r = await run(nextWeek(), { [BIBS_BODY]: BIBS_FACTS }, msg(BIBS_BODY));
-    expect(r.recorded).toEqual([{ red: 9, yellow: 4 }]);
-    expect(r.asked).toEqual([]);
-    expect(r.turns[0]).toContain('red: MatchTime calls it "Red"; this club also calls it "bibs"; players ava, ben');
-    expect(r.turns[0]).toContain('yellow: MatchTime calls it "Yellow"; this club also calls it "no bibs"; players cal, dan');
-    expect(r.outcome?.reasoning).toMatch(/the club's name for it/);
+    expect(r.recorded).toEqual([]);
+    expect(r.outcome?.reply).toBe('9 - 4, thanks. Which team was "bibs" this time: Red or Yellow? Last time it was Red.');
+    expect(r.asked).toEqual([{ matchId: "game-2", first: 9, second: 4, askerUserId: "u-ava", name: "bibs", other: "no bibs" }]);
+    // THE GAME shows only this game's own names: none yet.
+    expect(r.turns[0]).not.toContain("also calls");
   });
 
-  it('untagged, from a player, it records too: a score never needed the tag', async () => {
+  it("the hint in Turkish", async () => {
+    const state = played({ id: "game-2", teamLabels: ["Kırmızı", "Sarı"], earlierSideNames: { red: ["yelekliler"], yellow: [] } });
+    state.features.language = "tr";
+    const body = "@Match Time yelekliler 9 yeleksizler 4";
+    const r = await run(state, { [body]: score({ first: 9, second: 4, firstTeam: "yelekliler", secondTeam: "yeleksizler" }) }, msg(body));
+    expect(r.outcome?.reply).toBe('9 - 4, teşekkürler. "yelekliler" bu sefer hangi takımdı: Kırmızı mı, Sarı mı? Geçen sefer Kırmızı idi.');
+  });
+
+  it("untagged, from a player: still a question, never a result", async () => {
     const body = "bibs 9, no bibs 4";
     const r = await run(nextWeek(), { [body]: score({ first: 9, second: 4, firstTeam: "bibs", secondTeam: "no bibs" }) }, msg(body, { tagged: false, taggedExplicitly: false, senderUserId: "u-ben", authorName: "ben" }));
+    expect(r.recorded).toEqual([]);
+    expect(r.asked).toHaveLength(1);
+  });
+
+  it("this game's own names (answered earlier tonight) record straight away", async () => {
+    const r = await run(played({ id: "game-2", sideNames: { red: ["bibs"], yellow: ["no bibs"] } }), { [BIBS_BODY]: BIBS_FACTS }, msg(BIBS_BODY));
     expect(r.recorded).toEqual([{ red: 9, yellow: 4 }]);
+    expect(r.turns[0]).toContain('red: MatchTime calls it "Red"; this club called it "bibs" in this game; players ava, ben');
+    expect(r.outcome?.reasoning).toMatch(/this game's own name for it/);
+  });
+
+  it("a club that has named its sides (Organisation.teamLabels) records straight away", async () => {
+    const r = await run(played({ id: "game-2", teamLabels: ["Bibs", "No bibs"], earlierSideNames: { red: ["no bibs"], yellow: ["bibs"] } }), { [BIBS_BODY]: BIBS_FACTS }, msg(BIBS_BODY));
+    expect(r.recorded).toEqual([{ red: 9, yellow: 4 }]);
+    expect(r.asked).toEqual([]);
+  });
+});
+
+describe("REVIEW OF #620, 1: a corrected result rewrites or deletes the game's names", () => {
+  const scored = () =>
+    played({ status: "COMPLETED", redScore: 9, yellowScore: 4, sideNames: { red: ["bibs"], yellow: ["no bibs"] } });
+
+  it('"wrong way round": the result swaps and so do the names', async () => {
+    const body = "@Match Time wrong way round";
+    const r = await run(scored(), { [body]: score({ hasScore: false, correction: true, swapped: true }) }, msg(body));
+    expect(r.recorded).toEqual([{ red: 4, yellow: 9 }]);
+    expect(r.names).toEqual([{ matchId: "game-1", names: { red: ["no bibs"], yellow: ["bibs"] } }]);
+    expect(r.cleared).toEqual([]);
+  });
+
+  it("a correction to other numbers and another winner deletes them", async () => {
+    const body = "@Match Time no, it was 8-3 to Yellow";
+    const r = await run(scored(), { [body]: score({ first: 8, second: 3, winner: "Yellow", correction: true }) }, msg(body));
+    expect(r.recorded).toEqual([{ red: 3, yellow: 8 }]);
+    expect(r.cleared).toEqual(["game-1"]);
+    expect(r.names).toEqual([]);
   });
 });
 
 describe("a captain's team, and what was already working", () => {
   it('"Dan\'s team won 5-3" records using Dan\'s side', async () => {
     const body = "@Match Time Dan's team won 5-3";
-    const r = await run(played(), { [body]: score({ first: 5, second: 3, winner: "Dan's team", teamSides: [{ team: "Dan's team", side: "yellow" }] }) }, msg(body));
+    const r = await run(played(), { [body]: score({ first: 5, second: 3, winner: "Dan's team", teamSides: [{ team: "Dan's team", side: "red", player: "dan" }] }) }, msg(body));
+    // Placed by the line-up dan is on (yellow), not by the side the model said.
     expect(r.recorded).toEqual([{ red: 3, yellow: 5 }]);
     expect(r.asked).toEqual([]);
+    expect(r.names).toEqual([]);
     expect(r.turns[0]).toMatch(/yellow: [^\n]*players cal, dan/);
+  });
+
+  it('REVIEW OF #620, 2: the same display name on both sides: asks, and never stores the answer', async () => {
+    const state = played();
+    state.roster = state.roster.map((m) => (m.userId === "u-ava" ? { ...m, name: "dan" } : m));
+    const body = "@Match Time Dan's team won 5-3";
+    const r = await run(state, { [body]: score({ first: 5, second: 3, winner: "Dan's team", teamSides: [{ team: "Dan's team", side: "yellow", player: "dan" }] }) }, msg(body));
+    expect(r.recorded).toEqual([]);
+    expect(r.outcome?.reply).toBe('5 - 3, thanks. Which team was "Dan\'s team": Red or Yellow?');
+    expect(r.asked[0]).toMatchObject({ name: "Dan's team", noStore: ["Dan's team"] });
+
+    const answer = "@Match Time yellow";
+    const pending = played({
+      pendingScore: { first: 5, second: 3, askedAt: new Date(NOW.getTime() - 60_000).toISOString(), askerUserId: "u-ava", name: "Dan's team", noStore: ["Dan's team"] },
+    });
+    const a = await run(pending, { [answer]: score({ hasScore: false, winner: "yellow" }) }, msg(answer));
+    expect(a.recorded).toEqual([{ red: 3, yellow: 5 }]);
+    expect(a.names).toEqual([]);
+  });
+
+  it('REVIEW OF #620, 2: a captain in neither line-up: asks', async () => {
+    const body = "@Match Time Zed's team won 5-3";
+    const r = await run(played(), { [body]: score({ first: 5, second: 3, winner: "Zed's team", teamSides: [{ team: "Zed's team", side: "yellow", player: "Zed" }] }) }, msg(body));
+    expect(r.recorded).toEqual([]);
+    expect(r.outcome?.reply).toContain('Which team was "Zed\'s team": Red or Yellow?');
   });
 
   it('"Dan\'s team won 5-3" with no side read asks which team Dan\'s team was', async () => {

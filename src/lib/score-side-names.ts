@@ -5,24 +5,30 @@
  * itself is unchanged (`pipeline/score-sides.ts` has the why):
  *
  *   1. `gameLinesFor`: THE GAME block the score extractor reads;
- *   2. `normaliseOwnedFacts`: a team reference the club's names or THE
- *      GAME place becomes MatchTime's own name for that side, and an
- *      answer to "Which team was bibs?" gets the winner it means;
+ *   2. `normaliseOwnedFacts`: a team reference THIS game's own names or a
+ *      player's line-up place becomes MatchTime's own name for that side,
+ *      and an answer to "Which team was bibs?" gets the winner it means;
  *   3. `nameTheQuestions`: a "which team won?" the engine asks about a
  *      scoreline whose winning side's name means no side yet asks about
- *      that name instead, and is remembered with it;
- *   4. `learnFromResults`: the recorded result teaches the names asked
- *      about, which are stored for the club and named in the reply.
+ *      that name instead, with an earlier game's side as a hint, and is
+ *      remembered with it;
+ *   4. `rememberSideNames`: the recorded result teaches this game's names
+ *      (never a player's team), named in the reply; a corrected result
+ *      rewrites or deletes them (review of #620).
  *
  * No database here: the reads come with the state (`load-state.ts`), the
  * one write goes through the apply deps (`recordSideNames`).
  */
 import {
   gameContextLines,
+  hintSide,
   learnedSideNames,
   mergeSideNames,
   normaliseScoreFacts,
+  sideNamesAfterCorrection,
   sideQuestion,
+  type AskedNames,
+  type Lineups,
   type SideContext,
 } from "./pipeline/score-sides";
 import type { EngineResult, Facts, SquadState } from "./pipeline/types";
@@ -39,28 +45,42 @@ function senderTeam(played: Played, userId: string | null): "RED" | "YELLOW" | n
   return played.teams?.find((t) => t.userId === userId)?.team ?? null;
 }
 
-function ctxFor(state: SquadState, played: Played, userId: string | null): SideContext {
-  return { labels: labelsOf(state), names: played.sideNames ?? null, senderTeam: senderTeam(played, userId) };
-}
-
-/** THE GAME for the score extractor, or undefined with no played match. */
-export function gameLinesFor(state: SquadState): string[] | undefined {
+/** The played match's line-ups by display name, exactly as THE GAME shows
+ *  them, so a player the extractor names is checked against the same list. */
+export function lineupsFor(state: SquadState): Lineups {
   const played = state.completedMatch;
-  if (!played) return undefined;
   const nameOf = (userId: string) => {
     const m = state.roster.find((r) => r.userId === userId);
     return m?.name || state.rowNames?.[userId] || null;
   };
   const playersOn = (team: "RED" | "YELLOW") =>
-    (played.teams ?? [])
+    (played?.teams ?? [])
       .filter((t) => t.team === team)
       .map((t) => nameOf(t.userId))
       .filter((n): n is string => !!n);
+  return { red: playersOn("RED"), yellow: playersOn("YELLOW") };
+}
+
+function ctxFor(state: SquadState, played: Played, userId: string | null): SideContext {
+  return {
+    labels: labelsOf(state),
+    // THIS match's own names only (review of #620).
+    names: played.sideNames ?? null,
+    senderTeam: senderTeam(played, userId),
+    lineups: lineupsFor(state),
+  };
+}
+
+/** THE GAME for the score extractor, or undefined with no played match.
+ *  Its names are this game's own only. */
+export function gameLinesFor(state: SquadState): string[] | undefined {
+  const played = state.completedMatch;
+  if (!played) return undefined;
   return gameContextLines({
     when: played.kickoffLabel,
     labels: labelsOf(state),
     names: played.sideNames ?? null,
-    players: { red: playersOn("RED"), yellow: playersOn("YELLOW") },
+    players: lineupsFor(state),
     awaiting: played.redScore === null || played.yellowScore === null,
   });
 }
@@ -79,7 +99,9 @@ export function normaliseOwnedFacts(args: {
   const played = args.state.completedMatch;
   if (!played) return notes;
   const pending = played.pendingScore;
-  const asked = pending?.name ? { name: pending.name, ...(pending.other ? { other: pending.other } : {}) } : null;
+  const asked = pending?.name
+    ? { name: pending.name, ...(pending.other ? { other: pending.other } : {}), ...(pending.noStore ? { noStore: pending.noStore } : {}) }
+    : null;
   for (const id of args.ids) {
     const f = args.factsById.get(id);
     if (!f || f.kind !== "score") continue;
@@ -94,16 +116,17 @@ export function normaliseOwnedFacts(args: {
  * Step 3. For each "which team won?" the engine is asking, the name to
  * ask about instead, when the scoreline's winning side has a name that
  * means no side yet. The engine's speech for it is given the name, so
- * the reply asks "Which team was bibs?"; the returned map is what the
- * question is remembered with.
+ * the reply asks "Which team was bibs?", and, when an earlier game placed
+ * that name, the side it was then as a hint ("Last time it was Red"); the
+ * returned map is what the question is remembered with.
  */
 export function nameTheQuestions(args: {
   state: SquadState;
   factsById: Map<string, Facts>;
   askWrites: Array<{ sourceMessageId: string; askerUserId: string | null }>;
   result: EngineResult;
-}): Map<string, { name: string; other?: string }> {
-  const out = new Map<string, { name: string; other?: string }>();
+}): Map<string, AskedNames> {
+  const out = new Map<string, AskedNames>();
   const played = args.state.completedMatch;
   if (!played) return out;
   for (const a of args.askWrites) {
@@ -112,21 +135,33 @@ export function nameTheQuestions(args: {
     const q = sideQuestion(f, ctxFor(args.state, played, a.askerUserId));
     if (!q) continue;
     out.set(a.sourceMessageId, q);
+    // A player's team is never hinted: its side is whoever the player was
+    // with this time.
+    const hint = q.noStore?.includes(q.name) ? null : hintSide(q.name, played.earlierSideNames ?? null);
     for (const sp of args.result.speech) {
-      if (sp.kind === "score_ask_team" && sp.messageId === a.sourceMessageId) sp.name = q.name;
+      if (sp.kind === "score_ask_team" && sp.messageId === a.sourceMessageId) {
+        sp.name = q.name;
+        if (hint) sp.hint = hint;
+      }
     }
   }
   return out;
 }
 
 /**
- * Step 4. A result that landed for the scoreline MatchTime asked a name
- * about teaches that name (and the other side's), merged into the names
- * the club already uses, stored against this match, and put on the next
- * state so the acknowledgement names them. A failed write is reported and
- * changes nothing else: the score is already recorded.
+ * Step 4. THIS game's names after its result landed:
+ *
+ *   - a result for the scoreline MatchTime asked a name about teaches that
+ *     name (and the other side's), never a player's team, merged into this
+ *     game's own names, stored against this match and put on the next
+ *     state so the acknowledgement names them;
+ *   - a CORRECTED result (review of #620) rewrites them the other way round
+ *     or deletes them (`sideNamesAfterCorrection`).
+ *
+ * A failed write is reported and changes nothing else: the score is
+ * already recorded.
  */
-export async function learnFromResults(args: {
+export async function rememberSideNames(args: {
   state: SquadState;
   applied: ScoreWriteResult[];
   result: EngineResult;
@@ -135,24 +170,49 @@ export async function learnFromResults(args: {
   prefix: string;
 }): Promise<void> {
   const played = args.state.completedMatch;
-  const pending = played?.pendingScore;
-  if (!played || !pending?.name) return;
+  if (!played) return;
+  const pending = played.pendingScore;
+  const setNext = (names: { red: string[]; yellow: string[] } | undefined) => {
+    const next = args.result.nextState.completedMatch;
+    if (next?.id !== played.id) return;
+    const { sideNames: _old, ...rest } = next;
+    void _old;
+    args.result.nextState.completedMatch = names ? { ...rest, sideNames: names } : rest;
+  };
+  const fail = (a: ScoreWriteResult, what: string, err: unknown) =>
+    args.degradations.push(
+      `${args.prefix} ${a.write.sourceMessageId}: ${what} (${err instanceof Error ? err.message : String(err)})`,
+    );
   for (const a of args.applied) {
     if (!a.ok || a.write.matchId !== played.id) continue;
-    const learned = learnedSideNames(pending, a.write);
-    if (!learned) continue;
-    const names = mergeSideNames(played.sideNames ?? null, learned);
-    if (args.result.nextState.completedMatch?.id === played.id) {
-      args.result.nextState.completedMatch = { ...args.result.nextState.completedMatch, sideNames: names };
+    if (a.write.previous) {
+      const after = sideNamesAfterCorrection(played.sideNames ?? null, a.write.previous, a.write);
+      if (after.kind === "rewrite") {
+        setNext(after.names);
+        try {
+          await args.deps.recordSideNames?.({ matchId: played.id, names: after.names });
+        } catch (err) {
+          fail(a, "the game's names could not be swapped after the correction", err);
+        }
+      } else if (after.kind === "delete") {
+        setNext(undefined);
+        try {
+          await args.deps.clearSideNames?.(played.id);
+        } catch (err) {
+          fail(a, "the game's names could not be deleted after the correction", err);
+        }
+      }
+      return;
     }
-    if (!args.deps.recordSideNames) continue;
+    if (!pending?.name) return;
+    const learned = learnedSideNames(pending, a.write);
+    if (!learned) return;
+    const names = mergeSideNames(played.sideNames ?? null, learned);
+    setNext(names);
     try {
-      await args.deps.recordSideNames({ matchId: played.id, names });
+      await args.deps.recordSideNames?.({ matchId: played.id, names });
     } catch (err) {
-      args.degradations.push(
-        `${args.prefix} ${a.write.sourceMessageId}: the club's names for its sides (${JSON.stringify(names)}) ` +
-          `could not be remembered (${err instanceof Error ? err.message : String(err)}); the next game asks again`,
-      );
+      fail(a, `the game's names (${JSON.stringify(names)}) could not be remembered; the next report asks again`, err);
     }
     return;
   }

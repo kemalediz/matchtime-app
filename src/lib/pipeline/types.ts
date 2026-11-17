@@ -776,12 +776,13 @@ export interface ScoreFacts {
   winner?: string;
   /** The team a word says LOST ("reds lost 6-9", "kaybettik"). */
   loser?: string;
-  /** Which side the extractor read each team reference as, from THE GAME
-   *  (2026-11-17, `score-sides.ts`): the club's other names for a side,
-   *  a player listed on it ("Dan's team"). Only red or yellow; a name THE
-   *  GAME does not place is left out. Read only where code cannot place
-   *  the reference itself (`normaliseScoreFacts`). */
-  teamSides?: Array<{ team: string; side: "RED" | "YELLOW" }>;
+  /** Per team reference, from the extractor (2026-11-17, `score-sides.ts`):
+   *  `player`, the player it is named after exactly as THE GAME lists them
+   *  ("Dan's team"), which CODE places by that player's line-up; and
+   *  `side`, red or yellow, read ONLY as the answer to MatchTime's own
+   *  "which team was X?" (review of #620: a side the model says never
+   *  places a name in a report). Entries with neither are dropped. */
+  teamSides?: Array<{ team: string; side?: "RED" | "YELLOW"; player?: string }>;
   /** The player the message names as Man of the Match ("MoM Naim",
    *  "maçın adamı Naim"), verbatim (2026-10-18). A FACT only: who that is,
    *  and whether it is recorded, are `admin-group-score.ts`'s, and only
@@ -1238,11 +1239,17 @@ export interface SquadState {
        *  one. Absent for a plain "which team won?". */
       name?: string;
       other?: string;
+      /** Asked names that are a player's team: recorded, never stored. */
+      noStore?: string[];
     };
-    /** What this club also calls each side, besides `teamLabels` (2026-11-17,
-     *  `score-sides.ts`): this match's own, else the club's last used.
-     *  Absent: none known. */
+    /** What this club called each side IN THIS MATCH, besides `teamLabels`
+     *  (2026-11-17, `score-sides.ts`): its own stored names only. Absent:
+     *  none. These place a name in a report; nothing else stored does. */
     sideNames?: { red: string[]; yellow: string[] };
+    /** The names the club used in its newest EARLIER game (review of #620):
+     *  a hint in the question only ("Last time it was Red"), never a reason
+     *  to record without asking. Absent: none. */
+    earlierSideNames?: { red: string[]; yellow: string[] };
     /**
      * Another match of the club, with a recorded result, kicked off
      * inside the correction window. When the LATEST match has no result
@@ -1987,7 +1994,7 @@ export type SpeechIntent =
   /** `name`: the winning side's name, which means no side yet ("bibs"):
    *  the question becomes "Which team was bibs?" (`score-sides.ts`). Set by
    *  the score batch, never by the engine. */
-  | { kind: "score_ask_team"; messageId: string; first: number; second: number; name?: string }
+  | { kind: "score_ask_team"; messageId: string; first: number; second: number; name?: string; hint?: "RED" | "YELLOW" }
   /** A different result for a match that already has one, from somebody
    *  who may not change it or after the window. Says what is recorded
    *  and where an admin changes it. */

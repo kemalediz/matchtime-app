@@ -290,7 +290,8 @@ export async function hqScoreRouting(args: {
     args.momByOrganisers ? loadMomMissing(orgId, now).catch(() => null) : Promise.resolve(null),
   ]);
   // What this club also calls the sides (2026-11-17, `score-sides.ts`).
-  const names = !ask && unscored ? await loadSideNames(orgId, unscored.matchId).catch(() => null) : null;
+  // This game's own names only: an earlier game's are a hint, never a fact.
+  const names = !ask && unscored ? ((await loadSideNames(orgId, unscored.matchId).catch(() => null))?.own ?? null) : null;
   const waiting: ScoreWaiting | null = ask
     ? { kind: "which-team", first: ask.first, second: ask.second, labels: ask.labels, askedAt: ask.askedAt }
     : unscored

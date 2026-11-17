@@ -18,7 +18,17 @@ Score extractor (rewritten whole):
 - "THE TWO SIDES" says once how people name the sides and what MatchTime asks ("Which team was bibs, Red or Yellow?", only ever about the winning side's name).
 - One new example group (names unknown, names known, a player's team, the answer to the name question), EN and TR.
 
-Sizes: router 24,563 to 25,643 characters (measured on top of #618); score extractor 4,539 to 6,808 characters.
+Sizes: router 24,563 to 25,643 characters (measured on top of #618); score extractor 4,539 to 7,617 characters (6,808 before the review of #620).
+
+## Review of #620 (blocking): an earlier game's names never record a result
+
+The side that wears the bibs changes from week to week (Vets: Red = Bibs on 2 Nov, Yellow = Bibs on 16 Nov), and the first version placed names from the club's newest earlier game and from the side the model said. Now:
+
+- Code places a name ONLY from (a) the club's or the match's own team labels (existing code, first), (b) THIS match's own stored names, (c) a player's team whose player the extractor names exactly as THE GAME lists them and who is in exactly one line-up. Never from an earlier match, never from the side the model says.
+- An earlier game's names are a hint in the question only: "9 - 4, thanks. Which team was "bibs" this time: Red or Yellow? Last time it was Red." (TR: ""yelekliler" bu sefer hangi takımdı: Kırmızı mı, Sarı mı? Geçen sefer Kırmızı idi.") MatchTime always asks for this game, unless the club has named its sides.
+- A player's team is never stored; a "wrong way round" correction swaps the game's names, a correction with other numbers and another winner deletes them.
+- The same display name on both sides, or a captain in neither line-up: not placed, MatchTime asks (code-checked).
+- Score extractor: `teamSides` gains `player`; `side` is what THE GAME places or what an answer to "which team was X?" gives ("same" to a hinted question included). THE GAME shows only this game's own names.
 
 ## Router: old and new, the passages that changed
 
@@ -91,9 +101,9 @@ The latest game or an earlier one:
 ```
 You read ONE message from a football group's WhatsApp chat about the result of the group's own match and report what it SAYS. You never decide who won, who a player is, or what gets recorded: code does that.
 
-WHAT YOU ARE SHOWN. THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club), the message it quotes when it is a WhatsApp reply (the THEY ARE REPLYING TO line), and THE GAME: the group's latest game, whether MatchTime is waiting for its score, and its two sides, red and yellow, each with the name MatchTime calls it, what this club also calls it, and the players on it. They tell you what THE MESSAGE answers or disputes and which side a name means; never take a number from them. The group's own match is its latest game: "tonight", "today", "last night", "yesterday", "dün akşam" and "earlier" all mean that latest game.
+WHAT YOU ARE SHOWN. THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club), the message it quotes when it is a WhatsApp reply (the THEY ARE REPLYING TO line), and THE GAME: the group's latest game, whether MatchTime is waiting for its score, and its two sides, red and yellow, each with the name MatchTime calls it, what this club called it in this game when MatchTime has been told, and the players on it. They tell you what THE MESSAGE answers or disputes and which side a name means; never take a number from them. The group's own match is its latest game: "tonight", "today", "last night", "yesterday", "dün akşam" and "earlier" all mean that latest game.
 
-THE TWO SIDES. People call the sides many things: MatchTime's names ("Red", "Sarılar"), colours, "bibs" and "no bibs", a player's team ("Dan's team"), "we" and "they". A TEAM REFERENCE below is a side as written ("yellows", "Reds", "bibs", "Dan's team"), "us" for the sender's own side ("we", "biz", "kazandık"), "them" for the other side, or "" when not said. When MatchTime cannot tell a side, it asks which team won, or which team a name was ("Which team was bibs, Red or Yellow?"); it only ever asks that about the name of the side with the bigger number.
+THE TWO SIDES. People call the sides many things: MatchTime's names ("Red", "Sarılar"), colours, "bibs" and "no bibs", a player's team ("Dan's team"), "we" and "they". A TEAM REFERENCE below is a side as written ("yellows", "Reds", "bibs", "Dan's team"), "us" for the sender's own side ("we", "biz", "kazandık"), "them" for the other side, or "" when not said. When MatchTime cannot tell a side, it asks which team won, or which team a name was ("Which team was bibs: Red or Yellow?"), sometimes saying what that name was last time ("Last time it was Red"); it only ever asks that about the name of the side with the bigger number.
 
 WHAT YOU RETURN
 hasScore
@@ -107,7 +117,10 @@ the team reference a word names as the winner: "to" or "for" a team, "won", "win
 loser
 the team reference a word names as the loser: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
 teamSides
-which side each name means, by THE GAME: one entry for every team reference you return other than "us" and "them", and, when THE MESSAGE answers MatchTime's "which team was X?", one for X with the side the answer gives. side is "red" or "yellow" when THE GAME places the name: it is the name MatchTime calls that side, a name this club also calls it, its colour while MatchTime calls it by its colour, or the team of a player listed on it ("Dan's team" is Dan's side). Otherwise "unknown": never guess which side wore the bibs or whose team a name was. [] when THE MESSAGE names no side.
+one entry for every team reference you return other than "us" and "them", and, when THE MESSAGE answers MatchTime's "which team was X?", one for X. Each has the reference as written (team), a side and a player.
+  side: "red" or "yellow" when THE GAME places the name (MatchTime's name for that side, a name this club called it in this game, its colour while MatchTime calls it by its colour), or when THE MESSAGE answers MatchTime's "which team was X?" with a side: "red" alone answering "Which team was bibs?" is bibs red, and "same" or "yes" to a question that said what it was last time is that side. Otherwise "unknown": never guess which side wore the bibs.
+  player: the player the reference is named after ("Dan's team", "Dan'in takımı"), written exactly as THE GAME lists them; "" when it names no player listed there. Never choose between two players listed with the same name: give the name as listed.
+[] when THE MESSAGE names no side.
 momRef
 the player named Man of the Match ("MoM", "man of the match", "POTM", "maçın adamı"), as written, or a bare name answering MatchTime's question who it was. "" otherwise; praise alone ("Naim was class") is "".
 correction
@@ -127,11 +140,12 @@ A team beside a number:
   "kırmızı 6 sarı 9" -> first 6, second 9, firstTeam "kırmızı", secondTeam "sarı"
   "Reds 3-5" -> first 3, second 5, firstTeam "Reds", winner ""
   "7-4 yellows", answering MatchTime's "which team won?" -> first 7, second 4, secondTeam "yellows", winner ""
-The club's own names for its sides, placed only by THE GAME:
-  "bibs 7, no bibs 5" / "yelekliler 7 yeleksizler 5", THE GAME giving neither name -> first 7, second 5, firstTeam "bibs" / "yelekliler", secondTeam "no bibs" / "yeleksizler", teamSides both "unknown"
-  the same, THE GAME saying this club calls red "bibs" and yellow "no bibs" -> teamSides [{"team":"bibs","side":"red"},{"team":"no bibs","side":"yellow"}]
-  "Sam's team won 6-2" / "Sam'in takımı 6-2 kazandı", THE GAME listing Sam on yellow -> first 6, second 2, winner "Sam's team" / "Sam'in takımı", teamSides [{"team":"Sam's team","side":"yellow"}] / [{"team":"Sam'in takımı","side":"yellow"}]
-  "Red", the whole message, answering MatchTime's "Which team was bibs?" / "kırmızı", answering "yelekliler hangi takımdı?" -> hasScore false, teamSides [{"team":"bibs","side":"red"}] / [{"team":"yelekliler","side":"red"}]
+The club's own names for its sides, and a player's team, placed only by THE GAME:
+  "bibs 7, no bibs 5" / "yelekliler 7 yeleksizler 5", THE GAME giving neither name -> first 7, second 5, firstTeam "bibs" / "yelekliler", secondTeam "no bibs" / "yeleksizler", teamSides both side "unknown", player ""
+  the same, THE GAME saying this club called red "bibs" and yellow "no bibs" in this game -> teamSides [{"team":"bibs","side":"red","player":""},{"team":"no bibs","side":"yellow","player":""}]
+  "Sam's team won 6-2" / "Sam'in takımı 6-2 kazandı", THE GAME listing Sam Reed on yellow -> first 6, second 2, winner "Sam's team" / "Sam'in takımı", teamSides [{"team":"Sam's team","side":"yellow","player":"Sam Reed"}] / [{"team":"Sam'in takımı","side":"yellow","player":"Sam Reed"}]
+  "Red", the whole message, answering MatchTime's "Which team was bibs?" / "kırmızı", answering "yelekliler hangi takımdı?" -> hasScore false, teamSides [{"team":"bibs","side":"red","player":""}] / [{"team":"yelekliler","side":"red","player":""}]
+  "same", answering MatchTime's "Which team was bibs this time? Last time it was Red." / "aynı", answering its Turkish twin -> hasScore false, teamSides [{"team":"bibs","side":"red","player":""}]
 The sender's side:
   "we won 5-3" / "5-3 kazandık" -> first 5, second 3, winner "us"
   "lost 3-5" / "3-5 kaybettik" -> first 3, second 5, loser "us"
@@ -158,9 +172,11 @@ The latest game or an earlier one:
 - A4 "Yellow?" answering "which team won?": read as the winner 2/3 (old 0/3). Fixed by saying once more that a question names no winner.
 After the fix the two cases 3/3 each (12 calls, $0.0019), then the full check again: 88 calls, $0.0147, all pass. Also `scripts/live-check-multi-instruction.ts` once on the changed router prompt: 25/25 groups (1/1, 8/8, 13/13), 25 calls, $0.0092.
 
-After rebasing onto #618 (which rewrote the router's MATCHTIME ASKED bullet), the full check once more on the merged prompts: 88 calls, $0.0166, router 23/23, batch 16/16, existing 49/49. The table below is that pass.
+After rebasing onto #618 (which rewrote the router's MATCHTIME ASKED bullet), the full check once more on the merged prompts: 88 calls, $0.0166, router 23/23, batch 16/16, existing 49/49.
 
-Total: 313 model calls, $0.0619.
+After the review of #620 (rebased on #619), once, capped at $0.30: 99 calls, $0.0184. Router 25/26, batch 24/24, existing 49/49. The table below is that pass. The one router "fail" is review item 3, reported not fixed: untagged "Red 2 Yellow 1 lol" from a participant routes score and the score path records Red 2, Yellow 1. Checked against main (9 calls, $0.0037): main's prompt with no waiting line routes it score 3/3, this branch without the line 3/3, with the line 3/3, so it is not introduced here. "9pm next week?" and "lost 3-0 on FIFA" route none; through the score path the first records nothing, the second would record Red 3, Yellow 0 if it were ever routed score.
+
+Total: 421 model calls, $0.0840.
 
 | Set | Case | Result | Message, outcome |
 |---|---|---|---|
@@ -186,6 +202,9 @@ Total: 313 model calls, $0.0619.
 | router | R20 | PASS | "@Match Time what was the score last week?"      -> question  (want question) |
 | router | R21 | PASS | "bibs 9 no bibs 4"                               -> score     (want score, HQ) |
 | router | R22 | PASS | "5-3 to Yellows"                                 -> score     (want score, line off) |
+| router | RX1 | FAIL | "Red 2 Yellow 1 lol"                             -> score     (want none) |
+| router | RX2 | PASS | "9pm next week?"                                 -> none      (want none) |
+| router | RX3 | PASS | "lost 3-0 on FIFA"                               -> none      (want none) |
 | router | R23 | PASS | "great game lads"                                -> none      (want none, line off) |
 | batch | B1 | PASS | "@Match Time bibs 9, no bibs 4"                  -> asked about "bibs" (want asked about "bibs") |
 | batch | B2 | PASS | "@Match Time red"                                -> Red 9, Yellow 4 (want Red 9, Yellow 4); learned {"red":["bibs"],"yellow":["no bibs"]} |
@@ -193,7 +212,10 @@ Total: 313 model calls, $0.0619.
 | batch | B4 | PASS | "@Match Time yellow"                             -> Red 4, Yellow 9 (want Red 4, Yellow 9); learned {"red":["no bibs"],"yellow":["bibs"]} |
 | batch | B5 | PASS | "@Match Time bibs 9, no bibs 4"                  -> Red 9, Yellow 4 (want Red 9, Yellow 4) |
 | batch | B6 | PASS | "bibs 9, no bibs 4"                              -> Red 9, Yellow 4 (want Red 9, Yellow 4) |
-| batch | B7 | PASS | "@Match Time non bibs won 6-2"                   -> Red 2, Yellow 6 (want Red 2, Yellow 6) |
+| batch | B7 | PASS | "@Match Time non bibs won 6-2"                   -> asked about "non bibs" (want asked about "non bibs") |
+| batch | B5n | PASS | "@Match Time bibs 9, no bibs 4"                  -> asked about "bibs" (want asked about "bibs") |
+| batch | B6n | PASS | "bibs 9, no bibs 4"                              -> asked about "bibs" (want asked about "bibs") |
+| batch | B19 | PASS | "@Match Time same"                               -> Red 9, Yellow 4 (want Red 9, Yellow 4); learned {"red":["bibs"],"yellow":["no bibs"]} |
 | batch | B8 | PASS | "@Match Time no bibs 9,  bibs 4"                 -> asked about "no bibs" (want asked about "no bibs") |
 | batch | B9 | PASS | "@Match Time Dan's team won 5-3"                 -> Red 3, Yellow 5 (want Red 3, Yellow 5) |
 | batch | B10 | PASS | "9-4 to Dan's team"                              -> Red 4, Yellow 9 (want Red 4, Yellow 9) |
@@ -203,6 +225,11 @@ Total: 313 model calls, $0.0619.
 | batch | B14 | PASS | "@Match Time bibs won 7-2"                       -> asked about "bibs" (want asked about "bibs") |
 | batch | B15 | PASS | "@Match Time yellows won 5-3"                    -> asked about "yellows" (want asked about "yellows") |
 | batch | B16 | PASS | "@Match Time yelekliler 9 yeleksizler 4"         -> asked about "yelekliler" (want asked about "yelekliler") |
+| batch | B17 | PASS | "@Match Time Dan's team won 5-3"                 -> asked about "Dan's team" (want asked about "dan's team") |
+| batch | B18 | PASS | "@Match Time Zed's team won 5-3"                 -> asked about "Zed's team" (want asked about "zed's team") |
+| batch | X1 | PASS | "Red 2 Yellow 1 lol"                             -> Red 2, Yellow 1 (want reported, not graded) |
+| batch | X2 | PASS | "9pm next week?"                                 -> nothing (want reported, not graded) |
+| batch | X3 | PASS | "lost 3-0 on FIFA"                               -> Red 3, Yellow 0 (want reported, not graded) |
 | existing | H1 | PASS | "5-3 to Yellows"                                               -> Red 3, Yellow 5 (want Red 3, Yellow 5) |
 | existing | H2 | PASS | "5-4 to reds"                                                  -> Red 5, Yellow 4 (want Red 5, Yellow 4) |
 | existing | H3 | PASS | "15-12 to Reds @Match Time"                                    -> Red 15, Yellow 12 (want Red 15, Yellow 12) |

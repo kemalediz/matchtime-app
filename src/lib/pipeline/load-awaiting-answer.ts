@@ -328,7 +328,9 @@ export async function loadAwaitedScoreLine(orgId: string, now: Date = new Date()
   const latest = await latestPlayedMatch(orgId, now);
   if (!latest || latest.redScore !== null || latest.yellowScore !== null) return null;
   if (!isScoreAwaited({ endsAt: latest.endsAt, now })) return null;
-  const names = await loadSideNames(orgId, latest.matchId).catch(() => null);
+  // This game's own names only (review of #620): an earlier game's are not
+  // what this club calls the sides tonight.
+  const names = (await loadSideNames(orgId, latest.matchId).catch(() => null))?.own ?? null;
   return awaitedScoreLine({ when: formatLondon(latest.date, "EEE d MMM HH:mm"), labels: latest.labels, names });
 }
 

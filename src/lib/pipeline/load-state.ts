@@ -277,14 +277,17 @@ export async function loadSquadState(
   // The name that question asked about, when it was "Which team was
   // bibs?" (2026-11-17, `score-sides.ts`).
   const scoreAskNames = scoreAskRow ? parseScoreAskNames(scoreAskRow.text) : null;
-  // What this club calls the played match's sides: its own, else the
-  // club's last used. Never fails the state: a failed read is no names.
-  const sideNames = completed
+  // What this club called the played match's sides: THIS match's own
+  // names, and the newest earlier game's as a hint only (review of #620).
+  // Never fails the state: a failed read is no names.
+  const sideNameRows = completed
     ? await loadSideNames(orgId, completed.id).catch((err) => {
         console.error("[load-state] side names read failed:", err instanceof Error ? err.message : "failed");
         return null;
       })
     : null;
+  const sideNames = sideNameRows?.own ?? null;
+  const earlierSideNames = sideNameRows?.earlier ?? null;
   // Has this match's one bare "wrong way round" been used? Only asked
   // for a match that has a result: there is nothing to swap otherwise.
   const swapUsed =
@@ -392,6 +395,7 @@ export async function loadSquadState(
               }
             : {}),
           ...(sideNames ? { sideNames } : {}),
+          ...(earlierSideNames ? { earlierSideNames } : {}),
           earlierRecentResult,
           ...(swapUsed ? { swapUsed: true } : {}),
         }

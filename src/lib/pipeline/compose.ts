@@ -859,8 +859,17 @@ export function compose(result: EngineResult): ComposedOutput {
           messageId: sp.messageId,
           // The winning side's name means no side yet: ask which side it
           // was (2026-11-17, `score-sides.ts`). The answer is the winner.
+          // An earlier game's side for that name is a hint, never the answer
+          // (review of #620).
           text: sp.name
-            ? s.score_ask_side({ first: sp.first, second: sp.second, name: sp.name, redLabel, yellowLabel })
+            ? s.score_ask_side({
+                first: sp.first,
+                second: sp.second,
+                name: sp.name,
+                redLabel,
+                yellowLabel,
+                ...(sp.hint ? { lastLabel: sp.hint === "RED" ? redLabel : yellowLabel } : {}),
+              })
             : s.score_ask_team({ first: sp.first, second: sp.second, redLabel, yellowLabel }),
         });
         break;

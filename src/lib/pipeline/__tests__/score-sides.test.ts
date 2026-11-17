@@ -14,6 +14,7 @@ import {
   awaitedScoreLine,
   encodeSideNames,
   gameContextLines,
+  hintSide,
   labelsWithSideNames,
   learnedSideNames,
   mergeSideNames,
@@ -22,6 +23,7 @@ import {
   parseSideNames,
   scoreAskNamesText,
   sideByNames,
+  sideNamesAfterCorrection,
   sideQuestion,
   type SideNames,
 } from "../score-sides";
@@ -103,14 +105,52 @@ describe("normalising the facts before the engine reads them", () => {
     expect(r).toEqual({ kind: "resolved", red: 9, yellow: 4 });
   });
 
-  it("a captain's team maps through the side the model read from THE GAME", () => {
+  // REVIEW OF #620, 2: a player's team is placed by CODE from THE GAME's
+  // line-ups, by the player the extractor names; never by the side it says.
+  const LINEUPS = { red: ["Ava Stone", "Ben Cole"], yellow: ["Cal Dunn", "Dan Hale"] };
+
+  it("a captain's team maps through the line-up the player is on, whatever side the model said", () => {
     const { facts } = normaliseScoreFacts(
-      f(5, 3, { winner: "Dan's team", teamSides: [{ team: "Dan's team", side: "YELLOW" }] }),
-      { labels: EN, names: NONE, senderTeam: null },
+      f(5, 3, { winner: "Dan's team", teamSides: [{ team: "Dan's team", side: "RED", player: "Dan Hale" }] }),
+      { labels: EN, names: NONE, senderTeam: null, lineups: LINEUPS },
     );
     expect(facts.winner).toBe("Yellow");
     const r = resolveScoreResult({ facts: { ...facts, first: 5, second: 3 }, labels: EN, senderTeam: null });
     expect(r).toEqual({ kind: "resolved", red: 3, yellow: 5 });
+  });
+
+  it("the same display name on both sides: not placed, so MatchTime asks", () => {
+    const { facts, mapped } = normaliseScoreFacts(
+      f(5, 3, { winner: "Dan's team", teamSides: [{ team: "Dan's team", side: "YELLOW", player: "Dan Hale" }] }),
+      { labels: EN, names: NONE, senderTeam: null, lineups: { red: ["Dan Hale", "Ava Stone"], yellow: ["Dan Hale", "Cal Dunn"] } },
+    );
+    expect(facts.winner).toBe("Dan's team");
+    expect(mapped).toEqual([]);
+  });
+
+  it("a player in neither line-up, or no player named: not placed, whatever side the model said", () => {
+    for (const entry of [
+      { team: "Dan's team", side: "YELLOW" as const, player: "Dan Smith" },
+      { team: "Dan's team", side: "YELLOW" as const },
+      { team: "Dan's team", side: "YELLOW" as const, player: "" },
+    ]) {
+      const { facts } = normaliseScoreFacts(f(5, 3, { winner: "Dan's team", teamSides: [entry] }), {
+        labels: EN,
+        names: NONE,
+        senderTeam: null,
+        lineups: LINEUPS,
+      });
+      expect(facts.winner).toBe("Dan's team");
+    }
+  });
+
+  it("REVIEW OF #620, 1: the model's side never places a club name (bibs); only this match's own names do", () => {
+    const { facts, mapped } = normaliseScoreFacts(
+      f(9, 4, { firstTeam: "bibs", secondTeam: "no bibs", teamSides: [{ team: "bibs", side: "RED" }, { team: "no bibs", side: "YELLOW" }] }),
+      { labels: EN, names: NONE, senderTeam: null, lineups: LINEUPS },
+    );
+    expect(facts).toMatchObject({ firstTeam: "bibs", secondTeam: "no bibs" });
+    expect(mapped).toEqual([]);
   });
 
   it("a name the code already resolves is left as written, whatever the model said", () => {
@@ -202,6 +242,50 @@ describe("the question to ask when a name means no side yet", () => {
   });
 });
 
+describe("REVIEW OF #620, 1: an earlier game's names are a hint, never an answer", () => {
+  it("names a hint side for the asked name from an earlier game", () => {
+    expect(hintSide("bibs", BIBS)).toBe("RED");
+    expect(hintSide("no bibs", BIBS)).toBe("YELLOW");
+    expect(hintSide("skins", BIBS)).toBeNull();
+    expect(hintSide("bibs", null)).toBeNull();
+  });
+
+  it("a player's team is never stored: the question says so, and nothing is learned from it", () => {
+    const facts = f(5, 3, { winner: "Dan's team", loser: "bibs", teamSides: [{ team: "Dan's team", side: "YELLOW", player: "Dan Hale" }] });
+    const q = sideQuestion(facts, { labels: EN, names: NONE, senderTeam: null, lineups: { red: [], yellow: [] } });
+    expect(q).toEqual({ name: "Dan's team", other: "bibs", noStore: ["Dan's team"] });
+    expect(learnedSideNames({ first: 5, second: 3, ...q! }, { red: 3, yellow: 5 })).toEqual({ red: ["bibs"], yellow: [] });
+    expect(learnedSideNames({ first: 5, second: 3, name: "Dan's team", noStore: ["Dan's team"] }, { red: 3, yellow: 5 })).toBeNull();
+  });
+
+  it("the question's stored text carries what is not to be stored", () => {
+    expect(parseScoreAskNames(scoreAskNamesText({ name: "Dan's team", noStore: ["Dan's team"] }))).toEqual({ name: "Dan's team", noStore: ["Dan's team"] });
+  });
+});
+
+describe("REVIEW OF #620, 1: a corrected result rewrites or deletes this match's names", () => {
+  it('"wrong way round" (the same pair, the other winner): the names swap sides', () => {
+    expect(sideNamesAfterCorrection(BIBS, { red: 9, yellow: 4 }, { red: 4, yellow: 9 })).toEqual({
+      kind: "rewrite",
+      names: { red: ["no bibs"], yellow: ["bibs"] },
+    });
+  });
+
+  it("the same winner with other numbers: the names stand", () => {
+    expect(sideNamesAfterCorrection(BIBS, { red: 9, yellow: 4 }, { red: 9, yellow: 7 })).toEqual({ kind: "keep" });
+  });
+
+  it("anything else (other numbers and another winner, or a draw): the names are deleted", () => {
+    expect(sideNamesAfterCorrection(BIBS, { red: 9, yellow: 4 }, { red: 3, yellow: 8 })).toEqual({ kind: "delete" });
+    expect(sideNamesAfterCorrection(BIBS, { red: 9, yellow: 4 }, { red: 5, yellow: 5 })).toEqual({ kind: "delete" });
+  });
+
+  it("no names: nothing to do", () => {
+    expect(sideNamesAfterCorrection(NONE, { red: 9, yellow: 4 }, { red: 4, yellow: 9 })).toEqual({ kind: "keep" });
+    expect(sideNamesAfterCorrection(null, { red: 9, yellow: 4 }, { red: 4, yellow: 9 })).toEqual({ kind: "keep" });
+  });
+});
+
 describe("what the answer teaches MatchTime", () => {
   it("bibs had the 9, Red got the 9: bibs is Red, no bibs Yellow", () => {
     expect(learnedSideNames({ first: 9, second: 4, name: "bibs", other: "no bibs" }, { red: 9, yellow: 4 })).toEqual(BIBS);
@@ -231,8 +315,8 @@ describe("the context lines", () => {
     const lines = gameContextLines(game).join("\n");
     expect(lines).toContain("THE GAME");
     expect(lines).toContain("waiting for its score");
-    expect(lines).toMatch(/red: MatchTime calls it "Red"; this club also calls it "bibs"; players Ava Stone, Ben Cole/);
-    expect(lines).toMatch(/yellow: MatchTime calls it "Yellow"; this club also calls it "no bibs"; players Dan Hale/);
+    expect(lines).toMatch(/red: MatchTime calls it "Red"; this club called it "bibs" in this game; players Ava Stone, Ben Cole/);
+    expect(lines).toMatch(/yellow: MatchTime calls it "Yellow"; this club called it "no bibs" in this game; players Dan Hale/);
   });
 
   it("a recorded result is NOT said (it made the model read fresh claims as corrections), and a side with no names or players says so", () => {

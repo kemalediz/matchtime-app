@@ -47,6 +47,22 @@ describe("teamSides, parsed", () => {
     });
   });
 
+  it("a player is carried with or without a side; the schema requires it", () => {
+    const { facts } = parseFacts(
+      "score",
+      wire({ teamSides: [{ team: "Dan's team", side: "unknown", player: "Dan Hale" }, { team: "bibs", side: "red", player: "" }] }),
+      "m1",
+    );
+    expect(facts).toMatchObject({
+      teamSides: [
+        { team: "Dan's team", player: "Dan Hale" },
+        { team: "bibs", side: "RED" },
+      ],
+    });
+    const schema = factsSchemaFor("score") as { properties: { teamSides: { items: { required: string[] } } } };
+    expect(schema.properties.teamSides.items.required).toEqual(["team", "side", "player"]);
+  });
+
   it("all unknown, drifted values and empty names leave no teamSides at all", () => {
     const { facts } = parseFacts(
       "score",

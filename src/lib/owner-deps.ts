@@ -100,13 +100,13 @@ export function buildScoreApplyDeps(args: { db?: Db } = {}): ScoreApplyDeps {
       });
     },
 
-    async recordScoreAsk({ matchId, first, second, askerUserId, name, other }) {
+    async recordScoreAsk({ matchId, first, second, askerUserId, name, other, noStore }) {
       // One open question per match. The key carries the numbers and
       // `targetUser` who posted the scoreline (`score-ask.ts`), so
       // replacing the pair is delete-then-create. `text` carries the name
       // asked about, when the question is "Which team was bibs?"
       // (`score-sides.ts`, 2026-11-17); null for "which team won?".
-      const names = scoreAskNamesText(name ? { name, ...(other ? { other } : {}) } : null);
+      const names = scoreAskNamesText(name ? { name, ...(other ? { other } : {}), ...(noStore ? { noStore } : {}) } : null);
       await db.sentNotification.deleteMany({ where: { kind: SCORE_ASK_KIND, matchId } });
       await db.sentNotification.create({
         data: {
@@ -121,13 +121,17 @@ export function buildScoreApplyDeps(args: { db?: Db } = {}): ScoreApplyDeps {
 
     async recordSideNames({ matchId, names }) {
       // One row per match (`sideNamesKey`), its text the club's names for
-      // the two sides. Delete-then-create so the newest row is the club's
-      // last used (`load-side-names.ts` reads it by `createdAt`).
+      // the two sides IN THAT MATCH. Delete-then-create so the newest row
+      // is the newest earlier game's, the hint `load-side-names.ts` reads.
       const key = sideNamesKey(matchId);
       await db.sentNotification.deleteMany({ where: { key } });
       await db.sentNotification.create({
         data: { key, kind: SCORE_SIDE_NAMES_KIND, matchId, text: encodeSideNames(names) },
       });
+    },
+
+    async clearSideNames(matchId) {
+      await db.sentNotification.deleteMany({ where: { key: sideNamesKey(matchId) } });
     },
 
     async reconcileElo(matchId) {
