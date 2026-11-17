@@ -61,6 +61,7 @@ import { resolveTeamLabels } from "./team-labels";
 import { loadPlayerNames } from "./player-display-name";
 import { sanitiseTeamNames } from "./message-analyzer";
 import { perTeamFor, playerRange, teamsNeeded } from "./flex-format-rules";
+import { openSquadMinimum, openSquadPerTeam } from "./open-squad";
 
 export type GenerateTeamsResult =
   /** `unmet`: the together and apart groups the teams could not keep
@@ -139,8 +140,16 @@ export async function generateTeamsForMatch(
     maxPlayers: match.activity.maxPlayers ?? null,
     playersPerTeam: sport.playersPerTeam,
   });
-  const perTeam = perTeamFor({ maxPlayers: match.maxPlayers, playersPerTeam: sport.playersPerTeam });
-  const needed = teamsNeeded({ places: perTeam * 2, range });
+  // AN OPEN SQUAD (2026-11-17, open-squad.ts) has no format: the teams are
+  // whoever is in, split into two even sides (15 is 8 v 7), from the
+  // game's minimum up, and nobody is ever left out.
+  const openSquad = match.activity.org.openSquad === true;
+  const perTeam = openSquad
+    ? openSquadPerTeam(match.attendances.length)
+    : perTeamFor({ maxPlayers: match.maxPlayers, playersPerTeam: sport.playersPerTeam });
+  const needed = openSquad
+    ? openSquadMinimum({ minPlayers: match.activity.minPlayers ?? null, playersPerTeam: sport.playersPerTeam })
+    : teamsNeeded({ places: perTeam * 2, range });
   if (match.attendances.length < needed) {
     return {
       ok: false,

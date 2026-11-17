@@ -135,6 +135,21 @@ describe("composePartnerAskReply: one reply for every partner asked", () => {
     expect(text).toContain("*Sutton FC*: not asked, every place in this game is taken.");
   });
 
+  it("an open squad (2026-11-17) at its minimum: \"enough players\", never \"every place is taken\"", () => {
+    const one = composePartnerAskReply("en", [{ partnerName: "Sutton FC", result: "no-places" }], { cutoffHours: 4, openSquad: true });
+    expect(one).toBe("*Partner clubs:* I didn't ask Sutton FC: you already have enough players for this game, and anyone else can still say IN.");
+    const two = composePartnerAskReply(
+      "tr",
+      [
+        { partnerName: "Sutton FC", result: "no-places" },
+        { partnerName: "MT Vets", result: "no-places" },
+      ],
+      { cutoffHours: 4, openSquad: true },
+    );
+    expect(two).toContain("• *Sutton FC*: sorulmadı, bu maç için yeterince oyuncunuz var.");
+    expect(two).not.toMatch(/dolu|taken/);
+  });
+
   it("Turkish, every shape, with yedek and never a dash", () => {
     const one = composePartnerAskReply("tr", [{ partnerName: "Sutton FC", result: "awaiting" }], { cutoffHours: 4, firstCome: false });
     expect(one).toContain("Sutton FC");

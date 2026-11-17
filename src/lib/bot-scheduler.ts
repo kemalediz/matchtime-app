@@ -869,7 +869,7 @@ export async function computeDuePosts(
             status: true,
             maxPlayers: true,
             // The match's org language: the follow-up is written in it.
-            activity: { select: { name: true, org: { select: { language: true } } } },
+            activity: { select: { name: true, org: { select: { language: true, openSquad: true } } } },
           },
         },
       },
@@ -907,7 +907,8 @@ export async function computeDuePosts(
         matchStatus: row.match.status,
         attendanceStatus: att?.status ?? null,
         confirmedCount,
-        maxPlayers: row.match.maxPlayers,
+        // An open squad is never full: the maybe is still asked.
+        maxPlayers: row.match.activity.org.openSquad ? Number.POSITIVE_INFINITY : row.match.maxPlayers,
       });
       if (decision === "skip") {
         // Moot — mark resolved so it never re-evaluates or DMs.
@@ -929,7 +930,7 @@ export async function computeDuePosts(
         matchId: row.match.id,
         text: buildTentativeFollowupDm({
           playerName: row.user.name,
-          activityName: matchFormatTitle(row.match.activity.name, row.match.maxPlayers),
+          activityName: matchFormatTitle(row.match.activity.name, row.match.maxPlayers, { openSquad: row.match.activity.org.openSquad }),
           whenLabel: dayTimeLabel(row.match.activity.org.language, row.match.date),
           lang: row.match.activity.org.language,
         }),
@@ -1867,6 +1868,7 @@ async function computeForMatch(
           dateLabel: longDayTimeLabel(lang, m.date),
           venue: activity.venue,
           maxPlayers,
+          openSquad,
           lang,
         }),
       });
@@ -2975,7 +2977,10 @@ async function computeForMatch(
       // Against the game's OWN format when no minimum is set (review of
       // #517): a match switched up to 16 with 14 in is two full 7-a-side
       // teams, not short. The one definition of "short" (squad-short.ts).
-      isShort
+      isShort &&
+      // An open squad has no format to switch to (open-squad.ts); the
+      // 18:00 "Match in trouble" below still warns under its minimum.
+      !openSquad
     ) {
       const candidate = await findSmallerSameSportActivity(
         activity.orgId,
@@ -3022,10 +3027,13 @@ async function computeForMatch(
       hour < 19 &&
       m.status === "UPCOMING"
     ) {
-      const minViable = await findMinimumToPlay(activity.orgId, activity.sportId, {
-        minPlayers: activity.minPlayers ?? null,
-        playersPerTeam: sport.playersPerTeam,
-      });
+      // An open squad's only number is its own minimum: no other format.
+      const minViable = openSquad
+        ? minimum
+        : await findMinimumToPlay(activity.orgId, activity.sportId, {
+            minPlayers: activity.minPlayers ?? null,
+            playersPerTeam: sport.playersPerTeam,
+          });
       const channel = confirmed.length < minViable ? await admin.getChannel() : null;
       if (channel) {
         // Same door, same keys (`…:cancel-nudge:<adminId>`), and "Tap to

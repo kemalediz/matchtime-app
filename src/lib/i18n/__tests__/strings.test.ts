@@ -2033,6 +2033,8 @@ const SAMPLES: SampleArgs = {
   xaskw_refused_too_late: { partner: "SUTTONCLUB", hours: 4, link: "LINKX" },
   xaskw_refused_daily_cap: { partner: "SUTTONCLUB" },
   xaskw_refused_no_places: { partner: "SUTTONCLUB" },
+  xaskw_refused_enough: { partner: "SUTTONCLUB" },
+  xaskw_line_enough: { partner: "SUTTONCLUB" },
   xaskw_refused_paused: { partner: "SUTTONCLUB" },
   xaskw_refused_unreachable: { partner: "SUTTONCLUB" },
   xaskw_settings_line: { link: "LINKX" },

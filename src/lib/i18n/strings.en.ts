@@ -370,8 +370,10 @@ export const en = {
 
   // ── row 68: buildAnnounceMatchPost (scheduler-copy.ts) ───────────
 
-  announce_match: (p: { activityName: string; dateLabel: string; venue: string; maxPlayers: number }): string =>
-    `📅 *${p.activityName}*: *${p.dateLabel}* at ${p.venue}.\n\nSay *IN* to join. First ${p.maxPlayers} confirmed play.`,
+  /** `openSquad` (2026-11-17, open-squad.ts): no limit, so no "first N". */
+  announce_match: (p: { activityName: string; dateLabel: string; venue: string; maxPlayers: number; openSquad?: boolean }): string =>
+    `📅 *${p.activityName}*: *${p.dateLabel}* at ${p.venue}.\n\nSay *IN* to join. ` +
+    (p.openSquad ? `Everyone who says IN plays.` : `First ${p.maxPlayers} confirmed play.`),
 
   /** Row 68m: the announcement of a club on "monthly" with no month in
    *  MatchTime yet (the Vets incident, 3 Nov 2026). The regulars paid for
@@ -6210,6 +6212,10 @@ export const en = {
     `*Partner clubs:* I didn't ask ${p.partner}: they've already had two asks today, the most a club gets in one day. Try again tomorrow.`,
   xaskw_refused_no_places: (p: { partner: string }) =>
     `*Partner clubs:* I didn't ask ${p.partner}: every place in this game is taken, so there's nobody to find.`,
+  /** An open squad (open-squad.ts) at or above its minimum: nobody to find. */
+  xaskw_refused_enough: (p: { partner: string }) =>
+    `*Partner clubs:* I didn't ask ${p.partner}: you already have enough players for this game, and anyone else can still say IN.`,
+  xaskw_line_enough: (p: { partner: string }) => `• *${p.partner}*: not asked, you already have enough players for this game.`,
   xaskw_refused_paused: (p: { partner: string }) =>
     `*Partner clubs:* I didn't ask ${p.partner}: they're paused on MatchTime for now. Ask another partner club, or try again once they're back.`,
   xaskw_refused_unreachable: (p: { partner: string }) =>

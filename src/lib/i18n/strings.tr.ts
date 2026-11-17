@@ -353,7 +353,8 @@ export const tr: Strings = {
   // ── row 68: buildAnnounceMatchPost ───────────────────────────────
 
   announce_match: (p) =>
-    `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\nKatılmak için *VARIM* yazın. İlk ${p.maxPlayers} kişi oynar.`,
+    `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\nKatılmak için *VARIM* yazın. ` +
+    (p.openSquad ? `*VARIM* yazan herkes oynar.` : `İlk ${p.maxPlayers} kişi oynar.`),
 
   announce_match_monthly: (p) =>
     `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
@@ -4496,6 +4497,9 @@ export const tr: Strings = {
   xaskw_refused_daily_cap: (p) =>
     `*Partner kulüpler:* ${p.partner} kulübüne sormadım: bugün zaten iki istek aldılar, bir kulübün bir günde alabileceği en fazla istek bu. Yarın yeniden deneyin.`,
   xaskw_refused_no_places: (p) => `*Partner kulüpler:* ${p.partner} kulübüne sormadım: bu maçta bütün yerler dolu, aranacak kimse yok.`,
+  xaskw_refused_enough: (p) =>
+    `*Partner kulüpler:* ${p.partner} kulübüne sormadım: bu maç için yeterince oyuncunuz var, isteyen yine de *VARIM* yazabilir.`,
+  xaskw_line_enough: (p) => `• *${p.partner}*: sorulmadı, bu maç için yeterince oyuncunuz var.`,
   xaskw_refused_paused: (p) =>
     `*Partner kulüpler:* ${p.partner} kulübüne sormadım: şu an MatchTime'da duraklatılmış durumdalar. Başka bir partner kulübe sorun ya da geri döndüklerinde yeniden deneyin.`,
   xaskw_refused_unreachable: (p) =>

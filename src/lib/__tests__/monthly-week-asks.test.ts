@@ -71,3 +71,23 @@ describe("a monthly week", () => {
     expect(await guestPaygPence("m1")).toBe(800);
   });
 });
+
+describe("an open squad (2026-11-17): only the players short of the minimum", () => {
+  const openOrg = (squadMode: string) => ({
+    maxPlayers: 14,
+    activity: { minPlayers: 12, sport: { playersPerTeam: 7 }, org: { squadMode, openSquad: true } },
+  });
+
+  it("weekly: nothing at or above the minimum, whatever the places", async () => {
+    dbMock.match.findUnique.mockResolvedValue(openOrg("weekly"));
+    dbMock.attendance.count.mockResolvedValue(13);
+    expect(await askPlacesOpen("m1")).toBe(0);
+    dbMock.attendance.count.mockResolvedValue(10);
+    expect(await askPlacesOpen("m1")).toBe(2);
+  });
+
+  it("monthly: the week's confirmed against the minimum", async () => {
+    dbMock.match.findUnique.mockResolvedValue({ ...openOrg("monthly"), activity: { ...openOrg("monthly").activity, minPlayers: 3 } });
+    expect(await askPlacesOpen("m1")).toBe(1);
+  });
+});

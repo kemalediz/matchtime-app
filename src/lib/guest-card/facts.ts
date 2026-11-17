@@ -29,9 +29,9 @@ export async function loadGuestMatchFacts(matchId: string): Promise<GuestMatchFa
   if (!base) return null;
   const m = await db.match.findUnique({
     where: { id: matchId },
-    select: { maxPlayers: true, activity: { select: { name: true, venueRef: { select: { placeId: true, lat: true, lng: true } } } } },
+    select: { maxPlayers: true, activity: { select: { name: true, org: { select: { openSquad: true } }, venueRef: { select: { placeId: true, lat: true, lng: true } } } } },
   });
-  const format = m ? matchFormatTitle(m.activity.name, m.maxPlayers).trim() || null : null;
+  const format = m ? matchFormatTitle(m.activity.name, m.maxPlayers, { openSquad: m.activity.org?.openSquad === true }).trim() || null : null;
   const ref = m?.activity.venueRef ?? null;
   return {
     matchId,

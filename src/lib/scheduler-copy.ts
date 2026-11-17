@@ -42,6 +42,8 @@ export function buildAnnounceMatchPost(
     dateLabel: string;
     venue: string;
     maxPlayers: number;
+    /** No squad limit (open-squad.ts): everyone who says IN plays. */
+    openSquad?: boolean;
   } & WithLang,
 ): string {
   return t(args.lang).announce_match(args);

@@ -19,24 +19,36 @@ import { db } from "./db";
 import { loadMonthlyWeek, type MonthlyWeek } from "./monthly-week";
 import { monthlyPlacesOpen } from "./monthly-week-asks-rules";
 import { normaliseSquadMode } from "./squad-month-rules";
+import { openSquadMinimum, placesToFill } from "./open-squad";
 
 /** The monthly week of this match, or null without reading the match's
  *  rows when its club is on "weekly". */
-async function monthlyWeekOf(matchId: string): Promise<{ maxPlayers: number; week: MonthlyWeek | null } | null> {
-  const m = await db.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true, activity: { select: { org: { select: { squadMode: true } } } } } });
+async function monthlyWeekOf(matchId: string): Promise<{ maxPlayers: number; openSquad: boolean; minimum: number; week: MonthlyWeek | null } | null> {
+  const m = await db.match.findUnique({
+    where: { id: matchId },
+    select: {
+      maxPlayers: true,
+      activity: { select: { minPlayers: true, sport: { select: { playersPerTeam: true } }, org: { select: { squadMode: true, openSquad: true } } } },
+    },
+  });
   if (!m) return null;
-  if (normaliseSquadMode(m.activity?.org?.squadMode) !== "monthly") return { maxPlayers: m.maxPlayers, week: null };
-  return { maxPlayers: m.maxPlayers, week: await loadMonthlyWeek(matchId) };
+  const openSquad = m.activity?.org?.openSquad === true;
+  const minimum = openSquadMinimum({ minPlayers: m.activity?.minPlayers ?? null, playersPerTeam: m.activity?.sport?.playersPerTeam ?? m.maxPlayers / 2 });
+  const base = { maxPlayers: m.maxPlayers, openSquad, minimum };
+  if (normaliseSquadMode(m.activity?.org?.squadMode) !== "monthly") return { ...base, week: null };
+  return { ...base, week: await loadMonthlyWeek(matchId) };
 }
 
 /** The match's places an ask may fill. A weekly club (or a match with no
- *  running month): its size less its CONFIRMED rows, as always. */
+ *  running month): its size less its CONFIRMED rows, as always. An OPEN
+ *  SQUAD (2026-11-17, open-squad.ts) has no places: an ask fills only the
+ *  players short of the game's minimum, so nothing is asked at or above it. */
 export async function askPlacesOpen(matchId: string): Promise<number> {
   const found = await monthlyWeekOf(matchId);
   if (!found) return 0;
-  if (found.week) return monthlyPlacesOpen(found.week);
+  if (found.week) return monthlyPlacesOpen({ ...found.week, openSquad: found.openSquad, minimum: found.minimum });
   const confirmed = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
-  return Math.max(0, found.maxPlayers - confirmed);
+  return placesToFill({ openSquad: found.openSquad, confirmed, maxPlayers: found.maxPlayers, minimum: found.minimum });
 }
 
 /** The club's PAYG price (pence) when this match is a week of a running

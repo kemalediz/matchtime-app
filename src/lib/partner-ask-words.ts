@@ -167,19 +167,21 @@ export async function askPartnersFromWords(args: {
   }
   const asked = results.filter((r) => r.result === "posted" || r.result === "awaiting").length;
   // Where a volunteer goes is the club's own bench rule (partner-guest.ts).
-  let pick: { benchPickMode: string | null } | null = null;
-  if (asked > 0) {
+  // An open squad's "no places" is "enough players" (open-squad.ts).
+  let pick: { benchPickMode: string | null; openSquad?: boolean | null } | null = null;
+  if (asked > 0 || results.some((r) => r.result === "no-places")) {
     try {
-      pick = await db.organisation.findUnique({ where: { id: orgId }, select: { benchPickMode: true } });
+      pick = await db.organisation.findUnique({ where: { id: orgId }, select: { benchPickMode: true, openSquad: true } });
     } catch {
       pick = null; // the default rule, first come
     }
   }
   const firstCome = normaliseBenchPickMode(pick?.benchPickMode) === "first-come";
+  const openSquad = pick?.openSquad === true;
   console.log(`[partner-ask-words] ${orgId}: ${args.via} asked ${asked} of ${results.length} partner(s) for match ${matchId}`);
   return {
     outcome: asked > 0 ? "xask-words-asked" : "xask-words-not-asked",
-    replyText: composePartnerAskReply(lang, results, { cutoffHours: settings?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS, places, day, settingsLink, firstCome }),
+    replyText: composePartnerAskReply(lang, results, { cutoffHours: settings?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS, places, day, settingsLink, firstCome, openSquad }),
     asked,
   };
 }
