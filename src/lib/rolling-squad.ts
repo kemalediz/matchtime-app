@@ -230,7 +230,7 @@ export async function seedRollingSquad(args: {
   const [target, source] = await Promise.all([
     db.match.findUnique({
       where: { id: args.targetId },
-      include: { activity: { select: { orgId: true, venue: true, dayOfWeek: true } } },
+      include: { activity: { select: { orgId: true, venue: true, dayOfWeek: true, org: { select: { openSquad: true } } } } },
     }),
     db.match.findUnique({ where: { id: args.sourceId }, select: { id: true, date: true } }),
   ]);
@@ -250,7 +250,9 @@ export async function seedRollingSquad(args: {
     if (claim.count === 0) return NOTHING;
 
     const targetRows = await tx.attendance.findMany({ where: { matchId: target.id } });
-    const decisions = decideSeed({ sourceRows, targetRows, maxPlayers: target.maxPlayers });
+    // An open squad (open-squad.ts) has no cap: everyone carried is in.
+    const openSquad = target.activity.org?.openSquad === true;
+    const decisions = decideSeed({ sourceRows, targetRows, maxPlayers: openSquad ? Number.POSITIVE_INFINITY : target.maxPlayers });
     if (decisions.length === 0) return { seeded: true, carried: 0, overflow: 0 };
 
     let position = targetRows.reduce((max, r) => Math.max(max, r.position), 0);
@@ -288,7 +290,7 @@ export async function seedRollingSquad(args: {
     const confirmedAfter =
       targetRows.filter((r) => r.status === "CONFIRMED").length +
       decisions.filter((d) => d.status === "CONFIRMED").length;
-    if (confirmedAfter >= target.maxPlayers) {
+    if (!openSquad && confirmedAfter >= target.maxPlayers) {
       const key = `${target.id}:squad-locked`;
       await tx.sentNotification.upsert({
         where: { key },
