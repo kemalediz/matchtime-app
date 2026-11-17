@@ -114,3 +114,18 @@ export const CONTACT_CARD_LABEL = "[shared a contact card]";
 export function cardSafeText(text: string): string {
   return isContactCard(text) ? CONTACT_CARD_LABEL : text;
 }
+
+/**
+ * A history list the Pi forwards (the join-history bundle), with every
+ * line that is a contact card left out (2026-11-17). A card in a group's
+ * past chat is nobody's request; its name and number must not be stored.
+ * Anything that is not a list is returned as it came.
+ */
+export function withoutContactCards(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.filter((r) => {
+    if (!r || typeof r !== "object") return true;
+    const t = (r as { text?: unknown; body?: unknown }).text ?? (r as { body?: unknown }).body;
+    return !(typeof t === "string" && isContactCard(t));
+  });
+}

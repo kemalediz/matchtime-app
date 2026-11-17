@@ -23,6 +23,7 @@
  * Never throws: a failure is logged (ids only) and he hears the plain line.
  */
 import { db } from "../db";
+import { ORDINARY_MEMBER_WHERE } from "../guest-membership";
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf } from "../message-hours";
 import { placeOrganiserGuest } from "../partner-guest";
@@ -77,7 +78,12 @@ export async function addGuest(a: AddGuestArgs): Promise<AddGuestOutcome> {
     const membership = existing
       ? await db.membership.findUnique({ where: { userId_orgId: { userId: existing.id, orgId: a.orgId } }, select: { guestMatchId: true, guestFromOrgId: true, guestVia: true, leftAt: true } })
       : null;
-    const owner = numberOwnerDecision({ userExists: !!existing, membership });
+    // Another club's current member is never made a guest here (review of
+    // #621): his own club, and his DMs to it, stay his.
+    const memberElsewhere =
+      !!existing &&
+      (await db.membership.count({ where: { userId: existing.id, orgId: { not: a.orgId }, leftAt: null, ...ORDINARY_MEMBER_WHERE } })) > 0;
+    const owner = numberOwnerDecision({ userExists: !!existing, membership, memberElsewhere });
     if (owner === "not-ours") return done({ kind: "not-ours" });
 
     const chosen = chooseGuestName({ written: a.writtenName, existing: existing?.name ?? null, card: a.cardName });
@@ -116,6 +122,10 @@ export async function addGuest(a: AddGuestArgs): Promise<AddGuestOutcome> {
     }
 
     const status: "in" | "bench" = kind === "in" || kind === "already-in" ? "in" : "bench";
+    // A regular member already on the list needs no welcome (review of #621).
+    if (owner === "member" && (kind === "already-in" || kind === "already-bench")) {
+      return done({ kind, name, kickoff: facts.kickoff, now: a.now, dm: "none" }, { userId, nameSource: chosen.source, dm: "none" });
+    }
     const dm = await sendWelcomeOnce({ orgId: a.orgId, matchId: a.matchId, userId, phoneDigits: digits, now: a.now, organiserUserId: a.organiserUserId, guestName: name, status, facts, lang });
     return done({ kind, name, kickoff: facts.kickoff, now: a.now, dm }, { userId, nameSource: chosen.source, dm });
   } catch (err) {

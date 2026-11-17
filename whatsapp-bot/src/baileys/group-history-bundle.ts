@@ -698,6 +698,10 @@ function toRow(m: proto.IWebMessageInfo, group: string): RowOutcome {
       message: current.message,
     } as WAMessage);
     if (!mapped || !mapped.body) return { kind: "no-text", shape: describeNoText(m) };
+    // A shared contact card (2026-11-17): the live mapper reads it for an
+    // organiser bringing a guest; in the join history it is nobody's
+    // request, so its name and number never leave the Pi.
+    if (mapped.type === "vcard") return { kind: "no-text", shape: "contactMessage" };
     const senderJid = key.participant || m.participant || null;
     const cut = capText(mapped.body);
     return {

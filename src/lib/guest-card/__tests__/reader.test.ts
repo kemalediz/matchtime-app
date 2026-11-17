@@ -1,7 +1,8 @@
 /**
- * The guest reader's contract (2026-11-17), with no model: what it is shown
- * and how its answer is read. The prompt's behaviour is checked against the
- * real model by `scripts/live-check-guest-card.ts` (paid, run once).
+ * The guest reader's contract (2026-11-17, rewritten after the review of
+ * #621), with no model: what it is shown and how its answer is read. The
+ * prompt's behaviour is checked against the real model by
+ * `scripts/live-check-guest-card.ts` (paid, run once).
  */
 import { describe, expect, it } from "vitest";
 import { buildGuestAddUserTurn, GUEST_ADD_SYSTEM_PROMPT, parseGuestAdd, readGuestAdd } from "../reader";
@@ -42,15 +43,30 @@ describe("buildGuestAddUserTurn", () => {
 });
 
 describe("parseGuestAdd", () => {
-  it("reads the answer", () => {
-    expect(parseGuestAdd('{"add":true,"game":1,"name":"","phone":"","confidence":0.95}')).toEqual({ add: true, game: 1, name: null, phone: null, confidence: 0.95 });
-    expect(parseGuestAdd('{"add":true,"game":0,"name":"Abu Ayoub","phone":"07700 900123","confidence":1}')).toEqual({
+  it("a card's person, with a game", () => {
+    expect(parseGuestAdd('{"add":true,"card":true,"name":"","typed":[],"game":1,"game_not_listed":false,"also":false,"confidence":0.95}')).toEqual({
       add: true,
-      game: 0,
-      name: "Abu Ayoub",
-      phone: "07700 900123",
-      confidence: 1,
+      card: true,
+      name: null,
+      typed: [],
+      game: 1,
+      gameNotListed: false,
+      also: false,
+      confidence: 0.95,
     });
+  });
+  it("typed people, each a name and the number as written; one without a number is dropped", () => {
+    const r = parseGuestAdd(
+      '{"add":true,"card":false,"name":"","typed":[{"name":"Sami","phone":"07700 900456"},{"name":"Can","phone":"07700 900457"},{"name":"Ali","phone":""}],"game":0,"game_not_listed":false,"also":true,"confidence":0.9}',
+    );
+    expect(r.typed).toEqual([
+      { name: "Sami", phone: "07700 900456" },
+      { name: "Can", phone: "07700 900457" },
+    ]);
+    expect(r.also).toBe(true);
+  });
+  it("a named game that is not in the list", () => {
+    expect(parseGuestAdd('{"add":true,"card":true,"name":"","typed":[],"game":0,"game_not_listed":true,"also":false,"confidence":0.9}').gameNotListed).toBe(true);
   });
   it("anything off the contract is no add", () => {
     expect(parseGuestAdd("nope").add).toBe(false);
@@ -75,11 +91,17 @@ describe("readGuestAdd", () => {
       name: "fake",
       complete: async (req) => {
         seen.push(req.system, req.user);
-        return { text: '{"add":true,"game":1,"name":"","phone":"","confidence":0.9}', stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
+        return {
+          text: '{"add":true,"card":true,"name":"","typed":[],"game":1,"game_not_listed":false,"also":false,"confidence":0.9}',
+          stopReason: "end_turn",
+          usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0,
+          ms: 0,
+        };
       },
     };
     const r = await readGuestAdd("add him for tonight", ctx, { model });
-    expect(r).toMatchObject({ add: true, game: 1 });
+    expect(r).toMatchObject({ add: true, card: true, game: 1 });
     expect(seen[0]).toBe(GUEST_ADD_SYSTEM_PROMPT);
     expect(seen[1]).toContain("add him for tonight");
   });

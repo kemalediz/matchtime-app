@@ -12,6 +12,43 @@
  */
 import { longDayTimeLabel } from "../i18n/dates";
 import type { GuestGameFacts } from "./copy";
+import type { UnifiedAnswerInput } from "../pipeline/unified-answer";
+
+/**
+ * A GUEST'S DM ANSWER, CUT TO HIS GAME (review of #621). A guest with no
+ * club of his own (an organiser's guest, a pool or friend-link guest) is
+ * shown the game he is booked for and nothing else of the club: the squad
+ * and the bench (who is playing), the fee, and his game's block. Never the
+ * club's member list, the stats tables, past results, ratings, anybody's
+ * payments, who dropped out, or the club's partners and pool.
+ */
+export function guestView(input: UnifiedAnswerInput, guestBlock: string | null): UnifiedAnswerInput {
+  const rows = input.state.rows.filter((r) => r.status === "CONFIRMED" || r.status === "BENCH");
+  const keep = new Set(rows.map((r) => r.userId));
+  if (input.askerUserId) keep.add(input.askerUserId);
+  return {
+    ...input,
+    state: {
+      ...input.state,
+      rows,
+      roster: input.state.roster.filter((m) => keep.has(m.userId)),
+      formerMembers: [],
+      completedMatch: null,
+      payments: null,
+      ratingProgress: null,
+      partnerAsks: [],
+    },
+    stats: null,
+    periods: [],
+    person: null,
+    results: null,
+    payments: null,
+    ratingProgress: null,
+    clubFacts: null,
+    lastMatchRatings: null,
+    own: guestBlock ? [guestBlock] : [],
+  };
+}
 
 export function formatGuestGameBlock(f: GuestGameFacts, status: "CONFIRMED" | "BENCH" | string | null): string {
   const venue = [f.venue?.trim() || null, f.address?.trim() && f.address.trim() !== f.venue?.trim() ? f.address.trim() : null].filter(Boolean).join(", ");

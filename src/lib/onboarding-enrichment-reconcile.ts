@@ -11,6 +11,7 @@
  * onboarding-enrichment.ts).
  */
 
+import { isContactCard } from "./guest-card/vcard";
 import type { ParsedChat, ParsedMessage, ParsedAuthor } from "./whatsapp-parser";
 
 /** A single chat message as stored in MatchTime history. */
@@ -67,6 +68,8 @@ export function coerceHistoryMessages(value: unknown): HistoryMessage[] {
     const author = typeof r.author === "string" ? r.author.trim() : "";
     const text = typeof r.text === "string" ? r.text.trim() : "";
     if (!author || !text) continue;
+    // A shared contact card is never history (2026-11-17, guest-card/vcard.ts).
+    if (isContactCard(text)) continue;
     const authorPhone =
       typeof r.authorPhone === "string" && r.authorPhone.trim()
         ? r.authorPhone.trim()

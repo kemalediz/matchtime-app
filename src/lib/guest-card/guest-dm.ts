@@ -29,7 +29,7 @@ import { loadPartnerAskSettings } from "../club-partnership";
 import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "../club-partnership-rules";
 import { REPLY_PRIORITY } from "../dm-reply-priority";
 import { resolveDmSelfAttendance } from "../dm-self-attendance";
-import { GUEST_MEMBER_WHERE } from "../guest-membership";
+import { GUEST_MEMBER_WHERE, ORDINARY_MEMBER_WHERE } from "../guest-membership";
 import { tellClubAboutGuest } from "../guest-notice";
 import { normaliseLang } from "../i18n/lang";
 import { loadMatchAvailabilityFacts } from "../match-availability-context";
@@ -43,6 +43,7 @@ import { formatGuestGameBlock } from "./context";
 import { CARD_NAMED_EMAIL_PREFIX } from "./add";
 import { guestOutDm, guestOutNotice } from "./copy";
 import { handleGuestCardDm } from "./door";
+import { isContactCard } from "./vcard";
 import { loadGuestMatchFacts } from "./facts";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
@@ -94,6 +95,33 @@ export async function guestGameBlock(orgId: string, userId: string, now: Date): 
   return formatGuestGameBlock(f, row?.status ?? null);
 }
 
+/**
+ * A CARD BY DM, AT THE DOOR (review of #621): before any other DM handler
+ * reads the message. An organiser's card is held for his next words; anyone
+ * else's is dropped. Either way the DM goes no further, so no reader, model
+ * or stored row ever sees the card. Null for any DM that is not a card.
+ */
+export async function handleCardDmAtIntake(a: {
+  text: string;
+  phone: string | null | undefined;
+  senderAltPhone: string | null | undefined;
+  senderLid: string | null | undefined;
+  authorName: string | null;
+  waMessageId: string;
+  now?: Date;
+}): Promise<GuestCardDmResult> {
+  if (!isContactCard(a.text)) return null;
+  try {
+    const { resolveSenderUserIds } = await import("../admin-group-link");
+    const userIds = await resolveSenderUserIds({ phones: [a.phone, a.senderAltPhone], lid: a.senderLid ?? null });
+    const r = await handleGuestCardDm({ userIds, senderName: a.authorName, messageId: a.waMessageId, text: a.text, quotedText: null, now: a.now ?? new Date() });
+    return { handled: r.kind === "held" ? "guest-card-held" : "guest-card-ignored" };
+  } catch (err) {
+    console.error(`[guest-card] DM card ${a.waMessageId}: not held:`, err instanceof Error ? err.message : "failed");
+    return { handled: "guest-card-ignored" };
+  }
+}
+
 export type GuestCardDmResult = { handled: "guest-card-held" | "guest-card-ignored" | "guest-card-added" | "guest-card-out" } | null;
 
 export async function handleGuestCardDms(a: {
@@ -111,16 +139,25 @@ export async function handleGuestCardDms(a: {
   const now = a.now ?? new Date();
 
   // ── The organiser's side ──────────────────────────────────────────
+  // (His card itself never reaches here: it is taken at the door,
+  // `handleCardDmAtIntake`.)
   const user = await db.user.findUnique({ where: { id: a.userId }, select: { name: true } });
-  const door = await handleGuestCardDm({ userId: a.userId, senderName: user?.name ?? a.authorName, messageId: a.waMessageId, text: a.text, quotedText: a.quotedText, now });
+  const door = await handleGuestCardDm({ userIds: [a.userId], senderName: user?.name ?? a.authorName, messageId: a.waMessageId, text: a.text, quotedText: a.quotedText, now });
   if (door.kind === "held") return { handled: "guest-card-held" };
   if (door.kind === "ignored-card") return { handled: "guest-card-ignored" };
   if (door.kind === "answered") {
     if (a.replyPhone) await db.botJob.create({ data: { orgId: door.orgId, kind: "dm", phone: a.replyPhone, text: door.reply, ...REPLY_PRIORITY } });
+    // "I'm in, and add him for tonight": the add is done and said; the rest
+    // of his DM carries on through the DM pipeline (review of #621).
+    if (door.also) return null;
     return { handled: "guest-card-added" };
   }
 
   // ── The guest's side ──────────────────────────────────────────────
+  // Only a guest with no club of his own: another club's member's DMs
+  // belong to his own club (review of #621).
+  const own = await db.membership.count({ where: { userId: a.userId, leftAt: null, ...ORDINARY_MEMBER_WHERE } });
+  if (own > 0) return null;
   const games = await liveGuestGames(a.userId, now);
   const mine = games.find((g) => g.byOrganiser);
   if (!mine) return null;

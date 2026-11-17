@@ -55,7 +55,9 @@ export function guestWelcomeDm(
 
 export type OrganiserReply =
   | { kind: "in" | "bench" | "already-in" | "already-bench"; name: string; kickoff: Date; now: Date; dm: "sent" | "had" | "none" }
-  | { kind: "not-ours" | "no-number" | "no-name" | "no-game" }
+  | { kind: "not-ours" | "no-number" | "no-name" | "no-game" | "no-country-code" }
+  | { kind: "ask-game"; games: Array<{ club: string; kickoff: Date }> }
+  | { kind: "ask-club"; clubs: string[] }
   | { kind: "elsewhere" | "failed"; name: string };
 
 /** The game kicks off on today's London date. */
@@ -75,6 +77,12 @@ export function organiserReply(lang: Lang, r: OrganiserReply): string {
       return c.reply_no_name;
     case "no-game":
       return c.reply_no_game;
+    case "no-country-code":
+      return c.reply_no_country_code;
+    case "ask-game":
+      return c.reply_ask_game({ games: r.games.map((g) => dayCommaTimeLabel(lang, g.kickoff)), example: dayLabel(lang, r.games[r.games.length - 1].kickoff) });
+    case "ask-club":
+      return c.reply_ask_club({ clubs: r.clubs });
     case "elsewhere":
       return c.reply_elsewhere({ name: r.name });
     case "failed":
@@ -99,4 +107,9 @@ export function guestOutDm(lang: Lang, p: { club: string; kickoff: Date }): stri
 /** The club's notice when he gives his place back: his name, never his number. */
 export function guestOutNotice(lang: Lang, p: { name: string; organiser: string | null; kickoff: Date }): string {
   return guestCardCopy(lang).out_notice({ name: p.name, organiser: firstName(p.organiser), day: dayCommaTimeLabel(lang, p.kickoff) });
+}
+
+/** His DM when an organiser takes him off the game: the organisers' words. */
+export function guestRemovedDm(lang: Lang, p: { club: string; kickoff: Date }): string {
+  return guestCardCopy(lang).removed_dm({ club: p.club, day: dayCommaTimeLabel(lang, p.kickoff) });
 }

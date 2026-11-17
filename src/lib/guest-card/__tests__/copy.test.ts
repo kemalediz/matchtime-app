@@ -4,7 +4,7 @@
  * people and venue.
  */
 import { describe, expect, it } from "vitest";
-import { guestOutDm, guestOutNotice, guestWelcomeDm, organiserReply } from "../copy";
+import { guestOutDm, guestOutNotice, guestRemovedDm, guestWelcomeDm, organiserReply } from "../copy";
 
 const kickoff = new Date("2026-11-17T20:00:00Z"); // Tue 17 Nov, 20:00 London (GMT)
 const sameDay = new Date("2026-11-17T14:05:00Z");
@@ -137,5 +137,31 @@ describe("his OUT by DM", () => {
   it("the club is told, by name and never by number", () => {
     expect(guestOutNotice("en", { name: "Abu Ayoub", organiser: "Kemal Organiser", kickoff })).toBe("Abu Ayoub (Kemal's guest) can't make it on Tue 17 Nov, 20:00 any more. The place is free again.");
     expect(guestOutNotice("tr", { name: "Abu Ayoub", organiser: "Kemal Organiser", kickoff })).toBe("Abu Ayoub (Kemal getirdi) artık 17 Kasım Salı 20:00 maçına gelemiyor. Yer yeniden boş.");
+  });
+});
+
+describe("asked, never guessed (review of #621)", () => {
+  const games = [
+    { club: "Riverside FC", kickoff },
+    { club: "Riverside FC", kickoff: new Date("2026-11-20T20:00:00Z") },
+  ];
+  it("a day that is not on the list: which game, the games listed", () => {
+    expect(organiserReply("en", { kind: "ask-game", games })).toBe("Which game is he for? The coming games are Tue 17 Nov, 20:00 and Fri 20 Nov, 20:00. Tell me the day, for example *add him for Fri 20 Nov*.");
+    expect(organiserReply("tr", { kind: "ask-game", games })).toBe("Hangi maça ekleyeyim? Sıradaki maçlar: 17 Kasım Salı 20:00 ve 20 Kasım Cuma 20:00. Günü yazman yeterli, örneğin *20 Kasım Cuma maçına ekle*.");
+  });
+  it("several clubs by DM: which club", () => {
+    expect(organiserReply("en", { kind: "ask-club", clubs: ["Riverside FC", "Hillside FC"] })).toBe("Which club is he playing for, Riverside FC or Hillside FC? Tell me with the club's name, for example *add him for Riverside FC*.");
+    expect(organiserReply("tr", { kind: "ask-club", clubs: ["Riverside FC", "Hillside FC"] })).toBe("Hangi kulüpte oynayacak: Riverside FC mi, Hillside FC mi? Kulübün adını yazman yeterli.");
+  });
+  it("a number with no country to read: send it with the code", () => {
+    expect(organiserReply("en", { kind: "no-country-code" })).toBe("I couldn't read that number. Please send it with the country code, starting with +.");
+    expect(organiserReply("tr", { kind: "no-country-code" })).toBe("O numarayı okuyamadım. Lütfen ülke koduyla, + ile başlayarak gönder.");
+  });
+});
+
+describe("an organiser takes his guest off the game (review of #621: the organisers' words, not the pool's)", () => {
+  it("both languages, and no pool", () => {
+    expect(guestRemovedDm("en", { club: "Riverside FC", kickoff })).toBe("The organisers of *Riverside FC* took you out of the game on Tue 17 Nov, 20:00.");
+    expect(guestRemovedDm("tr", { club: "Riverside FC", kickoff })).toBe("*Riverside FC* organizatörleri seni 17 Kasım Salı 20:00 maçından çıkardı.");
   });
 });

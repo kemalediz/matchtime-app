@@ -6,7 +6,8 @@
  * (in HQ the card cannot carry the tag, so it never can be read on its
  * own). An organiser's card is held here for `GUEST_CARD_WINDOW_MS`, per
  * door and club, and the request that follows from the SAME sender takes
- * it. A held card is used once: the add deletes it.
+ * it. A held card is kept until an add uses it (then it is deleted), or
+ * until its window ends (review of #621: "who is this?" then "add Sam Jones").
  *
  * Stored as a `SentNotification` row (kind "guest-card-held"), which every
  * door already writes: no new table. The text is the card's name and
@@ -42,11 +43,18 @@ export async function holdCards(a: { scope: string; senderUserId: string; waMess
 
 /** The sender's cards held in this door in the window, oldest first. */
 export async function heldCards(a: { scope: string; senderUserId: string; now: Date }): Promise<HeldCards> {
-  const rows = await db.sentNotification.findMany({
-    where: { kind: HELD_KIND, key: { startsWith: prefix(a.scope, a.senderUserId) }, createdAt: { gte: new Date(a.now.getTime() - GUEST_CARD_WINDOW_MS) } },
+  const all = await db.sentNotification.findMany({
+    where: { kind: HELD_KIND, key: { startsWith: prefix(a.scope, a.senderUserId) } },
     orderBy: { createdAt: "asc" },
-    select: { key: true, text: true },
+    select: { key: true, text: true, createdAt: true },
   });
+  // Pruned on read as well as on every hold (review of #621): his cards past
+  // their window are deleted the moment they are seen, so a card never
+  // outlives its window by more than the next look at it.
+  const since = a.now.getTime() - GUEST_CARD_WINDOW_MS;
+  const stale = all.filter((r) => r.createdAt.getTime() < since).map((r) => r.key);
+  if (stale.length > 0) await db.sentNotification.deleteMany({ where: { key: { in: stale }, kind: HELD_KIND } }).catch(() => {});
+  const rows = all.filter((r) => r.createdAt.getTime() >= since);
   const out: HeldCards = { keys: [], cards: [] };
   for (const r of rows) {
     try {

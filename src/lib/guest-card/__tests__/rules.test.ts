@@ -13,7 +13,8 @@ import {
   isOrganiserMembership,
   numberOwnerDecision,
   phoneWrittenIn,
-  pickGame,
+  chooseGame,
+  typedGuestPhone,
   shouldReadGuestAdd,
 } from "../rules";
 
@@ -87,6 +88,31 @@ describe("numberOwnerDecision: the add-player guard (ensureOrgPlayer)", () => {
   it("someone else on MatchTime with no tie to this club: never attached", () => {
     expect(numberOwnerDecision({ userExists: true, membership: null })).toBe("not-ours");
   });
+  it("another club's member, even one who was this club's guest: never made a guest here (review of #621)", () => {
+    // A partner guest of this club has a home club: never converted.
+    expect(numberOwnerDecision({ userExists: true, membership: { guestMatchId: "m0", guestFromOrgId: "home", guestVia: "partner", leftAt: new Date() } })).toBe("not-ours");
+    // A past pool guest here who is now another club's member.
+    expect(numberOwnerDecision({ userExists: true, membership: { guestMatchId: "m0", guestVia: "pool", leftAt: new Date() }, memberElsewhere: true })).toBe("not-ours");
+    // This club's own member stays this club's member, whatever else he plays for.
+    expect(numberOwnerDecision({ userExists: true, membership: { guestMatchId: null, leftAt: null }, memberElsewhere: true })).toBe("member");
+  });
+});
+
+describe("typedGuestPhone: a typed number, in the club's country (review of #621)", () => {
+  it("UK local and international forms", () => {
+    expect(typedGuestPhone("07700 900123", "en")).toBe("+447700900123");
+    expect(typedGuestPhone("+44 7700 900123", "en")).toBe("+447700900123");
+    expect(typedGuestPhone("0044 7700 900123", "tr")).toBe("+447700900123");
+    expect(typedGuestPhone("+90 532 123 45 67", "en")).toBe("+905321234567");
+  });
+  it("a Turkish club's local mobile is +90", () => {
+    expect(typedGuestPhone("0532 123 45 67", "tr")).toBe("+905321234567");
+    expect(typedGuestPhone("532 123 45 67", "tr")).toBe("+905321234567");
+  });
+  it("a number with no country to read is none (the organiser is asked for the code)", () => {
+    expect(typedGuestPhone("0532 123 45 67", "en")).toBeNull();
+    expect(typedGuestPhone("555 1234", "en")).toBeNull();
+  });
 });
 
 describe("hasPhoneNumberShape: a number is present to be read (the container, not the words)", () => {
@@ -133,14 +159,23 @@ describe("shouldReadGuestAdd: when the reader is asked at all (facts only)", () 
   });
 });
 
-describe("pickGame", () => {
-  const games = [{ matchId: "a" }, { matchId: "b" }];
-  it("the game the model named", () => expect(pickGame(games, 2)?.matchId).toBe("b"));
-  it("none named, or out of range: the soonest", () => {
-    expect(pickGame(games, 0)?.matchId).toBe("a");
-    expect(pickGame(games, 7)?.matchId).toBe("a");
+describe("chooseGame (review of #621: a game not on the list is asked, never guessed)", () => {
+  const one = [
+    { matchId: "a", orgId: "o1" },
+    { matchId: "b", orgId: "o1" },
+  ];
+  it("the game the model named", () => expect(chooseGame(one, { n: 2, notListed: false })).toEqual({ kind: "game", game: one[1] }));
+  it("none named, one club: the soonest", () => expect(chooseGame(one, { n: 0, notListed: false })).toEqual({ kind: "game", game: one[0] }));
+  it("a day that is not on the list: ask which game", () => {
+    expect(chooseGame(one, { n: 0, notListed: true })).toEqual({ kind: "ask-game" });
+    expect(chooseGame(one, { n: 9, notListed: false })).toEqual({ kind: "ask-game" });
   });
-  it("no games: none", () => expect(pickGame([], 1)).toBeNull());
+  it("none named, several clubs (a DM): ask which club", () => {
+    const two = [one[0], { matchId: "c", orgId: "o2" }];
+    expect(chooseGame(two, { n: 0, notListed: false })).toEqual({ kind: "ask-club" });
+    expect(chooseGame(two, { n: 2, notListed: false })).toEqual({ kind: "game", game: two[1] });
+  });
+  it("no games: none", () => expect(chooseGame([], { n: 1, notListed: false })).toEqual({ kind: "none" }));
 });
 
 describe("the one welcome DM per guest per match", () => {

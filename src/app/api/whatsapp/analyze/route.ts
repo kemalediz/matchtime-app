@@ -347,6 +347,7 @@ import { quotedRefOf } from "@/lib/quoted-message";
 import { loadGroupReplyContexts, parseGroupQuote, quoteFromPi, type QuotedGroupMessage } from "@/lib/reply-context";
 import { rosterMemberByPhone } from "@/lib/roster-name-by-phone";
 import { claimGroupReplies } from "@/lib/group-reply-claims";
+import { cardSafeLines, takeCardsAside } from "@/lib/guest-card/intake";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
 import { askPartnerAfterOwnInByDm, askPartnerWhichByDm } from "@/lib/partner-guest-dm";
 import { askPartnersFromWords, partnerClubsForRouter } from "@/lib/partner-ask-words";
@@ -519,6 +520,15 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   }
   const organisersMode = organisersAnnounce(org);
   bindAiBudgetKey(org.id);
+
+  // A SHARED CONTACT CARD IS TAKEN ASIDE FIRST (2026-11-17, review of #621,
+  // `lib/guest-card/intake.ts`): its name and number never reach anything
+  // below (sender resolution, reply contexts, the models, the stored rows,
+  // the chat history). The bodies, the quotes and the Pi's history carry
+  // its label; the raw text goes to the guest card door only.
+  const cardsAside = takeCardsAside(body.messages);
+  body.messages = cardsAside.messages;
+  if (body.history) body.history = cardSafeLines(body.history);
 
   // Name every @-mention the roster can vouch for BEFORE anything reads a
   // body: the squad-from-list archive, the dedupe's empty-body check, the
@@ -844,28 +854,27 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   await recordGroupSightings(org.id, sightedUserIds(senderById.values()));
 
   // ── BRINGING A GUEST (2026-11-17, `lib/guest-card/door.ts`) ──────────
-  //   An organiser's contact card is held, and his "add him for tonight"
-  //   (or a name and number) is read by the guest reader and the guest
-  //   added, with one reply: the same path as HQ and a DM. Those messages
-  //   leave the batch here; everything else carries on untouched, a
-  //   non-organiser's card included (the engine's vCard refusal). No card's
-  //   number is stored or reaches a model: its text becomes a label.
+  //   Every contact card leaves the batch here as noise, never routed (an
+  //   organiser's is held first). An organiser's "add him for tonight" (or
+  //   a name and number) is read by the guest reader and the guest added,
+  //   with one reply: the same path as HQ and a DM. When it also asks for
+  //   something else ("I'm in, and add him"), it stays in the batch for the
+  //   rest and its reply is merged into the message's one reply below.
+  const guestCardReplies = new Map<string, string>();
   {
     const { handleGuestCardsInBatch } = await import("@/lib/guest-card/door");
-    const { cardSafeText } = await import("@/lib/guest-card/vcard");
     const guest = await handleGuestCardsInBatch({
       orgId: org.id,
       now: lateNow,
-      messages: fresh
-        .filter((m) => !lateById.has(m.waMessageId))
-        .map((m) => ({
-          waMessageId: m.waMessageId,
-          body: m.body,
-          quotedBody: m.quotedBody ?? null,
-          senderUserId: senderById.get(m.waMessageId)?.userId ?? null,
-          senderName: senderById.get(m.waMessageId)?.name ?? m.authorName,
-          tagged: piMentionsBot(m),
-        })),
+      messages: fresh.map((m) => ({
+        waMessageId: m.waMessageId,
+        body: cardsAside.raw.get(m.waMessageId)?.body ?? m.body,
+        quotedBody: cardsAside.raw.get(m.waMessageId)?.quoted ?? m.quotedBody ?? null,
+        senderUserId: senderById.get(m.waMessageId)?.userId ?? null,
+        senderName: senderById.get(m.waMessageId)?.name ?? m.authorName,
+        tagged: piMentionsBot(m),
+        late: lateById.has(m.waMessageId),
+      })),
     });
     for (const c of guest.consumed) {
       const m = fresh.find((x) => x.waMessageId === c.waMessageId);
@@ -873,9 +882,9 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
       await recordAnalysis({ orgId: org.id, groupId: body.groupId, msg: { ...m, body: c.storedBody }, handledBy: "fast-path", intent: c.intent, action: null, confidence: 1, reasoning: c.reasoning, authorUserId: senderById.get(m.waMessageId)?.userId ?? null });
       results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: c.intent, react: null, reply: c.reply });
     }
+    for (const [id, reply] of guest.merges) guestCardReplies.set(id, reply);
     const gone = new Set(guest.consumed.map((c) => c.waMessageId));
     if (gone.size > 0) fresh.splice(0, fresh.length, ...fresh.filter((m) => !gone.has(m.waMessageId)));
-    if (body.history) body.history = body.history.map((h) => ({ ...h, body: cardSafeText(h.body) }));
   }
 
   // LATE MESSAGES SKIP EVERY PEEL (touch 2 of 4, see the late-message
@@ -4948,6 +4957,14 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   //       detector the current architecture has never had". That one
   //       matters MORE after this change, not less: it is now the only
   //       thing watching for a real IN routed `none`.
+
+  // The guest card's reply for a message that also asked for something
+  // else, first in that message's one reply (`lib/guest-card/door.ts`).
+  for (const [id, reply] of guestCardReplies) {
+    const r = results.find((x) => x.waMessageId === id);
+    if (r) r.reply = mergeOneReply(reply, r.reply);
+    else results.push({ waMessageId: id, handledBy: "fast-path", intent: "admin_command", react: null, reply });
+  }
 
   // MatchTime's replies are claimed like its other posts, with their match
   // (the result's match for a score, else the match being registered), so

@@ -34,7 +34,12 @@ export const guestCardTr: GuestCardStrings = {
   reply_no_game: "Ekleyebileceğim yaklaşan bir maç yok.",
   reply_elsewhere: (p) => `${p.name} zaten başka bir maça misafir olarak yazılı, bu yüzden bu maça eklemedim.`,
   reply_failed: (p) => `${p.name} şu an eklenemedi. Lütfen maç sayfasından ekle.`,
+  reply_ask_game: (p) =>
+    `Hangi maça ekleyeyim? Sıradaki maçlar: ${p.games.length > 1 ? `${p.games.slice(0, -1).join(", ")} ve ${p.games[p.games.length - 1]}` : p.games[0]}. Günü yazman yeterli, örneğin *${p.example} maçına ekle*.`,
+  reply_ask_club: (p) => `Hangi kulüpte oynayacak: ${p.clubs.map((c) => `${c} mi`).join(", ")}? Kulübün adını yazman yeterli.`,
+  reply_no_country_code: "O numarayı okuyamadım. Lütfen ülke koduyla, + ile başlayarak gönder.",
 
   out_dm: (p) => `Tamam, seni *${p.club}* ile ${p.day} maçından çıkardım.`,
+  removed_dm: (p) => `*${p.club}* organizatörleri seni ${p.day} maçından çıkardı.`,
   out_notice: (p) => `${p.name}${p.organiser ? ` (${p.organiser} getirdi)` : ""} artık ${p.day} maçına gelemiyor. Yer yeniden boş.`,
 };

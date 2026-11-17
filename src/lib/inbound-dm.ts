@@ -212,6 +212,21 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
     return NextResponse.json({ error: "body, waMessageId required" }, { status: 400 });
   }
 
+  // ── A SHARED CONTACT CARD, AT THE DOOR (2026-11-17, review of #621) ─────
+  //   Before any handler, reader or model sees the DM. A card itself goes
+  //   no further: an organiser's is held for his next words, anyone else's
+  //   is dropped (`guest-card/guest-dm.ts` `handleCardDmAtIntake`). A DM
+  //   that swipe-replies to a card carries its label as the quote from
+  //   here on; the raw card goes to the guest card door only (below).
+  const rawQuotedText = parseDmQuote(body)?.text ?? null;
+  {
+    const { handleCardDmAtIntake } = await import("@/lib/guest-card/guest-dm");
+    const card = await handleCardDmAtIntake({ text, phone, senderAltPhone, senderLid, authorName: authorName ?? null, waMessageId });
+    if (card) return NextResponse.json({ ok: true, ...card });
+    const { CONTACT_CARD_LABEL, isContactCard } = await import("@/lib/guest-card/vcard");
+    if (isContactCard(rawQuotedText)) body = { ...(body as object), quotedText: CONTACT_CARD_LABEL } as InboundDm;
+  }
+
   // ── Quoted-reply context (slices S1 and S2, 2026-10-20) ────────────────
   //   A swipe-reply carries the quoted message's id, text, and whether it
   //   was MatchTime's (`quotedMessageId`, `quotedText`, `quotedFromMatchTime`;
@@ -729,7 +744,7 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
         (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
         null,
       quoted,
-      quotedText: parseDmQuote(body)?.text ?? null,
+      quotedText: rawQuotedText,
     }).catch((err: unknown) => {
       console.error("[dm-reply] guest card failed:", err instanceof Error ? err.message : "failed");
       return null;

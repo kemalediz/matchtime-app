@@ -15,7 +15,8 @@
  * organiser wrote (the `refWrittenIn` pattern). `cleanCardName` tidies a
  * phone-book label; it reads no intent.
  */
-import { isGuestMembership, type GuestMarks } from "../guest-membership";
+import { guestSourceOf, isGuestMembership, type GuestMarks } from "../guest-membership";
+import { e164Digits, normalisePhone } from "../phone";
 import { isRawDigitName } from "../whatsapp-name";
 
 /** A card and the organiser's words go together for this long. */
@@ -134,15 +135,44 @@ export function chooseGuestName(p: { written: string | null; existing: string | 
  * WHOSE NUMBER MAY BE ATTACHED (the add-player guard, `ensureOrgPlayer` in
  * `src/app/actions/players.ts`, which uses this too): a number nobody has
  * is a new person; a number of this club's own member is that member; a
- * number of this club's past or present guest is that guest again. A
- * number that belongs to anybody else on MatchTime attaches nobody and
- * names nobody ("not-ours"). The web form also refuses a guest (it would
- * make him an ordinary member); this flow adds him as a guest again.
+ * number of this club's past or present POOL guest is that guest again,
+ * unless he is another club's member now. Anybody else on MatchTime is
+ * never attached and never named ("not-ours"): another club's member, a
+ * partner guest (he has a home club, and is never made this club's pool
+ * guest, review of #621), or someone with no tie to this club. The web
+ * form also refuses a guest (it would make him an ordinary member).
  */
-export function numberOwnerDecision(p: { userExists: boolean; membership: (GuestMarks & { leftAt?: Date | null }) | null }): "new" | "member" | "guest" | "not-ours" {
+export function numberOwnerDecision(p: {
+  userExists: boolean;
+  membership: (GuestMarks & { leftAt?: Date | null }) | null;
+  /** He is a current ordinary member of another club. */
+  memberElsewhere?: boolean;
+}): "new" | "member" | "guest" | "not-ours" {
   if (!p.userExists) return "new";
   if (!p.membership) return "not-ours";
-  return isGuestMembership(p.membership) ? "guest" : "member";
+  if (!isGuestMembership(p.membership)) return "member";
+  if (guestSourceOf(p.membership) === "partner") return "not-ours";
+  return p.memberElsewhere ? "not-ours" : "guest";
+}
+
+/**
+ * A number the organiser typed, as E.164, read in the club's country: the
+ * UK forms `normalisePhone` reads, any number with its country code ("+"
+ * or "00"), and a Turkish club's local mobile ("0532 123 45 67", +90).
+ * Null when there is no country to read it in: the organiser is asked to
+ * send it with the country code, never left without a word.
+ */
+export function typedGuestPhone(raw: string | null | undefined, lang: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const digits = raw.replace(/[^\d+]/g, "");
+  if (digits.startsWith("+") || digits.startsWith("00")) {
+    const d = e164Digits(digits.startsWith("+") ? digits : `+${digits.slice(2)}`);
+    return d ? `+${d}` : null;
+  }
+  const uk = normalisePhone(raw);
+  if (uk && uk.startsWith("+44")) return uk;
+  if (lang === "tr" && /^0?5\d{9}$/.test(digits)) return `+90${digits.replace(/^0/, "")}`;
+  return null;
 }
 
 /** A run of 10 to 15 digits (spaces, dashes, dots, brackets and a leading
@@ -174,11 +204,22 @@ export function phoneWrittenIn(phone: string | null | undefined, text: string): 
 
 // ── The game ───────────────────────────────────────────────────────────
 
-/** The game the model named by its number in the list (1-based), else the
- *  soonest. Null with no game. */
-export function pickGame<T>(games: readonly T[], n: number): T | null {
-  if (games.length === 0) return null;
-  return Number.isInteger(n) && n >= 1 && n <= games.length ? games[n - 1] : games[0];
+/**
+ * The game a request is for (review of #621: never guessed). The game the
+ * model named; the soonest when none is named and every game is one
+ * club's; "ask-game" when the message names a day or game that is not on
+ * the list; "ask-club" when none is named and the games are several clubs'
+ * (an organiser of two clubs, by DM).
+ */
+export function chooseGame<T extends { orgId: string }>(
+  games: readonly T[],
+  r: { n: number; notListed: boolean },
+): { kind: "game"; game: T } | { kind: "ask-game" } | { kind: "ask-club" } | { kind: "none" } {
+  if (games.length === 0) return { kind: "none" };
+  if (r.notListed) return { kind: "ask-game" };
+  if (Number.isInteger(r.n) && r.n >= 1) return r.n <= games.length ? { kind: "game", game: games[r.n - 1] } : { kind: "ask-game" };
+  if (new Set(games.map((g) => g.orgId)).size > 1) return { kind: "ask-club" };
+  return { kind: "game", game: games[0] };
 }
 
 // ── Once ───────────────────────────────────────────────────────────────
