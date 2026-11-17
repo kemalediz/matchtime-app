@@ -90,6 +90,7 @@ Biri çıkarsa yedekleri dürterim, böylece hiç eksik kalmayız. İstediğiniz
 🟥🟦 *Dengeli takımlar nasıl çalışır*
 Maç günü gruptaki herkes beni etiketleyip takımları isteyebilir (örneğin *@Match Time takımları kur*), ben de form puanlarına göre herkesi iki dengeli takıma bölerim.
 Kadroları doğrudan gruba yazarım. Bir eşleşmeyi beğenmediniz mi? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın (örn. _"@Match Time Ali ile Can'ı değiştir"_). Takımları yeniden göstermemi (örn. *"@Match Time takımları göster"*) ya da takımlar aynı kalıp renkleri değiştirmemi (örn. *@Match Time renkleri değiştir*) istediğiniz zaman isteyebilirsiniz.
+İki oyuncu ayrı takımlarda ya da aynı takımda mı olsun? Takımları isterken söyleyin (örn. _"@Match Time takımları kur, Sam ile Alex ayrı takımlarda olsun"_) ya da takımlar çıktıktan sonra (örn. _"@Match Time Sam ile Alex'i ayır"_), en az değişiklikle ayarlarım. Yapamazsam nedenini söylerim.
 Yorgun, hasta, sakat ya da formda mısınız? Beni etiketleyip söyleyin (örn. _"@Match Time yorgunum, bu maç için puanımı düşür"_). Sadece o maç için yapacağım puan ayarını size söylerim, isterseniz değiştirebilirsiniz (örn. _"@Match Time -1 yap"_).
 İki tam takıma bir kişi mi eksik? Kulüp oynadığı en az kişi sayısını ayarladıysa takımları o sayıdan itibaren kurarım, örneğin 7'ye karşı 6, bir kişi eksik takıma daha güçlü oyuncular düşecek şekilde dengelerim.
 Hazır olunca beni etiketleyip istemeniz yeter.

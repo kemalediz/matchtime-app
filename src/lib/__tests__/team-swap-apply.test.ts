@@ -22,7 +22,8 @@ describe("playersSwapShape", () => {
     expect(playersSwapShape(facts({ moves: ["Tom"] })).kind).toBe("unsupported");
     expect(playersSwapShape(facts({ moves: ["A", "B", "C"] })).kind).toBe("unsupported");
     expect(playersSwapShape(facts({ swaps: [{ personRef: "David", team: "RED" }] })).kind).toBe("unsupported");
-    expect(playersSwapShape(facts({ pairings: [["Ali", "Habib"]] })).kind).toBe("unsupported");
+    // A pairing alone is a supported change since 2026-11-16 ("keep", team-keep-change.test.ts).
+    expect(playersSwapShape(facts({ pairings: [["Ali", "Habib"]] })).kind).toBe("keep");
     expect(playersSwapShape(facts({ moves: ["A", "B"], pairings: [["C", "D"]] })).kind).toBe("unsupported");
     expect(playersSwapShape(facts()).kind).toBe("unsupported");
   });

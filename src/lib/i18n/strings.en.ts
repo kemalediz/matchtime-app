@@ -904,6 +904,33 @@ export const en = {
   team_gen_note_unmatched_pins: (p: { names: string[] }): string =>
     `_(couldn't find ${p.names.join(", ")} for team pinning, ignored)_`,
 
+  // ── who plays with whom (2026-11-16, the Vets: "put Dan and Craig in
+  //    separate teams" was silently ignored). Said with the new teams and
+  //    with a change to the teams as they stand (team-constraints.ts).
+  //    `names` is already joined ("Dan and Craig", joinList).
+  /** `many`: more than two people, spread across the teams. */
+  teams_apart_met: (p: { names: string; many: boolean }): string =>
+    p.many ? `${p.names} are split between the teams.` : `${p.names} are on different teams.`,
+  teams_together_met: (p: { names: string }): string => `${p.names} are on the same team.`,
+  /** A group not kept, then its true reason (review of #619), one of the
+   *  four below, or none when the reason is not known. */
+  teams_apart_unmet: (p: { names: string }): string => `I couldn't split ${p.names} between the teams.`,
+  teams_together_unmet: (p: { names: string }): string => `I couldn't put ${p.names} on the same team.`,
+  teams_unmet_missing: (p: { names: string; many: boolean }): string =>
+    p.many ? `${p.names} aren't on the teams.` : `${p.names} isn't on the teams.`,
+  teams_unmet_clash: "It clashes with another request in the same message.",
+  teams_unmet_sizes: "It doesn't fit the team sizes.",
+  teams_unmet_no_swaps: "I couldn't find a way to do it with a few swaps.",
+  /** The swaps made to meet them, on the teams as they stand. `pairs` is
+   *  already written ("*Craig* and *Finn*"). */
+  teams_keep_swapped: (p: { pairs: string }): string => `🔁 Swapped ${p.pairs}, nobody dropped.`,
+  teams_keep_pair: (p: { a: string; b: string }): string => `*${p.a}* and *${p.b}*`,
+  teams_keep_nothing_to_change: "Nothing needed changing.",
+  teams_keep_updated: "Updated teams:",
+  teams_keep_not_made:
+    "The teams aren't made yet. When you ask for them, say who to keep together or apart in the same message (for example *@Match Time generate the teams, keep Dan and Craig apart*).",
+  teams_keep_refused: (p: { why: string }): string => `I haven't changed the teams. ${p.why} Nothing changed and nobody was dropped.`,
+
   // ── row R170 (2026-09-29): teams only on request, on match day, and
   //    an admin can clear them. The Sutton FC incident of 24 Sep: a
   //    pairing joke built the teams five days early and "delete these
@@ -1494,6 +1521,7 @@ export const en = {
         `🟥🟦 *Fair teams: how it works*\n` +
         `On match day, anyone in the group can tag me and ask for the teams (for example *@Match Time generate the teams*) and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
         `I post the line-ups straight into the chat. Not happy with a pairing? Tag me and say what to change, in your own words (e.g. _"@Match Time swap Sam and Alex"_), or ask me to show the teams again any time.\n` +
+        `Want two players kept apart, or together? Say so when you ask for the teams (e.g. _"@Match Time generate the teams, keep Sam and Alex apart"_), or once they're out (e.g. _"@Match Time keep Sam and Alex apart"_) and I'll make the fewest swaps. If I can't do it, I'll tell you why.\n` +
         `Tired, ill, injured or flying? Tag me and say so (e.g. _"@Match Time I'm tired, go easy on my rating for this match"_). I'll tell you the adjustment I'll make, for that match only, and you can change it (e.g. _"@Match Time make it -1"_).\n` +
         `One short of two full sides? If the club has set the fewest it plays with, I make the teams from that number up, for example 7 against 6, balanced so the side a player down gets the stronger players.\n` +
         `Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.`,

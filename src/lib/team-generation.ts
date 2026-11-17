@@ -48,6 +48,7 @@
  */
 import { db } from "./db";
 import { balanceTeams, type BalancingStrategy } from "./team-balancer";
+import type { UnmetConstraints } from "./team-constraints";
 import type { PlayerWithRating } from "@/types";
 import { formatLondon } from "./london-time";
 import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
@@ -62,7 +63,10 @@ import { sanitiseTeamNames } from "./message-analyzer";
 import { perTeamFor, playerRange, teamsNeeded } from "./flex-format-rules";
 
 export type GenerateTeamsResult =
-  | { ok: true; groupPost: string; matchId: string }
+  /** `unmet`: the together and apart groups the teams could not keep
+   *  (`team-constraints.ts`), so the caller can say so. Empty when every
+   *  group holds or none was asked. */
+  | { ok: true; groupPost: string; matchId: string; unmet?: UnmetConstraints }
   | { ok: false; reason: string };
 
 /**
@@ -95,6 +99,12 @@ export interface GenerateTeamsOptions {
    *  override) and used in the group post. When absent/invalid we do NOT
    *  touch Match.teamLabels — a prior per-match override survives. */
   teamNames?: [string, string];
+  /** User ids who must share a side, one array per group ("put me and
+   *  David on the same team"), and who must be split ("keep Dan and Craig
+   *  apart"). Hard constraints the balancer meets where it can
+   *  (2026-11-16); the ones it cannot are returned as `unmet`. */
+  together?: string[][];
+  apart?: string[][];
 }
 
 export async function generateTeamsForMatch(
@@ -222,6 +232,8 @@ export async function generateTeamsForMatch(
     strategy: sport.balancingStrategy as BalancingStrategy,
     composition: composition ?? undefined,
     pinnedToTeam: opts.pinnedToTeam,
+    together: opts.together,
+    apart: opts.apart,
     minPlayers: needed,
   });
 
@@ -272,7 +284,7 @@ export async function generateTeamsForMatch(
     lang,
   });
 
-  return { ok: true, groupPost, matchId };
+  return { ok: true, groupPost, matchId, unmet: result.unmet };
 }
 
 async function runRatingAdjuster(args: {

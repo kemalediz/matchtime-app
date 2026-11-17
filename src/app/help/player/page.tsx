@@ -201,6 +201,15 @@ export default function PlayerGuidePage() {
         bibs. The organiser can also edit the teams from the dashboard.
       </p>
       <p>
+        Want two players kept apart, or on the same side? Say so when you ask
+        for the teams, for example{" "}
+        <code>@Match Time generate the teams, keep Dan and Leo apart</code>, or
+        once they are out: <code>@Match Time keep Dan and Leo apart</code>{" "}
+        makes the fewest swaps to split them. MatchTime confirms it in its
+        reply, and if it can&apos;t (for example it clashes with another
+        request), it says so.
+      </p>
+      <p>
         Tired, ill, injured or on fire? Tell MatchTime, for example{" "}
         <code>@Match Time I&apos;m tired, go easy on my rating for this match</code>
         . It tells you the adjustment it will make when the teams are made, for

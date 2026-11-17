@@ -546,6 +546,7 @@ export function personRefsIn(facts: Facts, isSelf: (ref: string) => boolean = ()
       for (const r of facts.includeRefs ?? []) add(r);
       for (const s of facts.swaps ?? []) add(s.personRef);
       for (const g of facts.pairings ?? []) for (const r of g) add(r);
+      for (const g of facts.apart ?? []) for (const r of g) add(r);
       for (const r of facts.moves ?? []) add(r);
       // A form note's players (2026-11-10): whose amount is stored.
       for (const f of facts.form ?? []) add(f.personRef);

@@ -91,6 +91,11 @@ describe("teamCommandFromFacts: the shared teams extractor's facts as an admin-g
     );
     expect(f("swap", { pairings: [["Ali", "Habib"]] })).toEqual(change({ together: [["Ali", "Habib"]] }));
   });
+  it("people kept apart (2026-11-16): carried on a reshuffle and on a change, never dropped", () => {
+    expect(f("generate", { apart: [["Dan", "Craig"]] })).toEqual({ kind: "reshuffle", sides: [], together: [], apart: [["Dan", "Craig"]] });
+    expect(f("swap", { apart: [["Dan", "Craig"]] })).toEqual(change({ apart: [["Dan", "Craig"]] }));
+    expect(f("swap", { apart: [["Dan"]] })).toEqual({ kind: "unclear" });
+  });
   it("a rename, or a change naming nobody, is unclear", () => {
     expect(f("rename")).toEqual({ kind: "unclear" });
     expect(f("swap")).toEqual({ kind: "unclear" });
