@@ -11,7 +11,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { byRank, orderedRoutes, settleRoutes } from "../multi-route";
+import { byRank, matchChangesFirst, orderedRoutes, settleRoutes } from "../multi-route";
 import { parseRouterResponse, routeBatch } from "../router";
 import { gateBatch, ROUTER_STUB_FILE_ENV } from "../gate";
 import type { PipelineModel } from "../llm";
@@ -249,5 +249,58 @@ describe("joinHqParts: HQ's parts, done in order, as one reply", () => {
     });
     expect(out?.replyText).toBe("Teams: ...\n\nI couldn't do this part of your message: the setting change. Please ask me for it on its own.");
     expect(out?.outcome).toBe("hq-teams-proposed+hq-teams-proposed+hq-part-not-done");
+  });
+});
+
+// ── SEVERAL MESSAGES IN ONE BATCH (Sutton FC, 2026-11-17) ──────────────
+// 11:36 "@Match Time cancel the match due to low numbers"; 12:48 and 12:50
+// two players' "In"; 12:51 "@Match Time ... can you enable today's match
+// again?". All three in ONE batch: the INs were decided against the still
+// cancelled match and lost, then the restore was applied.
+describe("matchChangesFirst: a batch's match changes, in message order, against its attendance claims", () => {
+  const claim = (id: string) => ({ id, claims: true, adminAction: null });
+  const admin = (id: string, adminAction: string) => ({ id, claims: false, adminAction });
+
+  it("the incident: two INs, then the restore. The restore is done first, so both INs count", () => {
+    expect([...matchChangesFirst([claim("in1"), claim("in2"), admin("back", "restore_match")])]).toEqual(["back"]);
+  });
+
+  it("a restore before the INs is done first too", () => {
+    expect([...matchChangesFirst([admin("back", "restore_match"), claim("in1")])]).toEqual(["back"]);
+  });
+
+  it("a cancel after INs waits: the INs are recorded, then the cancel applies to them", () => {
+    expect([...matchChangesFirst([claim("in1"), claim("in2"), admin("off", "cancel_match")])]).toEqual([]);
+  });
+
+  it("a cancel before every IN is done first: the INs meet a cancelled match, as in a later batch", () => {
+    expect([...matchChangesFirst([admin("off", "cancel_match"), claim("in1")])]).toEqual(["off"]);
+  });
+
+  it("a switch, a size or a game move is done before the INs, wherever it sits", () => {
+    for (const a of ["switch_format", "player_numbers", "move_game"]) {
+      expect([...matchChangesFirst([admin("x", a), claim("in1")])]).toEqual(["x"]);
+      expect([...matchChangesFirst([claim("in1"), admin("x", a)])]).toEqual(["x"]);
+    }
+  });
+
+  it("a cancel after an IN keeps everything after it in order: IN, cancel, back on is cancelled THEN restored", () => {
+    expect([...matchChangesFirst([claim("in1"), admin("off", "cancel_match"), admin("back", "restore_match")])]).toEqual([]);
+    expect([...matchChangesFirst([admin("back", "restore_match"), claim("in1"), admin("off", "cancel_match")])]).toEqual(["back"]);
+  });
+
+  it("a cancel that will not be carried out (untagged, or not an organiser's) holds nothing back", () => {
+    const chatter = { id: "chat", claims: false, adminAction: "cancel_match", acts: false };
+    expect([...matchChangesFirst([claim("in1"), chatter, admin("back", "restore_match")])]).toEqual(["chat", "back"]);
+  });
+
+  it("what is not a change to the match stays where it always was (after the INs)", () => {
+    for (const a of ["bulk_payment", "reminder", "recruit", "season_break", "set_venue", "other"]) {
+      expect([...matchChangesFirst([admin("x", a), claim("in1")])]).toEqual([]);
+    }
+  });
+
+  it("no attendance claim in the batch: nothing to order against, nothing moved", () => {
+    expect([...matchChangesFirst([admin("back", "restore_match"), admin("sw", "switch_format")])]).toEqual([]);
   });
 });

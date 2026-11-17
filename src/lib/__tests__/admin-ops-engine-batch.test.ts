@@ -1627,3 +1627,104 @@ describe("a game's kickoff moved by WhatsApp in the players' group", () => {
     expect(out?.reply ?? null).toBeNull();
   });
 });
+
+// ── SEVERAL MESSAGES IN ONE BATCH (Sutton FC, 2026-11-17) ──────────────
+// The route reads every admin message of a batch before the attendance
+// engine, applies the match changes there (`applyNow`, deciding from the
+// extractor's actions), and hands the rest to the usual pass after the
+// engine with what was already read (`preRead`): one extractor call per
+// message, each applied once.
+describe("a batch's match changes before its attendance claims", () => {
+  const BACK = "@Match Time can you enable today's match again?";
+  const BACK_FACTS = { ...BLAST_FACTS, action: "restore_match", lookbackMatches: 0, matchDay: "" };
+
+  it("applyNow is shown each message's action; only what it names is applied now, the rest is handed back read", async () => {
+    const { model, calls } = stubModel({ [BACK]: BACK_FACTS, [PAY]: PAY_FACTS });
+    const restores: string[] = [];
+    const r = recorder(model, paidWorld(), {
+      cancelOrRestore: async (a) => (restores.push(a.mode), { outcome: "match_restored", replyText: null, react: "✅" }),
+    });
+    const back = msg({ body: BACK, senderUserId: "u-kemal" });
+    const pay = msg({ body: PAY });
+    const seen: Array<[string, string]> = [];
+    const res = await runAdminOpsBatch({
+      orgId: "org-1",
+      now: NOW,
+      messages: [pay, back],
+      history: [],
+      enabled: new Set<Route>(["admin_ops"]),
+      deps: r.deps,
+      applyNow: (actions) => {
+        seen.push(...actions);
+        return new Set([...actions].filter(([, a]) => a === "restore_match").map(([id]) => id));
+      },
+    });
+    expect(new Map(seen)).toEqual(new Map([[pay.waMessageId, "bulk_payment"], [back.waMessageId, "restore_match"]]));
+    expect(calls).toHaveLength(2);
+    expect(restores).toEqual(["restore"]);
+    expect([...res.ownedIds]).toEqual([back.waMessageId]);
+    expect(res.outcomes.get(back.waMessageId)).toMatchObject({ react: "✅", intent: "match_restored" });
+    // The payment: not credited, not owned, handed back with its facts.
+    expect(r.credits).toEqual([]);
+    expect([...(res.deferred?.facts.keys() ?? [])]).toEqual([pay.waMessageId]);
+
+    // The pass after the engine: the payment, from what was read. No second call.
+    const late = await runAdminOpsBatch({
+      orgId: "org-1",
+      now: NOW,
+      messages: [pay],
+      history: [],
+      enabled: new Set<Route>(["admin_ops"]),
+      deps: r.deps,
+      preRead: res.deferred,
+    });
+    expect(calls).toHaveLength(2);
+    expect(r.credits).toHaveLength(1);
+    expect(late.outcomes.get(pay.waMessageId)).toMatchObject({ intent: "bulk_payment_credit", react: "👍" });
+    expect(restores).toEqual(["restore"]);
+  });
+
+  it("nothing named: nothing applied, everything handed back read", async () => {
+    const { model, calls } = stubModel({ [PAY]: PAY_FACTS });
+    const r = recorder(model, paidWorld());
+    const pay = msg({ body: PAY });
+    const res = await runAdminOpsBatch({
+      orgId: "org-1",
+      now: NOW,
+      messages: [pay],
+      history: [],
+      enabled: new Set<Route>(["admin_ops"]),
+      deps: r.deps,
+      applyNow: () => new Set(),
+    });
+    expect(calls).toHaveLength(1);
+    expect(res.ownedIds.size).toBe(0);
+    expect(res.outcomes.size).toBe(0);
+    expect(r.credits).toEqual([]);
+    expect([...(res.deferred?.facts.keys() ?? [])]).toEqual([pay.waMessageId]);
+  });
+
+  it("a message the extractor could not read is not handed back (it is reported once, here)", async () => {
+    const { model } = stubModel({ [PAY]: PAY_FACTS }, { throwOn: "Amir" });
+    const r = recorder(model, paidWorld());
+    const res = await runAdminOpsBatch({
+      orgId: "org-1",
+      now: NOW,
+      messages: [msg({ body: PAY })],
+      history: [],
+      enabled: new Set<Route>(["admin_ops"]),
+      deps: r.deps,
+      applyNow: () => new Set(),
+    });
+    expect(res.deferred?.facts.size ?? 0).toBe(0);
+    expect(res.degradations.join(" ")).toMatch(/Overloaded/);
+  });
+
+  it("without applyNow: no hand-back, exactly as before", async () => {
+    const { model } = stubModel({ [PAY]: PAY_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: PAY })], deps: r.deps });
+    expect(res.deferred).toBeUndefined();
+    expect(r.credits).toHaveLength(1);
+  });
+});
