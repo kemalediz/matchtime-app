@@ -76,7 +76,6 @@
 import {
   describeQuestion,
   type AwaitingQuestion,
-  type ClarificationAbout,
   type StatsClarification,
 } from "./awaiting-answer";
 import {
@@ -757,7 +756,7 @@ export interface RouterMessage {
   clarifying?: string;
   /** What `clarifying` asked about: a stats question (the default) or a
    *  place in the squad (2026-11-17, `ask_attendance_person`). */
-  clarifyingAbout?: ClarificationAbout;
+  clarifyingAbout?: "stats" | "attendance";
   /**
    * A score fact about this sender, shown as `scoreContextLine` above the
    * message (2026-10-30): MatchTime is waiting for them to say which team
@@ -777,7 +776,7 @@ export function scoreContextLine(kind: "which_team" | "recorded"): string {
 
 /** The line above a message from somebody MatchTime asked "who do you
  *  mean?" (see `RouterMessage.clarifying`). */
-export function clarificationLine(question: string, about: ClarificationAbout = "stats"): string {
+export function clarificationLine(question: string, about: "stats" | "attendance" = "stats"): string {
   return about === "attendance"
     ? `MATCHTIME ASKED this sender who someone in their earlier message is: "${question}"`
     : `MATCHTIME ASKED this sender whom they meant in their earlier question: "${question}"`;

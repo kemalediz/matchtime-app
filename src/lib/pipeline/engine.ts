@@ -70,6 +70,8 @@ import { swapGuardFor, type SwapCandidate, type SwapGuardClaim } from "../team-s
 import { decideSlotInherits } from "../team-slot-inherit";
 import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { isRawDigitName, resolvePerson } from "./identity";
+import { refKey } from "../person-ref-key";
+import { renderAttendanceAsk } from "./compose";
 import { planResultsQuestion } from "./results-answer";
 import {
   isScoreAnswer,
@@ -973,7 +975,46 @@ export function decide(input: EngineInput): EngineResult {
         byTarget.set(key, c);
       }
       const freesFirst = (c: Claim) => (c.polarity === "in" ? 1 : 0);
-      const collapsed = [...byTarget.values()].sort((a, b) => freesFirst(a) - freesFirst(b));
+      const allCollapsed = [...byTarget.values()].sort((a, b) => freesFirst(a) - freesFirst(b));
+
+      // ── AN ANSWER TO "WHO IS THAT?" ACTS ONLY ON WHO WAS ASKED ABOUT ──
+      //
+      // (2026-11-17, review of #618.) The extractor returns the EARLIER
+      // message's claims with the asked person named; replaying the rest
+      // of that message ("Pete and Abu Ayoub are in": Pete again) is never
+      // done. Kept: a claim about the asked name (as asked, or marked new),
+      // a claim naming someone the answer itself writes, or one that lands
+      // on a member MatchTime offered; plus the other half of a
+      // replacement it belongs to. Everything else is dropped, said why.
+      const answer = msg.clarification;
+      const askedKey = answer ? refKey(answer.ref) : "";
+      const aboutAsked = (c: Claim): boolean => {
+        if (!answer || c.subject !== "other") return false;
+        if (c.newPlayer) return refKey(c.personRef) === askedKey;
+        if (refKey(c.personRef) === askedKey || refWrittenIn(c.personRef, msg.body)) return true;
+        const r = resolvePerson(c.personRef, w.roster, msg.people);
+        return r.kind === "resolved" && answer.candidateIds.includes(r.member.userId);
+      };
+      const pairedWith = (a: Claim, b: Claim): boolean => {
+        const holds = (inC: Claim, other: Claim) => {
+          const rep = (inC.replaces ?? "").trim();
+          if (inC.polarity !== "in" || !rep || other.polarity === "in") return false;
+          return isSelfRef(rep) ? other.subject === "sender" : other.subject === "other" && refKey(other.personRef) === refKey(rep);
+        };
+        return holds(a, b) || holds(b, a);
+      };
+      const collapsed = answer
+        ? (() => {
+            const asked = allCollapsed.filter(aboutAsked);
+            const kept = allCollapsed.filter((c) => asked.includes(c) || asked.some((k) => pairedWith(k, c)));
+            for (const c of allCollapsed) {
+              if (!kept.includes(c)) {
+                out.reasons.push(`answer to "who is ${answer.ref}?": the claim about "${c.personRef || "the sender"}" is not about the person asked; not applied again`);
+              }
+            }
+            return kept;
+          })()
+        : allCollapsed;
 
       // ══════════════════════════════════════════════════════════════
       // DOES THIS MESSAGE STATE A REPLACEMENT? (2026-09-22)
@@ -1035,24 +1076,49 @@ export function decide(input: EngineInput): EngineResult {
       // message is recorded with the `attendance_clarification` intent.
       // Only for a message addressed to MatchTime or an organiser's, as
       // every other ask: an untagged player's message stays silent.
-      let askedWhoHere = false;
-      const askWhoIs = (ref: string, candidates: ReadonlyArray<Member>): boolean => {
-        if (askedWhoHere || !msg.senderUserId || !(msg.tagged || senderIsAdmin)) return false;
-        askedWhoHere = true;
-        speech.push({
-          kind: "ask_attendance_person",
-          messageId: msg.id,
-          ref: ref.trim().replace(/^@/, "").trim(),
-          candidates: candidates.flatMap((m2) => (m2.name ? [m2.name] : [])),
-        });
-        out.attendanceClarificationAsked = true;
-        if (out.disposition !== "degraded") out.disposition = "acted";
-        out.reasons.push(
-          `who "${ref}" is is not clear (${candidates.length > 0 ? candidates.map((m2) => m2.name).join(", ") : "no candidate"}): asked the sender, nothing written for it`,
-        );
+      //
+      // ONE QUESTION PER MESSAGE (review of #618): the ask is held as
+      // PENDING while the claims are read and only said at the end, when
+      // no other question was put for this message ("who is that?" about a
+      // raw mention, the guest-name ask). Otherwise, and whenever the
+      // question could not be printed (a phone number for a name), the
+      // claim degrades exactly as before.
+      let askedWhoMentionedHere = false;
+      let pendingAsk: { ref: string; candidates: ReadonlyArray<Member>; claim: Claim } | null = null;
+      const askWhoIs = (ref: string, candidates: ReadonlyArray<Member>, claim: Claim): boolean => {
+        if (pendingAsk || askedWhoMentionedHere || !msg.senderUserId || !(msg.tagged || senderIsAdmin)) return false;
+        const clean = ref.trim().replace(/^@/, "").trim();
+        const names = candidates.flatMap((m2) => (m2.name ? [m2.name] : []));
+        if (renderAttendanceAsk({ ref: clean, candidates: names }, state.features.language) === null) return false;
+        pendingAsk = { ref: clean, candidates, claim };
         return true;
       };
+
+      // ── "X FOR Y": NEITHER HALF MOVES WHILE EITHER IS UNCLEAR ──────────
+      // (review of #618.) When the incoming X or the replaced Y cannot be
+      // placed on one member, the replacement is held whole: X is not
+      // added (below) AND Y's own OUT or bench claim is not applied, so Y
+      // is never dropped while MatchTime asks who X is.
+      const unclearName = (ref: string, c: Claim | null): boolean => {
+        if (c && c.newPlayer && answer) return false;
+        const r = resolvePerson(ref, w.roster, msg.people);
+        return r.kind === "ambiguous" || (c === null && r.kind === "unknown");
+      };
+      const heldPartners = new Set<Claim>();
       for (const c of collapsed) {
+        const rep = (c.replaces ?? "").trim();
+        if (c.polarity !== "in" || !rep) continue;
+        const incomingUnclear =
+          c.subject === "other" && (c.personKind ?? (c.personNamed ? "named" : "placeholder")) === "named" && unclearName(c.personRef, c);
+        const replacedUnclear = !isSelfRef(rep) && unclearName(rep, null);
+        if (!incomingUnclear && !replacedUnclear) continue;
+        for (const p of collapsed) if (p !== c && pairedWith(c, p)) heldPartners.add(p);
+      }
+      for (const c of collapsed) {
+        if (heldPartners.has(c)) {
+          out.reasons.push(`"${c.personRef || "the sender"}" is the other half of a replacement whose names are not clear; held with it`);
+          continue;
+        }
         const floorExempt = isFloorExempt(c, msg.senderUserId, state.roster);
         if (c.confidence < CONFIDENCE_FLOOR) {
           if (!floorExempt) {
@@ -1084,7 +1150,7 @@ export function decide(input: EngineInput): EngineResult {
         const replaced = (c.replaces ?? "").trim();
         if (replaced && !isSelfRef(replaced)) {
           const ry = resolvePerson(replaced, w.roster, msg.people);
-          if (ry.kind === "ambiguous" && askWhoIs(replaced, ry.candidates)) continue;
+          if (ry.kind === "ambiguous" && askWhoIs(replaced, ry.candidates, c)) continue;
           if (ry.kind === "ambiguous" || ry.kind === "unknown") {
             degrade(`"${c.personRef || "the sender"}" for "${replaced}": who "${replaced}" is is not clear; the whole replacement is held`);
             continue;
@@ -1138,20 +1204,41 @@ export function decide(input: EngineInput): EngineResult {
         const kind = c.personKind ?? (c.personNamed ? "named" : "placeholder");
         const personNamed = kind === "named";
         // THE ANSWER TO "IS ABU AYOUB A NEW PLAYER?" WAS YES (2026-11-17):
-        // the name is a new person, as the EARLIER message wrote it, and is
-        // not looked up again (who-is-who would only say "ambiguous" a
-        // second time). Honoured only when the batch confirmed the question
-        // was open for this sender (`clarifiedBody`).
-        const saidNew = personNamed && c.newPlayer === true && msg.clarifiedBody !== undefined;
-        const resolution: ReturnType<typeof resolvePerson> = saidNew
+        // the name is a new person, as the EARLIER message wrote it.
+        // Honoured only for the name MatchTime asked about, on an answer
+        // the batch confirmed (`clarification`), and NEVER for a name that
+        // is already a member's: who-is-who sure of one, or a member with
+        // exactly that name or nickname (review of #618: "new" must not
+        // make a second Pete).
+        const looked = personNamed ? resolvePerson(c.personRef, w.roster, msg.people) : null;
+        const newForAsked = personNamed && c.newPlayer === true && !!answer && refKey(c.personRef) === askedKey;
+        const namesMember =
+          looked?.kind === "resolved" ||
+          w.roster.some((m2) => [m2.name, ...(m2.aliases ?? [])].some((n) => !!n && refWrittenIn(n, c.personRef) && refWrittenIn(c.personRef, n)));
+        if (newForAsked && namesMember) {
+          degrade(`answer said "${c.personRef}" is new, but a member already has that name; nobody provisioned, nothing written`);
+          continue;
+        }
+        const resolution: ReturnType<typeof resolvePerson> = newForAsked
           ? { kind: "unknown", name: c.personRef.trim().replace(/^@/, "").trim() }
           : personNamed
-            ? resolvePerson(c.personRef, w.roster, msg.people)
+            ? looked!
             : { kind: "not-a-person", why: `the extractor read "${c.personRef}" as a ${kind}, not a named person` };
+        // A named answer lands only on a member MatchTime offered, or on
+        // one whose name the answer itself writes.
+        if (
+          answer &&
+          resolution.kind === "resolved" &&
+          !answer.candidateIds.includes(resolution.member.userId) &&
+          !refWrittenIn(c.personRef, msg.body)
+        ) {
+          out.reasons.push(`answer to "who is ${answer.ref}?" landed on ${resolution.member.name}, who was neither offered nor named in it; not applied`);
+          continue;
+        }
         // The provisioning guard reads the words the name came from: the
         // earlier message, for an answer to MatchTime's question.
         const writtenHere = (ref: string) =>
-          refWrittenIn(ref, msg.body) || (msg.clarifiedBody !== undefined && refWrittenIn(ref, msg.clarifiedBody));
+          refWrittenIn(ref, msg.body) || (!!answer && refWrittenIn(ref, answer.body));
 
         // ── A MENTION NOBODY COULD NAME (2026-09-30, MT Test) ──────────
         //
@@ -1198,8 +1285,9 @@ export function decide(input: EngineInput): EngineResult {
           }
           continue;
         }
-        if (rawDigitsOnly && (msg.tagged || senderIsAdmin) && !askedWhoMentioned) {
+        if (rawDigitsOnly && (msg.tagged || senderIsAdmin) && !askedWhoMentioned && !pendingAsk) {
           askedWhoMentioned = true;
+          askedWhoMentionedHere = true;
           speech.push({ kind: "ask_who_mentioned", messageId: msg.id });
           out.reasons.push(`"${c.personRef}" is a mention nobody could name: asked who it is`);
           if (out.disposition !== "degraded") out.disposition = "acted";
@@ -1221,7 +1309,7 @@ export function decide(input: EngineInput): EngineResult {
           continue;
         }
         if (resolution.kind === "ambiguous") {
-          if (askWhoIs(c.personRef, resolution.candidates)) continue;
+          if (askWhoIs(c.personRef, resolution.candidates, c)) continue;
           degrade(
             `ambiguous name "${c.personRef}": ${resolution.candidates
               .map((m2) => m2.name)
@@ -1262,6 +1350,7 @@ export function decide(input: EngineInput): EngineResult {
       }
 
       // ── The guest name ask (a QUESTION, never a write) ───────────────
+      let guestAskedHere = false;
       if (guestAsks.length > 0) {
         const decision = shouldAskForGuestName({
           tagged: msg.tagged,
@@ -1273,7 +1362,7 @@ export function decide(input: EngineInput): EngineResult {
           alreadyAsked: !!msg.senderUserId && state.guestAskedUserIds.includes(msg.senderUserId),
         });
         out.reasons.push(`guest-name-ask: ${decision.reason}`);
-        if (decision.ask) {
+        if (decision.ask && !askedWhoMentionedHere) {
           speech.push({
             kind: "guest_name_ask",
             messageId: msg.id,
@@ -1281,6 +1370,27 @@ export function decide(input: EngineInput): EngineResult {
             plural: guestAsks.length > 1,
           });
           out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
+          guestAskedHere = true;
+        }
+      }
+
+      // ── THE ONE "WHO IS THAT?", SAID ONLY IF NOTHING ELSE WAS ASKED ────
+      if (pendingAsk) {
+        const p: { ref: string; candidates: ReadonlyArray<Member>; claim: Claim } = pendingAsk;
+        const listed = p.candidates.length > 0 ? p.candidates.map((m2) => m2.name).join(", ") : "no candidate";
+        if (guestAskedHere || askedWhoMentionedHere) {
+          degrade(`ambiguous name "${p.ref}": ${listed} (another question was put for this message; not asked)`);
+        } else {
+          speech.push({
+            kind: "ask_attendance_person",
+            messageId: msg.id,
+            ref: p.ref,
+            candidates: p.candidates.flatMap((m2) => (m2.name ? [m2.name] : [])),
+            candidateIds: p.candidates.map((m2) => m2.userId),
+          });
+          out.attendanceClarificationAsked = true;
+          if (out.disposition !== "degraded") out.disposition = "acted";
+          out.reasons.push(`who "${p.ref}" is is not clear (${listed}): asked the sender, nothing written for it`);
         }
       }
 

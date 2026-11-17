@@ -58,6 +58,9 @@ const usersNamed = (g: SimGroup, name: string) =>
     [g.orgId, name],
   );
 
+const openAsks = (g: SimGroup) =>
+  g.db.all<{ text: string }>(`SELECT text FROM "SentNotification" WHERE kind = 'attendance-ask' AND key LIKE $1`, [`attendance-ask:${g.orgId}:%`]);
+
 const statusOfUser = async (g: SimGroup, userId: string) =>
   (await g.db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [g.matchId, userId]))
     ?.status ?? null;
@@ -68,7 +71,10 @@ test("the organiser is asked, and \"new\" makes Abu Ayoub a new member, CONFIRME
   const q = await ask(g);
   expect(q.reply, "MatchTime asks one question").toBe(QUESTION);
   expect(q.reply ?? "").not.toMatch(NOT_UNDERSTOOD);
-  expect(q.intent).toBe("attendance_clarification");
+  // The question is its own row: what was asked, about whom, offering whom.
+  const asks = await openAsks(g);
+  expect(asks).toHaveLength(1);
+  expect(JSON.parse(asks[0].text)).toMatchObject({ body: ASKED, ref: "Abu Ayoub", candidateIds: [g.player("yoobie").userId], answeredAt: null });
   expect(await g.attendanceOf("yoobie"), "Yoobie is not touched by the question").toBeNull();
   expect(await usersNamed(g, "Abu Ayoub"), "nobody is added before the answer").toEqual([]);
 
@@ -87,7 +93,8 @@ test("the organiser is asked, and \"new\" makes Abu Ayoub a new member, CONFIRME
   expect(abu, "Abu Ayoub is a new member").toHaveLength(1);
   expect(await statusOfUser(g, abu[0].id)).toBe("CONFIRMED");
   expect(await g.attendanceOf("yoobie"), "Yoobie still untouched").toBeNull();
-  expect(a.intent).toBe("attendance_clarified");
+  expect(a.intent, "the answer's own row says what happened").toBe("in");
+  expect(JSON.parse((await openAsks(g))[0].text).answeredAt, "the question is closed").toEqual(expect.any(String));
 });
 
 test("the organiser is asked, and \"Yoobie\" puts Yoobie IN", async ({ request, db }) => {

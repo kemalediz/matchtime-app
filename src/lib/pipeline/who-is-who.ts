@@ -530,9 +530,9 @@ export function personRefsIn(facts: Facts, isSelf: (ref: string) => boolean = ()
   switch (facts.kind) {
     case "attendance":
       for (const c of facts.claims) {
-        // A person the sender just told MatchTime is NEW (the answer to its
-        // "who is that?", 2026-11-17) is nobody to look up.
-        if (c.subject !== "sender" && !(facts.answersClarification && c.newPlayer)) {
+        // A person an answer calls NEW is still looked up (review of #618):
+        // the engine refuses "new" for a name a member already has.
+        if (c.subject !== "sender") {
           const kind = c.personKind ?? (c.personNamed ? "named" : "placeholder");
           if (kind === "named") add(c.personRef);
         }

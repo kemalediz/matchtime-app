@@ -1,34 +1,37 @@
 /**
  * "WHO IS THAT?" ABOUT A PLACE IN THE SQUAD RIDES THE OPEN-QUESTION
- * MECHANISM (Sutton, 2026-11-17).
+ * MECHANISM (Sutton, 2026-11-17; reworked after the review of #618).
  *
  * The engine asks ("Do you mean Yoobie, or is Abu Ayoub a new player?");
  * these pin the plumbing around that question, which is the stats "who do
  * you mean?" mechanism reused, not a second one:
  *
- *   - the asking message is recorded with the `attendance_clarification`
- *     intent (the row that opens it) and the answer with
- *     `attendance_clarified` (the row that closes it);
- *   - `openStatsClarifications` reads both kinds, apart, and marks the new
- *     one `about: "attendance"` (stats rows keep their old shape);
+ *   - the question is recorded as its OWN row (a `SentNotification`, kind
+ *     `attendance-ask`) carrying the earlier message, the name asked about
+ *     and the members offered, so the asking message keeps its real intent;
+ *   - `openAttendanceAsks` reads those rows (asker only, one hour, newest
+ *     per asker, closed once answered) in the shape every reader uses;
  *   - the router shows the asker the MATCHTIME ASKED line in its own words;
- *   - the attendance batch shows the extractor the earlier message, and an
- *     answer counts only when the question was open for that sender.
+ *   - the attendance batch shows the extractor the earlier message, binds
+ *     the answer to the asked name, closes the question, and a re-ask from
+ *     an answer keeps the ORIGINAL message and name.
  *
  * No model is called: every model here is a stub. Made-up people only.
  */
 import { describe, expect, it } from "vitest";
 import {
   runAttendanceEngineBatch,
+  type AttendanceAskRecord,
   type EngineBatchDeps,
   type EngineBatchMessage,
 } from "../attendance-engine-batch";
 import {
-  ATTENDANCE_CLARIFICATION_INTENT,
-  ATTENDANCE_CLARIFIED_INTENT,
+  ATTENDANCE_ASK_KIND,
+  attendanceAskKeyPrefix,
+  openAttendanceAsks,
   openStatsClarifications,
+  type AttendanceAskRow,
   type StatsClarification,
-  type StatsClarificationRow,
 } from "../pipeline/awaiting-answer";
 import { clarificationLine, routeBatch } from "../pipeline/router";
 import { parseFacts } from "../pipeline/extractors";
@@ -39,43 +42,52 @@ import type { SquadState } from "../pipeline/types";
 const NOW = new Date("2026-11-17T13:20:00.000Z");
 const ago = (min: number) => new Date(NOW.getTime() - min * 60 * 1000);
 const ORIGINAL = "@Match Time Abu Ayoub is IN as a guest";
+const QUESTION = "Do you mean Yoobie, or is Abu Ayoub a new player?";
 
-const row = (over: Partial<StatsClarificationRow>): StatsClarificationRow => ({
-  id: "am-1",
-  orgId: "org-1",
-  intent: ATTENDANCE_CLARIFICATION_INTENT,
-  authorUserId: "u-olly",
-  authorName: "Olly Organiser",
-  body: ORIGINAL,
+const askRow = (over: Partial<AttendanceAskRow> = {}, payload: Record<string, unknown> = {}): AttendanceAskRow => ({
+  id: "sn-1",
+  key: `${attendanceAskKeyPrefix("org-1")}wa-0`,
+  targetUser: "u-olly",
+  text: JSON.stringify({ v: 1, askerName: "Olly Organiser", body: ORIGINAL, ref: "Abu Ayoub", candidateIds: ["u-yoobie"], answeredAt: null, ...payload }),
   createdAt: ago(5),
   ...over,
 });
 
-describe("the open question", () => {
-  it("an attendance question is open, about a place, with the earlier message as its body", () => {
-    const open = openStatsClarifications([row({})], "org-1", NOW);
-    expect(open).toEqual([
-      expect.objectContaining({ about: "attendance", askerUserId: "u-olly", questionBody: ORIGINAL }),
+describe("the open question (its own row)", () => {
+  it("is open, about a place, with the earlier message, the name asked and the members offered", () => {
+    expect(ATTENDANCE_ASK_KIND).toBe("attendance-ask");
+    expect(openAttendanceAsks([askRow()], "org-1", NOW)).toEqual([
+      expect.objectContaining({
+        about: "attendance",
+        askerUserId: "u-olly",
+        askerName: "Olly Organiser",
+        questionBody: ORIGINAL,
+        ref: "Abu Ayoub",
+        candidateIds: ["u-yoobie"],
+      }),
     ]);
   });
-  it("its answer closes it", () => {
-    const rows = [row({}), row({ id: "am-2", intent: ATTENDANCE_CLARIFIED_INTENT, body: "new", createdAt: ago(1) })];
-    expect(openStatsClarifications(rows, "org-1", NOW)).toEqual([]);
+  it("is closed once answered", () => {
+    expect(openAttendanceAsks([askRow({}, { answeredAt: ago(1).toISOString() })], "org-1", NOW)).toEqual([]);
   });
-  it("a stats answer does not close an attendance question, nor the other way round", () => {
-    const rows = [
-      row({}),
-      row({ id: "am-2", intent: "stats_clarification", body: "@Match Time Zork's stats", createdAt: ago(4) }),
-      row({ id: "am-3", intent: "stats_clarified", body: "Idris", createdAt: ago(3) }),
-    ];
-    expect(openStatsClarifications(rows, "org-1", NOW).map((c) => c.about ?? "stats")).toEqual(["attendance"]);
+  it("expires after the same hour as every open question", () => {
+    expect(openAttendanceAsks([askRow({ createdAt: ago(61) })], "org-1", NOW)).toEqual([]);
   });
-  it("a stats question keeps its old shape (no `about`)", () => {
-    const open = openStatsClarifications([row({ intent: "stats_clarification" })], "org-1", NOW);
+  it("the newest per asker wins; an answered older one does not reopen", () => {
+    const rows = [askRow({ id: "sn-1", createdAt: ago(20) }), askRow({ id: "sn-2", createdAt: ago(2) }, { ref: "Dan" })];
+    expect(openAttendanceAsks(rows, "org-1", NOW).map((c) => c.ref)).toEqual(["Dan"]);
+  });
+  it("another club's row and an unreadable row are nobody's question", () => {
+    expect(openAttendanceAsks([askRow({ key: `${attendanceAskKeyPrefix("org-2")}wa-0` })], "org-1", NOW)).toEqual([]);
+    expect(openAttendanceAsks([askRow({ text: "not json" })], "org-1", NOW)).toEqual([]);
+  });
+  it("stats clarifications keep their old shape", () => {
+    const open = openStatsClarifications(
+      [{ id: "am-1", orgId: "org-1", intent: "stats_clarification", authorUserId: "u-olly", authorName: "Olly Organiser", body: "@Match Time Zork's stats", createdAt: ago(3) }],
+      "org-1",
+      NOW,
+    );
     expect(open[0]).not.toHaveProperty("about");
-  });
-  it("expires after the same hour", () => {
-    expect(openStatsClarifications([row({ createdAt: ago(61) })], "org-1", NOW)).toEqual([]);
   });
 });
 
@@ -99,8 +111,9 @@ function routerModel(users: string[]): PipelineModel {
 describe("the router", () => {
   it("shows the asker the line about the earlier MESSAGE, not a stats question", async () => {
     const users: string[] = [];
-    const open = openStatsClarifications([row({})], "org-1", NOW);
-    await routeBatch(routerModel(users), [{ id: "m1", authorName: "Olly Organiser", body: "new" }], { clarifications: open });
+    await routeBatch(routerModel(users), [{ id: "m1", authorName: "Olly Organiser", body: "new" }], {
+      clarifications: openAttendanceAsks([askRow()], "org-1", NOW),
+    });
     expect(users[0]).toContain(
       `MATCHTIME ASKED this sender who someone in their earlier message is: "${ORIGINAL}"\n[m1] Olly Organiser: new`,
     );
@@ -147,6 +160,8 @@ const state = (): SquadState => ({
   roster: [
     { userId: "u-olly", name: "Olly Organiser", isAdmin: true, hasPhone: true },
     { userId: "u-yoobie", name: "Yoobie", isAdmin: false, hasPhone: true },
+    { userId: "u-dansmith", name: "Dan Smith", isAdmin: false, hasPhone: true },
+    { userId: "u-danjones", name: "Dan Jones", isAdmin: false, hasPhone: true },
   ],
   openOffers: [],
   teams: [],
@@ -209,15 +224,20 @@ const picker = (picks: Record<string, PersonPick>): PersonPicker & { asked: stri
   return p;
 };
 
-function deps(model: PipelineModel, identify: PersonPicker, over: Partial<EngineBatchDeps> = {}) {
+function deps(model: PipelineModel, identify: PersonPicker) {
   const registered: string[] = [];
   const provisioned: string[] = [];
+  const recorded: AttendanceAskRecord[] = [];
+  const closed: string[] = [];
   const d: EngineBatchDeps = {
     model,
     identify,
     loadState: async () => state(),
     openBenchPromptUserIds: async () => [],
     claimGuestNameAsk: async () => true,
+    recordAttendanceAsk: async (a) => void recorded.push(a),
+    closeAttendanceAsk: async (id) => void closed.push(id),
+    moveTeamSlot: async () => {},
     async registerAttendance(userId) {
       registered.push(userId);
       return { status: "CONFIRMED" as const, position: 1, slot: 1, confirmedCount: 1, maxPlayers: 14 };
@@ -229,12 +249,11 @@ function deps(model: PipelineModel, identify: PersonPicker, over: Partial<Engine
       provisioned.push(name);
       return { userId: `u-new-${name}` };
     },
-    ...over,
   } as EngineBatchDeps;
-  return { d, registered, provisioned };
+  return { d, registered, provisioned, recorded, closed };
 }
 
-const claim = (personRef: string, newPlayer = false) => ({
+const claim = (personRef: string, over: Record<string, unknown> = {}) => ({
   subject: "other",
   personRef,
   personKind: "named",
@@ -246,8 +265,11 @@ const claim = (personRef: string, newPlayer = false) => ({
   reported: false,
   replaces: "",
   confidence: 0.9,
-  newPlayer,
+  newPlayer: false,
+  ...over,
 });
+const selfIn = { ...claim(""), subject: "sender", personKind: "named" };
+const facts = (claims: unknown[], answersClarification = false) => ({ claims, affirmation: "none", sideRequests: [], answersClarification });
 
 const run = (m: EngineBatchMessage, d: EngineBatchDeps, clarifications?: StatsClarification[]) =>
   runAttendanceEngineBatch({
@@ -261,65 +283,94 @@ const run = (m: EngineBatchMessage, d: EngineBatchDeps, clarifications?: StatsCl
     ...(clarifications ? { clarifications } : {}),
   });
 
+const open = () => openAttendanceAsks([askRow()], "org-1", NOW);
+
 describe("the attendance batch", () => {
-  it("the ask: a reply with the question, recorded as the row that opens it", async () => {
-    const x = extractor({ claims: [claim("Abu Ayoub")], affirmation: "none", sideRequests: [], answersClarification: false });
-    const { d, registered } = deps(x.model, picker({ "Abu Ayoub": { kind: "ambiguous", userIds: ["u-yoobie"] } }));
+  it("the ask: the question is the reply, and its own row records what was asked", async () => {
+    const x = extractor(facts([claim("Abu Ayoub")]));
+    const { d, registered, recorded } = deps(x.model, picker({ "Abu Ayoub": { kind: "ambiguous", userIds: ["u-yoobie"] } }));
     const r = await run(msg(ORIGINAL, { tagged: true }), d);
     expect(registered).toEqual([]);
-    expect(r.outcomes.get("wa-1")).toMatchObject({
-      intent: ATTENDANCE_CLARIFICATION_INTENT,
-      reply: "Do you mean Yoobie, or is Abu Ayoub a new player?",
-    });
+    expect(r.outcomes.get("wa-1")?.reply).toBe(QUESTION);
+    expect(recorded).toEqual([
+      { waMessageId: "wa-1", matchId: "match-1", askerUserId: "u-olly", body: ORIGINAL, ref: "Abu Ayoub", candidateIds: ["u-yoobie"] },
+    ]);
+  });
+
+  it("the sender's own IN landed beside the question: the message's intent stays \"in\", the question is still recorded", async () => {
+    const x = extractor(facts([selfIn, claim("Abu Ayoub")]));
+    const { d, registered, recorded } = deps(x.model, picker({ "Abu Ayoub": { kind: "ambiguous", userIds: ["u-yoobie"] } }));
+    const r = await run(msg("@Match Time I'm in and Abu Ayoub too", { tagged: true }), d);
+    expect(registered).toEqual(["u-olly"]);
+    expect(r.outcomes.get("wa-1")?.intent).toBe("in");
+    expect(recorded).toHaveLength(1);
   });
 
   it('"new" from the asker: shown the earlier message, Abu Ayoub provisioned and confirmed, the question closed', async () => {
-    const open = openStatsClarifications([row({})], "org-1", NOW);
-    const x = extractor({ claims: [claim("Abu Ayoub", true)], affirmation: "none", sideRequests: [], answersClarification: true });
-    const who = picker({});
-    const { d, registered, provisioned } = deps(x.model, who);
-    const r = await run(msg("new"), d, open);
-    expect(x.users[0]).toContain(`MATCHTIME ASKED them who someone in their earlier message is: "${ORIGINAL}"`);
-    // A person said to be new is not looked up again.
-    expect(who.asked).toEqual([]);
-    expect(provisioned).toEqual(["Abu Ayoub"]);
-    expect(registered).toEqual(["u-new-Abu Ayoub"]);
-    expect(r.outcomes.get("wa-1")?.intent).toBe(ATTENDANCE_CLARIFIED_INTENT);
-  });
-
-  it('"Yoobie" from the asker: Yoobie confirmed', async () => {
-    const open = openStatsClarifications([row({})], "org-1", NOW);
-    const x = extractor({ claims: [claim("Yoobie")], affirmation: "none", sideRequests: [], answersClarification: true });
-    const { d, registered, provisioned } = deps(x.model, picker({ Yoobie: { kind: "member", userId: "u-yoobie" } }));
-    const r = await run(msg("Yoobie"), d, open);
-    expect(provisioned).toEqual([]);
-    expect(registered).toEqual(["u-yoobie"]);
-    expect(r.outcomes.get("wa-1")?.intent).toBe(ATTENDANCE_CLARIFIED_INTENT);
-  });
-
-  it("somebody else saying \"new\" is not an answer: not shown the line, newPlayer ignored", async () => {
-    const open = openStatsClarifications([row({})], "org-1", NOW);
-    const x = extractor({ claims: [claim("Abu Ayoub", true)], affirmation: "none", sideRequests: [], answersClarification: true });
-    const { d, registered, provisioned } = deps(
+    const x = extractor(facts([claim("Abu Ayoub", { newPlayer: true })], true));
+    const { d, registered, provisioned, recorded, closed } = deps(
       x.model,
       picker({ "Abu Ayoub": { kind: "ambiguous", userIds: ["u-yoobie"] } }),
     );
-    const r = await run(
-      msg("new", { authorName: "Pete Player", senderUserId: "u-pete", senderName: "Pete Player", senderIsAdmin: false }),
-      d,
-      open,
+    const r = await run(msg("new"), d, open());
+    expect(x.users[0]).toContain(`MATCHTIME ASKED them who someone in their earlier message is: "${ORIGINAL}"`);
+    expect(provisioned).toEqual(["Abu Ayoub"]);
+    expect(registered).toEqual(["u-new-Abu Ayoub"]);
+    expect(closed).toEqual(["sn-1"]);
+    expect(recorded).toEqual([]);
+    expect(r.outcomes.get("wa-1")?.intent).toBe("in");
+  });
+
+  it('"Yoobie" from the asker: Yoobie confirmed', async () => {
+    const x = extractor(facts([claim("Yoobie")], true));
+    const { d, registered, provisioned } = deps(x.model, picker({ Yoobie: { kind: "member", userId: "u-yoobie" } }));
+    await run(msg("Yoobie"), d, open());
+    expect(provisioned).toEqual([]);
+    expect(registered).toEqual(["u-yoobie"]);
+  });
+
+  it("an answer that is itself unclear asks again, about the ORIGINAL message and name", async () => {
+    const x = extractor(facts([claim("Dan")], true));
+    const { d, registered, recorded, closed } = deps(
+      x.model,
+      picker({ Dan: { kind: "ambiguous", userIds: ["u-dansmith", "u-danjones"] } }),
     );
+    const r = await run(msg("Dan"), d, open());
+    expect(registered).toEqual([]);
+    expect(r.outcomes.get("wa-1")?.reply).toBe("Do you mean Dan Smith or Dan Jones, or is Dan someone new?");
+    expect(closed).toEqual(["sn-1"]);
+    expect(recorded).toEqual([
+      { waMessageId: "wa-1", matchId: "match-1", askerUserId: "u-olly", body: ORIGINAL, ref: "Abu Ayoub", candidateIds: ["u-dansmith", "u-danjones"] },
+    ]);
+  });
+
+  it("a question that could not be composed opens nothing", async () => {
+    const x = extractor(facts([claim("Abu 07700900123")]));
+    const { d, recorded } = deps(x.model, picker({ "Abu 07700900123": { kind: "ambiguous", userIds: ["u-yoobie"] } }));
+    const r = await run(msg("@Match Time Abu 07700900123 is in", { tagged: true }), d);
+    expect(recorded).toEqual([]);
+    expect(r.outcomes.get("wa-1")?.reply ?? null).toBeNull();
+  });
+
+  it('somebody else saying "new" is not an answer: not shown the line, newPlayer ignored', async () => {
+    const x = extractor(facts([claim("Abu Ayoub", { newPlayer: true })], true));
+    const { d, registered, provisioned, closed } = deps(x.model, picker({ "Abu Ayoub": { kind: "ambiguous", userIds: ["u-yoobie"] } }));
+    await run(msg("new", { authorName: "Pete Player", senderUserId: "u-pete", senderName: "Pete Player", senderIsAdmin: false }), d, open());
     expect(x.users[0]).not.toContain("MATCHTIME ASKED");
     expect(provisioned).toEqual([]);
     expect(registered).toEqual([]);
-    expect(r.outcomes.get("wa-1")?.intent).not.toBe(ATTENDANCE_CLARIFIED_INTENT);
+    expect(closed).toEqual([]);
   });
 
   it("a stats question open for the sender is not shown to the attendance extractor", async () => {
-    const open = openStatsClarifications([row({ intent: "stats_clarification", body: "@Match Time Zork's stats" })], "org-1", NOW);
-    const x = extractor({ claims: [], affirmation: "none", sideRequests: [], answersClarification: false });
+    const stats = openStatsClarifications(
+      [{ id: "am-1", orgId: "org-1", intent: "stats_clarification", authorUserId: "u-olly", authorName: "Olly Organiser", body: "@Match Time Zork's stats", createdAt: ago(3) }],
+      "org-1",
+      NOW,
+    );
+    const x = extractor(facts([]));
     const { d } = deps(x.model, picker({}));
-    await run(msg("Idris"), d, open);
+    await run(msg("Idris"), d, stats);
     expect(x.users[0]).not.toContain("MATCHTIME ASKED");
   });
 });

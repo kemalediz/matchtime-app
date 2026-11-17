@@ -39,6 +39,8 @@ const run = (m: EngineMessage, st = state()): EngineResult => decide({ now: NOW,
 const asks = (r: EngineResult) => r.speech.filter((s) => s.kind === "ask_attendance_person");
 const people = (entries: Array<[string, PersonPick]>) => new Map<string, PersonPick>(entries);
 const yoobieMaybe = people([["Abu Ayoub", { kind: "ambiguous", userIds: ["u-yoobie"] }]]);
+/** The open question the answers below answer. */
+const ASK = { body: ORIGINAL, ref: "Abu Ayoub", candidateIds: ["u-yoobie"] };
 
 describe("asking who a name is", () => {
   it("the Sutton message: the organiser is asked one question, and nothing is written or degraded", () => {
@@ -185,9 +187,9 @@ describe("acting on the answer", () => {
         route: "other_att",
         facts: attendanceFacts([{ ...abuIn, newPlayer: true }], { answersClarification: true }),
       }),
-      clarifiedBody: ORIGINAL,
-      // Nothing is looked up for a person said to be new.
-      people: people([]),
+      clarification: ASK,
+      // who-is-who is still asked; "not sure" does not stop a "new".
+      people: yoobieMaybe,
     });
     expect(asks(r)).toEqual([]);
     expect(r.writes).toEqual([
@@ -195,7 +197,7 @@ describe("acting on the answer", () => {
     ]);
   });
 
-  it('"new" is not honoured without an open question (no clarifiedBody): resolved as usual', () => {
+  it('"new" is not honoured without an open question (no clarification): resolved as usual', () => {
     const r = run({
       ...msg({
         from: "kemal",
@@ -217,7 +219,7 @@ describe("acting on the answer", () => {
         route: "other_att",
         facts: attendanceFacts([{ ...abuIn, personRef: "Abu Ayoub Khan", newPlayer: true }], { answersClarification: true }),
       }),
-      clarifiedBody: ORIGINAL,
+      clarification: ASK,
       people: people([]),
     });
     expect(r.writes).toEqual([]);
@@ -231,11 +233,162 @@ describe("acting on the answer", () => {
         route: "other_att",
         facts: attendanceFacts([{ ...abuIn, personRef: "Yoobie" }], { answersClarification: true }),
       }),
-      clarifiedBody: ORIGINAL,
+      clarification: ASK,
       people: people([["Yoobie", { kind: "member", userId: "u-yoobie" }]]),
     });
     expect(statusOf(r.nextState, "yoobie")).toBe("CONFIRMED");
     expect(r.writes).toEqual([expect.objectContaining({ kind: "attendance", userId: "u-yoobie", status: "CONFIRMED" })]);
+  });
+});
+
+describe("review of #618: the answer is bound to the person asked about", () => {
+  const answer = (body: string, claims: Parameters<typeof attendanceFacts>[0], picks: Array<[string, PersonPick]>, st = state()) =>
+    run(
+      {
+        ...msg({ from: "kemal", body, route: "other_att", facts: attendanceFacts(claims, { answersClarification: true }) }),
+        clarification: ASK,
+        people: people(picks),
+      },
+      st,
+    );
+  const peteIn = claim({ subject: "other", personRef: "Pete", personKind: "named", personNamed: true, polarity: "in" });
+
+  it('Pete and Abu: "new" makes only Abu new, never a second Pete', () => {
+    const r = answer("new", [{ ...peteIn, newPlayer: true }, { ...abuIn, newPlayer: true }], [
+      ["Pete", { kind: "member", userId: "u-pete" }],
+      ["Abu Ayoub", { kind: "ambiguous", userIds: ["u-yoobie"] }],
+    ]);
+    expect(r.writes.map((w) => (w.kind === "attendance" ? w.userId : w.kind))).toEqual(["new:Abu Ayoub"]);
+  });
+
+  it("the replay: the rest of the earlier message is never applied again (Pete, since dropped, stays out)", () => {
+    const st = state();
+    st.rows = [{ userId: "u-pete", status: "DROPPED", position: 1 }];
+    const r = answer(
+      "new",
+      [peteIn, { ...abuIn, newPlayer: true }],
+      [
+        ["Pete", { kind: "member", userId: "u-pete" }],
+        ["Abu Ayoub", { kind: "ambiguous", userIds: ["u-yoobie"] }],
+      ],
+      st,
+    );
+    expect(statusOf(r.nextState, "pete")).toBe("DROPPED");
+    expect(r.writes).toEqual([expect.objectContaining({ userId: "new:Abu Ayoub", status: "CONFIRMED" })]);
+  });
+
+  it("a named answer lands only on a member offered, or one the answer itself names", () => {
+    // "the first one" read as Dan Smith, who was never offered: not applied.
+    const off = answer("the first one", [{ ...abuIn, personRef: "Dan" }], [["Dan", { kind: "member", userId: "u-dansmith" }]]);
+    expect(off.writes).toEqual([]);
+    // The member offered, however the answer put it: applied.
+    const offered = answer("the first one", [{ ...abuIn, personRef: "Yoob" }], [["Yoob", { kind: "member", userId: "u-yoobie" }]]);
+    expect(statusOf(offered.nextState, "yoobie")).toBe("CONFIRMED");
+    // A member the answer names in its own words: applied.
+    const named = answer("no, it's Dan Smith", [{ ...abuIn, personRef: "Dan Smith" }], [["Dan Smith", { kind: "member", userId: "u-dansmith" }]]);
+    expect(statusOf(named.nextState, "dansmith")).toBe("CONFIRMED");
+  });
+
+  it('"new" is refused for a name a member already has', () => {
+    const r = run({
+      ...msg({
+        from: "kemal",
+        body: "new",
+        route: "other_att",
+        facts: attendanceFacts(
+          [claim({ subject: "other", personRef: "Yoobie", personKind: "named", personNamed: true, polarity: "in", newPlayer: true })],
+          { answersClarification: true },
+        ),
+      }),
+      clarification: { body: "@Match Time Yoobie is in", ref: "Yoobie", candidateIds: ["u-yoobie"] },
+      people: people([["Yoobie", { kind: "ambiguous", userIds: ["u-yoobie"] }]]),
+    });
+    expect(r.writes).toEqual([]);
+    expect(r.degradations.map((d) => d.detail).join(" | ")).toMatch(/a member already has that name/);
+  });
+
+  it('"new" for a name that was not the one asked about is not honoured', () => {
+    const r = answer("new", [{ ...abuIn, personRef: "Abu", newPlayer: true }], [["Abu", { kind: "none" }]]);
+    expect(r.writes).toEqual([]);
+  });
+});
+
+describe("review of #618: a replacement with an unclear name is held whole", () => {
+  const replacing = (picks: Array<[string, PersonPick]>) =>
+    run(
+      {
+        ...msg({
+          from: "kemal",
+          body: "@Match Time Mojib in for Najib",
+          tagged: true,
+          route: "other_att",
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Mojib", personKind: "named", personNamed: true, polarity: "in", replaces: "Najib" }),
+            claim({ subject: "other", personRef: "Najib", personKind: "named", personNamed: true, polarity: "out" }),
+          ]),
+        }),
+        people: people(picks),
+      },
+      world({ players: ["kemal", "najib", "mojib"], confirmed: ["kemal", "najib"], admins: ["kemal"] }),
+    );
+
+  it('"Mojib in for Najib" with Mojib unclear: Najib stays CONFIRMED, one question, about Mojib', () => {
+    const r = replacing([
+      ["Mojib", { kind: "ambiguous", userIds: ["u-mojib"] }],
+      ["Najib", { kind: "member", userId: "u-najib" }],
+    ]);
+    expect(statusOf(r.nextState, "najib")).toBe("CONFIRMED");
+    expect(statusOf(r.nextState, "mojib")).toBe("ABSENT");
+    expect(r.writes).toEqual([]);
+    expect(asks(r)).toEqual([expect.objectContaining({ ref: "Mojib" })]);
+  });
+
+  it("with Najib unclear: Najib's own OUT is held too, one question, about Najib", () => {
+    const r = replacing([
+      ["Mojib", { kind: "member", userId: "u-mojib" }],
+      ["Najib", { kind: "ambiguous", userIds: ["u-najib"] }],
+    ]);
+    expect(statusOf(r.nextState, "najib")).toBe("CONFIRMED");
+    expect(r.writes).toEqual([]);
+    expect(asks(r)).toEqual([expect.objectContaining({ ref: "Najib" })]);
+  });
+});
+
+describe("review of #618: one question per message", () => {
+  const digits = claim({ subject: "other", personRef: "@252012071493723", personKind: "named", personNamed: true, polarity: "in" });
+  const questions = (r: EngineResult) =>
+    r.speech.filter((s) => s.kind === "ask_attendance_person" || s.kind === "ask_who_mentioned" || s.kind === "guest_name_ask");
+
+  it('"@<digits> and Abu Ayoub are in": one question, whichever comes first', () => {
+    for (const order of [[digits, abuIn], [abuIn, digits]]) {
+      const r = run({
+        ...msg({ from: "kemal", body: "@Match Time @252012071493723 and Abu Ayoub are in", tagged: true, route: "other_att", facts: attendanceFacts(order) }),
+        people: yoobieMaybe,
+      });
+      expect(questions(r)).toHaveLength(1);
+      expect(r.writes).toEqual([]);
+    }
+  });
+
+  it("the guest-name ask and an unclear name: one question (the guest-name ask)", () => {
+    const brother = claim({ subject: "other", personRef: "my brother", personKind: "relation", personNamed: false, polarity: "in" });
+    const r = run({
+      ...msg({ from: "kemal", body: "@Match Time my brother and Abu Ayoub are in", tagged: true, route: "other_att", facts: attendanceFacts([brother, abuIn]) }),
+      people: yoobieMaybe,
+    });
+    expect(questions(r).map((q) => q.kind)).toEqual(["guest_name_ask"]);
+    expect(r.outcomes[0].attendanceClarificationAsked).toBeUndefined();
+  });
+
+  it("a name that cannot be printed (a phone number) asks nothing and is not marked acted", () => {
+    const phoneRef = claim({ subject: "other", personRef: "Abu 07700900123", personKind: "named", personNamed: true, polarity: "in" });
+    const r = run({
+      ...msg({ from: "kemal", body: "@Match Time Abu 07700900123 is in", tagged: true, route: "other_att", facts: attendanceFacts([phoneRef]) }),
+      people: people([["Abu 07700900123", { kind: "ambiguous", userIds: ["u-yoobie"] }]]),
+    });
+    expect(asks(r)).toEqual([]);
+    expect(r.outcomes[0].attendanceClarificationAsked).toBeUndefined();
+    expect(r.outcomes[0].disposition).toBe("degraded");
   });
 });
 

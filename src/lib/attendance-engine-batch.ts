@@ -176,12 +176,8 @@ import { membersNamedIn } from "./pipeline/identity";
 import { identifyFacts, personPickerFor } from "./pipeline/identify-batch";
 import { restoreFormerMember } from "./resolve-sender";
 import type { PersonPicker, PersonPicks } from "./pipeline/who-is-who";
-import {
-  ATTENDANCE_CLARIFICATION_INTENT,
-  ATTENDANCE_CLARIFIED_INTENT,
-  isFromAsker,
-  type StatsClarification,
-} from "./pipeline/awaiting-answer";
+import { isFromAsker, type StatsClarification } from "./pipeline/awaiting-answer";
+import { renderAttendanceAsk } from "./pipeline/compose";
 
 export interface EngineBatchMessage {
   waMessageId: string;
@@ -395,7 +391,30 @@ function empty(degradations: string[] = []): EngineBatchResult {
   };
 }
 
+/** One "who is that?" MatchTime has just asked (2026-11-17), as the
+ *  question's own row records it (`awaiting-answer.ts`, `AttendanceAsk`). */
+export interface AttendanceAskRecord {
+  waMessageId: string;
+  matchId: string | null;
+  askerUserId: string;
+  /** The earlier message the question is about (for a re-ask from an
+   *  answer, still the ORIGINAL message). */
+  body: string;
+  /** The name asked about (for a re-ask, still the original name). */
+  ref: string;
+  candidateIds: string[];
+}
+
 export interface EngineBatchDeps extends EngineApplyDeps {
+  /**
+   * Record a "who is that?" MatchTime has asked, which opens it for the
+   * asker's answer (2026-11-17). Called only when the question was
+   * actually composed into this message's reply. Absent (the admin group,
+   * whose engine replies are never posted, and tests): nothing recorded.
+   */
+  recordAttendanceAsk?: (a: AttendanceAskRecord) => Promise<void>;
+  /** Close a question whose answer this batch read (its row id). */
+  closeAttendanceAsk?: (id: string) => Promise<void>;
   /** Users with an unresolved bench prompt open on the active match.
    *  See the carve-out below. */
   openBenchPromptUserIds: (matchId: string) => Promise<string[]>;
@@ -1196,7 +1215,12 @@ export async function runAttendanceEngineBatch(args: {
       ...(m.quoted ? { quoted: m.quoted } : {}),
       ...(teamsReadingById.has(m.waMessageId) ? { teamsReading: teamsReadingById.get(m.waMessageId) } : {}),
       ...(peopleById.has(m.waMessageId) ? { people: peopleById.get(m.waMessageId) } : {}),
-      ...(answeredIds.has(m.waMessageId) ? { clarifiedBody: askedFor.get(m.waMessageId)!.questionBody } : {}),
+      ...(answeredIds.has(m.waMessageId)
+        ? (() => {
+            const q = askedFor.get(m.waMessageId)!;
+            return { clarification: { body: q.questionBody, ref: q.ref ?? "", candidateIds: q.candidateIds ?? [] } };
+          })()
+        : {}),
     };
   });
 
@@ -1564,22 +1588,47 @@ export async function runAttendanceEngineBatch(args: {
       );
     }
 
+    // ── THE "WHO IS THAT?" ROW (2026-11-17, `awaiting-answer.ts`) ──────
+    // Opened only when the question was really said in this reply (a
+    // question that could not be composed opens nothing), apart from this
+    // message's own row, so its intent stays what happened. An answer
+    // closes the question it answered; one that asks again opens a new
+    // one about the ORIGINAL message and name.
+    const answered = answeredIds.has(m.waMessageId) ? askedFor.get(m.waMessageId) : undefined;
+    if (answered && deps.closeAttendanceAsk) {
+      await deps.closeAttendanceAsk(answered.id).catch((err) =>
+        degradations.push(`attendance-ask ${m.waMessageId}: could not close ${answered.id} (${err instanceof Error ? err.message : "failed"})`),
+      );
+    }
+    const asked = result.speech.find(
+      (sp): sp is Extract<typeof sp, { kind: "ask_attendance_person" }> => sp.kind === "ask_attendance_person" && sp.messageId === m.waMessageId,
+    );
+    const askText = asked ? renderAttendanceAsk({ ref: asked.ref, candidates: asked.candidates }, state.features.language) : null;
+    if (asked && askText && !degraded && utterances.includes(askText) && m.senderUserId && deps.recordAttendanceAsk) {
+      await deps
+        .recordAttendanceAsk({
+          waMessageId: m.waMessageId,
+          matchId,
+          askerUserId: m.senderUserId,
+          body: answered ? answered.questionBody : m.body,
+          ref: answered?.ref ? answered.ref : asked.ref,
+          candidateIds: asked.candidateIds,
+        })
+        .catch((err) =>
+          degradations.push(`attendance-ask ${m.waMessageId}: question asked but not recorded (${err instanceof Error ? err.message : "failed"})`),
+        );
+    }
+
     outcomes.set(m.waMessageId, {
       waMessageId: m.waMessageId,
       route: m.route as Route,
       reply,
       react: reactByMessageId.get(m.waMessageId) ?? partnerReact ?? friendReact,
-      // The asking message opens the "who is that?" and its answer closes
-      // it (`awaiting-answer.ts`); an answer that asks again opens a new one.
       intent: partner
         ? "partner_volunteer"
-        : engineOutcome?.attendanceClarificationAsked && reply
-          ? ATTENDANCE_CLARIFICATION_INTENT
-          : answeredIds.has(m.waMessageId)
-            ? ATTENDANCE_CLARIFIED_INTENT
-            : friend && landed.length === 0
-              ? "friend_link"
-              : intentFor(landed, m.senderUserId, attendanceFacts, reply, !!engineOutcome?.recruitRequested),
+        : friend && landed.length === 0
+          ? "friend_link"
+          : intentFor(landed, m.senderUserId, attendanceFacts, reply, !!engineOutcome?.recruitRequested),
       action: partner ? `partner-volunteer:${partner.outcome}` : analyzedActionFor(landed, m.senderUserId),
       reasoning,
       failures,

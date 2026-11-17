@@ -282,7 +282,7 @@ export interface Claim {
    * ever true on a message that answers that question
    * (`AttendanceFacts.answersClarification`), and honoured by the engine
    * only when the batch confirmed the question was open for this sender
-   * (`EngineMessage.clarifiedBody`): the name is then a new person, not
+   * (`EngineMessage.clarification`): the name is then a new person, not
    * looked up again. Absent: false.
    */
   newPlayer?: boolean;
@@ -1824,7 +1824,7 @@ export type SpeechIntent =
    * name as written; `candidates` the members it could be (empty: nobody
    * could say). Nothing is written for the claim until the answer comes.
    */
-  | { kind: "ask_attendance_person"; messageId: string; ref: string; candidates: string[] }
+  | { kind: "ask_attendance_person"; messageId: string; ref: string; candidates: string[]; candidateIds: string[] }
   | { kind: "answer_bench"; messageId: string }
   | { kind: "answer_count"; messageId: string; statedCount: number | null }
   /**
@@ -2207,13 +2207,15 @@ export interface EngineMessage {
   people?: ReadonlyMap<string, PersonPick>;
   /**
    * THIS MESSAGE ANSWERS MATCHTIME'S "WHO IS THAT?" (2026-11-17): the
-   * sender's earlier message the question was about, verbatim. Set by the
-   * batch only when the question was open for this sender AND the
-   * extractor read the message as its answer. A claim marked `newPlayer`
-   * is then a new person under the name as the EARLIER message wrote it.
-   * Absent: a message of its own, and `newPlayer` means nothing.
+   * earlier message the question was about, the name it asked about, and
+   * the members it offered. Set by the batch only when the question was
+   * open for this sender AND the extractor read the message as its answer.
+   * Only the claim about `ref` is acted on (and its replacement partner);
+   * `newPlayer` counts only for `ref`; a named answer lands only on one of
+   * `candidateIds` or on a member the answer itself names. Absent: a
+   * message of its own.
    */
-  clarifiedBody?: string;
+  clarification?: { body: string; ref: string; candidateIds: string[] };
 }
 
 export interface EngineInput {

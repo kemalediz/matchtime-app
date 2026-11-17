@@ -952,7 +952,7 @@ export async function runAnswerBatch(args: {
     // answer reads the roster itself), so no reply is read as one.
     if (unified) continue;
     // A "who is that?" about who plays is the attendance engine's to read.
-    const c = (args.clarifications ?? []).find((q) => (q.about ?? "stats") === "stats" && isFromAsker(q, m));
+    const c = (args.clarifications ?? []).find((q) => q.about !== "attendance" && isFromAsker(q, m));
     if (c) clarificationFor.set(m.waMessageId, { c });
   }
 
