@@ -187,6 +187,16 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * 21,516 characters. Old and new: MDs/prompt-move-game-old.md and
  * MDs/prompt-move-game-new.md; the paid check: scripts/live-check-move-game.ts.
  *
+ * And on 2026-11-17 (the Vets: "the main squad will always expand or shrink
+ * without any limits and a bench"; Kemal: every admin feature by WhatsApp):
+ * one action, `open_squad`, defined once beside `player_numbers` with the
+ * other "how many play" settings (the limit off, so everyone who says IN
+ * plays with no bench and no number a side, or a limit and a bench back; a
+ * fewest or most number stays `player_numbers`), its one field
+ * (`openSquadOff`) once beside `fullTeams`, and one example group, EN and TR
+ * side by side, with a question as "other". 21,516 to 22,549 characters.
+ * Old and new side by side in the PR; the paid check is the manager's.
+ *
  * The TEAMS extractor, 2026-11-10 (Sutton FC, "@Match Time reduce my
  * strength for this match as I am quite tired." went to the settings
  * page): one action, `form`, defined once beside the others (how a player
