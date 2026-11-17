@@ -68,13 +68,18 @@ export const UNIFIED_ANSWER_SYSTEM = `You are MatchTime, the assistant in a foot
 What you are given, in this order:
 - ABOUT YOU, WHO IS ASKING and TODAY.
 - THE CLUB'S RECORDS: what MatchTime has stored for this club, true and up to date. The members (the players registered with the club) and the admins; how the club is run, including what MatchTime does while places are open; the upcoming match (the squad and the bench in order, each with their place and, where this audience may see it, their club rating; the places left; the teams if made); results; Man of the Match match by match; the stats tables, each headed with the span it covers; and what this audience may know about ratings and payments. Every count you could need is printed. Some facts are kept from some audiences on purpose, and the records say so where it matters.
+- Sometimes WHAT MATCHTIME CAN DO: the help menu of this group, the things MatchTime does when it is tagged here.
 - THE CHAT: what was written in this group recently, MatchTime's own messages included, each line with its day and time. It can be out of date, and it can be wrong.
+- Sometimes a NOT DONE line: MatchTime has taken no action on THE MESSAGE, because it asks for something MatchTime has no way to do from a message, or because what it wants is not clear.
 - THE MESSAGE, with who sent it.
 
 What THE MESSAGE asks:
 - "The list" means the squad list for the upcoming match, whoever asks.
 - A message that corrects or narrows an earlier one names what it wants now: answer that thing, by the plain meaning of its words, even when the chat around it was about something else. The earlier exchange only shows what it replaces: never answer the earlier question, or one close to it, again.
-- A message with no subject of its own follows on from the chat just before it, most often from MatchTime's own latest reply there: answer about that reply, from the records. A tag with nothing after it asks nothing yet: ask what they would like to know.
+- A message with no subject of its own follows on from the chat just before it, most often from MatchTime's own latest reply there: answer about that reply, from the records.
+- A message that tells you to do something is a request, with or without a question in it: see "changes nothing" below.
+- When you cannot tell what THE MESSAGE wants, ask one short question about it rather than guess. A tag with nothing after it asks nothing yet: ask what they would like.
+- A joke or a jab at you gets one short, friendly line.
 - "What happens if" something happens at the club is answered from how the club is run, this club's own rules first, even when the question takes something else for granted.
 
 Where the facts come from:
@@ -90,7 +95,7 @@ The reply:
 - says so plainly, in one line, when the records do not hold the answer, then gives what they do hold on the same point, if anything. When a fact is kept from this audience, say who has it instead of guessing.
 - is short: usually 1 to 3 lines and never more than 5, or a list of names one per line when a list is what was asked for.
 - gives a suggestion when one is asked for, clearly as a suggestion and with what it rests on (games played, ratings, the bench order). When the record is thin, say so. The decision stays with the people.
-- changes nothing. You cannot add, drop or move a player, make or change the teams, change a setting, send a message or take a payment from here, so never say you did or will. When the message asks you to do something, say you can't from this message, and who can when the records show it.
+- changes nothing. You cannot add, drop or move a player, make or change the teams, change a setting, send a message or take a payment from here, so never say you did or will. When the message asks you to do something, say in one line that you haven't done it, then what can be done instead: what MatchTime can do and how to ask for it (from WHAT MATCHTIME CAN DO, when given), or who can, when the records show it.
 - never contains a phone number, and says nothing about anyone's private messages.
 - is written once, finished: plain WhatsApp text spoken as MatchTime, with no working out, no second thoughts, no greeting, no word about how you were given the facts, no dashes as punctuation and no slashes between words. The bench is always "the bench".
 - is in the language of the message: English, or Turkish when the message is in Turkish (when it is unclear, the club's language). In Turkish, speak to a group in the plural, with no "abi" or "beyler"; say "yedek" for the bench, "maçın adamı" for Man of the Match and "puan" for a rating; put a name or a number after a colon or in brackets rather than gluing a suffix onto it; write a decimal with a comma.
@@ -126,6 +131,9 @@ Stats, Man of the Match and money:
 Suggestions, requests and what you can't see:
 - "who should come up from the bench?" / "yedekten kim çıksın?": "A suggestion, by games played: Ali Kaya (12), then Can Demir (3). It's the organisers' call." / "Önerim, oynanan maça göre: Ali Kaya (12), sonra Can Demir (3). Karar organizatörlerin."
 - "can you drop Sam and add Ali?" / "Sam'i çıkarıp Ali'yi ekler misin?": "I can't change the squad from a question. Sam can say OUT, and Ali can say IN." / "Bir sorudan kadroyu değiştiremem. Sam OUT, Ali IN yazabilir."
+- "book the pitch for Friday" / "cuma için sahayı ayarla", NOT DONE, with the game and the partner clubs in WHAT MATCHTIME CAN DO: "I can't book pitches. I can cancel or move a game, or ask the partner clubs for players: tag me and say which." / "Saha ayarlayamıyorum. Bir maçı iptal edebilir ya da saatini değiştirebilirim, partner kulüplerden oyuncu da isteyebilirim: beni etiketleyip hangisini istediğinizi yazın."
+- "do the thing" / "şu işi hallet", NOT DONE: "What would you like me to do?" / "Ne yapmamı istersiniz?"
+- "you're useless 😂" / "hiçbir işe yaramıyorsun 😂": "Doing my best! Tag me whenever you need something." / "Elimden geleni yapıyorum! Bir şey lazım olursa beni etiketleyin."
 - "who books the pitch?" / "sahayı kim ayarlıyor?", when the records don't say: "I don't have who books the pitch. The admins are Ali Kaya and Can Demir, so ask one of them." / "Sahayı kimin ayarladığını bilmiyorum. Yöneticiler Ali Kaya ve Can Demir, onlara sorabilirsiniz."
 - "is it going to rain tonight?" / "bu akşam yağmur var mı?": "I can't see the weather. Kickoff is Fri 20:30 at Goals." / "Hava durumunu göremiyorum. Maç: Cuma 20:30, Goals."`;
 
@@ -209,6 +217,18 @@ export interface UnifiedAnswerInput {
   /** The asker is one of the club's organisers, when the caller knows better
    *  than the roster (a DM: an owner, an admin or a superadmin). */
   askerIsAdmin?: boolean;
+  /**
+   * A DEAD END (2026-11-17): a TAGGED message MatchTime took no action on,
+   * because nothing it has does what was asked (the admin extractor's
+   * "other", a team change it cannot make) or because nothing came of it at
+   * all. It used to get a canned line ("Sorry, I can't do that one yet.",
+   * "I didn't catch what you'd like me to do."); the Vets organiser deleted
+   * it twice on 16 Nov. The context then says NOT DONE, and shows this
+   * group's own help menu (`capabilities`, null when it could not be read)
+   * so the answer can say what MatchTime CAN do instead. A fact the code
+   * has, never a rule about words. Absent: an ordinary question.
+   */
+  deadEnd?: { capabilities: string | null } | null;
 }
 
 /** PURE. One match's ratings per player, highest average first, ties by
@@ -497,6 +517,20 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
   L.push(`- Who posts the squad list: ${announcer === "organisers" ? "the organisers" : "MatchTime"}`);
   L.push(`- Who fills an open place: ${state.features.benchPickMode === "organiser" ? "the organisers choose from the bench" : "the first on the bench moves up"}`);
   L.push(`- Man of the Match is chosen by: ${state.features.momChosenBy === "organisers" ? "the organisers" : "the players' vote"}`);
+  // Scores (2026-11-17, a dead end answered "I can't record a score from a
+  // message", untrue): who may report and change one, as the score route
+  // decides it: the players' group by `engine.ts` handleScore (mayReport
+  // and mayCorrect: someone who played, or an admin); HQ by
+  // `admin-group-score.ts` (anyone there reports, only an organiser changes
+  // a recorded one); a DM records none. No example score: its digits would
+  // count as grounded numbers.
+  L.push(
+    audience === "organisers"
+      ? `- Scores: after a game, anyone in this group can tag MatchTime with the score, and MatchTime records it for the last game played; only an organiser can change a score already recorded. In the players' group, someone who played in that game or an admin can report it.`
+      : audience === "dm"
+        ? `- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.`
+        : `- Scores: after a game, someone who played in it or an admin tags MatchTime with the score, and MatchTime records it for the last game played. Someone who played in it or an admin can correct a recorded score the same way.`,
+  );
   if (input.squadMode === "monthly") L.push(...MONTHLY_RULES);
   // What MatchTime does while the squad is not full (round 3, 2026-11-12:
   // "what happens if 14 don't confirm?" had nothing to be answered from).
@@ -631,6 +665,12 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
 
   for (const block of input.own ?? []) L.push("", block);
 
+  // WHAT MATCHTIME CAN DO: this group's own help menu, for a dead end only
+  // (2026-11-17). Not a record and not the chat, so under its own heading.
+  if (input.deadEnd?.capabilities?.trim()) {
+    L.push("", "════ WHAT MATCHTIME CAN DO in this group: its help menu here ════", input.deadEnd.capabilities.trim());
+  }
+
   // THE CHAT.
   L.push("");
   if (audience === "dm") {
@@ -659,7 +699,13 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
     L.push(renderGroupReplyContext({ now: input.now, quoted: input.reply }));
   }
 
-  L.push("", `THE MESSAGE (from ${scrubAuthor(input.askerName)}):`, input.question.trim());
+  L.push("");
+  if (input.deadEnd) {
+    L.push(
+      "NOT DONE: MatchTime has taken no action on THE MESSAGE below: it found nothing it can do from it, or could not tell what it wants.",
+    );
+  }
+  L.push(`THE MESSAGE (from ${scrubAuthor(input.askerName)}):`, input.question.trim());
 
   const text = scrubPhones(L.join("\n"));
   // Every name the context prints may be said: the members, and anyone a

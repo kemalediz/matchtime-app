@@ -577,3 +577,54 @@ describe("round 3: who is in, when the organisers post the list (FNF group 'Naji
     expect(buildUnifiedContext(input()).text).not.toMatch(/not shared in this group/);
   });
 });
+
+describe("a dead end: a tagged message MatchTime could not act on (2026-11-17, the Vets organiser deleted the 'can't do that' line twice)", () => {
+  const MENU = "ℹ️ *MatchTime help*\n🗓️ *schedule*: when and where you play\n🤝 *partners*: playing with partner clubs";
+
+  it("the context says nothing was done and shows what MatchTime can do here, before THE MESSAGE", () => {
+    const { text } = buildUnifiedContext(input({ question: "@Match Time book the pitch for Friday", deadEnd: { capabilities: MENU } }));
+    const can = text.indexOf("WHAT MATCHTIME CAN DO");
+    const notDone = text.indexOf("NOT DONE:");
+    const message = text.indexOf("THE MESSAGE (from");
+    expect(can).toBeGreaterThan(text.indexOf("THE CLUB'S RECORDS"));
+    expect(text).toContain("🤝 *partners*: playing with partner clubs");
+    expect(notDone).toBeGreaterThan(can);
+    expect(notDone).toBeLessThan(message);
+    expect(text.trimEnd().endsWith("@Match Time book the pitch for Friday")).toBe(true);
+  });
+
+  it("a dead end whose help menu could not be read still says nothing was done", () => {
+    const { text } = buildUnifiedContext(input({ deadEnd: { capabilities: null } }));
+    expect(text).toContain("NOT DONE:");
+    expect(text).not.toContain("WHAT MATCHTIME CAN DO");
+  });
+
+  it("how the club is run says who reports and who changes a game's score, true per audience (engine.ts mayReport and mayCorrect; admin-group-score.ts)", () => {
+    const players = buildUnifiedContext(input()).text;
+    expect(players).toContain(
+      "- Scores: after a game, someone who played in it or an admin tags MatchTime with the score, and MatchTime records it for the last game played. Someone who played in it or an admin can correct a recorded score the same way.",
+    );
+    const hq = buildUnifiedContext(input({ audience: "organisers" })).text;
+    expect(hq).toContain(
+      "- Scores: after a game, anyone in this group can tag MatchTime with the score, and MatchTime records it for the last game played; only an organiser can change a score already recorded. In the players' group, someone who played in that game or an admin can report it.",
+    );
+    const dm = buildUnifiedContext(input({ audience: "dm" })).text;
+    expect(dm).toContain(
+      "- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.",
+    );
+  });
+
+  it("an ordinary question carries neither", () => {
+    const { text } = buildUnifiedContext(input());
+    expect(text).not.toContain("NOT DONE:");
+    expect(text).not.toContain("WHAT MATCHTIME CAN DO");
+  });
+
+  it("the prompt: a request says it wasn't done and what can be done instead; unclear asks one question; a jab gets a friendly line", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/NOT DONE line/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/say in one line that you haven't done it, then what can be done instead/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/ask one short question about it rather than guess/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/A joke or a jab at you gets one short, friendly line/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"book the pitch for Friday" \/ "cuma için sahayı ayarla"/);
+  });
+});

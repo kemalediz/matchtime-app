@@ -1143,7 +1143,10 @@ export async function runAdminOpsBatch(args: {
           ? requestNotHandledAdminReply(state.features.language)
           : requestNotHandledReply(state.features.language),
         react: null,
-        intent: "noise",
+        // A dead end (`dead-end-answer.ts`): with UNIFIED_ANSWERS on, the
+        // analyze route hands it to the unified answer, and this line is
+        // only its fallback (2026-11-17).
+        intent: "request_not_handled",
         action: "reply",
         reasoning:
           `${ADMIN_OPS_HANDLED_BY} (${m.route}): admin action "other" has no handler; ` +

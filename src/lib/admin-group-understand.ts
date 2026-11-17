@@ -141,6 +141,7 @@ import { piMentionsBot } from "./interaction-contract";
 import { answerClosedPartnerAskYes, answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
+import { isUnifiedAnswersEnabled } from "./unified-answers-flag";
 import { joinAdminNames } from "./seed-nudge-rules";
 import { answerFeeProposalYes, feeProposalsAwaiting, proposeFeeFreeInHq } from "./fee-waiver";
 import { parseFeeAskRef } from "./fee-waiver-rules";
@@ -689,8 +690,9 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // one answer instead of asking again.
     let questionAnswered: ReturnType<typeof answerQuestionOnce> | null = null;
     const answerQuestion = () => (questionAnswered ??= answerQuestionOnce());
-    const answerQuestionOnce = () =>
+    const answerQuestionOnce = (deadEnd = false) =>
       answerHqQuestion({
+        ...(deadEnd ? { deadEnd: true } : {}),
         orgId: org.id,
         lang,
         messageId,
@@ -708,6 +710,18 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         ...(input.unifiedAnswers !== undefined ? { unified: input.unifiedAnswers } : {}),
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
+    // A DEAD END (2026-11-17, `dead-end-answer.ts`): a tagged message HQ has
+    // no action for is handed to the unified answer, told NOT DONE and shown
+    // the HQ menu, instead of a canned line. The line (`fallback`) is said
+    // only when that answer fails, or with UNIFIED_ANSWERS off.
+    const unifiedOn = input.unifiedAnswers ?? isUnifiedAnswersEnabled();
+    const deadEnd = async (fallback: () => Promise<Understood | null> | Understood | null): Promise<Understood | null> => {
+      if (unifiedOn) {
+        const r = await answerQuestionOnce(true);
+        if (r) return said(r.outcome, r.replyText);
+      }
+      return fallback();
+    };
 
     // A squad change that ALSO asks MatchTime something (FNF HQ 2026-10-24:
     // "Glazers is out now.\n\n@Match Time what is the list?" was routed
@@ -1358,10 +1372,19 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
           return said(r.outcome, r.replyText);
         }
         console.log(`[admin-group] ${messageId}: admin_ops read as ${facts.kind === "admin" ? facts.action : facts.kind}, not done from HQ`);
+        // Nothing MatchTime has does it ("other", or nothing read): a dead
+        // end. A known action done elsewhere keeps "not from this group".
+        // One part of several is not a dead end: the message's other parts
+        // speak for it, and "no part did anything" is decided below.
+        if (!several && (facts.kind !== "admin" || facts.action === "other")) return deadEnd(notHere);
         return notHere();
       }
-      case "score":
-        return scoreHere();
+      case "score": {
+        // Tagged, and not a score after all: a dead end (2026-11-17), but
+        // never one part of several (review of #617).
+        const r = await scoreHere();
+        return !several && r?.outcome === "hq-not-understood" ? deadEnd(() => r) : r;
+      }
       case "unsure": {
         // While MatchTime waits for the score, a message the router could
         // not place ("7-4 mü 7-5 mi", 2026-10-16 live check) is read by the
@@ -1409,7 +1432,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       parts.push({ part, result: await byRoute(part, { several: true, squadPartDone: parts.some((p) => isAttendanceRoute(p.part)) }) });
     }
     // No part did anything: the one line a tagged message gets, once.
-    if (parts.every((p) => !p.result)) return said("hq-not-understood", s.hq_not_understood);
+    if (parts.every((p) => !p.result)) return deadEnd(() => said("hq-not-understood", s.hq_not_understood));
     return joinHqParts({ route, parts, lang });
   });
 }
