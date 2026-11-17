@@ -149,7 +149,9 @@ export interface AskFacts {
  *  pays: in a week of a running month, the club's PAYG price
  *  (`guestFeePounds`), as a PAYG player is charged after the game. */
 async function factsFor(match: AskMatch, askerName: string, places: number, lang: string | null): Promise<AskFacts> {
-  const perSide = match.activity.sport?.playersPerTeam;
+  // An open squad (2026-11-17, open-squad.ts) has no number a side to tell.
+  const openSquad = (await db.organisation.findUnique({ where: { id: match.activity.orgId }, select: { openSquad: true } }).catch(() => null))?.openSquad === true;
+  const perSide = openSquad ? undefined : match.activity.sport?.playersPerTeam;
   const fee = guestFeePounds({
     matchFee: match.feePerPlayer,
     activityFee: match.activity.feePerPlayer,
