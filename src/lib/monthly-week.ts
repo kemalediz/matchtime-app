@@ -894,7 +894,15 @@ export async function ensureOpenPlaceOffers(matchId: string, now: Date = new Dat
   if (!week || !week.seeded || !(LIVE as readonly string[]).includes(week.matchStatus)) return 0;
   if (week.matchDate.getTime() <= now.getTime()) return 0;
   if (week.pickMode === "organiser") return 0;
-  const benchCount = week.rows.filter((r) => r.status === "BENCH").length;
+  // A first-come club fills from its bench first (2026-11-17,
+  // `bench-fill.ts`), and only somebody waiting for a place (not on the
+  // bench by choice) counts as the bench here: with nobody like that, the
+  // open places go to the pay-as-you-go players.
+  const { fillOpenPlacesFromBench } = await import("./bench-fill");
+  await fillOpenPlacesFromBench(matchId, { actorKind: "scheduler", sourceRef: "monthly:open-places", now }).catch((err) =>
+    console.error(`[monthly-week] bench fill on ${matchId} failed:`, err),
+  );
+  const benchCount = await db.attendance.count({ where: { matchId, status: "BENCH", benchByChoice: false } });
   // Nobody to ask: no waiting list and an empty pool.
   if (benchCount === 0 && !paygPoolOfferAllowed({ pickMode: week.pickMode, benchCount, poolSize: (await loadPaygPool(week, now)).length })) {
     return 0;

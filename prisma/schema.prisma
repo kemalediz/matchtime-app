@@ -2180,6 +2180,14 @@ model Attendance {
   status        AttendanceStatus @default(CONFIRMED)
   position      Int              @default(0)
   respondedAt   DateTime         @default(now())
+  /// On the bench BY CHOICE while a place was his (2026-11-17): he asked
+  /// for the bench with places open, an admin ticked "Add to bench
+  /// instead", or he or an admin moved him there from the squad. The
+  /// bench fill (`src/lib/bench-fill.ts`) never moves such a player up by
+  /// itself; his own IN still does. Written by every status write of
+  /// `registerAttendance` (false unless chosen) and cleared by
+  /// `cancelAttendance` and the fill. Additive, default false.
+  benchByChoice Boolean          @default(false)
   /// Non-null when the player has marked themselves as paid for this
   /// match. Populated by the bot when the voter ticks their team's
   /// option in the WhatsApp payment poll; can also be toggled from

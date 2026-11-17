@@ -41,6 +41,8 @@ export async function announceSquadFullIfJustFilled(
     lead?: string | null;
     /** Hold the post until then (the club's quiet hours). */
     sendAfter?: Date | null;
+    /** Phones the lead tags as "@<digits>" (a real WhatsApp tag). */
+    mentions?: string[];
   } = {},
 ): Promise<SquadFullAnnounced> {
   const m = await db.match.findUnique({
@@ -123,9 +125,7 @@ export async function announceSquadFullIfJustFilled(
   // the players' group hears nothing. The claim above still holds, so the
   // admins are told once per fill, like the group.
   if (organisersAnnounce(features)) {
-    await sendAdminNotice({
-      orgId: m.activity.orgId,
-      text: buildOrganiserListUpdate({
+    const update = buildOrganiserListUpdate({
         reason: "squad-complete",
         activityName: matchFormatTitle(m.activity.name, m.maxPlayers),
         whenLabel: dayTimeLabel(lang, m.date),
@@ -133,8 +133,10 @@ export async function announceSquadFullIfJustFilled(
         bench: bench.map((a) => a.user),
         maxPlayers: m.maxPlayers,
         lang,
-      }),
-    });
+      });
+    // One message to the organisers per fill: the lead (who moved up from
+    // the bench) rides on the list update rather than following it.
+    await sendAdminNotice({ orgId: m.activity.orgId, text: opts.lead ? `${opts.lead}\n\n${update}` : update });
     return "organisers";
   }
   const benchOn = features?.bench === true;
@@ -161,6 +163,7 @@ export async function announceSquadFullIfJustFilled(
       // The match, so a reply quoting the squad post resolves to it.
       matchId: m.id,
       text: opts.lead ? `${opts.lead}\n\n${post}` : post,
+      ...(opts.mentions?.length ? { mentions: opts.mentions } : {}),
       ...(opts.sendAfter ? { sendAfter: opts.sendAfter } : {}),
     },
   });

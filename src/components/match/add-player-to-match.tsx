@@ -70,11 +70,13 @@ export function AddPlayerToMatch({
         return;
       }
       toast.success(
-        res.ratingDmSent
-          ? "Added, rating link sent to them"
-          : res.created
-            ? "Player created & added"
-            : "Added to match",
+        res.benchedFull
+          ? "The squad is full, so they're on the bench. They move up if a place opens."
+          : res.ratingDmSent
+            ? "Added, rating link sent to them"
+            : res.created
+              ? "Player created & added"
+              : "Added to match",
       );
       reset();
       setOpen(false);

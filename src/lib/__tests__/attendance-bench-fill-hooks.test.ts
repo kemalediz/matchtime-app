@@ -2,9 +2,9 @@
  * registerAttendance's two hooks into the bench fill (2026-11-17):
  *
  *   1. an explicit bench request while a place is free is written with
- *      `EXPLICIT_BENCH_WITH_ROOM_NOTE`, so the bench never moves that
- *      player up by itself (he chose to wait); on a FULL squad it keeps
- *      the plain note (he is a reserve and moves up in his turn);
+ *      `benchByChoice: true` (a structured flag, review of #622), so the
+ *      bench never moves that player up by itself (he chose to wait); on
+ *      a FULL squad it is false (he is a reserve and moves up in his turn);
  *   2. a CONFIRMED player moved to the bench on purpose opens a place,
  *      and the first one waiting takes it (`fillOpenPlacesFromBench`).
  */
@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   maxPlayers: 14,
   rows: [] as { id: string; matchId: string; userId: string; status: string; position: number }[],
   notes: [] as Array<{ userId: string; toStatus: string | null; note: string | null }>,
+  choice: [] as Array<{ userId: string; benchByChoice: boolean | undefined }>,
   fill: vi.fn(async () => ({ moved: [] as string[] })),
 }));
 
@@ -51,9 +52,10 @@ vi.mock("../db", () => {
           update,
         }: {
           where: { matchId_userId: { userId: string } };
-          create: { matchId: string; userId: string; status: string; position: number };
-          update: { status: string; position: number };
+          create: { matchId: string; userId: string; status: string; position: number; benchByChoice?: boolean };
+          update: { status: string; position: number; benchByChoice?: boolean };
         }) => {
+          h.choice.push({ userId: where.matchId_userId.userId, benchByChoice: update.benchByChoice });
           const found = rows().find((r) => r.userId === where.matchId_userId.userId);
           if (found) return Object.assign(found, update);
           const row = { id: `a-${rows().length + 1}`, ...create };
@@ -80,7 +82,7 @@ vi.mock("../squad-announce", () => ({ announceSquadFullIfJustFilled: vi.fn(async
 vi.mock("../bench-fill", () => ({ fillOpenPlacesFromBench: h.fill }));
 
 import { registerAttendance } from "../attendance";
-import { EXPLICIT_BENCH_NOTE, EXPLICIT_BENCH_WITH_ROOM_NOTE } from "../attendance-events";
+import { EXPLICIT_BENCH_NOTE } from "../attendance-events";
 
 const EV = { cause: "self-attendance", actorKind: "player" } as const;
 
@@ -92,20 +94,40 @@ beforeEach(() => {
   h.maxPlayers = 14;
   h.rows = [];
   h.notes = [];
+  h.choice = [];
   h.fill.mockClear();
 });
 
-describe("the note on an explicit bench request", () => {
-  it("places free: written as chosen while places were open", async () => {
+describe("on the bench by choice: a structured flag, whatever the caller's note", () => {
+  it("places free: benchByChoice", async () => {
     seedConfirmed(10);
     await registerAttendance("erdal", "m1", { benchIntent: "explicit", event: EV });
-    expect(h.notes.at(-1)).toEqual({ userId: "erdal", toStatus: "BENCH", note: EXPLICIT_BENCH_WITH_ROOM_NOTE });
+    expect(h.choice.at(-1)).toEqual({ userId: "erdal", benchByChoice: true });
+    expect(h.notes.at(-1)).toEqual({ userId: "erdal", toStatus: "BENCH", note: EXPLICIT_BENCH_NOTE });
   });
 
-  it("squad full ('In as a reserve'): the plain note, he is a reserve", async () => {
+  it("a caller's own note (a pasted list) still records the choice", async () => {
+    seedConfirmed(10);
+    await registerAttendance("erdal", "m1", { benchIntent: "explicit", event: { ...EV, note: "written under the bench on a pasted list" } });
+    expect(h.choice.at(-1)).toEqual({ userId: "erdal", benchByChoice: true });
+  });
+
+  it("squad full ('In as a reserve'): not by choice, he is a reserve", async () => {
     seedConfirmed(14);
     await registerAttendance("erdal", "m1", { benchIntent: "explicit", event: EV });
-    expect(h.notes.at(-1)).toEqual({ userId: "erdal", toStatus: "BENCH", note: EXPLICIT_BENCH_NOTE });
+    expect(h.choice.at(-1)).toEqual({ userId: "erdal", benchByChoice: false });
+  });
+
+  it("taken out of the squad onto the bench: by choice", async () => {
+    seedConfirmed(14);
+    await registerAttendance("p3", "m1", { benchIntent: "explicit", event: EV });
+    expect(h.choice.at(-1)).toEqual({ userId: "p3", benchByChoice: true });
+  });
+
+  it("an ordinary IN: never by choice", async () => {
+    seedConfirmed(10);
+    await registerAttendance("amir", "m1", { event: EV });
+    expect(h.choice.at(-1)).toEqual({ userId: "amir", benchByChoice: false });
   });
 });
 

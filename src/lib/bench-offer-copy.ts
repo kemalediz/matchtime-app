@@ -378,14 +378,17 @@ export function buildBenchClaimAnnouncement(args: {
  * squad-complete post, whose header already prints the count.
  */
 export function buildBenchMovedUpLine(args: {
-  names: string[];
+  /** A name prints bold; `{ tag }` prints a real WhatsApp tag "@<digits>"
+   *  (the BotJob carries the phone in `mentions`), for a player who will
+   *  not get his DM in time (`bench-fill.ts`). */
+  names: Array<string | { tag: string }>;
   droppedName: string | null;
   teamLabel: string | null;
   squad: { confirmed: number; maxPlayers: number } | null;
   lang?: Lang | string | null;
 }): string {
   return t(args.lang).bench_moved_up({
-    names: joinList(args.lang, args.names.map((n) => `*${n}*`)),
+    names: joinList(args.lang, args.names.map((n) => (typeof n === "string" ? `*${n}*` : `@${n.tag}`))),
     count: args.names.length,
     dropped: args.droppedName,
     teamLabel: args.teamLabel,

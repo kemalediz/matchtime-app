@@ -81,6 +81,37 @@ async function botJobs(g: SimGroup, db: Parameters<typeof createGroup>[1], kind:
   );
 }
 
+/** A monthly club: the seven are the month's regulars in slots 1 to 7,
+ *  Quinn and Ryan pay per game, the week seeded. */
+async function monthly(g: SimGroup, db: Parameters<typeof createGroup>[1]): Promise<void> {
+  await db.run(`UPDATE "Organisation" SET "squadMode" = 'monthly', "paygPricePence" = 800 WHERE id = $1`, [g.orgId]);
+  const kickoff = (await db.one<{ date: Date }>(`SELECT date FROM "Match" WHERE id = $1`, [g.matchId]))!.date;
+  const monthStart = `${kickoff.toISOString().slice(0, 7)}-01`;
+  const monthId = `sim-month-${g.orgId}`;
+  await db.run(
+    `INSERT INTO "SquadMonth" (id, "orgId", "activityId", "monthStart", status, "gamesScheduled", "gamesPlayedBeforeStart", "startedMidMonthAt", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4::date, 'running', 4, 0, now() - interval '2 days', now() - interval '2 days', now())`,
+    [monthId, g.orgId, g.activityId, monthStart],
+  );
+  for (const [i, key] of SEVEN.entries()) {
+    await db.run(
+      `INSERT INTO "SquadMonthMember" (id, "monthId", "userId", kind, slot, "gamesCovered", "paidAt", "absentMatchIds", source, "updatedAt")
+       VALUES ($1, $2, $3, 'regular', $4, 4, now(), '{}', 'seed-list', now())`,
+      [`${monthId}-${key}`, monthId, g.player(key).userId, i + 1],
+    );
+    await db.run(`UPDATE "Attendance" SET position = $1 WHERE "matchId" = $2 AND "userId" = $3`, [i + 1, g.matchId, g.player(key).userId]);
+  }
+  for (const key of ["quinn", "ryan"]) {
+    await db.run(
+      `INSERT INTO "SquadMonthMember" (id, "monthId", "userId", kind, slot, "gamesCovered", "paidAt", "absentMatchIds", source, "updatedAt")
+       VALUES ($1, $2, $3, 'payg', NULL, 0, NULL, '{}', 'seed-list', now())`,
+      [`${monthId}-${key}`, monthId, g.player(key).userId],
+    );
+  }
+  await db.run(`UPDATE "Attendance" SET position = 8 WHERE "matchId" = $1 AND "userId" = $2`, [g.matchId, g.player("quinn").userId]);
+  await db.run(`UPDATE "Match" SET "rollingSeededAt" = now() WHERE id = $1`, [g.matchId]);
+}
+
 (LIVE ? test.describe.skip : test.describe)("the bench fills an open place (2026-11-17)", () => {
   test.describe.configure({ mode: "serial" });
   test.beforeAll(resetDb);
@@ -221,32 +252,7 @@ async function botJobs(g: SimGroup, db: Parameters<typeof createGroup>[1], kind:
 
   test("a monthly club: the first on the bench moves up and takes the away regular's slot number", async ({ request, db }) => {
     const g = await fullSquad(request, db, ["quinn"]);
-    await db.run(`UPDATE "Organisation" SET "squadMode" = 'monthly', "paygPricePence" = 800 WHERE id = $1`, [g.orgId]);
-    const kickoff = (await db.one<{ date: Date }>(`SELECT date FROM "Match" WHERE id = $1`, [g.matchId]))!.date;
-    const monthStart = `${kickoff.toISOString().slice(0, 7)}-01`;
-    const monthId = `sim-month-${g.orgId}`;
-    await db.run(
-      `INSERT INTO "SquadMonth" (id, "orgId", "activityId", "monthStart", status, "gamesScheduled", "gamesPlayedBeforeStart", "startedMidMonthAt", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4::date, 'running', 4, 0, now() - interval '2 days', now() - interval '2 days', now())`,
-      [monthId, g.orgId, g.activityId, monthStart],
-    );
-    // The seven are the month's regulars in slots 1 to 7; Quinn pays per game.
-    for (const [i, key] of SEVEN.entries()) {
-      await db.run(
-        `INSERT INTO "SquadMonthMember" (id, "monthId", "userId", kind, slot, "gamesCovered", "paidAt", "absentMatchIds", source, "updatedAt")
-         VALUES ($1, $2, $3, 'regular', $4, 4, now(), '{}', 'seed-list', now())`,
-        [`${monthId}-${key}`, monthId, g.player(key).userId, i + 1],
-      );
-      await db.run(`UPDATE "Attendance" SET position = $1 WHERE "matchId" = $2 AND "userId" = $3`, [i + 1, g.matchId, g.player(key).userId]);
-    }
-    await db.run(
-      `INSERT INTO "SquadMonthMember" (id, "monthId", "userId", kind, slot, "gamesCovered", "paidAt", "absentMatchIds", source, "updatedAt")
-       VALUES ($1, $2, $3, 'payg', NULL, 0, NULL, '{}', 'seed-list', now())`,
-      [`${monthId}-quinn`, monthId, g.player("quinn").userId],
-    );
-    await db.run(`UPDATE "Attendance" SET position = 8 WHERE "matchId" = $1 AND "userId" = $2`, [g.matchId, g.player("quinn").userId]);
-    await db.run(`UPDATE "Match" SET "rollingSeededAt" = now() WHERE id = $1`, [g.matchId]);
-
+    await monthly(g, db);
     await dropAndAsk(g);
     const quinn = await db.one<{ status: string; position: number }>(
       `SELECT status, position FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`,
@@ -258,5 +264,26 @@ async function botJobs(g: SimGroup, db: Parameters<typeof createGroup>[1], kind:
     expect(await g.openOffers()).toEqual([]);
     const tick = await g.duePosts(londonAt(0, 13, 35), { claim: true });
     expect(tick.filter((i) => i.kind === "bench-prompt" || /first to claim/i.test(i.text ?? ""))).toEqual([]);
+  });
+
+  test("a monthly club whose only bench player chose it: no race; the place goes to the pay-as-you-go players in their words", async ({ request, db }) => {
+    const g = await fullSquad(request, db, ["quinn"]);
+    await monthly(g, db);
+    await db.run(`UPDATE "Attendance" SET "benchByChoice" = true WHERE "matchId" = $1 AND "userId" = $2`, [g.matchId, g.player("quinn").userId]);
+    await dropAndAsk(g);
+    expect((await g.attendanceOf("quinn"))?.status).toBe("BENCH");
+    const tick = await g.duePosts(londonAt(0, 13, 35), { claim: true });
+    expect(tick.filter((i) => i.kind === "bench-prompt" || /first to claim/i.test(i.text ?? ""))).toEqual([]);
+    // Ryan, a pay-as-you-go player, is offered the place by DM.
+    expect(tick.some((i) => i.kind === "dm" && i.targetUser === g.player("ryan").userId && (i.key ?? "").includes(":payg-pool-dm:"))).toBe(true);
+  });
+
+  test("bench by choice from the match page ('Add to bench instead') and a bench player's OUT: the safety net never moves the chooser", async ({ request, db }) => {
+    const g = await fullSquad(request, db, ["quinn"]);
+    await db.run(`UPDATE "Attendance" SET "benchByChoice" = true WHERE "matchId" = $1 AND "userId" = $2`, [g.matchId, g.player("quinn").userId]);
+    await db.run(`UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2`, [g.matchId, g.player("pete").userId]);
+    await db.run(`DELETE FROM "AttendanceEvent" WHERE "matchId" = $1`, [g.matchId]).catch(() => {});
+    await g.duePosts(londonAt(0, 13, 35), { claim: true });
+    expect((await g.attendanceOf("quinn"))?.status).toBe("BENCH");
   });
 });

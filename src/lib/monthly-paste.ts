@@ -353,6 +353,9 @@ export async function handleMonthlyPaste(args: {
   const weekDay = Number(formatLondon(week.matchDate, "d"));
   // Who each line is was decided before the reconcile (`placeMonthlyLines`
   // above): a "new" or "guest" action is a line who-is-who said is nobody.
+  // All the paste's writes, then the bench (2026-11-17): a place a line
+  // opens is filled from the bench only after the paste's own names are in.
+  const benchFills: Array<() => Promise<void>> = [];
   for (const a of outcome.actions) {
     try {
       if (a.kind === "join" || a.kind === "new") {
@@ -439,7 +442,9 @@ export async function handleMonthlyPaste(args: {
             sourceRef: args.waMessageId,
             note: "written under the bench on a pasted monthly list",
           },
+          deferBenchFill: true,
         });
+        if (res.benchFill) benchFills.push(res.benchFill);
         if (res.status === before) continue;
         applied.push(`bench:${a.name}`);
         // A squad player moved there was taken off the list; anybody else was added to it.
@@ -449,7 +454,7 @@ export async function handleMonthlyPaste(args: {
         const row = rowOf.get(a.userId);
         if (row) {
           if (row.status === "DROPPED") continue;
-          await cancelAttendance(
+          const cancelled = await cancelAttendance(
             a.userId,
             matchId,
             {
@@ -464,8 +469,9 @@ export async function handleMonthlyPaste(args: {
                     ? "taken off the bench on a pasted monthly list"
                     : "moved under can't play on a pasted monthly list",
             },
-            { occurredAt: args.sentAt },
+            { occurredAt: args.sentAt, deferBenchFill: true },
           );
+          if (cancelled.benchFill) benchFills.push(cancelled.benchFill);
         } else {
           // A regular of a seeded week with no row of their own: away.
           const res = await db.squadMonthMember.updateMany({
@@ -493,6 +499,10 @@ export async function handleMonthlyPaste(args: {
       console.error(`[monthly-paste] ${a.kind} for "${a.name}" on ${matchId} failed:`, err);
       failures.push(a.name);
     }
+  }
+
+  for (const fill of benchFills) {
+    await fill().catch((err) => console.error(`[monthly-paste] bench fill on ${matchId} failed:`, err));
   }
 
   // "4 only" beside a regular: their own line, or an organiser's paste.

@@ -11,8 +11,7 @@
  * player on the bench, in bench order, at once. Pure, no database.
  */
 import { describe, it, expect } from "vitest";
-import { pickBenchMovers, heldOnBench, type BenchFillRow } from "../bench-fill-rules";
-import { EXPLICIT_BENCH_NOTE, EXPLICIT_BENCH_WITH_ROOM_NOTE } from "../attendance-events";
+import { pickBenchMovers, type BenchFillRow } from "../bench-fill-rules";
 
 function row(userId: string, status: BenchFillRow["status"], position: number, over: Partial<BenchFillRow> = {}): BenchFillRow {
   return { userId, status, position, joinedAt: position * 1000, held: false, ...over };
@@ -57,36 +56,5 @@ describe("pickBenchMovers", () => {
   it("only held players on the bench: nobody moves", () => {
     const rows = [...thirteen, row("chose", "BENCH", 17, { held: true })];
     expect(pickBenchMovers({ maxPlayers: 14, rows })).toEqual([]);
-  });
-});
-
-describe("heldOnBench", () => {
-  it("no bench move on record (an older row): not held", () => {
-    expect(heldOnBench(undefined)).toBe(false);
-    expect(heldOnBench(null)).toBe(false);
-  });
-
-  it("benched because the squad was full: not held", () => {
-    expect(heldOnBench({ fromStatus: null, note: "squad full, no slot to give" })).toBe(false);
-  });
-
-  it("a reserve who asked for the bench on a FULL squad ('In as a reserve'): not held, he moves up in his turn", () => {
-    expect(heldOnBench({ fromStatus: null, note: EXPLICIT_BENCH_NOTE })).toBe(false);
-  });
-
-  it("asked for the bench while places were open: held", () => {
-    expect(heldOnBench({ fromStatus: null, note: EXPLICIT_BENCH_WITH_ROOM_NOTE })).toBe(true);
-  });
-
-  it("taken out of the squad onto the bench on purpose (himself or an admin): held", () => {
-    expect(heldOnBench({ fromStatus: "CONFIRMED", note: EXPLICIT_BENCH_NOTE })).toBe(true);
-  });
-
-  it("moved to the bench by a format switch or the monthly seed: not held", () => {
-    expect(heldOnBench({ fromStatus: "CONFIRMED", note: "moved to the bench: the match went down to 10 places" })).toBe(false);
-  });
-
-  it("the with-room marker still reads as 'chose the bench' for the monthly squad", () => {
-    expect(EXPLICIT_BENCH_WITH_ROOM_NOTE.startsWith(EXPLICIT_BENCH_NOTE)).toBe(true);
   });
 });

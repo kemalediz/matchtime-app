@@ -31,23 +31,41 @@ class World {
     listAnnouncer: "matchtime",
     teamLabels: [] as string[],
   };
-  att = new Map<string, { id: string; status: Status; position: number; respondedAt: Date }>();
+  att = new Map<string, { id: string; status: Status; position: number; respondedAt: Date; benchByChoice: boolean }>();
+  /** What `adminNoticeSendAfter` answers (quiet hours): null = send now. */
+  quietUntil: Date | null = null;
+  /** A write that lands right after the fill moves somebody up (a racing
+   *  OUT that waited on the squad lock): armed by the move, run on the
+   *  next read. */
+  raceAfterMove: (() => void) | null = null;
+  private pendingRace: (() => void) | null = null;
+  runRace() {
+    const f = this.pendingRace;
+    this.pendingRace = null;
+    f?.();
+  }
+  armRace() {
+    this.pendingRace = this.raceAfterMove;
+    this.raceAfterMove = null;
+  }
   names = new Map<string, string>();
   phones = new Map<string, string | null>();
   optedOut = new Set<string>();
   events: Array<{ userId: string; fromStatus: string | null; toStatus: string | null; note: string | null; cause?: string; at: number }> = [];
   offers: Array<{ id: string; replacingUserId: string | null; resolvedAt: Date | null; claimedByUserId: string | null; outcome: string | null; createdAt: number }> = [];
   tas: Array<{ id: string; userId: string; team: "RED" | "YELLOW" }> = [];
-  jobs: Array<{ kind: string; phone?: string | null; text: string; sendAfter?: Date | null }> = [];
+  jobs: Array<{ kind: string; phone?: string | null; text: string; sendAfter?: Date | null; mentions?: string[] }> = [];
   adminNotices: string[] = [];
-  squadCompleteCalls: Array<{ lead?: string | null }> = [];
+  squadCompleteCalls: Array<{ lead?: string | null; mentions?: string[]; sendAfter?: Date | null }> = [];
   squadCompleteResult: "group" | "organisers" | null = "group";
+  /** An attendance change on the match within the last two minutes. */
+  recentChange = false;
   private clock = 0;
   private seq = 0;
 
   add(userId: string, status: Status, opts: { name?: string; phone?: string | null } = {}) {
     const position = this.att.size + 1;
-    this.att.set(userId, { id: `a-${userId}`, status, position, respondedAt: new Date(1_000 * position) });
+    this.att.set(userId, { id: `a-${userId}`, status, position, respondedAt: new Date(1_000 * position), benchByChoice: false });
     this.names.set(userId, opts.name ?? userId);
     this.phones.set(userId, opts.phone === undefined ? `+447700900${String(100 + position).padStart(3, "0")}` : opts.phone);
     this.events.push({ userId, fromStatus: null, toStatus: status, note: status === "BENCH" ? "squad full, no slot to give" : null, at: ++this.clock });
@@ -86,17 +104,28 @@ class World {
       },
       organisation: { findUnique: async () => ({ benchPickMode: w.org.benchPickMode, featureBench: w.org.featureBench }) },
       attendance: {
-        findMany: async (args: { where: { status?: { in: Status[] } } }) =>
-          rowsOf().filter((r) => !args.where.status || args.where.status.in.includes(r.status)),
-        updateMany: async (args: { where: { id: string; status: Status }; data: { status: Status } }) => {
+        findMany: async (args: { where: { status?: Status | { in: Status[] }; userId?: { in: string[] } } }) => {
+          w.runRace();
+          const st = args.where.status;
+          return rowsOf().filter(
+            (r) =>
+              (!st || (typeof st === "string" ? r.status === st : st.in.includes(r.status))) &&
+              (!args.where.userId || args.where.userId.in.includes(r.userId)),
+          );
+        },
+        updateMany: async (args: { where: { id: string; status: Status }; data: { status: Status; benchByChoice?: boolean } }) => {
           const hit = rowsOf().find((r) => r.id === args.where.id && r.status === args.where.status);
           if (!hit) return { count: 0 };
           w.att.get(hit.userId)!.status = args.data.status;
+          if (args.data.benchByChoice !== undefined) w.att.get(hit.userId)!.benchByChoice = args.data.benchByChoice;
+          if (args.data.status === "CONFIRMED") w.armRace();
           return { count: 1 };
         },
         count: async (args: { where: { status: Status } }) => w.count(args.where.status),
       },
       attendanceEvent: {
+        // The sweep's two-minute grace: a change on the match just now.
+        findFirst: async () => (w.recentChange ? { id: "e-recent" } : null),
         findMany: async (args: { where: { userId: { in: string[] }; toStatus: string } }) =>
           w.events
             .filter((e) => args.where.userId.in.includes(e.userId) && e.toStatus === args.where.toStatus)
@@ -139,7 +168,7 @@ class World {
           args.where.userId.in.filter((u) => w.optedOut.has(u)).map((userId) => ({ userId })),
       },
       botJob: {
-        create: async (args: { data: { kind: string; phone?: string | null; text: string; sendAfter?: Date | null } }) => {
+        create: async (args: { data: { kind: string; phone?: string | null; text: string; sendAfter?: Date | null; mentions?: string[] } }) => {
           w.jobs.push(args.data);
           return args.data;
         },
@@ -174,7 +203,7 @@ vi.mock("../admin-channel", () => ({
   },
 }));
 vi.mock("../club-quiet-hours", () => ({ loadClubQuietHours: async () => ({ on: false, from: "23:00", to: "09:00" }) }));
-vi.mock("../rolling-squad-rules", () => ({ adminNoticeSendAfter: () => null }));
+vi.mock("../rolling-squad-rules", () => ({ adminNoticeSendAfter: () => world.quietUntil }));
 const monthlyHook = vi.fn();
 const payg = vi.fn();
 vi.mock("../monthly-week", () => ({
@@ -184,7 +213,6 @@ vi.mock("../monthly-week", () => ({
 
 import { fillOpenPlacesFromBench, sweepBenchFill } from "../bench-fill";
 import { requestBenchConfirmationOnDrop } from "../bot-scheduler";
-import { EXPLICIT_BENCH_NOTE, EXPLICIT_BENCH_WITH_ROOM_NOTE } from "../attendance-events";
 
 const PLAYERS = ["kemal", "elvin", "idris", "wasim", "habib", "elnur", "mustafa", "ibrahim", "david", "aydin", "sait", "ersan", "ersin", "abu"];
 
@@ -217,7 +245,7 @@ describe("a drop in a first-come club", () => {
     expect(moved[0]).toMatchObject({ userId: "recai", fromStatus: "BENCH", toStatus: "CONFIRMED" });
 
     // The squad is full again: the line rides on the squad-complete post.
-    expect(world.squadCompleteCalls).toEqual([{ lead: "⬆️ *Recai Gunay* moves up from the bench, replacing *David* 🙌", sendAfter: null }]);
+    expect(world.squadCompleteCalls).toEqual([{ lead: "⬆️ *Recai Gunay* moves up from the bench, replacing *David* 🙌", sendAfter: null, mentions: [] }]);
     expect(world.jobs.filter((j) => j.kind === "group")).toEqual([]);
 
     const dms = world.jobs.filter((j) => j.kind === "dm");
@@ -269,7 +297,7 @@ describe("a drop in a first-come club", () => {
     world = new World();
     for (const p of PLAYERS) world.add(p, "CONFIRMED");
     world.add("chose", "BENCH");
-    world.events.push({ userId: "chose", fromStatus: null, toStatus: "BENCH", note: EXPLICIT_BENCH_WITH_ROOM_NOTE, at: 999 });
+    world.att.get("chose")!.benchByChoice = true;
     world.set("david", "DROPPED");
     await requestBenchConfirmationOnDrop(MATCH, "david");
     expect(world.statusOf("chose")).toBe("BENCH");
@@ -279,7 +307,7 @@ describe("a drop in a first-come club", () => {
 
   it("a reserve who asked for the bench on a FULL squad moves up in his turn", async () => {
     world = incident();
-    world.events.push({ userId: "recai", fromStatus: null, toStatus: "BENCH", note: EXPLICIT_BENCH_NOTE, at: 999 });
+    // benchByChoice false: asked for the bench when there was no room.
     await requestBenchConfirmationOnDrop(MATCH, "david");
     expect(world.statusOf("recai")).toBe("CONFIRMED");
   });
@@ -312,6 +340,74 @@ describe("a drop in a first-come club", () => {
     await fillOpenPlacesFromBench(MATCH, { actorKind: "scheduler", sourceRef: "scheduler:bench-fill" });
     expect(world.offers[0]).toMatchObject({ outcome: "bench-moved-up", claimedByUserId: "recai" });
     expect(world.offers[0].resolvedAt).not.toBeNull();
+  });
+});
+
+describe("telling him reliably (review of #622)", () => {
+  it("opted out of bench DMs: no DM, and he is @tagged in the group line", async () => {
+    world = incident();
+    world.optedOut.add("recai");
+    world.squadCompleteResult = null;
+    await requestBenchConfirmationOnDrop(MATCH, "david");
+    const phone = world.phones.get("recai")!.replace(/^\+/, "");
+    const line = world.jobs.find((j) => j.kind === "group")!;
+    expect(line.text).toContain(`⬆️ @${phone} moves up from the bench`);
+    expect(line.mentions).toEqual([phone]);
+    expect(world.jobs.filter((j) => j.kind === "dm")).toEqual([]);
+  });
+
+  it("quiet hours would hold the DM past kickoff: the DM goes now and he is tagged", async () => {
+    world = incident();
+    world.quietUntil = new Date(world.match.date.getTime() + HOUR); // quiet ends after kickoff
+    await requestBenchConfirmationOnDrop(MATCH, "david");
+    const dm = world.jobs.find((j) => j.kind === "dm")!;
+    expect(dm.sendAfter ?? null).toBeNull();
+    expect(world.squadCompleteCalls[0].mentions).toEqual([world.phones.get("recai")!.replace(/^\+/, "")]);
+  });
+
+  it("quiet hours ending before kickoff: the DM waits for them, no tag", async () => {
+    world = incident();
+    const until = new Date(world.match.date.getTime() - HOUR);
+    world.quietUntil = until;
+    await requestBenchConfirmationOnDrop(MATCH, "david");
+    expect(world.jobs.find((j) => j.kind === "dm")!.sendAfter).toEqual(until);
+    expect(world.squadCompleteCalls[0].mentions).toEqual([]);
+  });
+
+  it("an OUT that lands right after the fill: no DM and no line for him", async () => {
+    world = incident();
+    world.raceAfterMove = () => {
+      world.att.get("recai")!.status = "DROPPED";
+    };
+    await requestBenchConfirmationOnDrop(MATCH, "david");
+    expect(world.jobs.filter((j) => j.kind === "dm")).toEqual([]);
+    expect(world.squadCompleteCalls).toEqual([]);
+    expect(world.jobs.filter((j) => j.kind === "group")).toEqual([]);
+  });
+});
+
+describe("one message per fill when the organisers announce (review of #622)", () => {
+  it("the squad completes: the line rides on their list update, no relay as well", async () => {
+    world = incident();
+    world.org.listAnnouncer = "organisers";
+    world.squadCompleteResult = "organisers";
+    await requestBenchConfirmationOnDrop(MATCH, "david");
+    expect(world.squadCompleteCalls).toHaveLength(1);
+    expect(world.adminNotices).toEqual([]);
+    expect(world.jobs.filter((j) => j.kind === "group")).toEqual([]);
+  });
+
+  it("not complete: one relay to them, nothing in the players' group, no tags", async () => {
+    world = incident();
+    world.org.listAnnouncer = "organisers";
+    world.add("zed", "BENCH");
+    world.set("elvin", "DROPPED"); // two places open, one waiting... then the other
+    world.att.get("zed")!.benchByChoice = true;
+    world.optedOut.add("recai");
+    await requestBenchConfirmationOnDrop(MATCH, "david");
+    expect(world.adminNotices).toHaveLength(1);
+    expect(world.adminNotices[0]).toContain("*Recai Gunay* moves up from the bench");
+    expect(world.jobs.filter((j) => j.kind === "group")).toEqual([]);
   });
 });
 
@@ -367,6 +463,15 @@ describe("the scheduler's safety net", () => {
     expect(world.statusOf("recai")).toBe("CONFIRMED");
     // A second poll has nothing to do.
     expect(await sweepBenchFill(ORG)).toBe(0);
+  });
+
+  it("leaves a match alone for two minutes after a change (an organiser's remove-then-add on the match page)", async () => {
+    world = incident();
+    world.recentChange = true;
+    expect(await sweepBenchFill(ORG)).toBe(0);
+    expect(world.statusOf("recai")).toBe("BENCH");
+    world.recentChange = false;
+    expect(await sweepBenchFill(ORG)).toBe(1);
   });
 
   it("does nothing for an organiser-pick club", async () => {

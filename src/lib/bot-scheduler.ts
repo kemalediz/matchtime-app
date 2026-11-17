@@ -2728,8 +2728,15 @@ async function computeForMatch(
       // pool. With nobody waiting, a monthly match's open places are
       // offered to its pay-as-you-go players. A weekly club skips this
       // block: for it the chase covers a drop with no bench, as before.
-      const nobodyWaiting = !m.attendances.some((a) => a.status === "BENCH");
-      if (monthly?.seeded && nobodyWaiting && benchAtt.length === 0 && features.benchPickMode !== "organiser") {
+      // A FIRST-COME CLUB NEVER RACES ITS BENCH (2026-11-17, review of #622):
+      // its bench fills a place by itself (`bench-fill.ts`), and a player on
+      // the bench by choice is not "waiting" for one. With nobody waiting,
+      // a monthly club's open places go to its pay-as-you-go players, in
+      // the PAYG wording; the "first to claim" bench post below is the
+      // organiser-pick fallback's alone.
+      const firstCome = features.benchPickMode !== "organiser";
+      const nobodyWaiting = !m.attendances.some((a) => a.status === "BENCH" && !(firstCome && a.benchByChoice));
+      if (monthly?.seeded && nobodyWaiting && firstCome) {
         const paygPool = await loadPaygPool(
           {
             orgId: activity.orgId,
@@ -2800,7 +2807,7 @@ async function computeForMatch(
       // (`bench-offer-batch.ts`). A single drop is one offer, so its
       // post, its DMs and their keys are exactly what they always were.
       // With no bench there is nobody to tell: the chase covers it.
-      if (benchAtt.length > 0) {
+      if (benchAtt.length > 0 && !firstCome) {
         const open = m.benchSlotOffers;
         const groupTold = (offerId: string) => sentKeys.has(`offer-${offerId}`);
         const dmTold = (userId: string) => (offerId: string) => sentKeys.has(`offer-${offerId}:dm:${userId}`);

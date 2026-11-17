@@ -35,7 +35,7 @@
  */
 import { db } from "./db";
 import { recordAttendanceEvent, type AttendanceActorKind } from "./attendance-events";
-import { heldOnBench, pickBenchMovers, type BenchFillRow } from "./bench-fill-rules";
+import { pickBenchMovers, type BenchFillRow } from "./bench-fill-rules";
 import { fillVacatedSlots, lockTeamSlots, type AppliedSlotMove } from "./team-slot-fill";
 import { buildBenchMovedUpDm, buildBenchMovedUpLine } from "./bench-offer-copy";
 import { buildBenchOfferContext } from "./scheduler-copy";
@@ -113,20 +113,11 @@ export async function fillOpenPlacesFromBench(matchId: string, trigger: BenchFil
     if (!cur) return null;
     const rows = await tx.attendance.findMany({
       where: { matchId, status: { in: ["CONFIRMED", "BENCH"] } },
-      select: { id: true, userId: true, status: true, position: true, respondedAt: true },
+      select: { id: true, userId: true, status: true, position: true, respondedAt: true, benchByChoice: true },
     });
     const confirmedBefore = rows.filter((r) => r.status === "CONFIRMED").length;
     const benchIds = rows.filter((r) => r.status === "BENCH").map((r) => r.userId);
     if (benchIds.length === 0 || confirmedBefore >= cur.maxPlayers) return null;
-
-    // Each bench player's LAST move onto the bench says whether he chose it.
-    const benchMoves = await tx.attendanceEvent.findMany({
-      where: { matchId, userId: { in: benchIds }, toStatus: "BENCH" },
-      select: { userId: true, fromStatus: true, note: true },
-      orderBy: { at: "asc" },
-    });
-    const lastMove = new Map<string, { fromStatus: string | null; note: string | null }>();
-    for (const e of benchMoves) lastMove.set(e.userId, { fromStatus: e.fromStatus, note: e.note });
 
     const movers = pickBenchMovers({
       maxPlayers: cur.maxPlayers,
@@ -136,7 +127,8 @@ export async function fillOpenPlacesFromBench(matchId: string, trigger: BenchFil
           status: r.status as BenchFillRow["status"],
           position: r.position,
           joinedAt: r.respondedAt.getTime(),
-          held: r.status === "BENCH" && heldOnBench(lastMove.get(r.userId)),
+          // On the bench by choice (`Attendance.benchByChoice`).
+          held: r.status === "BENCH" && r.benchByChoice === true,
         }),
       ),
     });
@@ -149,7 +141,7 @@ export async function fillOpenPlacesFromBench(matchId: string, trigger: BenchFil
       // has just changed is left as it is.
       const { count } = await tx.attendance.updateMany({
         where: { id: row.id, status: "BENCH" },
-        data: { status: "CONFIRMED" },
+        data: { status: "CONFIRMED", benchByChoice: false },
       });
       if (count === 0) continue;
       moved.push(userId);
@@ -231,7 +223,20 @@ async function tellBenchMovedUp(p: {
   trigger: BenchFillTrigger;
   done: { moved: string[]; seats: AppliedSlotMove[]; sheetExists: boolean; confirmedAfter: number; maxPlayers: number };
 }): Promise<void> {
-  const { matchId, match, orgId, now, trigger, done } = p;
+  const { matchId, match, orgId, now, trigger } = p;
+  // TOLD ONLY IF STILL IN (2026-11-17, review of #622): a mover whose OUT
+  // landed straight after the fill (it waited on the squad lock) is not
+  // told he is in.
+  const stillIn = new Set(
+    (
+      await db.attendance.findMany({
+        where: { matchId, userId: { in: p.done.moved }, status: "CONFIRMED" },
+        select: { userId: true },
+      })
+    ).map((r) => r.userId),
+  );
+  const done = { ...p.done, moved: p.done.moved.filter((id) => stillIn.has(id)) };
+  if (done.moved.length === 0) return;
   const org = match.activity.org;
   const lang = org?.language ?? null;
   const users = await db.user.findMany({
@@ -255,39 +260,15 @@ async function tellBenchMovedUp(p: {
   const labels = done.seats.length > 0 ? resolveTeamLabels(match, org, match.activity.sport, lang) : null;
   const teamLabelOf = (s: AppliedSlotMove | null | undefined) => (s && labels ? (s.team === "RED" ? labels[0] : labels[1]) : null);
 
+  // WHEN HE HEARS (2026-11-17, review of #622). The DM waits for the club's
+  // quiet hours, unless they would hold it past kickoff: then it goes now.
+  // A player who will not get a DM in time to act on it (he switched bench
+  // messages off, or quiet hours end after kickoff) is @tagged in the group
+  // line, which keeps the group's own quiet-hours rule.
   const quiet = await loadClubQuietHours(orgId);
   const sendAfter = adminNoticeSendAfter(now, quiet);
-  const line = (squad: { confirmed: number; maxPlayers: number } | null) =>
-    buildBenchMovedUpLine({
-      names: done.moved.map(nameOf),
-      droppedName: replaced,
-      teamLabel: teamLabelOf(seat),
-      squad,
-      lang,
-    });
-
-  // ONE GROUP MESSAGE. When the move completed the squad, the line leads
-  // the squad-complete post (which also re-opens the bench for new INs);
-  // otherwise, or when that post is not the group's to make (a team sheet,
-  // a monthly list, the organisers announce), the line goes on its own.
-  const announced =
-    done.confirmedAfter >= done.maxPlayers
-      ? await announceSquadFullIfJustFilled(matchId, { lead: line(null), sendAfter })
-      : null;
-  if (announced !== "group") {
-    const text = line({ confirmed: done.confirmedAfter, maxPlayers: done.maxPlayers });
-    if (organisersAnnounce(org)) {
-      await sendAdminNotice({ orgId, text: buildOrganiserRelay(text, lang), now });
-    } else {
-      await db.botJob.create({
-        data: { orgId, kind: "group", matchId, text, ...(sendAfter ? { sendAfter } : {}) },
-      });
-    }
-  }
-
-  // A DM to each of them: he is in, and OUT passes the place on. Not to a
-  // player who switched bench messages off (`subBenchOfferDm`), nor to one
-  // with no number to message; the group line names them either way.
+  const quietPastKickoff = !!sendAfter && sendAfter.getTime() >= match.date.getTime();
+  const dmSendAfter = quietPastKickoff ? null : sendAfter;
   const optedOut = new Set(
     (
       await db.membership.findMany({
@@ -296,9 +277,53 @@ async function tellBenchMovedUp(p: {
       })
     ).map((m) => m.userId),
   );
+  const phoneOf = (id: string) => byId.get(id)?.phoneNumber?.replace(/^\+/, "") ?? null;
+  // Tags only in the players' group: an organisers' message names him.
+  const toOrganisers = organisersAnnounce(org);
+  const tagged = toOrganisers ? [] : done.moved.filter((id) => !!phoneOf(id) && (optedOut.has(id) || quietPastKickoff));
+  const mentions = tagged.map((id) => phoneOf(id)!);
+  const line = (squad: { confirmed: number; maxPlayers: number } | null) =>
+    buildBenchMovedUpLine({
+      names: done.moved.map((id) => (tagged.includes(id) ? { tag: phoneOf(id)! } : nameOf(id))),
+      droppedName: replaced,
+      teamLabel: teamLabelOf(seat),
+      squad,
+      lang,
+    });
+
+  // ONE MESSAGE PER FILL. When the move completed the squad, the line leads
+  // the squad-complete post (which also re-opens the bench for new INs),
+  // or the organisers' list update when the organisers announce it;
+  // otherwise, or when that post is not the group's to make (a team sheet,
+  // a monthly list), the line goes on its own, to whoever announces.
+  const announced =
+    done.confirmedAfter >= done.maxPlayers
+      ? await announceSquadFullIfJustFilled(matchId, { lead: line(null), sendAfter, mentions })
+      : null;
+  if (announced === null) {
+    const text = line({ confirmed: done.confirmedAfter, maxPlayers: done.maxPlayers });
+    if (toOrganisers) {
+      await sendAdminNotice({ orgId, text: buildOrganiserRelay(text, lang), now });
+    } else {
+      await db.botJob.create({
+        data: {
+          orgId,
+          kind: "group",
+          matchId,
+          text,
+          ...(mentions.length > 0 ? { mentions } : {}),
+          ...(sendAfter ? { sendAfter } : {}),
+        },
+      });
+    }
+  }
+
+  // A DM to each of them: he is in, and OUT passes the place on. Not to a
+  // player who switched bench messages off (`subBenchOfferDm`; he is
+  // tagged in the group instead), nor to one with no number.
   for (const userId of done.moved) {
-    const u = byId.get(userId);
-    if (!u?.phoneNumber || optedOut.has(userId)) continue;
+    const phone = phoneOf(userId);
+    if (!phone || optedOut.has(userId)) continue;
     const mySeat = seatOf.get(userId) ?? null;
     const myReplaced = mySeat
       ? (await db.user.findUnique({ where: { id: mySeat.fromUserId }, select: { name: true } }))?.name ?? null
@@ -310,18 +335,24 @@ async function tellBenchMovedUp(p: {
       now,
       lang,
     });
+    const u = byId.get(userId);
     await db.botJob.create({
       data: {
         orgId,
         kind: "dm",
-        phone: u.phoneNumber.replace(/^\+/, ""),
+        phone,
         matchId,
-        text: buildBenchMovedUpDm({ firstName: u.name ? u.name.split(" ")[0] : "", context: plain, lang }),
-        ...(sendAfter ? { sendAfter } : {}),
+        text: buildBenchMovedUpDm({ firstName: u?.name ? u.name.split(" ")[0] : "", context: plain, lang }),
+        ...(dmSendAfter ? { sendAfter: dmSendAfter } : {}),
       },
     });
   }
 }
+
+/** How long the safety net leaves a match alone after a change to it, so
+ *  an organiser's "remove X" on the match page followed by "add Y" gives
+ *  the place to Y, not to the first one on the bench (review of #622). */
+export const SWEEP_GRACE_MS = 2 * 60 * 1000;
 
 /**
  * THE SAFETY NET, run on every scheduler poll before anything is posted
@@ -345,6 +376,13 @@ export async function sweepBenchFill(orgId: string, now: Date = new Date()): Pro
       const confirmed = m.attendances.filter((a) => a.status === "CONFIRMED").length;
       const bench = m.attendances.length - confirmed;
       if (bench === 0 || confirmed >= m.maxPlayers) continue;
+      // A change in the last two minutes: an organiser may be mid-way
+      // through a remove-then-add on the match page. The next poll fills.
+      const recent = await db.attendanceEvent.findFirst({
+        where: { matchId: m.id, at: { gt: new Date(now.getTime() - SWEEP_GRACE_MS) } },
+        select: { id: true },
+      });
+      if (recent) continue;
       const res = await fillOpenPlacesFromBench(m.id, { actorKind: "scheduler", sourceRef: "scheduler:bench-fill", now });
       moved += res.moved.length;
     }

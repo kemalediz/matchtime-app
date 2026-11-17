@@ -86,16 +86,6 @@ export type AttendanceStatusLike = AttendanceStatus | null;
  */
 export const EXPLICIT_BENCH_NOTE = "explicit bench request";
 
-/**
- * The same request made while the squad still had a place for him
- * (2026-11-17, `bench-fill-rules.ts`). He could have played and chose to
- * wait, so MatchTime never moves him up by itself; his own IN still does.
- * It STARTS WITH `EXPLICIT_BENCH_NOTE` on purpose: the monthly squad's
- * `loadChoseBench` reads the prefix, so for the month nothing changes.
- * An explicit request on a FULL squad keeps the plain note: that player
- * is a reserve, and the bench moves him up in his turn.
- */
-export const EXPLICIT_BENCH_WITH_ROOM_NOTE = `${EXPLICIT_BENCH_NOTE} while places were open`;
 
 export const ATTENDANCE_EVENT_CAUSES = [
   /** The player's own claim or withdrawal — a group message, a DM, or

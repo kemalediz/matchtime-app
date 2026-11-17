@@ -26,7 +26,6 @@
  */
 import type { PrismaClient } from "@/generated/prisma/client";
 import { E2E } from "./env";
-import { EXPLICIT_BENCH_WITH_ROOM_NOTE } from "@/lib/attendance-events";
 import { U, PHONE, NAME, ORG_ID, SPORT_ID, ACTIVITY_ID, MATCH, FEE, londonAt } from "./constants";
 
 export { U, PHONE, NAME, ORG_ID, SPORT_ID, ACTIVITY_ID, MATCH, FEE, londonAt };
@@ -260,7 +259,12 @@ export async function seedAll(db: PrismaClient): Promise<void> {
       { matchId: MATCH.upcoming, userId: U.collector, status: "CONFIRMED", position: 2 },
       { matchId: MATCH.upcoming, userId: U.player, status: "CONFIRMED", position: 3 },
       { matchId: MATCH.upcoming, userId: U.third, status: "CONFIRMED", position: 4 },
-      { matchId: MATCH.upcoming, userId: U.bench, status: "BENCH", position: 5 },
+      // 4 of 5 with Ben on the bench. Since 2026-11-17 a first-come club's
+      // bench fills a free place by itself (`src/lib/bench-fill.ts`), so that
+      // state is only a real one when Ben CHOSE the bench while a place was
+      // free (`benchByChoice`). Specs that need him as an ordinary reserve
+      // say so (`e2e/api/bench-fill-hq.spec.ts`).
+      { matchId: MATCH.upcoming, userId: U.bench, status: "BENCH", position: 5, benchByChoice: true },
     ],
   });
 
@@ -302,12 +306,6 @@ async function seedAttendanceEvents(db: PrismaClient): Promise<void> {
       cause: "test-fixture",
       actorKind: "system",
       sourceRef: "e2e:seed",
-      // The upcoming match is 4 of 5 with Ben on the bench. Since
-      // 2026-11-17 a first-come club's bench fills a free place by itself
-      // (`src/lib/bench-fill.ts`), so that state is only a real one when Ben
-      // CHOSE the bench while a place was free. Said here, so the fixture
-      // world stays the world every spec was written against.
-      note: r.status === "BENCH" ? EXPLICIT_BENCH_WITH_ROOM_NOTE : null,
       at: new Date(base + i * 60_000),
     })),
   });

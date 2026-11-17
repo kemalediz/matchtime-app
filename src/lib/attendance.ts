@@ -3,7 +3,6 @@ import { requestBenchConfirmationOnDrop, queueSlotEmojiRefresh } from "./bot-sch
 import { announceSquadFullIfJustFilled } from "./squad-announce";
 import {
   EXPLICIT_BENCH_NOTE,
-  EXPLICIT_BENCH_WITH_ROOM_NOTE,
   UNATTRIBUTED_ATTENDANCE_CONTEXT,
   recordAttendanceEvent,
   type AttendanceEventContext,
@@ -18,6 +17,18 @@ import { t } from "./i18n/t";
 import { dayTimeLabel, timeLabel, weekdayTimeLabel } from "./i18n/dates";
 import { canTakeFreePlace, normaliseBenchPickMode, ORGANISER_PICK_BENCH_NOTE } from "./squad-capacity";
 import { loadReclaimUserIds } from "./squad-reclaim";
+import { lockTeamSlots, type SlotFillTx } from "./team-slot-fill";
+
+/**
+ * The per-match squad lock the bench fill and the team-slot writers take
+ * (`team-slot-fill.ts` `lockTeamSlots`), so a registration, a drop and a
+ * fill on one match are serialised. Transaction-scoped; released at
+ * commit. A unit-test double with no raw SQL has nothing to lock.
+ */
+async function lockSquad(tx: unknown, matchId: string): Promise<void> {
+  if (typeof (tx as { $executeRaw?: unknown }).$executeRaw !== "function") return;
+  await lockTeamSlots(tx as SlotFillTx, matchId);
+}
 
 /**
  * Why a caller is asking for BENCH.
@@ -240,53 +251,62 @@ export async function registerAttendance(
     }
   }
 
-  const maxPos = await db.attendance.aggregate({
-    where: { matchId },
-    _max: { position: true },
-  });
-  const nextPosition = (maxPos._max.position ?? 0) + 1;
-
-  const confirmedCount = await db.attendance.count({
-    where: { matchId, status: "CONFIRMED" },
-  });
-  const benchCount = await db.attendance.count({
-    where: { matchId, status: "BENCH" },
-  });
-
-  // A BENCH row is only ever written for one of two reasons: the squad
-  // is FULL (there is no slot to give), or a human EXPLICITLY asked for
-  // the bench. An "inferred" bench intent gets no special treatment here
-  // — it falls through to the ordinary capacity rule, so with slots open
-  // the player is CONFIRMED and with the squad full they land on the
-  // bench exactly as before. That is what keeps the squad renderable:
-  // "N/M confirmed with slots open, plus a bench" can no longer occur.
-  const squadHasRoom = await mayTakeFreePlace(confirmedCount, existing);
-  /** Room, but an organiser-pick club keeps the place for the admins. */
-  const heldForOrganisers = !squadHasRoom && confirmedCount < match.maxPlayers;
-  const status =
-    options.benchIntent === "explicit" || !squadHasRoom ? "BENCH" : "CONFIRMED";
-
-  // For an existing CONFIRMED row downgrading to BENCH, keep their
-  // existing position so we don't shuffle the slot list.
-  const positionToWrite =
-    existing && status === "BENCH" && existing.status === "CONFIRMED"
-      ? existing.position
-      : nextPosition;
-
-  // ── THE WRITE AND ITS RECORD ARE ONE TRANSACTION ────────────────────
+  // ── THE COUNT, THE DECISION, THE WRITE AND ITS RECORD: ONE TRANSACTION,
+  // UNDER THE MATCH'S SQUAD LOCK (2026-11-17) ───────────────────────────
   //
-  // Not "the write, then the log". A log written NEXT TO the change can
-  // disagree with the state — the row lands, the process dies, the event
-  // never happens, and the log now quietly says a player is benched who
-  // is actually in the squad. Something that can disagree with the state
-  // is not evidence, and this log exists to be the evidence §10 step 6
-  // turns on. Only these two statements are inside the transaction, so
-  // it is nowhere near Prisma's interactive timeout.
+  // The bench fill (`bench-fill.ts`) moves players up under the same
+  // per-match lock. Counting outside it let an IN and a fill each see the
+  // last place free and overfill the squad, so the capacity count and the
+  // write it decides happen inside, together.
+  //
+  // And not "the write, then the log": a log written NEXT TO the change
+  // can disagree with the state, and this log exists to be the evidence
+  // §10 step 6 turns on.
+  let confirmedCount = 0;
+  let benchCount = 0;
+  let status = "CONFIRMED" as "CONFIRMED" | "BENCH";
+  let heldForOrganisers = false as boolean;
   const attendance = await db.$transaction(async (tx) => {
+    await lockSquad(tx, matchId);
+    const maxPos = await tx.attendance.aggregate({
+      where: { matchId },
+      _max: { position: true },
+    });
+    const nextPosition = (maxPos._max.position ?? 0) + 1;
+    confirmedCount = await tx.attendance.count({ where: { matchId, status: "CONFIRMED" } });
+    benchCount = await tx.attendance.count({ where: { matchId, status: "BENCH" } });
+
+    // A BENCH row is only ever written for one of two reasons: the squad
+    // is FULL (there is no slot to give), or a human EXPLICITLY asked for
+    // the bench. An "inferred" bench intent gets no special treatment here
+    // and falls through to the ordinary capacity rule, so with slots open
+    // the player is CONFIRMED and with the squad full they land on the
+    // bench exactly as before. That is what keeps the squad renderable:
+    // "N/M confirmed with slots open, plus a bench" can no longer occur.
+    const squadHasRoom = await mayTakeFreePlace(confirmedCount, existing);
+    /** Room, but an organiser-pick club keeps the place for the admins. */
+    heldForOrganisers = !squadHasRoom && confirmedCount < match.maxPlayers;
+    status = options.benchIntent === "explicit" || !squadHasRoom ? "BENCH" : "CONFIRMED";
+    // ON THE BENCH BY CHOICE: he asked for it while a place was his, or he
+    // (or an admin) took him out of the squad onto it. The bench fill
+    // never moves him up by itself; his own IN does. A structured flag, so
+    // a caller with its own note (a pasted list) is covered too.
+    const benchByChoice =
+      status === "BENCH" &&
+      options.benchIntent === "explicit" &&
+      (existing?.status === "CONFIRMED" || confirmedCount < match.maxPlayers);
+
+    // For an existing CONFIRMED row downgrading to BENCH, keep their
+    // existing position so we don't shuffle the slot list.
+    const positionToWrite =
+      existing && status === "BENCH" && existing.status === "CONFIRMED"
+        ? existing.position
+        : nextPosition;
+
     const row = await tx.attendance.upsert({
       where: { matchId_userId: { matchId, userId } },
-      create: { matchId, userId, status, position: positionToWrite },
-      update: { status, position: positionToWrite, respondedAt: new Date() },
+      create: { matchId, userId, status, position: positionToWrite, benchByChoice },
+      update: { status, position: positionToWrite, respondedAt: new Date(), benchByChoice },
     });
     await recordAttendanceEvent(
       tx,
@@ -308,11 +328,7 @@ export async function registerAttendance(
           eventContext.note ??
           (row.status === "BENCH"
             ? options?.benchIntent === "explicit"
-              ? // Chose to wait while a place was his: the bench never
-                // moves him up by itself (`bench-fill-rules.ts`).
-                confirmedCount < match.maxPlayers && existing?.status !== "CONFIRMED"
-                ? EXPLICIT_BENCH_WITH_ROOM_NOTE
-                : EXPLICIT_BENCH_NOTE
+              ? EXPLICIT_BENCH_NOTE
               : heldForOrganisers
                 ? ORGANISER_PICK_BENCH_NOTE
                 : "squad full, no slot to give"
@@ -552,8 +568,6 @@ export async function cancelAttendance(
 
   if (!attendance) throw new Error("Not attending this match");
 
-  const wasConfirmed = attendance.status === "CONFIRMED";
-
   // ── Rolling squad: an OUT after the drop-out deadline (plan 1.6) ────
   // Still recorded (a squad that lists someone who has told us they are
   // not coming is the worst state this product can be in); the event
@@ -568,34 +582,40 @@ export async function cancelAttendance(
   // admins already know about it.
   const playerDrop =
     eventContext.cause === "self-attendance" || eventContext.cause === "third-party-attendance";
-  const lateDrop =
-    !!dropOutDeadline && wasConfirmed && playerDrop && isLateDrop(sentAt, dropOutDeadline);
-  const lateNote = lateDrop
-    ? `after the drop-out deadline (${weekdayTimeLabel("en", dropOutDeadline!)})`
-    : null;
 
-  // One transaction with the record of it — see registerAttendance.
-  await db.$transaction(async (tx) => {
-    await tx.attendance.update({
-      where: { id: attendance.id },
-      data: { status: "DROPPED" },
+  // One transaction with the record of it — see registerAttendance — and
+  // UNDER THE MATCH'S SQUAD LOCK (2026-11-17): the row is read again
+  // inside it and written only from the status just read, so a bench
+  // player's OUT that races the bench fill moving him up ends with him
+  // OUT, and the place he leaves is filled again.
+  const dropped = await db.$transaction(async (tx) => {
+    await lockSquad(tx, matchId);
+    const fresh = (await tx.attendance.findUnique({ where: { matchId_userId: { matchId, userId } } })) ?? attendance;
+    const freshConfirmed = fresh.status === "CONFIRMED";
+    const late = !!dropOutDeadline && freshConfirmed && playerDrop && isLateDrop(sentAt, dropOutDeadline);
+    const note = late ? `after the drop-out deadline (${weekdayTimeLabel("en", dropOutDeadline!)})` : null;
+    const { count } = await tx.attendance.updateMany({
+      where: { id: fresh.id, status: fresh.status },
+      data: { status: "DROPPED", benchByChoice: false },
     });
+    if (count === 0) throw new Error("The squad changed while this drop was being written; nothing was changed");
     await recordAttendanceEvent(
       tx,
       {
         matchId,
         userId,
         orgId: match.activity.orgId,
-        fromStatus: attendance.status,
+        fromStatus: fresh.status,
         toStatus: "DROPPED",
-        fromPosition: attendance.position,
-        toPosition: attendance.position,
+        fromPosition: fresh.position,
+        toPosition: fresh.position,
       },
-      lateNote
-        ? { ...eventContext, note: eventContext.note ? `${eventContext.note}; ${lateNote}` : lateNote }
-        : eventContext,
+      note ? { ...eventContext, note: eventContext.note ? `${eventContext.note}; ${note}` : note } : eventContext,
     );
+    return { wasConfirmed: freshConfirmed, lateDrop: late };
   });
+  const wasConfirmed = dropped.wasConfirmed;
+  const lateDrop = dropped.lateDrop;
 
   let benchFill: (() => Promise<void>) | undefined;
   // A CONFIRMED player's place opened. In a first-come club the first

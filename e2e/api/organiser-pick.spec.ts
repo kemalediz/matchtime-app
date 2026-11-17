@@ -394,11 +394,7 @@ test("Sutton unchanged: a first-come club fills a free place on IN, and a drop m
   const complete = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group' AND text LIKE '%Squad complete%'`, [ORG_ID]);
   expect(complete.map((x) => x.text).join("\n")).toContain("the first on the bench moves up and I message them");
   // Ben is now waiting because the squad is full, not by choice.
-  await db.run(
-    `INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "fromStatus", "toStatus", "fromPosition", "toPosition", cause, "actorKind", note, at)
-     VALUES ('e2e-op-ben-full', $1, $2, $3, 'BENCH', 'BENCH', 5, 6, 'test-fixture', 'system', 'squad full, no slot to give', now())`,
-    [MATCH.upcoming, U.bench, ORG_ID],
-  );
+  await db.run(`UPDATE "Attendance" SET "benchByChoice" = false WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.bench]);
   await post(request, "/api/whatsapp/attendance", { phoneNumber: digits(PHONE.player), action: "OUT", groupId: E2E.GROUP_ID });
   const ben = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.bench]);
   expect(ben?.status).toBe("CONFIRMED");

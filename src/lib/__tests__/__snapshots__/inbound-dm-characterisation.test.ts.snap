@@ -552,12 +552,14 @@ IN",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-sutton-10nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-zed",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",
@@ -2287,12 +2289,14 @@ yes",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-sutton-10nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-zed",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",
@@ -3206,12 +3210,14 @@ IN",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-fnf-6nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-fnf-a",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",
@@ -4139,12 +4145,14 @@ yes",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-fnf-6nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-fnf-a",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",
@@ -7925,12 +7933,14 @@ IN",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-sutton-10nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-zed",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",
@@ -9660,12 +9670,14 @@ yes",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-sutton-10nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-zed",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",
@@ -10525,12 +10537,14 @@ IN",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-sutton-10nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-zed",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-10T18:00:00.000Z",
             "status": "CONFIRMED",
@@ -12260,12 +12274,14 @@ yes",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-sutton-10nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-zed",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-10T18:00:00.000Z",
             "status": "CONFIRMED",
@@ -13130,12 +13146,14 @@ IN",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-sutton-10nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-zed",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",
@@ -14895,12 +14913,14 @@ yes",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-sutton-10nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-zed",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",
@@ -15832,12 +15852,14 @@ IN",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-vets-9nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-nabz",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",
@@ -17245,12 +17267,14 @@ yes",
       {
         "args": {
           "create": {
+            "benchByChoice": false,
             "matchId": "m-vets-9nov",
             "position": 1,
             "status": "CONFIRMED",
             "userId": "u-nabz",
           },
           "update": {
+            "benchByChoice": false,
             "position": 1,
             "respondedAt": "2026-11-04T12:00:00.000Z",
             "status": "CONFIRMED",

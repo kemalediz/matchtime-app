@@ -38,8 +38,6 @@
  * The same order `flex-format-rules.ts:planResize` uses when a match goes
  * up a size, so a bigger format and a drop agree on who is next.
  */
-import { EXPLICIT_BENCH_NOTE, EXPLICIT_BENCH_WITH_ROOM_NOTE } from "./attendance-events";
-
 export interface BenchFillRow {
   userId: string;
   status: "CONFIRMED" | "BENCH" | "DROPPED";
@@ -47,7 +45,9 @@ export interface BenchFillRow {
   position: number;
   /** When they last answered (ms), the tie-break after position. */
   joinedAt: number;
-  /** Chose the bench while a place was his for the taking (`heldOnBench`). */
+  /** On the bench by choice while a place was his (`Attendance.benchByChoice`,
+   *  written by `registerAttendance` and the match page's "Add to bench
+   *  instead"): never moved up by MatchTime. */
   held: boolean;
 }
 
@@ -62,21 +62,4 @@ export function pickBenchMovers(p: { rows: readonly BenchFillRow[]; maxPlayers: 
     .sort((a, b) => a.position - b.position || a.joinedAt - b.joinedAt || a.userId.localeCompare(b.userId))
     .slice(0, room)
     .map((r) => r.userId);
-}
-
-/**
- * Did he choose the bench while he could have played? Read from his LAST
- * move onto the bench in the attendance log:
- *   • asked for it while places were open (`EXPLICIT_BENCH_WITH_ROOM_NOTE`);
- *   • or taken out of the squad onto it on purpose, by himself or an
- *     admin ("move Luca to the bench"): an explicit request from CONFIRMED.
- * A reserve who asked for the bench on a FULL squad ("In as a reserve")
- * is not held: that is exactly who the bench is for. Neither is anyone
- * the squad had no room for, a format switch or the monthly seed.
- */
-export function heldOnBench(lastBenchMove: { fromStatus: string | null; note: string | null } | null | undefined): boolean {
-  const note = lastBenchMove?.note;
-  if (!note) return false;
-  if (note === EXPLICIT_BENCH_WITH_ROOM_NOTE) return true;
-  return note.startsWith(EXPLICIT_BENCH_NOTE) && lastBenchMove?.fromStatus === "CONFIRMED";
 }

@@ -1106,14 +1106,22 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
     }
   });
 
-  it("with somebody on the waiting list, today's bench offer runs and the pool is not asked", async () => {
+  it("with somebody waiting on the bench: no race and the pool is not asked; the bench fills the place (2026-11-17)", async () => {
+    // A first-come club's bench moves Zed up by itself (`bench-fill.ts`,
+    // run before the posts by the poll); the posts never race him for it.
     const m = dropped();
     m.attendances.push(att("Zed", 9, { status: "BENCH", paymentMethod: null }));
     setWorld(m, { monthly: true, pool: POOL });
-    expect(poolPosts(await instructions(THU_10AM), m).map((i) => [i.kind, i.key])).toEqual([
-      ["bench-prompt", "offer-o1"],
-      ["dm", "offer-o1:dm:u-zed"],
-    ]);
+    expect(poolPosts(await instructions(THU_10AM), m).map((i) => [i.kind, i.key])).toEqual([]);
+  });
+
+  it("only somebody on the bench BY CHOICE: no race, the pay-as-you-go players are asked in their own words", async () => {
+    const m = dropped();
+    m.attendances.push(att("Zed", 9, { status: "BENCH", paymentMethod: null, benchByChoice: true }));
+    setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m) });
+    const posts = poolPosts(await instructions(THU_10AM), m);
+    expect(posts.some((i) => i.kind === "bench-prompt" || ("text" in i && /first to claim/i.test(i.text ?? "")))).toBe(false);
+    expect(posts.some((i) => i.key.includes(":payg-pool-line:"))).toBe(true);
   });
 });
 

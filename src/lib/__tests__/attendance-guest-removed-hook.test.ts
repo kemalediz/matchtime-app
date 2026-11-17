@@ -30,6 +30,7 @@ vi.mock("../db", () => {
       attendance: {
         findUnique: async () => ({ id: "a1", status: h.status, position: 3 }),
         update: async () => ({}),
+        updateMany: async () => ({ count: 1 }),
         count: async () => 0,
       },
       attendanceEvent: { create: async () => ({}) },
