@@ -63,6 +63,7 @@ vi.mock("@/lib/admin-channel", async (orig) => ({
 }));
 
 import { computeDuePosts } from "@/lib/bot-scheduler";
+import { rosterShownKey, squadFingerprint } from "@/lib/roster-shown";
 
 const GROUP = "group-vets@g.us";
 const ORG = { id: "org-vets", whatsappGroupId: GROUP, whatsappBotEnabled: true, paygPricePence: null };
@@ -374,6 +375,32 @@ describe("open squad: the minimum is the only number", () => {
   it("10:00, 11 of 12 with a 5-a-side to switch to: no switch offer", async () => {
     const m = vetsGame(11, 12);
     expect((await runWith(m, SUN_10AM, f)).some((i) => i.key === switchKey(m.id))).toBe(false);
+  });
+
+  it("the squad the reply path just showed (its fingerprint, on the match's own places) is not listed again at 17:00", async () => {
+    const m = vetsGame(10, 12);
+    const fp = squadFingerprint({
+      confirmedUserIds: (m.attendances as Array<{ userId: string }>).map((a) => a.userId),
+      benchUserIds: [],
+      maxPlayers: m.maxPlayers as number,
+    });
+    const shownAt = new Date(FRI_5PM.getTime() - 30 * 60_000);
+    adminChannel.on = true;
+    formats = f;
+    overrides.organisation = { findFirst: async () => ORG, findUnique: async () => ORG };
+    overrides.match = { findMany: async () => [m] };
+    overrides.squadMonth = { findMany: async () => [] };
+    overrides.sentNotification = {
+      findMany: async (args: unknown) => {
+        const where = (args as { where?: { kind?: unknown; key?: unknown } }).where ?? {};
+        if (where.kind) return [{ key: rosterShownKey(m.id, fp, shownAt), kind: "roster-shown", createdAt: shownAt }];
+        return [];
+      },
+    };
+    const res = await computeDuePosts(GROUP, FRI_5PM);
+    const post = (res?.instructions ?? []).find((i) => i.key.startsWith(`${m.id}:evening-update:`)) as { text: string } | undefined;
+    expect(post).toBeDefined();
+    expect(post!.text).not.toContain("*Confirmed (10):*");
   });
 
   it("17:00: 13 in (above 12, below the format's 14): nothing; 10 in: the chase for 2, no size, no places", async () => {

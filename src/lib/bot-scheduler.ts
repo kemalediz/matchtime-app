@@ -1463,7 +1463,9 @@ async function computeForMatch(
   const squadKey = squadFingerprint({
     confirmedUserIds: confirmed.map((a) => a.userId),
     benchUserIds: bench.map((a) => a.userId),
-    maxPlayers,
+    // The match's own places, as the reply path keys it (route.ts), so an
+    // open squad's squad shown by either is the same squad (review of #623).
+    maxPlayers: m.maxPlayers,
   });
   /** What a post that DOES carry the roster hands to the dispatcher. */
   const rosterMark = { fingerprint: squadKey };
@@ -2371,7 +2373,9 @@ async function computeForMatch(
       status: a.status as WeekStatus,
       position: a.position,
     }));
-    const weekList = buildWeekList({ members: monthly.members, rows, maxPlayers, openSquad });
+    // The match's own places, as `renderWeekList` reads them, so the order and
+    // the hash are the reply path's (review of #623).
+    const weekList = buildWeekList({ members: monthly.members, rows, maxPlayers: m.maxPlayers, openSquad });
     // The same renderer as every other place the list is shown, so its
     // hash matches a reply's or a member's matching paste.
     const { text, hash, nextSizePerSide } = await weekListPostText({
