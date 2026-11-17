@@ -68,11 +68,11 @@ export interface OwnershipFacts {
 /**
  * The attendance-event causes a GUEST PLACE can carry at the club he
  * guests at: the volunteer writer itself, and the moves that act on any
- * place there (an organiser pick, a bench claim, the rolling squad, a
- * format switch). Anything else at that club (his own IN, an admin's
+ * place there (an organiser pick, a bench claim or the bench moving him
+ * up, the rolling squad, a format switch). Anything else at that club (his own IN, an admin's
  * edit, a merge) is history of his own there.
  */
-export const GUEST_PLACE_CAUSES = ["partner-ask", "organiser-pick", "bench-claim", "rolling-squad", "format-switch"] as const;
+export const GUEST_PLACE_CAUSES = ["partner-ask", "organiser-pick", "bench-claim", "bench-moved-up", "rolling-squad", "format-switch"] as const;
 
 /** Has this person ever signed in as this record? (pure) */
 export function hasOwnSignIn(f: OwnershipFacts): boolean {

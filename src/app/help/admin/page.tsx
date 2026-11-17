@@ -574,8 +574,11 @@ export default async function AdminGuidePage() {
           places open for pay as you go players.
         </li>
         <li>
-          If a confirmed player drops and there&apos;s a bench, the bench is
-          offered the spot in the group and by DM. The first to claim it plays.
+          If a confirmed player drops and there&apos;s a bench, the first
+          player on the bench moves up straight away. MatchTime tells the
+          group who moved up and DMs him; if he can&apos;t make it he replies{" "}
+          <code>OUT</code> and the next one moves up. When the organisers
+          pick who plays, they are asked instead.
         </li>
         <li>
           Anyone who said maybe gets a DM a day before kickoff asking if

@@ -66,6 +66,12 @@ vi.mock("../db", () => {
           r.status = data.status;
           return r;
         },
+        updateMany: async ({ where, data }: { where: { id: string; status?: string }; data: { status: string } }) => {
+          const r = s().rows.find((x) => x.id === where.id && (!where.status || x.status === where.status));
+          if (!r) return { count: 0 };
+          r.status = data.status;
+          return { count: 1 };
+        },
       },
       benchSlotOffer: {
         count: async () => {

@@ -396,9 +396,15 @@ export async function answerSquadPasteYes(args: {
     return res ? { userId: res.userId, name: res.name ?? r.newName } : null;
   };
 
+  // ALL THE LIST'S WRITES, THEN THE BENCH (2026-11-17): a place a removal
+  // opens is filled from the bench only after the list's own adds have
+  // landed, or the first player on the bench would take the place the
+  // list gave to somebody it named (`attendance.ts` `deferBenchFill`).
+  const benchFills: Array<() => Promise<void>> = [];
   for (const r of diff.remove) {
     try {
-      await cancelAttendance(r.userId, matchId, event);
+      const res = await cancelAttendance(r.userId, matchId, event, { deferBenchFill: true });
+      if (res.benchFill) benchFills.push(res.benchFill);
       changes.push({ kind: "out", userId: r.userId, name: null });
     } catch {
       failed.push({ userId: r.userId, name: null });
@@ -419,12 +425,18 @@ export async function answerSquadPasteYes(args: {
           ...(bench ? { benchIntent: "explicit" as const } : { promoteFromBench: true }),
           event,
           actorIsAdmin: true,
+          deferBenchFill: true,
         });
+        if (res.benchFill) benchFills.push(res.benchFill);
         changes.push({ kind: res.status === "BENCH" ? "bench" : "in", userId: who.userId, name: who.name });
       } catch {
         failed.push({ userId: who.userId, name: who.name });
       }
     }
+  }
+
+  for (const fill of benchFills) {
+    await fill().catch((err) => console.error(`[admin-group] ${args.messageId}: bench fill failed:`, err instanceof Error ? err.message : err));
   }
 
   const nameOf = await namesOf(

@@ -262,7 +262,34 @@ describe("applyEngineWrites", () => {
       actorByMessageId: new Map<string, EngineActor>([["m1", { ...SENDER, sentAt }]]),
       deps,
     });
-    expect(seen).toEqual([{ occurredAt: sentAt }]);
+    expect(seen).toEqual([{ occurredAt: sentAt, deferBenchFill: true }]);
+  });
+
+  it("fills from the bench only after the whole batch is written: a named replacement keeps his place (2026-11-17)", async () => {
+    // "Mojib is replacing Najib": OUT Najib, IN Mojib. Filled at once,
+    // Najib's place would go to the first player on the bench and Mojib
+    // would land on the bench behind him.
+    const order: string[] = [];
+    const { deps } = stubDeps({
+      async cancelAttendance(u) {
+        order.push(`cancel(${u})`);
+        return { status: "DROPPED" as const, benchFill: async () => void order.push(`bench-fill(${u})`) };
+      },
+      async registerAttendance(u, _m, options) {
+        order.push(`register(${u}, defer=${options?.deferBenchFill === true})`);
+        return { status: "CONFIRMED", position: 1, slot: 1, confirmedCount: 14, maxPlayers: 14 };
+      },
+    });
+    await applyEngineWrites({
+      matchId: "m",
+      writes: [
+        write({ userId: "u-najib", name: "Najib", status: "DROPPED" }),
+        write({ userId: "u-mojib", name: "Mojib", status: "CONFIRMED" }),
+      ],
+      actorByMessageId: ACTORS,
+      deps,
+    });
+    expect(order).toEqual(["cancel(u-najib)", "register(u-mojib, defer=true)", "bench-fill(u-najib)"]);
   });
 
   it("applies writes in the order the engine emitted them — OUT before IN", async () => {

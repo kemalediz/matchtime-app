@@ -54,6 +54,12 @@ vi.mock("../db", () => {
         Object.assign(r, data);
         return { ...r };
       },
+      updateMany: async ({ where, data }: { where: { id: string; status?: string }; data: Record<string, unknown> }) => {
+        const r = rows().find((x) => x.id === where.id && (!where.status || x.status === where.status));
+        if (!r) return { count: 0 };
+        Object.assign(r, data);
+        return { count: 1 };
+      },
       count: async ({ where }: { where: { status: string } }) => rows().filter((r) => r.status === where.status).length,
     },
     attendanceEvent: {

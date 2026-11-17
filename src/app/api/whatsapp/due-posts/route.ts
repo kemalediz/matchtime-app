@@ -61,6 +61,7 @@ import { NextResponse } from "next/server";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations, type DueInstruction } from "@/lib/bot-scheduler";
+import { sweepBenchFill } from "@/lib/bench-fill";
 import { badgeLedgerOf, claimBadgePost, withoutServerBookkeeping } from "@/lib/badge-announcement-scheduler";
 import { recordScheduledHqQuestion } from "@/lib/admin-group-log";
 import { ROSTER_SHOWN_KIND, rosterShownKey } from "@/lib/roster-shown";
@@ -380,6 +381,14 @@ export async function GET(request: Request) {
     // A month that has just closed must not reach the posts as a live one.
     if (closedNow.length > 0) liveMonths = liveMonths.filter((m) => !closedNow.includes(m.id));
   }
+
+  // THE BENCH FILLS AN OPEN PLACE (2026-11-17, `bench-fill.ts`): the safety
+  // net under every path that opens a place. A first-come club with a place
+  // open and somebody on the bench moves the first one up now, so no list
+  // computed below can say "need 1 more" beside a bench. AFTER the monthly
+  // sweeps (seeded rows first), BEFORE compute. Never in preview mode;
+  // never throws. A club with nothing to do makes two reads.
+  if (!previewOnly) await sweepBenchFill(org.id, nowOverride ?? new Date());
 
   // Slice 2a: what this Pi can do. Only a Pi that says "admin-group" is
   // ever handed an admin-group post; for any other, admin notices fall

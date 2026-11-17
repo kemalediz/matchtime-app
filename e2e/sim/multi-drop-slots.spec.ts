@@ -85,11 +85,14 @@ const SHEET: Record<string, "RED" | "YELLOW"> = {
       teams: SHEET,
     });
 
-  test("THE INCIDENT, replayed: Red 7, Yellow 7, nobody dropped on the sheet, each arrival in the slot it inherited", async ({
+  test("THE INCIDENT's joins, replayed with no bench: each arrival in the slot it inherited", async ({
     request,
     db,
   }) => {
-    const g = await world(request, db);
+    // Since 2026-11-17 a bench moves up the moment a place opens
+    // (`bench-fill.ts`), so the day's bench is replayed in the next test;
+    // this one keeps the joins: Mojib and Hamzah, with nobody waiting.
+    const g = await world(request, db, []);
 
     await g.post("elnur", "out", OUT); // 06:29
     await g.post("owner", "@Match Time Burak is out", {
@@ -98,8 +101,7 @@ const SHEET: Record<string, "RED" | "YELLOW"> = {
       facts: otherFacts("Burak", "out"),
     }); // 06:55
     await g.post("abid", "out", OUT); // 07:15
-    await g.post("youssef", "out", OUT); // 07:37, from the bench
-    for (const k of ["elnur", "burak", "abid", "youssef"]) {
+    for (const k of ["elnur", "burak", "abid"]) {
       expect((await g.attendanceOf(k))?.status, k).toBe("DROPPED");
     }
 
@@ -108,15 +110,8 @@ const SHEET: Record<string, "RED" | "YELLOW"> = {
     expect((await g.attendanceOf("mojib"))?.status).toBe("CONFIRMED");
     expect((await g.teamSheet()).slice(0, 3).map((s) => s.key)).toEqual(["mojib", "elnur", "abid"]);
 
-    // 07:57, one flush: David off the bench, Hamzah put in by Wasim.
+    // 07:57: Hamzah put in by Wasim.
     const at0757 = await g.postBatch([
-      {
-        player: "owner",
-        body: "@Match Time David is out",
-        tag: true,
-        route: "other_att",
-        facts: otherFacts("David", "out"),
-      },
       { player: "wasim", body: "Hamzah in", route: "other_att", facts: otherFacts("Hamzah", "in") },
     ]);
     expect((await g.attendanceOf("hamzah"))?.status).toBe("CONFIRMED");
@@ -125,43 +120,48 @@ const SHEET: Record<string, "RED" | "YELLOW"> = {
     // The re-declared sheet names Hamzah in Elnur's place and shows
     // Abid's line as OPEN. On the day it still read "Abid Kazmi".
     const said = at0757.results.map((r) => r.reply ?? "").join("\n") + at0757.groupPosts.join("\n");
-    expect(said).toContain("*Elnur is out*");
     expect(said).toContain("Hamzah Ali  (replacing Elnur)");
     expect(said).toContain("3. (open slot)");
     expect(said).not.toContain("Abid");
+    expect(await g.openOffers()).toEqual([]);
+  });
 
-    // Refilled slots are no longer offered to the bench; Abid's still is.
-    const offers = await g.openOffers();
-    expect(offers.map((o) => o.replacingUserId)).toEqual([g.player("abid").userId]);
+  test("THE INCIDENT's bench, since 2026-11-17: each drop moves the next one up into the slot it vacated", async ({
+    request,
+    db,
+  }) => {
+    const g = await world(request, db);
 
-    // 08:05: Ozgur claims from the bench.
-    // The bench offer's "reply YES", read by the model (stubbed) since 2026-10-30.
-    addMatchAvailabilityBodies({ YES: "in" });
-    const claim = await g.dm("ozgur", "YES");
-    expect(claim.json.result).toBe("confirmed");
-    const announce = claim.groupPosts.find((t) => t.includes("Ozgur Tan"));
-    expect(announce, JSON.stringify(claim.groupPosts)).toBeTruthy();
-    expect(announce).toContain("*Abid Kazmi*");
-    expect(announce).toContain("*Red*");
-    expect(announce).not.toContain("Elnur");
+    await g.post("elnur", "out", OUT);
+    // Youssef was first on the bench: Elnur's slot is his, at once.
+    expect((await g.attendanceOf("youssef"))?.status).toBe("CONFIRMED");
+    await g.post("owner", "@Match Time Burak is out", { tag: true, route: "other_att", facts: otherFacts("Burak", "out") });
+    expect((await g.attendanceOf("david"))?.status).toBe("CONFIRMED");
+    const at0715 = await g.post("abid", "out", OUT);
+    expect((await g.attendanceOf("ozgur"))?.status).toBe("CONFIRMED");
 
-    // THE FINAL SHEET.
+    // Ozgur is told he took ABID's place on Red: the slot really inherited.
+    const line = at0715.groupPosts.find((t) => t.includes("Ozgur Tan"));
+    expect(line, JSON.stringify(at0715.groupPosts)).toBeTruthy();
+    expect(line).toContain("takes *Abid Kazmi*'s place on *Red*");
+
+    // THE FINAL SHEET: every slot held by somebody playing, nobody dropped on it.
     const sheet = await g.teamSheet();
     const side = (team: string) => sheet.filter((s) => s.team === team).map((s) => s.key);
-    expect(side("RED")).toEqual(["mojib", "hamzah", "ozgur", "owner", "wasim", "raihan", "kieran"]);
+    expect(side("RED")).toEqual(["david", "youssef", "ozgur", "owner", "wasim", "raihan", "kieran"]);
     expect(side("YELLOW")).toEqual(YELLOW);
     for (const s of sheet) {
       expect((await g.attendanceOf(s.key))?.status, s.key).toBe("CONFIRMED");
     }
-    expect((await g.counts()).confirmed).toBe(14);
+    expect(await g.counts()).toMatchObject({ confirmed: 14, bench: 0 });
     expect(await g.openOffers()).toEqual([]);
 
-    // The audit log names the slot actually inherited.
+    // The audit log records the move and why.
     const ev = await db.one<{ note: string | null }>(
-      `SELECT note FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 AND cause = 'bench-claim'`,
+      `SELECT note FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 AND cause = 'bench-moved-up'`,
       [g.matchId, g.player("ozgur").userId],
     );
-    expect(ev?.note).toBe(`claimed the slot vacated by ${g.player("abid").userId}`);
+    expect(ev?.note).toBe(`first on the bench, moved up into the place ${g.player("abid").userId} left`);
   });
 
   test("join BEFORE drop, then a dropped player re-joins: nobody listed twice, no dropped name on the sheet", async ({
@@ -188,9 +188,18 @@ const SHEET: Record<string, "RED" | "YELLOW"> = {
   });
 
   test("two bench claims at the SAME instant each take a different slot", async ({ request, db }) => {
+    // A claim answers an OFFER, which since 2026-11-17 only an
+    // organiser-pick club's fallback opens. That club, its two offers.
     const g = await world(request, db);
+    await db.run(`UPDATE "Organisation" SET "benchPickMode" = 'organiser' WHERE id = $1`, [g.orgId]);
     await g.post("elnur", "out", OUT);
     await g.post("abid", "out", OUT);
+    for (const k of ["elnur", "abid"]) {
+      await db.run(
+        `INSERT INTO "BenchSlotOffer" (id, "matchId", "replacingUserId", "createdAt", "updatedAt") VALUES ($1, $2, $3, now(), now())`,
+        [`sim-race-offer-${k}-${g.matchId}`, g.matchId, g.player(k).userId],
+      );
+    }
     expect(await g.openOffers()).toHaveLength(2);
 
     addMatchAvailabilityBodies({ YES: "in" });

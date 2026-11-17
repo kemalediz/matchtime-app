@@ -80,6 +80,6 @@ describe("first-come clubs (Sutton FC) keep today's words", () => {
     expect(buildRecruitChaseText({ ...chase, organiser: false })).toBe(buildRecruitChaseText(chase));
     const ack = { failed: false, status: "BENCH" as const, matchName: "X", matchWhen: "Tue" };
     expect(buildSelfAttendanceAck({ ...ack, organiser: false })).toBe(buildSelfAttendanceAck(ack));
-    expect(buildSquadCompleteBenchInvite()).toMatch(/takes the slot/);
+    expect(buildSquadCompleteBenchInvite()).toMatch(/the first on the bench moves up/);
   });
 });

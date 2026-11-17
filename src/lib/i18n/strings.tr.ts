@@ -268,11 +268,10 @@ export const tr: Strings = {
 
   // ── rows 52, 53, 54: the bench-promotion promise ─────────────────
 
-  bench_promotion_how: (p) =>
-    p.reactions ? "ilk 👍 veren ya da *VARIM* yazan yeri alır" : "ilk *VARIM* yazan yeri alır",
+  bench_promotion_how: "yedekteki ilk kişi kadroya geçer ve ona mesaj atarım",
   squad_complete_bench_invite: (p) =>
     `🪑 *Yedek listesi açık.* *VARIM* yazın, sizi yedeğe ekleyeyim. ` +
-    `Biri çıkarsa yedekleri burada etiketlerim ve ${p.how}.`,
+    `Biri çıkarsa ${p.how}.`,
   bench_offer_group_post: (p) => {
     const claim = p.reactions
       ? "Almak için buraya 👍 verin ya da *VARIM* yazın."
@@ -674,15 +673,25 @@ export const tr: Strings = {
     `✅ *${p.claimer}* kadroda, *${p.dropped}* yerine geliyor, kadro *${p.confirmed}/${p.maxPlayers}* 🙌`,
   bench_claim_open: (p) => `✅ *${p.claimer}* açık yeri aldı, kadro *${p.confirmed}/${p.maxPlayers}* 🙌`,
 
+  bench_moved_up: (p) => {
+    if (p.teamLabel && p.dropped && p.count === 1) {
+      return (
+        `⬆️ ${p.names} yedekten kadroya geçti, *${p.teamLabel}* takımında *${p.dropped}* yerine oynuyor 🙌\n\n` +
+        `_Yeni kadroyla takımların yeniden dengelenmesini isterseniz beni etiketleyip kendi cümlelerinizle isteyin (örneğin "@Match Time takımları yeniden kur")._`
+      );
+    }
+    const head = `⬆️ ${p.names} yedekten kadroya geçti${p.dropped && p.count === 1 ? `, *${p.dropped}* yerine oynuyor` : ""}`;
+    return p.squad ? `${head}, kadro *${p.squad.confirmed}/${p.squad.maxPlayers}* 🙌` : `${head} 🙌`;
+  },
+
   // ── rows 53, 54, 55: the rest of bench-offer-copy.ts ───────────────
 
   bench_intro_line: (p) =>
-    `🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ` +
-    `${p.how}. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.`,
+    `🔁  *Yedekten kadroya*, biri çıkarsa ${p.how}. ` +
+    `Gelemeyecekse *YOKUM* yazar, sıradaki kadroya geçer.`,
   full_squad_bench_invite: (p) =>
     `*${p.matchName}* kadrosu dolu, ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişiyiz, ama yedek listesi açık. ` +
-    `*VARIM* yazın, sizi yedeğe ekleyeyim. Biri çıkarsa yedekleri grupta etiketlerim ` +
-    `ve ${p.how}. 🙏`,
+    `*VARIM* yazın, sizi yedeğe ekleyeyim. Biri çıkarsa ${p.how}. 🙏`,
   bench_asked_line: (p) => {
     const how = p.reactions
       ? "burada 👍 istemiyle etiketlendi"
@@ -1293,7 +1302,7 @@ export const tr: Strings = {
         `⚽ *Kadro ve katılım nasıl çalışır*\n` +
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter. Bir takım arkadaşınız gelemiyorsa onu da yazabilirsiniz (örneğin *Sami gelemiyor*). Beni etiketlemenize gerek yok, otomatik okurum.\n` +
         `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar sırayla *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
-        `Biri çıkarsa yedekleri dürterim, böylece hiç eksik kalmayız. İstediğiniz zaman *yokum* yazın, gerisini ben hallederim.`,
+        `Biri çıkarsa yedekteki ilk kişi kadroya geçer ve ona mesaj atarım, böylece hiç eksik kalmayız. İstediğiniz zaman *yokum* yazın, gerisini ben hallederim.`,
       reminders:
         `⏰ *Hatırlatmalar nasıl çalışır*\n` +
         `Henüz *varım* veya *yokum* demeyenleri nazikçe dürterim, sonra maçtan önce bütün kadroya hatırlatırım ki kimse unutmasın.\n` +
@@ -1690,6 +1699,10 @@ export const tr: Strings = {
       `İster misin? ${claim} İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏`
     );
   },
+
+  dm_bench_moved_up: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, bir` : "Bir"} yer açıldı: ${p.context}. Yedekte ilk sıradaydın, artık kadrodasın ✅\n\n` +
+    `Gelemeyeceksen buraya *YOKUM* yazman yeterli, yeri sıradaki oyuncuya veririm. 🙏`,
 
   dm_bench_offer_many: (p) => {
     const claim = p.reactions
@@ -2437,7 +2450,7 @@ export const tr: Strings = {
     "Sorun değil: aşağıdaki ayarları kontrol edin ve hazır olduğunuzda *BAŞLA* yazın.",
   sj_dm_ready_rolling_first: "İlk maç için herkes bir kez VARIM yazar; sonrasında kadro kendiliğinden devam eder.",
   sj_dm_ready_standard:
-    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki herkese teklif edilir: ilk VARIM diyen yeri alır.",
+    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedekteki ilk oyuncuya geçer ve ona mesaj atarım.",
   sj_dm_ready_settings: (p) => `⚙️ *Grubunuzun nasıl işlediğini kontrol edin ya da değiştirin:*\n${p.url}`,
   sj_dm_ready_schedule: (p) => `📅 *Haftalık maçınız:* günü, saati ve sahayı kontrol edin ya da değiştirin:\n${p.url}`,
   sj_dm_ready_ratings: (p) =>
@@ -2760,8 +2773,8 @@ export const tr: Strings = {
   onb_weekly_routine_tip:
     "İpucu: kadroyu her hafta devam ettirmek, yerine geçecekleri yedek listesinden kendiniz seçmek ya da yönetici mesajlarını yöneticilerin grubunda almak için sitedeki Ayarlar sayfasını açın.",
   wr_pick_label: "Boşalan yeri kim doldurur",
-  wr_pick_blurb: "İlk VARIM diyen, ya da organizatörler yedek listesinden seçer.",
-  wr_pick_first_come: "İlk VARIM diyen",
+  wr_pick_blurb: "Yedekteki ilk kişi kadroya geçer, ya da organizatörler yedek listesinden seçer.",
+  wr_pick_first_come: "Yedekteki ilk kişi",
   wr_pick_organiser: "Organizatörler seçer",
   wr_fallback_label: "Zamanında kimse seçmezse",
   wr_fallback_offer: "Yedek listesine sun",

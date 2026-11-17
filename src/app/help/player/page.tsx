@@ -145,15 +145,16 @@ export default function PlayerGuidePage() {
 
       <p>
         When the squad is full, late Ins go on the bench 🪑 in the order they
-        came in. When a confirmed player drops, MatchTime posts in the group,
-        tags everyone on the bench and DMs them too.{" "}
-        <strong>The first to claim the spot plays.</strong> Reply{" "}
-        <code>IN</code> in the group, or <code>YES</code> to the DM.
+        came in. When a confirmed player drops,{" "}
+        <strong>the first player on the bench moves up</strong> straight
+        away. MatchTime tells the group and sends him a DM.
       </p>
       <p>
-        If someone beat you to it, you stay on the bench and you&apos;re first
-        in line for the next spot. Saying no, or not replying, never takes
-        you off the bench.
+        Moved up but can&apos;t make it? Reply <code>OUT</code> and the next
+        player on the bench takes the place. Nobody is ever taken off the
+        bench for not replying. If you asked to go on the bench while
+        there were places open, MatchTime leaves you there; say{" "}
+        <code>IN</code> whenever you want to play.
       </p>
 
       {/* ───────────────────────────────────────────────── */}

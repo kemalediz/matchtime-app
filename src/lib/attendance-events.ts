@@ -86,6 +86,7 @@ export type AttendanceStatusLike = AttendanceStatus | null;
  */
 export const EXPLICIT_BENCH_NOTE = "explicit bench request";
 
+
 export const ATTENDANCE_EVENT_CAUSES = [
   /** The player's own claim or withdrawal — a group message, a DM, or
    *  the web app. `actorUserId` is the player themselves. */
@@ -96,6 +97,10 @@ export const ATTENDANCE_EVENT_CAUSES = [
   /** A bench player claimed a vacated slot by reacting 👍 to a
    *  BenchSlotOffer. `sourceRef` is the offer id. */
   "bench-claim",
+  /** A place opened in a first-come club and the first player on the
+   *  bench was moved up into it automatically (2026-11-17,
+   *  `bench-fill.ts`). `sourceRef` says what opened it. */
+  "bench-moved-up",
   /** An admin screen: add to match, remove from match, move up from
    *  bench, promote onto a team. */
   "admin-squad-edit",

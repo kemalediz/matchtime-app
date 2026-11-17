@@ -1491,7 +1491,7 @@ test.describe("the daily 17:00 post is the month's list (2026-11-04)", () => {
       [MATCH5, `${MATCH5}:month-list:%`],
     );
   const INVITE =
-    "🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.";
+    "🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out, the first on the bench moves up and I message them.";
 
   test("places open, then full with 3 on the bench (stopped), then a bencher drops (back, with the bench ask)", async ({ request, db }) => {
     await club(db, { org: ORG5, group: GROUP5, act: ACT5, sport: "e2e-mw9-sport", name: "Daily Vets" });

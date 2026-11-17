@@ -25,6 +25,7 @@
  * ──────────────────────────────────────────────────────────────────── */
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
+import { joinList } from "./i18n/text";
 
 /**
  * Does the bench offer TELL players they can claim the slot with a 👍?
@@ -184,8 +185,9 @@ export function buildBenchOfferDm(c: BenchOfferDmCopy): string {
  * The wording is `buildBenchIntroLine`'s, unchanged.
  */
 function benchPromotionHow(c: ReactionGate): string {
-  const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
-  return t(c.lang).bench_promotion_how({ reactions });
+  // Since 2026-11-17 the bench fills a place by itself (`bench-fill.ts`),
+  // so nothing is claimed and the 👍 gate has nothing to gate here.
+  return t(c.lang).bench_promotion_how;
 }
 
 /** The bench line in the bot's day-one intro post. It is a promise about
@@ -219,8 +221,8 @@ export interface FullSquadBenchInviteCopy extends ReactionGate {
  * are wanted PRECISELY BECAUSE the squad is full, and MatchTime already
  * does the thing he was asking for: a late IN into a full squad is
  * written as a BENCH row by the capacity rule (`attendance.ts`,
- * `engine.ts`), a confirmed player dropping opens ONE BenchSlotOffer
- * broadcast to every bencher, and the first to claim it plays. The
+ * `engine.ts`), and a confirmed player dropping moves the first one on
+ * the bench up (since 2026-11-17, `bench-fill.ts`). The
  * recruit path's capacity guard simply could not see any of that, so it
  * refused the volunteers and the club lost its cover.
  *
@@ -232,11 +234,11 @@ export interface FullSquadBenchInviteCopy extends ReactionGate {
  *   "say *IN* and I'll put   `registerAttendance` with a full squad
  *    you on the bench"       writes BENCH, today, with no admin step.
  *   "if someone drops"       `cancelAttendance` →
- *                            `requestBenchConfirmationOnDrop`, which
- *                            opens the offer only when a bench exists.
- *   benchPromotionHow()      the claim instruction, shared with the
- *                            day-one promise and gated on what the
- *                            platform can actually receive.
+ *                            `requestBenchConfirmationOnDrop` →
+ *                            `fillOpenPlacesFromBench` (2026-11-17).
+ *   benchPromotionHow()      "the first on the bench moves up and I
+ *                            message them", shared with the day-one
+ *                            promise.
  *
  * ── WHY IT IS A GROUP REPLY AND NOT A DM BLAST ───────────────────────
  *
@@ -288,14 +290,13 @@ export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
  *
  *   "say *IN* and I'll put    `registerAttendance` writes BENCH when the
  *    you on the bench"        squad has no room, with no admin step.
- *   "If someone drops out     `cancelAttendance` →
- *    I tag the bench here"    `requestBenchConfirmationOnDrop` opens a
- *                             BenchSlotOffer, and the scheduler posts the
- *                             tag in the group (only with the feature on,
- *                             which is why the caller gates on it).
+ *   "If someone drops out,    `cancelAttendance` →
+ *    the first on the bench   `requestBenchConfirmationOnDrop` →
+ *    moves up and I message   `fillOpenPlacesFromBench` (2026-11-17; only
+ *    them"                    with the bench feature on, which is why the
+ *                             caller gates on it).
  *   benchPromotionHow()       shared with the day-one promise and the
- *                             recruit answer, gated on what the platform
- *                             can actually receive.
+ *                             recruit answer.
  *
  * "here" rather than "in the group": this line is only ever read in the
  * group. `buildFullSquadBenchInvite` also reaches an admin by DM.
@@ -362,4 +363,41 @@ export function buildBenchClaimAnnouncement(args: {
     });
   }
   return s.bench_claim_open({ claimer: args.claimerName, confirmed: args.confirmedCount, maxPlayers: args.maxPlayers });
+}
+
+/**
+ * ── THE BENCH MOVED SOMEBODY UP (2026-11-17, `bench-fill.ts`) ─────────
+ *
+ * A first-come club no longer asks the bench to race for a free place:
+ * the first player on the bench takes it. These are the two messages
+ * that say so, and neither contains a claim instruction.
+ *
+ * The group line. Three shapes, like `buildBenchClaimAnnouncement`: a
+ * team slot taken over (one player, a sheet), a named player replaced,
+ * or just who moved up. `squad` is null when the line leads the
+ * squad-complete post, whose header already prints the count.
+ */
+export function buildBenchMovedUpLine(args: {
+  /** A name prints bold; `{ tag }` prints a real WhatsApp tag "@<digits>"
+   *  (the BotJob carries the phone in `mentions`), for a player who will
+   *  not get his DM in time (`bench-fill.ts`). */
+  names: Array<string | { tag: string }>;
+  droppedName: string | null;
+  teamLabel: string | null;
+  squad: { confirmed: number; maxPlayers: number } | null;
+  lang?: Lang | string | null;
+}): string {
+  return t(args.lang).bench_moved_up({
+    names: joinList(args.lang, args.names.map((n) => (typeof n === "string" ? `*${n}*` : `@${n.tag}`))),
+    count: args.names.length,
+    dropped: args.droppedName,
+    teamLabel: args.teamLabel,
+    squad: args.squad,
+  });
+}
+
+/** The DM to the player who moved up: he is in, and replying OUT passes
+ *  the place on. `context` is `buildBenchOfferContext(...).plain`. */
+export function buildBenchMovedUpDm(args: { firstName: string; context: string; lang?: Lang | string | null }): string {
+  return t(args.lang).dm_bench_moved_up({ firstName: args.firstName, context: args.context });
 }

@@ -14,7 +14,7 @@
  */
 import { test, expect, resetDb } from "../fixtures";
 import { createGroup } from "./group";
-import { addMatchAvailabilityBodies, otherFacts } from "../helpers/stub";
+import { otherFacts } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
@@ -32,7 +32,7 @@ const squadWithBench = [
 ] as const;
 
 test.describe("a player's untagged \"Sorry, X is out\"", () => {
-  test("drops the teammate, frees the slot and offers it to the bench, as any OUT does", async ({
+  test("drops the teammate, and the first on the bench takes the slot, as after any OUT", async ({
     request,
     db,
   }) => {
@@ -49,16 +49,13 @@ test.describe("a player's untagged \"Sorry, X is out\"", () => {
     expect(r.react).toBe("👍");
     expect(await grp.dropped()).toContain("Pete Power");
     expect(await grp.confirmed()).not.toContain("Pete Power");
-    expect((await grp.counts()).confirmed).toBe(4);
     // The sender only reported it: he keeps his own place.
     expect((await grp.attendanceOf("dan"))?.status).toBe("CONFIRMED");
 
-    // The freed slot is offered to the bench, and the offer is claimable.
-    expect(await grp.openOffers()).toHaveLength(1);
-    addMatchAvailabilityBodies({ YES: "in" }); // the bench offer's YES, read by the model (stubbed)
-    const claim = await grp.dm("greg", "YES");
-    expect(claim.json.result).toBe("confirmed");
+    // The freed slot goes to the first on the bench (2026-11-17): no offer.
     expect((await grp.attendanceOf("greg"))?.status).toBe("CONFIRMED");
+    expect((await grp.counts()).confirmed).toBe(5);
+    expect(await grp.openOffers()).toEqual([]);
   });
 
   test("is the same write the tagged message makes", async ({ request, db }) => {
@@ -70,7 +67,8 @@ test.describe("a player's untagged \"Sorry, X is out\"", () => {
     });
     expect(r.react).toBe("👍");
     expect(await grp.dropped()).toContain("Pete Power");
-    expect(await grp.openOffers()).toHaveLength(1);
+    expect((await grp.attendanceOf("greg"))?.status).toBe("CONFIRMED");
+    expect(await grp.openOffers()).toEqual([]);
   });
 });
 

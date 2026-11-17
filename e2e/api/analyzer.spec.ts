@@ -126,7 +126,7 @@ test("IN on a full squad lands on the BENCH", async ({ request, db }) => {
   expect(await confirmedCount(db)).toBe(5); // capacity respected
 });
 
-test("a self OUT claim drops the sender and opens a bench-slot offer", async ({ request, db }) => {
+test("a self OUT claim drops the sender and the first one waiting on the bench moves up (2026-11-17)", async ({ request, db }) => {
   const id = msgId();
   engineOn({
     "Sorry lads, something came up tonight, count me out": {
@@ -143,12 +143,14 @@ test("a self OUT claim drops the sender and opens a bench-slot offer", async ({ 
   const att = await attendance(db, U.player);
   expect(att?.status).toBe("DROPPED");
 
-  // Slot freed + bench non-empty → an OPEN BenchSlotOffer for Pat's slot.
-  const offer = await db.one(
-    `SELECT * FROM "BenchSlotOffer" WHERE "matchId" = $1 AND "resolvedAt" IS NULL AND "replacingUserId" = $2`,
-    [MATCH.upcoming, U.player],
-  );
-  expect(offer).not.toBeNull();
+  // Slot freed + somebody waiting → no offer and no race: the first one
+  // waiting takes it. Zara (benched above because the squad was full)
+  // moves up; Ben chose the bench while a place was free, so he stays.
+  expect((await attendance(db, U.extra))?.status).toBe("CONFIRMED");
+  expect((await attendance(db, U.bench))?.status).toBe("BENCH");
+  expect(await confirmedCount(db)).toBe(5);
+  const offers = await db.all(`SELECT id FROM "BenchSlotOffer" WHERE "matchId" = $1 AND "resolvedAt" IS NULL`, [MATCH.upcoming]);
+  expect(offers).toEqual([]);
 });
 
 test("third-party BENCH demote: CONFIRMED → BENCH, slot freed, no duplicate", async ({ request, db }) => {

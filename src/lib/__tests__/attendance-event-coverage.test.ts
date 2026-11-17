@@ -110,6 +110,13 @@ vi.mock("../db", () => {
       rows().push(row);
       return { ...row };
     },
+    // cancelAttendance writes conditionally on the status it read (2026-11-17).
+    updateMany: async ({ where, data }: { where: { id: string; status?: string }; data: Record<string, unknown> }) => {
+      const found = rows().find((r) => r.id === where.id && (!where.status || r.status === where.status));
+      if (!found) return { count: 0 };
+      Object.assign(found, data);
+      return { count: 1 };
+    },
     update: async ({
       where,
       data,

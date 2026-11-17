@@ -613,11 +613,11 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     expect(deckCopy.filter((s) => named.test(s.text))).toEqual([]);
   });
 
-  it("never overclaims the bench: tagged, and the first to reply IN takes the place", () => {
+  it("says what the bench does (2026-11-17): the first on it moves up, OUT passes it on, no race", () => {
     const bench = cardCopy("bench").map((s) => s.text).join(" ");
-    expect(bench).toMatch(/tagged/i);
-    expect(bench).toMatch(/first to/i);
-    expect(bench).not.toMatch(/automatic/i);
+    expect(bench).toMatch(/first player on the bench moves up/i);
+    expect(bench).toMatch(/replies OUT and the next one moves up/);
+    expect(bench).not.toMatch(/tagged|first to claim/i);
   });
 
   it("the pool is asked with partner clubs when you ask, never by itself, and is opening town by town", () => {
@@ -639,6 +639,7 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
       "Just reply *IN* here to take it.",
       "No rush and no timeout,",
       "is in, replacing",
+      "up from the bench",
       "Objections? Tag me and say what to change, in your own words (for example @Match Time swap Sam with Alex), and an admin will confirm.",
       "a personal rating link. The more ratings we get, the better-balanced the",
       "You can also pay for anyone you brought along.",

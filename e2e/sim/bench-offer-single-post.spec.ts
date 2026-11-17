@@ -44,7 +44,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     setExtractorStub({ bodies: { [RAIHAN]: facts([claim({ polarity: "out" })]) } });
   }
 
-  test("THE INCIDENT: analyze says nothing about the slot; the offer post says it once, with the day", async ({
+  test("THE INCIDENT, since 2026-11-17: the bench moves up and the slot is announced once, with the day", async ({
     request,
     db,
   }) => {
@@ -61,46 +61,29 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     dropStub();
     const res = await g.postBatch([{ player: "pete", body: RAIHAN }]);
     expect((await g.attendanceOf("pete"))?.status).toBe("DROPPED");
-    expect(await g.counts()).toMatchObject({ confirmed: 6, bench: 1 });
-    expect(await g.openOffers()).toHaveLength(1);
+    // The first on the bench takes the place at once (bench-fill.ts): no
+    // offer, so no "first to claim" race for the scheduler to post.
+    expect((await g.attendanceOf("quinn"))?.status).toBe("CONFIRMED");
+    expect(await g.counts()).toMatchObject({ confirmed: 7, bench: 0 });
+    expect(await g.openOffers()).toEqual([]);
 
-    // The analyze side: the react on the message, and no sentence of its own.
+    // The analyze side: the react on the message, no sentence of its own,
+    // and ONE group post saying who moved up.
     expect(res.results[0].react).toBe("👋");
-    const analyzeAnnouncements = [
-      ...res.results.map((r) => r.reply ?? "").filter((t) => t.length > 0),
-      ...res.groupPosts,
-    ];
-    expect(analyzeAnnouncements).toEqual([]);
+    expect(res.results.map((r) => r.reply ?? "").filter((t) => t.length > 0)).toEqual([]);
+    expect(res.groupPosts).toHaveLength(1);
+    expect(res.groupPosts[0]).toContain("⬆️ *Quinn Quick* moves up from the bench, replacing *Pete Power*");
 
-    // The scheduler side, at 13:33 London today (inside the 09:00 to 22:59
-    // daytime gate), claiming as the Pi does.
+    // The scheduler side posts nothing about the slot.
     const tick = await g.duePosts(londonAt(0, 13, 33), { claim: true });
-    const groupFacing = tick.filter((i) => i.kind !== "dm" && /slot just opened/i.test(i.text ?? ""));
-    expect(groupFacing).toHaveLength(1);
-    const post = groupFacing[0];
-    expect(post.kind).toBe("bench-prompt");
-    expect(post.key).toMatch(/^offer-/);
-    expect(post.text).toContain(`@${g.player("quinn").phone!.replace(/^\+/, "")}`);
+    expect(tick.filter((i) => i.kind === "bench-prompt" || /slot just opened|first to claim/i.test(i.text ?? ""))).toEqual([]);
 
-    // Every slot announcement the group saw, from both paths together.
-    expect([...analyzeAnnouncements, ...groupFacing.map((i) => i.text)]).toHaveLength(1);
-
-    // It names the day, never "tonight", for a match three days out.
+    // His DM names the day, never "tonight", for a match three days out.
     const day = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short" })
       .format(kickoff)
       .replace(",", "");
-    expect(post.text).not.toMatch(/tonight/i);
-    expect(post.text).toContain(`on ${day}.`);
-
-    // The DM to the bench is kept, once, and names the day too.
-    const dms = tick.filter((i) => i.kind === "dm" && (i.key ?? "").startsWith(`${post.key}:dm:`));
-    expect(dms).toHaveLength(1);
-    expect(dms[0].targetUser).toBe(g.player("quinn").userId);
-    expect(dms[0].text).not.toMatch(/tonight/i);
-    expect(dms[0].text).toContain(`on ${day}`);
-
-    // A second tick sends nothing again.
-    const again = await g.duePosts(londonAt(0, 13, 34), { claim: true });
-    expect(again.filter((i) => (i.key ?? "").startsWith("offer-"))).toEqual([]);
+    expect(res.dms).toHaveLength(1);
+    expect(res.dms[0].text).not.toMatch(/tonight/i);
+    expect(res.dms[0].text).toContain(`on ${day}`);
   });
 });

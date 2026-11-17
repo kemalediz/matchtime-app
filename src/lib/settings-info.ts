@@ -337,11 +337,11 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Bench management",
       what: [
         "When the squad is full, anyone else who says IN goes on the bench. That happens whatever this switch says.",
-        "This switch controls the bench messages. When a place opens, MatchTime tags the bench in the group and the first to say IN takes the place. Squad updates also say that the bench is open, and a new player who asks to join a full squad is invited onto the bench.",
+        "This switch controls the bench messages. When a place opens, the first player on the bench moves up straight away: MatchTime tells the group who moved up and sends him a private message. If he can't make it he replies OUT and the next one moves up. Squad updates also say that the bench is open, and a new player who asks to join a full squad is invited onto the bench.",
       ],
-      example: "🎟 A slot just opened for Tuesday's game. *First to claim it plays.*\n\n@Ali @Bilal\n\nJust reply *IN* here to take it.",
+      example: "⬆️ *Ali* moves up from the bench, replacing *Sam*. Squad *14/14* 🙌",
       choices: [
-        { name: ON.en, text: "MatchTime tells the bench in the group when a place opens." },
+        { name: ON.en, text: "When a place opens, the first player on the bench moves up and MatchTime tells him and the group." },
         {
           name: OFF.en,
           text: "No bench messages in the group. The bench still fills up, and anyone who says IN while a place is free still takes it.",
@@ -358,11 +358,11 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Yedek listesi",
       what: [
         "Kadro dolunca VARIM diyen diğer herkes yedek listesine girer. Bu, düğme ne derse desin olur.",
-        "Bu düğme yedek listesi mesajlarını yönetir. Bir yer açılınca MatchTime grupta yedekleri etiketler ve ilk VARIM diyen yeri alır. Kadro güncellemeleri de yedek listesinin açık olduğunu söyler ve dolu bir kadroya katılmak isteyen yeni oyuncu yedek listesine davet edilir.",
+        "Bu düğme yedek listesi mesajlarını yönetir. Bir yer açılınca yedekteki ilk oyuncu hemen kadroya geçer: MatchTime gruba kimin geçtiğini söyler ve ona özel mesaj atar. Gelemeyecekse YOKUM yazar, sıradaki kadroya geçer. Kadro güncellemeleri de yedek listesinin açık olduğunu söyler ve dolu bir kadroya katılmak isteyen yeni oyuncu yedek listesine davet edilir.",
       ],
-      example: "🎟 Bir yer açıldı: salı maçı. *İlk sahiplenen oynar.*\n\n@Ali @Bilal\n\nAlmak için buraya *VARIM* yazmanız yeterli.",
+      example: "⬆️ *Ali* yedekten kadroya geçti, *Sam* yerine oynuyor, kadro *14/14* 🙌",
       choices: [
-        { name: ON.tr, text: "Bir yer açılınca MatchTime grupta yedeklere haber verir." },
+        { name: ON.tr, text: "Bir yer açılınca yedekteki ilk oyuncu kadroya geçer, MatchTime ona ve gruba haber verir." },
         {
           name: OFF.tr,
           text: "Grupta yedek listesi mesajı yok. Yedek listesi yine dolar ve yer boşken VARIM diyen yine yeri alır.",
@@ -868,14 +868,14 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Who fills an open place",
       what: ["Decides who gets a place when one opens in a full squad, for example when a player says OUT."],
       choices: [
-        { name: "First to say IN", text: "MatchTime offers the place to the bench and the first player to say IN takes it." },
+        { name: "First on the bench", text: "The first player on the bench takes the place straight away, and MatchTime lets him and the group know. If he can't make it he replies OUT and the next one moves up." },
         {
           name: "The organisers pick",
           text: "MatchTime never fills a place by itself. Anyone who says IN goes on the bench. Your admin messages list the bench with positions and club ratings, and the first admin to reply with a number, a name or an @tag brings that player in. MatchTime then lets the player know by private message.",
         },
       ],
       example: "Bench:\n1. Ali (midfield, 6.8)\n2. Bilal (new)\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open.",
-      newClubs: "First to say IN. MatchTime never switches this from your group chat; it can only suggest it.",
+      newClubs: "First on the bench. MatchTime never switches this from your group chat; it can only suggest it.",
       suits: "The organisers pick suits clubs where the organisers choose who plays, to keep the sides fair or to give regulars first call.",
       together: [
         "Admin messages go to decides where the bench list is sent.",
@@ -887,14 +887,14 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Boşalan yeri kim doldurur",
       what: ["Dolu bir kadroda bir yer açıldığında, örneğin bir oyuncu YOKUM dediğinde, yeri kimin alacağını belirler."],
       choices: [
-        { name: "İlk VARIM diyen", text: "MatchTime yeri yedek listesine sunar ve ilk VARIM diyen oyuncu alır." },
+        { name: "Yedekteki ilk kişi", text: "Yedekteki ilk oyuncu yeri hemen alır, MatchTime ona ve gruba haber verir. Gelemeyecekse YOKUM yazar, sıradaki kadroya geçer." },
         {
           name: "Organizatörler seçer",
           text: "MatchTime hiçbir yeri kendisi doldurmaz. VARIM diyen herkes yedek listesine girer. Yönetici mesajlarınız yedek listesini mevkiler ve kulüp puanlarıyla gösterir; numara, isim ya da @etiketle ilk yanıt veren yöneticinin seçtiği oyuncu kadroya girer. MatchTime sonra oyuncuya özel mesajla haber verir.",
         },
       ],
       example: "Yedekler:\n1. Ali (orta saha, 6.8)\n2. Bilal (yeni)\nBeni etiketleyip numara, isim ya da @etiket yazın, örneğin *@Match Time 2*, iki kişi için *@Match Time 2 3*. *@Match Time HİÇBİRİ* yazarsanız yer boş kalır.",
-      newClubs: "İlk VARIM diyen. MatchTime bunu grup sohbetinize bakarak hiçbir zaman değiştirmez; yalnızca önerebilir.",
+      newClubs: "Yedekteki ilk kişi. MatchTime bunu grup sohbetinize bakarak hiçbir zaman değiştirmez; yalnızca önerebilir.",
       suits: "Organizatörler seçer; takımları dengeli tutmak ya da daimi oyunculara öncelik vermek için kimin oynayacağını organizatörlerin seçtiği kulüplere uygundur.",
       together: [
         "Yedek listesinin nereye gideceğini Yönetici mesajları ayarı belirler.",

@@ -9,6 +9,7 @@ import { requireOrgAdmin } from "@/lib/org";
 import { normalisePhone } from "@/lib/phone";
 import { mergePlayersCore } from "@/lib/merge-players-core";
 import { recordAttendanceEvent } from "@/lib/attendance-events";
+import { lockTeamSlots } from "@/lib/team-slot-fill";
 import { findExistingOrgMember } from "@/lib/resolve-player";
 import {
   isClubOwnedUser,
@@ -1093,7 +1094,14 @@ async function ensureMembership(userId: string, orgId: string) {
 }
 
 export type AddToMatchResult =
-  | { ok: true; userId: string; created: boolean; ratingDmSent: boolean }
+  | {
+      ok: true;
+      userId: string;
+      created: boolean;
+      ratingDmSent: boolean;
+      /** Asked for the squad, but it was full: he is on the bench. */
+      benchedFull?: boolean;
+    }
   | { ok: false; error: string };
 
 export async function addPlayerToMatch(
@@ -1125,22 +1133,41 @@ export async function addPlayerToMatch(
   if (!resolved.ok) return resolved;
   const userId = resolved.userId;
 
-  // Append at the end of the chosen status group.
-  const last = await db.attendance.findFirst({
-    where: { matchId, status },
-    orderBy: { position: "desc" },
-    select: { position: true },
-  });
   const priorRow = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
     select: { status: true, position: true },
   });
-  // Same transaction as the record of it — see lib/attendance-events.ts.
+  // CAPACITY (review of #622): an upcoming match's squad is never filled
+  // past its places from this page. Asked for the squad when it is full,
+  // he goes on the bench and the page says so. A match already played is
+  // not capped: the organiser is recording who actually turned out.
+  const upcoming = (["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as string[]).includes(match.status) && match.date.getTime() > Date.now();
+  let written: "CONFIRMED" | "BENCH" = status;
+  // Same transaction as the record of it — see lib/attendance-events.ts —
+  // and under the match's squad lock, so the count cannot race a fill.
   await db.$transaction(async (tx) => {
+    if (upcoming) await lockTeamSlots(tx, matchId);
+    if (status === "CONFIRMED" && upcoming && priorRow?.status !== "CONFIRMED") {
+      const [confirmedNow, cap] = await Promise.all([
+        tx.attendance.count({ where: { matchId, status: "CONFIRMED" } }),
+        tx.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true } }),
+      ]);
+      if (cap && confirmedNow >= cap.maxPlayers) written = "BENCH";
+    }
+    // Append at the end of the chosen status group.
+    const last = await tx.attendance.findFirst({
+      where: { matchId, status: written },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    });
+    // "Add to bench instead" ticked: on the bench BY CHOICE, so the bench
+    // fill never moves him up by itself. Benched for want of room: an
+    // ordinary reserve, first in line in his turn.
+    const benchByChoice = status === "BENCH";
     const row = await tx.attendance.upsert({
       where: { matchId_userId: { matchId, userId } },
-      update: { status, position: (last?.position ?? 0) + 1 },
-      create: { matchId, userId, status, position: (last?.position ?? 0) + 1 },
+      update: { status: written, position: (last?.position ?? 0) + 1, benchByChoice },
+      create: { matchId, userId, status: written, position: (last?.position ?? 0) + 1, benchByChoice },
     });
     await recordAttendanceEvent(
       tx,
@@ -1169,7 +1196,7 @@ export async function addPlayerToMatch(
   const endedAt = new Date(match.date.getTime() + match.activity.matchDurationMins * 60 * 1000);
   // A cancelled match never happened (2026-10-28): nothing to rate.
   const hasHappened = match.status !== "CANCELLED" && (match.status === "COMPLETED" || new Date() >= endedAt);
-  if (status === "CONFIRMED" && hasHappened) {
+  if (written === "CONFIRMED" && hasHappened) {
     const { getOrgFeatures } = await import("@/lib/org-features");
     const features = await getOrgFeatures(orgId);
     const rateKey = `${matchId}:rate-dm:${userId}`;
@@ -1212,7 +1239,7 @@ export async function addPlayerToMatch(
 
   revalidatePath(`/matches/${matchId}`);
   revalidatePath("/admin/players");
-  return { ok: true, userId, created: resolved.created, ratingDmSent };
+  return { ok: true, userId, created: resolved.created, ratingDmSent, ...(written !== status ? { benchedFull: true } : {}) };
 }
 
 /** Remove a player from a match's squad (e.g. added by mistake). Deletes
@@ -1270,6 +1297,13 @@ export async function removePlayerFromMatch(matchId: string, userId: string): Pr
       console.error("[players] partner guest check failed:", err instanceof Error ? err.message : "failed");
     }
   }
+  // A playing place opened. NOT filled here (review of #622): an organiser
+  // removing one player on this page is often about to add another in his
+  // place, and filling at once would give that place to the first one on
+  // the bench and push the organiser's pick onto it. The scheduler's
+  // safety net (`sweepBenchFill`) fills it on its next poll once the match
+  // has been quiet for two minutes (`SWEEP_GRACE_MS`), with the same DM and
+  // group line as after any drop.
   revalidatePath(`/matches/${matchId}`);
   return { ok: true };
 }

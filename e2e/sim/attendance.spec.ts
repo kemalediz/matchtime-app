@@ -126,14 +126,15 @@ test.describe("capacity lifecycle", () => {
     expect((await grp.counts()).confirmed).toBe(8); // capacity respected
   });
 
-  test("OUT → DROPPED + an open BenchSlotOffer for the freed slot", async ({ request, db }) => {
+  test("OUT → DROPPED, and the first on the bench takes the freed slot (2026-11-17), no offer", async ({ request, db }) => {
     const grp = await group(request, db);
     const r = await grp.post("pete", "out", OUT);
     expect(r.react).toBe("👋");
     expect(await grp.dropped()).toContain("Pete Power");
-    const offers = await grp.openOffers();
-    expect(offers).toHaveLength(1);
-    expect(offers[0].replacingUserId).toBe(grp.player("pete").userId);
+    expect(await grp.bench()).toEqual([]);
+    expect(await grp.confirmed()).toContain("Ivan Ice");
+    expect((await grp.counts()).confirmed).toBe(8);
+    expect(await grp.openOffers()).toEqual([]);
   });
   // "bencher claims the slot in-group" answered a PendingBenchConfirmation
   // with a yes/no word list (`bench-prompt-answer.ts`). Deleted 2026-10-30:
@@ -273,6 +274,21 @@ test.describe("third-party drops", () => {
 });
 
 // ── D. bench-offer claims: DM race + reactions ──────────────────────────
+//
+// Since 2026-11-17 a first-come club's drop moves the bench up and opens
+// no offer (`bench-fill.ts`). An offer is now only an organiser-pick
+// club's fallback (`organiser-pick.ts`), so these claim lifecycles run in
+// such a club, with the fallback's offer opened as it would open it.
+
+async function organiserPicks(grp: SimGroup): Promise<void> {
+  await grp.db.run(`UPDATE "Organisation" SET "benchPickMode" = 'organiser' WHERE id = $1`, [grp.orgId]);
+}
+async function fallbackOffer(grp: SimGroup, vacatedBy: string): Promise<void> {
+  await grp.db.run(
+    `INSERT INTO "BenchSlotOffer" (id, "matchId", "replacingUserId", "createdAt", "updatedAt") VALUES ($1, $2, $3, now(), now())`,
+    [`sim-fallback-${vacatedBy}-${grp.matchId}`, grp.matchId, grp.player(vacatedBy).userId],
+  );
+}
 
 test.describe("bench-offer claim lifecycle", () => {
   let g: SimGroup;
@@ -292,7 +308,9 @@ test.describe("bench-offer claim lifecycle", () => {
 
   test('drop → offer → first bencher DMs "YES" → promoted + ack + group announce', async ({ request, db }) => {
     const grp = await group(request, db);
+    await organiserPicks(grp);
     await grp.post("pete", "out", OUT);
+    await fallbackOffer(grp, "pete");
     expect(await grp.openOffers()).toHaveLength(1);
 
     addMatchAvailabilityBodies({ YES: "in" }); // the bench offer's YES, read by the model (stubbed)
@@ -320,6 +338,7 @@ test.describe("bench-offer claim lifecycle", () => {
   test("next drop → 👎 reaction is a no-op, 👍 reaction claims the slot", async ({ request, db }) => {
     const grp = await group(request, db);
     await grp.post("dan", "out", OUT);
+    await fallbackOffer(grp, "dan");
     const offers = await grp.openOffers();
     expect(offers).toHaveLength(1);
     // Simulate the Pi ACKing the posted offer message id.
@@ -367,8 +386,11 @@ test.describe("self-promotion resolves the open bench offer", () => {
   test('drop → open offer → benched "IN" self-promotes AND closes the offer', async ({ request, db }) => {
     const grp = await group(request, db);
 
-    // Confirmed player drops → a slot frees up + an open offer is created.
+    // Confirmed player drops → a slot frees up + the organisers' fallback
+    // offer is open (since 2026-11-17 a first-come club opens none).
+    await organiserPicks(grp);
     await grp.post("pete", "out", OUT);
+    await fallbackOffer(grp, "pete");
     const offers = await grp.openOffers();
     expect(offers).toHaveLength(1);
     const offerId = offers[0].id;
@@ -583,8 +605,12 @@ test.describe("off-list joiner taking the last slot closes the open offer", () =
   }) => {
     const grp = await group(request, db);
 
-    // A confirmed player drops → a slot frees up + an open offer is created.
+    // A confirmed player drops → a slot frees up + the organisers' fallback
+    // offer is open (since 2026-11-17 the only kind of offer; a first-come
+    // club moves the bench up instead).
+    await organiserPicks(grp);
     await grp.post("pete", "out", OUT);
+    await fallbackOffer(grp, "pete");
     const offers = await grp.openOffers();
     expect(offers).toHaveLength(1);
     const offerId = offers[0].id;
@@ -633,6 +659,7 @@ test.describe("off-list joiner taking the last slot closes the open offer", () =
     // the bench.
     await grp.post("owner", "out", OUT);
     await grp.post("alice", "out", OUT);
+    await fallbackOffer(grp, "owner");
     expect((await grp.counts()).confirmed).toBe(3); // 3/5 — two slots open
     const openBefore = await grp.openOffers();
     expect(openBefore.length).toBeGreaterThanOrEqual(1);
@@ -647,8 +674,11 @@ test.describe("off-list joiner taking the last slot closes the open offer", () =
 });
 
 test.describe("unrelated non-admin cannot promote a bench player into the squad", () => {
-  // Test B (now the UNRELATED-THIRD-PARTY case) — NEGATIVE. A genuinely
-  // free slot exists (4/5), so the ONLY thing preventing promotion is
+  // Test B (now the UNRELATED-THIRD-PARTY case) — NEGATIVE. Since
+  // 2026-11-17 a place that opens goes to the FIRST on the bench
+  // (`bench-fill.ts`), so the world is a full squad with Salman first on
+  // the bench and Aydın second: if Bilal could pick, Aydın would play;
+  // he cannot, so Salman does. The ONLY thing deciding it is
   // authorisation. Bilal is neither an admin NOR the player being
   // dropped — he nominates SOMEONE ELSE'S replacement: "replace Ehtisham
   // with Aydın". Aydın must STAY on the bench. (Contrast Test G above,
@@ -664,7 +694,9 @@ test.describe("unrelated non-admin cannot promote a bench player into the squad"
         { key: "owner", status: "CONFIRMED" },
         { key: "alice", status: "CONFIRMED" },
         { key: "pete", status: "CONFIRMED" },
-        { key: "ehtisham", status: "CONFIRMED" }, // 4/5 — one slot genuinely free
+        { key: "dan", status: "CONFIRMED" },
+        { key: "ehtisham", status: "CONFIRMED" }, // 5/5
+        { key: "salman", status: "BENCH" },
         { key: "aydin", status: "BENCH" },
       ],
     })).attach(request);
@@ -697,5 +729,9 @@ test.describe("unrelated non-admin cannot promote a bench player into the squad"
     expect((await grp.attendanceOf("aydin"))?.status).toBe("BENCH");
     expect(await grp.bench()).toContain("Aydın Arslan");
     expect(await grp.confirmed()).not.toContain("Aydın Arslan");
+    // Whatever happened to Ehtisham, nobody jumped the bench order.
+    if ((await grp.attendanceOf("ehtisham"))?.status === "DROPPED") {
+      expect((await grp.attendanceOf("salman"))?.status).toBe("CONFIRMED");
+    }
   });
 });
