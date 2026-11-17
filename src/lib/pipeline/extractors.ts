@@ -201,6 +201,17 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * is unchanged in meaning. 21,516 to 23,859 characters. Old and new side by
  * side in PR #623; the paid check is the manager's.
  *
+ * The paid check found one regression (2026-11-17): HQ's "no, not Bilal",
+ * answering MatchTime's "Make Bilal Ahmed free for Fri 16 Oct? Reply YES.",
+ * came back fee_waiver for Bilal. Main had never said how a no to
+ * MatchTime's own question reads, and passed by default (12 of 12 on the
+ * dev key); open_squad inserted into main's order failed 3 of 12, the
+ * rewrite 6 of 16. Now said once, where the context is explained: a short
+ * answer takes the question's action only when it agrees or picks; a no or
+ * a change of mind asks for nothing ("other"), with one example among the
+ * free places (a held-out wording, not the check's). 12 of 12, and 5 runs of
+ * scripts/live-check-free-places.ts. 23,859 to 24,238 characters.
+ *
  * The TEAMS extractor, 2026-11-10 (Sutton FC, "@Match Time reduce my
  * strength for this match as I am quite tired." went to the settings
  * page): one action, `form`, defined once beside the others (how a player
@@ -800,7 +811,7 @@ The latest game or an earlier one:
 
   admin: `You read ONE message from a football club's chat (the organisers' group, the players' group, or a private message to the bot) and report what it asks MatchTime, the club's bot, to do, and whether it is spoken to MatchTime at all. You report the words; code decides what happens. Messages are English or Turkish, often mixed.
 
-THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club), GAMES TO COME (the club's games still to be played, numbered, soonest first) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, which game is meant, and what a short answer answers. The action and every field come from THE MESSAGE.
+THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club), GAMES TO COME (the club's games still to be played, numbered, soonest first) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, which game is meant, and what a short answer answers. A short answer to MatchTime's own question takes that question's action only when it agrees or picks one of the options offered; a no or a change of mind ("no, leave it", "hold on, not him", "hayır, kalsın") asks for nothing and is "other", unless it asks for something else instead. The action and every field come from THE MESSAGE.
 
 ONE GAME, OR THE CLUB FROM NOW ON. Some actions change one game; others change how the club runs every week. A message about one game ("tonight", "this week", "on Monday", "for Friday's game") never changes a club setting. A club setting needs a standing intent: "from now on", "every week", "for this group", or a rule said with no game named.
 
@@ -934,6 +945,7 @@ Free places in a game, and payments:
   "Bilal bu akşam ücretsiz oynasın" -> fee_waiver, coveredRefs ["Bilal"], matchDay "bu akşam"
   "scrap that, Tom isn't free, he pays" / "Ali ücretsiz değil, ödesin" -> fee_waiver, coveredRefs ["Tom"] / ["Ali"], undo true
   "should Bilal play free?" -> other, toMatchTime false
+  "no, leave it" / "hayır, kalsın", answering MatchTime's "Make Tom free for Friday?" -> other
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
 A month or more off, or back (NOW is October 2026 here):

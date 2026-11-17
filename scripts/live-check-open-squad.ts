@@ -209,8 +209,10 @@ const OPEN_OFF = action("open_squad", (f) => f?.openSquadOff === true);
 /** Not switching the setting, and the action it should be. */
 const notToggle = (inner: Check): Check => (f) => f?.action !== "open_squad" && inner(f);
 const OTHER: Check = (f) => f?.action === "other";
-/** Talk among people: other, or anything not meant for MatchTime. */
-const CHAT: Check = (f) => f?.action === "other" || f?.toMatchTime === false;
+/** Talk among people: other, or anything not meant for MatchTime. The parse
+ *  keeps toMatchTime only when true (`parseFacts`), so false is its absence. */
+const NOT_TO_MT: Check = (f) => f?.toMatchTime !== true;
+const CHAT: Check = (f) => f?.action === "other" || NOT_TO_MT(f);
 const range = (want: { min?: number; max?: number; full?: boolean; day?: RegExp }): Check =>
   action("player_numbers", (f) => {
     const w = playerRangeWordsOf(f!);
@@ -231,7 +233,7 @@ const answer = (want: string): Check => (f) => (sourcesFromAnswer(f)?.join("+") 
 /** What came back, printed beside the verdict. */
 function shown(f: AdminFacts | null): string {
   if (!f) return "no admin facts";
-  const keep: Record<string, unknown> = { action: f.action, toMatchTime: f.toMatchTime };
+  const keep: Record<string, unknown> = { action: f.action, toMatchTime: f.toMatchTime === true };
   for (const k of [
     "openSquadOff", "minPlayers", "maxPlayers", "fullTeams", "size", "aSide", "matchDay", "pastGame", "game", "newDay", "newTime", "everyWeek",
     "coveredRefs", "payerRef", "count", "undo", "phrase", "remindAt", "note", "partnerClubs", "clubRef", "pool", "ownClub", "sourceUnsaid",
@@ -320,7 +322,7 @@ const CASES: Case[] = [
   { group: "C", club: FNF, where: "HQ", text: "@Match Time find me players from partner clubs and the player pool", routes: HQ_ASK, want: recruit((f) => f?.partnerClubs === true && f.pool === true), expect: "recruit, partners and pool", why: "both, named" },
   { group: "C", club: FNF, where: "ANSWER", text: "both", question: OFFER, routes: "any", want: answer("partners+pool"), expect: "partners+pool", why: "both, answering the nobody-left offer" },
   { group: "C", club: FNF, where: "ANSWER", text: "all of them", question: Q_GROUP, routes: "any", want: answer("club+partners+pool"), expect: "club+partners+pool", why: "all, answering where to look" },
-  { group: "C", club: FNF, where: "HQ", text: "@Kemal can we ask Sutton group?", routes: "any", want: (f) => f?.toMatchTime === false || f?.action === "other", expect: "toMatchTime false (nothing asked)", why: "asks a person" },
+  { group: "C", club: FNF, where: "HQ", text: "@Kemal can we ask Sutton group?", routes: "any", want: (f) => NOT_TO_MT(f) || f?.action === "other", expect: "toMatchTime false (nothing asked)", why: "asks a person" },
   { group: "C", club: FNF, where: "PG", text: "@Match Time turn off quiet hours now", routes: OPS, want: action("quiet_hours", (f) => f?.quietOff === true), expect: "quiet_hours, off", why: "quiet hours" },
   { group: "C", club: FNF, where: "HQ", text: "@Match Time no football in December", routes: OPS, want: action("season_break", (f) => (f?.breakMonths ?? []).join(",") === "2026-12"), expect: "season_break 2026-12", why: "a break" },
   { group: "C", club: FNF, where: "HQ", text: "@Match Time our pitch is Goals Sutton", routes: OPS, want: action("set_venue", (f) => /goals sutton/i.test(f?.venueName ?? "")), expect: "set_venue Goals Sutton", why: "the pitch" },

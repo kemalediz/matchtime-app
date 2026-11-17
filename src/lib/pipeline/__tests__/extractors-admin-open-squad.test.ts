@@ -43,6 +43,19 @@ describe("the admin prompt", () => {
     expect(P).toContain('"@Match Time put the limit and the bench back" / "@Match Time kadro sınırını ve yedekleri geri getir" -> open_squad, openSquadOff true');
   });
 
+  // The paid check of #623: "no, not Bilal", answering MatchTime's "Make
+  // Bilal Ahmed free for Fri 16 Oct? Reply YES.", came back fee_waiver for
+  // Bilal in 6 of 16 runs. Main never said how a no to MatchTime's own
+  // question reads; it now does, once, where the context is explained.
+  it("says once that a no to MatchTime's own question asks for nothing, with an example", () => {
+    const rule =
+      "A short answer to MatchTime's own question takes that question's action only when it agrees or picks one of the options offered; " +
+      'a no or a change of mind ("no, leave it", "hold on, not him", "hayır, kalsın") asks for nothing and is "other", unless it asks for something else instead.';
+    expect(count(rule)).toBe(1);
+    expect(P.indexOf(rule)).toBeLessThan(P.indexOf("THE ACTION, exactly one."));
+    expect(P).toContain('"no, leave it" / "hayır, kalsın", answering MatchTime\'s "Make Tom free for Friday?" -> other');
+  });
+
   it("defines every action the schema allows, each once", () => {
     for (const a of ["recruit", "cancel_match", "restore_match", "switch_format", "move_game", "fee_waiver", "season_break", "set_venue", "quiet_hours", "player_numbers", "open_squad", "retry_ask", "bulk_payment", "reminder", "stats_blast", "other"]) {
       expect(count(`  "${a}" `), a).toBe(1);
