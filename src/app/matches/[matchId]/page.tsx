@@ -60,7 +60,7 @@ export default async function MatchDetailPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { name: true, teamLabels: true, language: true, momChosenBy: true, featurePlayerPool: true } } } },
+      activity: { include: { sport: true, org: { select: { name: true, teamLabels: true, language: true, momChosenBy: true, featurePlayerPool: true, openSquad: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -577,7 +577,7 @@ export default async function MatchDetailPage({
           <h2 className="text-lg font-semibold text-slate-800">Attendance</h2>
         </div>
         <div className="p-6 space-y-4">
-          {isAdmin && <AddPlayerToMatch matchId={matchId} existingPlayers={addablePlayers} />}
+          {isAdmin && <AddPlayerToMatch matchId={matchId} existingPlayers={addablePlayers} noBench={match.activity.org.openSquad === true} />}
           {carryOverSource && (
             <CarryOverSquadButton
               matchId={matchId}
