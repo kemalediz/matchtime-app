@@ -835,6 +835,31 @@ describe("put together, or on a side, on teams that exist: a targeted change", (
   });
 });
 
+describe("kept apart (2026-11-16, the Vets: 'put Dan and Craig in separate teams')", () => {
+  it("new teams: the generator is told to split them", async () => {
+    seedSheet();
+    await run({ kind: "reshuffle", sides: [], together: [], apart: [["Ali", "Bilal"]] });
+    expect(generate).toHaveBeenCalledWith(MATCH, { apart: [["u-ali", "u-bilal"]] });
+  });
+
+  it("on the teams as they stand: one swap splits them, the sides stay even, and it says so", async () => {
+    seedSheet();
+    const r = await run(change({ apart: [["Ali", "Bilal"]] }));
+    expect(generate).not.toHaveBeenCalled();
+    expect(r.outcome).toBe("teams-changed");
+    expect(teamOf("u-ali")).not.toBe(teamOf("u-bilal"));
+    expect(store.tables.teamAssignment.filter((x) => x.team === "RED").length).toBe(2);
+    expect(r.replyText).toMatch(/Bilal Ahmed are on different teams\./);
+  });
+
+  it("already apart: nothing written, and it says they are", async () => {
+    seedSheet();
+    const r = await run(change({ apart: [["Ali", "Tom"]] }));
+    expect(r.outcome).toBe("teams-unchanged");
+    expect(r.replyText).toMatch(/Tom Third are on different teams\./);
+  });
+});
+
 describe("'Recommend swaps'", () => {
   // Red: Ali 9, Bilal 7. Yellow: Tom 5, Shehryar 3. Swapping Ali and Tom gives 12 v 12.
   const R: Record<string, number> = { "u-ali": 9, "u-bilal": 7, "u-tom": 5, "u-sheh": 3 };

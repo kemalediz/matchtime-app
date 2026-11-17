@@ -337,7 +337,8 @@ describe("parseFacts (other routes)", () => {
     expect(p).toMatch(/"swap everyone on bibs with non bibs"[^\n]*-> swap, swapSides true/);
     expect(p).toMatch(/"swap Rafi and Yorel, Mo and Akram"[^\n]*moves \["Rafi","Yorel","Mo","Akram"\]/);
     expect(p).toMatch(/"recommend swaps"[^\n]*-> suggest/);
-    expect(p).toMatch(/"make the teams and put me and David on the same team" -> generate, pairings/);
+    // 2026-11-16: the Turkish form sits beside it.
+    expect(p).toMatch(/"make the teams and put me and David on the same team"[^\n]*-> generate, pairings/);
   });
 
   // ── 2026-11-10: a form note carries who and how much ─────────────────

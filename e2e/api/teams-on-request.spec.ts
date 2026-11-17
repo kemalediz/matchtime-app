@@ -17,7 +17,8 @@
  *   • whether a message asks for teams is the teams extractor's reading
  *     (2026-10-30, no word test): the joke read as people put together
  *     (`swap` with a pairing, what the rewritten prompt gives) builds
- *     nothing and gets one line;
+ *     nothing; with no teams yet it is told to say it with the build
+ *     (2026-11-16, team-swap-apply.ts "keep");
  *   • on match day "generate the teams" builds, and asking again
  *     replaces the sheet.
  *
@@ -119,7 +120,9 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
     expect(await teamRows(db)).toBe(0);
     expect(await matchStatus(db)).toBe("UPCOMING");
     const r = resultFor(res, id);
-    expect(r.reply).toBe("Sorry, I can't do that one yet.");
+    // Since 2026-11-16 people put together are a change to the teams as
+    // they stand ("keep"); with no teams it says how to ask, and stores nothing.
+    expect(r.reply).toMatch(/^The teams aren't made yet\. When you ask for them, say who to keep together or apart/);
     expect(r.intent).not.toBe("generate_teams_request");
   });
 
@@ -132,7 +135,7 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
     ]);
     expect(await teamRows(db)).toBe(0);
     expect(await matchStatus(db)).toBe("UPCOMING");
-    expect(resultFor(res, id).reply).toBe("Sorry, I can't do that one yet.");
+    expect(resultFor(res, id).reply).toMatch(/^The teams aren't made yet\./);
   });
 
   test("'generate the teams' before match day gets the polite reply and builds nothing", async ({

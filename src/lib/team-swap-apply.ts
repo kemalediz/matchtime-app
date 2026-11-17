@@ -16,9 +16,13 @@
  *                   exchange sides; a confirmed player with no slot takes
  *                   the slot of a holder who is no longer playing; anything
  *                   else is refused with the reason.
+ *   keep            people kept together and/or apart (2026-11-16, the
+ *                   Vets: "keep Dan and Craig apart"): the fewest swaps that
+ *                   meet them, by rating (`decideKeepChange`,
+ *                   team-constraints.ts); what cannot be met is said.
  *
- * Any other change (one name, a named side, a pairing, three or more
- * names) is "unsupported": one line, nothing written, as before.
+ * Any other change (one name, a named side, three or more names, a mix of
+ * these with a group) is "unsupported": one line, nothing written.
  *
  * It writes TeamAssignment and nothing else: never attendance, never the
  * balancer.
@@ -35,6 +39,9 @@ import {
   teamSheetNames,
 } from "./group-copy";
 import { planSwap, type SwapCandidate } from "./team-slot-swap";
+import { decideKeepChange } from "./team-constraints";
+import { matchRatingsFor } from "./team-generation";
+import { DEFAULT_SEED_RATING } from "./default-seed";
 import type { PersonPicks } from "./pipeline/who-is-who";
 import { t } from "./i18n/t";
 import { loadPlayerNames } from "./player-display-name";
@@ -44,19 +51,28 @@ export interface PlayersSwapFacts {
   moves?: string[];
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
   pairings?: string[][];
+  apart?: string[][];
   swapSides?: boolean;
 }
 
 export type PlayersSwapShape =
   | { kind: "swap-sides" }
   | { kind: "two-players"; a: string; b: string }
+  /** People kept together and/or apart on the teams as they stand
+   *  (2026-11-16): the fewest swaps that meet them (`decideKeepChange`). */
+  | { kind: "keep"; together: string[][]; apart: string[][] }
   | { kind: "unsupported" };
 
 /** PURE. Which of the supported changes the facts ask for. */
 export function playersSwapShape(facts: PlayersSwapFacts): PlayersSwapShape {
   if (facts.swapSides === true) return { kind: "swap-sides" };
   const moves = (facts.moves ?? []).map((m) => m.trim()).filter(Boolean);
-  const named = facts.swaps.length > 0 || (facts.pairings ?? []).some((g) => g.length > 0);
+  const groups = (gs: string[][] | undefined) => (gs ?? []).map((g) => g.map((n) => n.trim()).filter(Boolean)).filter((g) => g.length >= 2);
+  const together = groups(facts.pairings);
+  const apart = groups(facts.apart);
+  const grouped = together.length > 0 || apart.length > 0;
+  if (facts.swaps.length === 0 && moves.length === 0 && grouped) return { kind: "keep", together, apart };
+  const named = facts.swaps.length > 0 || (facts.pairings ?? []).some((g) => g.length > 0) || (facts.apart ?? []).some((g) => g.length > 0);
   if (!named && moves.length === 2) return { kind: "two-players", a: moves[0], b: moves[1] };
   return { kind: "unsupported" };
 }
@@ -128,6 +144,10 @@ export async function applyPlayersGroupSwap(args: {
   }
   const match = await loadMatch(args.orgId);
   const lang = match?.activity.org.language ?? null;
+  if (shape.kind === "keep" && (!match || match.teamAssignments.length === 0)) {
+    // Nothing is stored for later: the asker is told to say it with the build.
+    return { kind: "refused", reply: t(lang).teams_keep_not_made, logReason: "keep together/apart: no teams yet; nothing stored" };
+  }
   if (!match || match.teamAssignments.length === 0) {
     if (shape.kind === "swap-sides") {
       return { kind: "refused", reply: t(lang).swap_refused_teams_not_generated, logReason: "swap the teams over: no teams yet; nothing written" };
@@ -159,6 +179,32 @@ export async function applyPlayersGroupSwap(args: {
   for (const t of m.teamAssignments) {
     if (seen.has(t.userId) || !t.user.name) continue;
     roster.push({ userId: t.userId, name: t.user.name, status: "NONE", team: t.team });
+  }
+
+  if (shape.kind === "keep") {
+    // "keep Dan and Craig apart" (2026-11-16): the fewest swaps that meet
+    // the groups, by the ratings the teams were made on. Only the players
+    // who change side are written, in one transaction.
+    const slotIds = m.teamAssignments.map((a) => a.userId);
+    const ratings = await matchRatingsFor(m.id, args.orgId, slotIds).catch(() => new Map<string, number>());
+    const d = decideKeepChange({
+      together: shape.together,
+      apart: shape.apart,
+      roster,
+      sender: args.sender,
+      people: args.people,
+      rating: (id) => ratings.get(id) ?? DEFAULT_SEED_RATING,
+      lang,
+    });
+    if (d.kind === "not-made" || d.kind === "refused") return { kind: "refused", reply: d.reply, logReason: d.logReason };
+    // Already as asked: ✅ and the line. A group no swap could meet: said, no ✅.
+    if (d.kind === "unchanged") return { kind: d.allMet ? "applied" : "refused", reply: d.reply, logReason: d.logReason };
+    await db.$transaction(
+      m.teamAssignments
+        .filter((a) => d.changes.has(a.userId))
+        .map((a) => db.teamAssignment.update({ where: { id: a.id }, data: { team: d.changes.get(a.userId)! } })),
+    );
+    return { kind: "applied", reply: `${d.lead}\n\n${await sheet()}`, logReason: d.logReason };
   }
 
   const plan = planSwap({ a: shape.a, b: shape.b }, roster, { sender: args.sender, teamsExist: m.teamAssignments.length > 0, people: args.people });

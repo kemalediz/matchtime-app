@@ -600,28 +600,43 @@ describe("S19 · `generate` is owned; `rename` and `swap` are not", () => {
     });
   });
 
-  it("honours a PAIRING by pinning the group to one arbitrary colour", () => {
-    // `generateTeamsForMatch` takes an absolute team per player and has
-    // no notion of "together", so the constraint is preserved by pinning
-    // the group to one side. Which side means nothing, and the reason
-    // says so out loud rather than pretending otherwise.
+  it("passes a PAIRING on as a resolved group, with no colour invented (2026-11-16)", () => {
+    // The balancer meets "together" itself now (`team-constraints.ts`), so
+    // the pairing is no longer pinned to an arbitrary RED.
     const r = teams({ pairings: [["me", "Sait"]] });
-    expect(genWrite(r)!.pinned).toEqual([
-      { userId: "u-kemal", name: "Kemal Ediz", team: "RED" },
-      { userId: "u-sait", name: "Sait Demir", team: "RED" },
+    expect(genWrite(r)!.pinned).toEqual([]);
+    expect(genWrite(r)!.together).toEqual([
+      [
+        { userId: "u-kemal", name: "Kemal Ediz" },
+        { userId: "u-sait", name: "Sait Demir" },
+      ],
     ]);
-    expect(r.outcomes[0].reasons.join(" ")).toMatch(/the colour is arbitrary/);
   });
 
-  it("a pairing inherits the colour of a member already pinned by name", () => {
+  it("a pairing beside a named side: the pin stays a pin, the pairing a group", () => {
     const r = teams({
       swaps: [{ personRef: "Sait", team: "YELLOW" }],
       pairings: [["me", "Sait"]],
     });
-    expect(genWrite(r)!.pinned).toEqual([
-      { userId: "u-sait", name: "Sait Demir", team: "YELLOW" },
-      { userId: "u-kemal", name: "Kemal Ediz", team: "YELLOW" },
+    expect(genWrite(r)!.pinned).toEqual([{ userId: "u-sait", name: "Sait Demir", team: "YELLOW" }]);
+    expect(genWrite(r)!.together).toHaveLength(1);
+  });
+
+  it("passes people kept APART on as a resolved group (2026-11-16, the Vets)", () => {
+    const r = teams({ apart: [["Sait", "me"]] });
+    expect(genWrite(r)!.apart).toEqual([
+      [
+        { userId: "u-sait", name: "Sait Demir" },
+        { userId: "u-kemal", name: "Kemal Ediz" },
+      ],
     ]);
+    expect(genWrite(r)!.pinned).toEqual([]);
+  });
+
+  it("an apart name it cannot place is reported, never dropped in silence", () => {
+    const r = teams({ apart: [["Sait", "Bazza"]] });
+    expect(genWrite(r)!.apart).toEqual([]);
+    expect(genWrite(r)!.unmatchedPins).toEqual(["Bazza"]);
   });
 
   it("rebinds the Turkish first person (beni, bana) to the sender", () => {
@@ -630,9 +645,11 @@ describe("S19 · `generate` is owned; `rename` and `swap` are not", () => {
     // and before this the pairing resolved only David and pinned nothing.
     for (const self of ["beni", "Bana"]) {
       const r = teams({ pairings: [[self, "Sait"]] });
-      expect(genWrite(r)!.pinned, self).toEqual([
-        { userId: "u-kemal", name: "Kemal Ediz", team: "RED" },
-        { userId: "u-sait", name: "Sait Demir", team: "RED" },
+      expect(genWrite(r)!.together, self).toEqual([
+        [
+          { userId: "u-kemal", name: "Kemal Ediz" },
+          { userId: "u-sait", name: "Sait Demir" },
+        ],
       ]);
     }
   });

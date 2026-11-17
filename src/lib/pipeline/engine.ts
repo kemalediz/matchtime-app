@@ -2263,64 +2263,34 @@ export function decide(input: EngineInput): EngineResult {
 
         for (const s of facts.swaps) pin(s.personRef, s.team);
 
-        // ── PAIRINGS: "put me and David on the same team" ─────────────
+        // ── TOGETHER AND APART: "put me and David on the same team",
+        //    "keep Dan and Craig apart" (2026-11-16) ──────────────────────
         //
-        // THE HONEST BIT. `generateTeamsForMatch` takes `pinnedToTeam` —
-        // an ABSOLUTE colour per player — and has no notion of
-        // "together". So a pairing is honoured by pinning the whole
-        // group to ONE side, and WHICH side is arbitrary: it inherits
-        // the colour of any member the message already pinned by name,
-        // and otherwise falls to RED. Red and Yellow carry no meaning of
-        // their own (the labels are per-match display names), so the
-        // constraint the message actually expressed — these people
-        // together — is preserved exactly, and the only thing invented
-        // is a colour that means nothing.
-        //
-        // The shipped path has the SAME limitation and resolves it
-        // worse: the mega-prompt had to pick the colour itself, so a
-        // pairing arrived as two model-authored `teamOverrides`.
-        //
-        // `team-balancer.ts:63-66` caps pins at `perTeam` per side and
-        // lets the overflow fall back into the ordinary pool, so an
-        // over-large pairing degrades into a partial constraint rather
-        // than an impossible match. No cap is re-implemented here.
-        for (const group of facts.pairings) {
-          const resolved: Array<{ userId: string; name: string }> = [];
-          for (const rawRef of group) {
-            const r = resolveIn(rawRef, pinnable);
-            if (r.kind !== "resolved") {
-              unmatchedPins.push(rawRef);
-              out.reasons.push(
-                `pairing member "${rawRef}" did not resolve to one confirmed player (${r.kind})`,
-              );
-              continue;
+        // Resolved here, kept as GROUPS: the balancer meets them as hard
+        // constraints (`team-constraints.ts`) and says which it could not,
+        // so no colour is invented for a pairing any more. A name that
+        // resolves to nobody is reported like any pin ("couldn't find …");
+        // a group left with one person constrains nothing.
+        const groupsOf = (groups: string[][] | undefined, what: "pairing" | "apart") => {
+          const kept: Array<Array<{ userId: string; name: string }>> = [];
+          for (const group of groups ?? []) {
+            const resolved: Array<{ userId: string; name: string }> = [];
+            for (const rawRef of group) {
+              const r = resolveIn(rawRef, pinnable);
+              if (r.kind !== "resolved") {
+                unmatchedPins.push(rawRef);
+                out.reasons.push(`${what} member "${rawRef}" did not resolve to one confirmed player (${r.kind})`);
+                continue;
+              }
+              if (!resolved.some((x) => x.userId === r.member.userId)) resolved.push({ userId: r.member.userId, name: r.member.name });
             }
-            resolved.push({ userId: r.member.userId, name: r.member.name });
+            if (resolved.length >= 2) kept.push(resolved);
+            else if (resolved.length === 1) out.reasons.push(`${what} "${group.join(" + ")}" resolved only ${resolved[0].name}; constrains nothing`);
           }
-          if (resolved.length < 2) {
-            // One resolved name is not a pairing, and pinning them alone
-            // would impose a colour the message never asked for.
-            if (resolved.length === 1) {
-              out.reasons.push(
-                `pairing "${group.join(" + ")}" resolved only ${resolved[0].name}; a group of ` +
-                  `one constrains nothing, so no pin was made`,
-              );
-            }
-            continue;
-          }
-          const already = resolved
-            .map((r) => pinned.find((p) => p.userId === r.userId)?.team)
-            .find((t): t is "RED" | "YELLOW" => t !== undefined);
-          const team = already ?? "RED";
-          for (const r of resolved) {
-            if (pinned.some((p) => p.userId === r.userId)) continue;
-            pinned.push({ userId: r.userId, name: r.name, team });
-          }
-          out.reasons.push(
-            `pairing ${resolved.map((r) => r.name).join(" + ")} honoured by pinning the group ` +
-              `to ${team} (the colour is arbitrary; the balancer has no "together" constraint)`,
-          );
-        }
+          return kept;
+        };
+        const together = groupsOf(facts.pairings, "pairing");
+        const apart = groupsOf(facts.apart, "apart");
 
         emit({
           kind: "generate_teams",
@@ -2328,6 +2298,8 @@ export function decide(input: EngineInput): EngineResult {
           unmatchedIncludes,
           pinned,
           unmatchedPins,
+          together,
+          apart,
           // The two names the message gave, or, when it asked MatchTime
           // to pick them ("come up with fun team names"), two the teams
           // extractor made up (2026-10-20). `sanitiseTeamNames` cleans and

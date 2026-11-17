@@ -904,6 +904,28 @@ export const en = {
   team_gen_note_unmatched_pins: (p: { names: string[] }): string =>
     `_(couldn't find ${p.names.join(", ")} for team pinning, ignored)_`,
 
+  // ── who plays with whom (2026-11-16, the Vets: "put Dan and Craig in
+  //    separate teams" was silently ignored). Said with the new teams and
+  //    with a change to the teams as they stand (team-constraints.ts).
+  //    `names` is already joined ("Dan and Craig", joinList).
+  /** `many`: more than two people, spread across the teams. */
+  teams_apart_met: (p: { names: string; many: boolean }): string =>
+    p.many ? `${p.names} are split between the teams.` : `${p.names} are on different teams.`,
+  teams_together_met: (p: { names: string }): string => `${p.names} are on the same team.`,
+  teams_apart_unmet: (p: { names: string }): string =>
+    `I couldn't split ${p.names} between the teams, it clashes with another request or the team sizes, so this is as close as I could get.`,
+  teams_together_unmet: (p: { names: string }): string =>
+    `I couldn't put ${p.names} on the same team, it clashes with another request or the team sizes, so this is as close as I could get.`,
+  /** The swaps made to meet them, on the teams as they stand. `pairs` is
+   *  already written ("*Craig* and *Finn*"). */
+  teams_keep_swapped: (p: { pairs: string }): string => `🔁 Swapped ${p.pairs}, nobody dropped.`,
+  teams_keep_pair: (p: { a: string; b: string }): string => `*${p.a}* and *${p.b}*`,
+  teams_keep_nothing_to_change: "Nothing needed changing.",
+  teams_keep_updated: "Updated teams:",
+  teams_keep_not_made:
+    "The teams aren't made yet. When you ask for them, say who to keep together or apart in the same message (for example *@Match Time generate the teams, keep Dan and Craig apart*).",
+  teams_keep_refused: (p: { why: string }): string => `I haven't changed the teams. ${p.why} Nothing changed and nobody was dropped.`,
+
   // ── row R170 (2026-09-29): teams only on request, on match day, and
   //    an admin can clear them. The Sutton FC incident of 24 Sep: a
   //    pairing joke built the teams five days early and "delete these
@@ -1494,6 +1516,7 @@ export const en = {
         `🟥🟦 *Fair teams: how it works*\n` +
         `On match day, anyone in the group can tag me and ask for the teams (for example *@Match Time generate the teams*) and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
         `I post the line-ups straight into the chat. Not happy with a pairing? Tag me and say what to change, in your own words (e.g. _"@Match Time swap Sam and Alex"_), or ask me to show the teams again any time.\n` +
+        `Want two players kept apart, or together? Say so when you ask for the teams (e.g. _"@Match Time generate the teams, keep Sam and Alex apart"_), or once they're out (e.g. _"@Match Time keep Sam and Alex apart"_) and I'll make the fewest swaps. If I can't do it, I'll tell you why.\n` +
         `Tired, ill, injured or flying? Tag me and say so (e.g. _"@Match Time I'm tired, go easy on my rating for this match"_). I'll tell you the adjustment I'll make, for that match only, and you can change it (e.g. _"@Match Time make it -1"_).\n` +
         `One short of two full sides? If the club has set the fewest it plays with, I make the teams from that number up, for example 7 against 6, balanced so the side a player down gets the stronger players.\n` +
         `Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.`,
@@ -1651,8 +1674,7 @@ export const en = {
     if (p.topic === "teams" && p.squad) {
       lines.push(`🟥🟦 *"@Match Time show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`);
       lines.push(`↩️ Reply to one of my earlier team sheets with *"@Match Time use these"*, or tag me and paste the two teams: I bring those teams back for your *@Match Time YES*.`);
-      lines.push(`🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams. On match day after kickoff, these and *"@Match Time put Ben in for Sam"* fix the game just played, and nothing is posted in the players' group.`);
-      lines.push(`✅ *@Match Time YES*: make the proposed teams final.`);
+      lines.push(`🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams. On match day after kickoff, these and *"@Match Time put Ben in for Sam"* fix the game just played, and nothing is posted in the players' group.`);      lines.push(`✅ *@Match Time YES*: make the proposed teams final.`);
     }
     if (p.topic === "players") {
       if (p.squad) {

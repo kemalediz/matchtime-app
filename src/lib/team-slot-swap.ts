@@ -184,12 +184,12 @@ export function resolveSwapSide(
 /** `resolveSwapSide`, saying WHY it found nobody. The two misses are
  *  told apart only so the refusal can say which one it was; the rule is
  *  the same function. */
-type SideResolution =
+export type SideResolution =
   | { kind: "resolved"; side: SwapCandidate }
   | { kind: "ambiguous"; candidates: SwapCandidate[] }
   | { kind: "unknown" };
 
-function resolveSwapSideDetailed(query: string, roster: SwapCandidate[], people: PersonPicks | undefined): SideResolution {
+export function resolveSwapSideDetailed(query: string, roster: SwapCandidate[], people: PersonPicks | undefined): SideResolution {
   const pick = people?.get(refKey(query));
   if (pick?.kind === "member") {
     const side = roster.find((c) => c.userId === pick.userId);
@@ -260,6 +260,8 @@ export interface SwapReading {
   moves?: string[];
   swaps: Array<{ personRef: string }>;
   pairings?: string[][];
+  /** People kept apart (2026-11-16): staying in the squad, like a pairing. */
+  apart?: string[][];
   swapSides?: boolean;
 }
 
@@ -296,6 +298,7 @@ export function swapGuardFor(
     ...moves,
     ...reading.swaps.map((s) => (s.personRef ?? "").trim()),
     ...(reading.pairings ?? []).flat().map((p) => p.trim()),
+    ...(reading.apart ?? []).flat().map((p) => p.trim()),
   ].filter(Boolean);
   if (parties.length === 0) return null;
 
@@ -324,7 +327,8 @@ export function swapGuardFor(
     reading.swapSides !== true &&
     moves.length === 2 &&
     reading.swaps.length === 0 &&
-    !(reading.pairings ?? []).some((g) => g.length > 0);
+    !(reading.pairings ?? []).some((g) => g.length > 0) &&
+    !(reading.apart ?? []).some((g) => g.length > 0);
   const senderRefusable = (): boolean => {
     if (!opts.sender) return false;
     if (twoPlayers) return planSwap({ a: moves[0], b: moves[1] }, roster, opts).kind === "decided";

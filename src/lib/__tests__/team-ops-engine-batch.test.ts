@@ -134,6 +134,8 @@ interface Recorder {
     matchId: string;
     pinnedToTeam?: Record<string, "RED" | "YELLOW">;
     teamNames?: [string, string];
+    together?: string[][];
+    apart?: string[][];
   }>;
   deps: TeamOpsBatchDeps;
 }
@@ -434,20 +436,19 @@ describe("named players are force-confirmed, pinned and paired", () => {
     );
   });
 
-  it("honours a PAIRING by pinning the group to one side, and says which", async () => {
-    // The honest bit: `generateTeamsForMatch` takes an absolute colour
-    // per player and has no notion of "together", so a pairing becomes
-    // "both on RED" — the colour is arbitrary and the constraint the
-    // message actually expressed is preserved exactly.
+  it("passes a PAIRING to the balancer as a group (no colour invented) and confirms it above the post", async () => {
+    // 2026-11-16: the balancer meets "together" itself
+    // (`team-constraints.ts`), so the arbitrary RED pin is gone.
     const body = "@Match Time generate the teams, put me and Sait to the same team";
     const { model } = stubModel({ [body]: teamsFacts({ pairings: [["me", "Sait"]] }) });
     const r = recorder(model, squadWorld());
     const res = await run({ messages: [msg({ body })], deps: r.deps });
-    expect(r.generated[0].pinnedToTeam).toEqual({ "u-kemal": "RED", "u-sait": "RED" });
-    expect([...res.outcomes.values()][0].reasoning).toMatch(/the colour is arbitrary/);
+    expect(r.generated[0].pinnedToTeam).toBeUndefined();
+    expect(r.generated[0].together).toEqual([["u-kemal", "u-sait"]]);
+    expect([...res.outcomes.values()][0].reply).toBe(`${fullName("kemal")} and ${fullName("sait")} are on the same team.\n\n${POST}`);
   });
 
-  it("a pairing inherits the colour of a member the message already pinned by name", async () => {
+  it("a pairing beside a named side: the pin is kept, the pairing goes to the balancer as a group", async () => {
     const body = "@Match Time generate teams, Sait in yellow and put me with him";
     const { model } = stubModel({
       [body]: teamsFacts({
@@ -457,18 +458,76 @@ describe("named players are force-confirmed, pinned and paired", () => {
     });
     const r = recorder(model, squadWorld());
     await run({ messages: [msg({ body })], deps: r.deps });
-    expect(r.generated[0].pinnedToTeam).toEqual({ "u-sait": "YELLOW", "u-kemal": "YELLOW" });
+    expect(r.generated[0].pinnedToTeam).toEqual({ "u-sait": "YELLOW" });
+    expect(r.generated[0].together).toEqual([["u-kemal", "u-sait"]]);
   });
 
-  it("does not pin a pairing that resolved to only one person", async () => {
-    // A group of one constrains nothing; pinning them alone would impose
-    // a colour the message never asked for.
+  it("does not pass on a pairing that resolved to only one person, and says who it could not find", async () => {
+    // A group of one constrains nothing.
     const body = "@Match Time generate teams, me and Bazza together";
     const { model } = stubModel({ [body]: teamsFacts({ pairings: [["me", "Bazza"]] }) });
     const r = recorder(model, squadWorld());
     const res = await run({ messages: [msg({ body })], deps: r.deps });
     expect(r.generated[0].pinnedToTeam).toBeUndefined();
-    expect([...res.outcomes.values()][0].reasoning).toMatch(/constrains nothing/);
+    expect(r.generated[0].together).toBeUndefined();
+    const out = [...res.outcomes.values()][0];
+    expect(out.reasoning).toMatch(/constrains nothing/);
+    expect(out.reply).toContain("couldn't find Bazza");
+  });
+
+  // ── APART (2026-11-16, the Vets: "put Dan and Craig in separate teams"
+  //    was read with no field for it and silently ignored) ──────────────
+
+  const APART = "@Match Time generate the teams, put Elvin and Sait in separate teams please";
+
+  it("APART: passed to the balancer as a group, and the reply confirms it", async () => {
+    const { model } = stubModel({ [APART]: teamsFacts({ apart: [["Elvin", "Sait"]] }) });
+    const r = recorder(model, squadWorld());
+    const res = await run({ messages: [msg({ body: APART })], deps: r.deps });
+    expect(r.generated[0].apart).toEqual([["u-elvin", "u-sait"]]);
+    expect(r.generated[0].pinnedToTeam).toBeUndefined();
+    const out = [...res.outcomes.values()][0];
+    expect(out.teamsGenerated).toBe(true);
+    expect(out.reply).toBe(`${fullName("elvin")} and ${fullName("sait")} are on different teams.\n\n${POST}`);
+  });
+
+  it("APART on a regenerate, in Turkish: the Turkish confirmation", async () => {
+    const body = "@Match Time takımları yeniden kur, Elvin ile Sait ayrı takımlarda olsun";
+    const { model } = stubModel({ [body]: teamsFacts({ apart: [["Elvin", "Sait"]] }) });
+    const tr = squadWorld();
+    const r = recorder(model, { ...tr, features: { ...tr.features, language: "tr" as const } });
+    const res = await run({ messages: [msg({ body })], deps: r.deps });
+    expect(r.generated[0].apart).toEqual([["u-elvin", "u-sait"]]);
+    expect([...res.outcomes.values()][0].reply).toBe(`${fullName("elvin")} ve ${fullName("sait")} farklı takımlarda.\n\n${POST}`);
+  });
+
+  it("APART that the balancer could not meet: the teams are posted and the reply SAYS so in one line", async () => {
+    const { model } = stubModel({ [APART]: teamsFacts({ apart: [["Elvin", "Sait"]] }) });
+    const r = recorder(model, squadWorld(), {}, { ok: true, groupPost: POST, unmet: { together: [], apart: [["u-elvin", "u-sait"]] } });
+    const res = await run({ messages: [msg({ body: APART })], deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toBe(
+      `I couldn't split ${fullName("elvin")} and ${fullName("sait")} between the teams, it clashes with another request or the team sizes, so this is as close as I could get.\n\n${POST}`,
+    );
+  });
+
+  it("APART and TOGETHER in one message both reach the balancer, each confirmed", async () => {
+    const body = "@Match Time generate the teams, me and Abid together, Elvin and Sait apart";
+    const { model } = stubModel({ [body]: teamsFacts({ pairings: [["me", "Abid"]], apart: [["Elvin", "Sait"]] }) });
+    const r = recorder(model, squadWorld());
+    const res = await run({ messages: [msg({ body })], deps: r.deps });
+    expect(r.generated[0].together).toEqual([["u-kemal", "u-abid"]]);
+    expect(r.generated[0].apart).toEqual([["u-elvin", "u-sait"]]);
+    const reply = [...res.outcomes.values()][0].reply!;
+    expect(reply).toContain(`${fullName("kemal")} and ${fullName("abid")} are on the same team.`);
+    expect(reply).toContain(`${fullName("elvin")} and ${fullName("sait")} are on different teams.`);
+  });
+
+  it("APART naming somebody nobody can find: never silent, the name is reported", async () => {
+    const { model } = stubModel({ [APART]: teamsFacts({ apart: [["Elvin", "Zork"]] }) });
+    const r = recorder(model, squadWorld());
+    const res = await run({ messages: [msg({ body: APART })], deps: r.deps });
+    expect(r.generated[0].apart).toBeUndefined();
+    expect([...res.outcomes.values()][0].reply).toContain("couldn't find Zork");
   });
 
   it("passes team names through only when the message supplied both", async () => {
@@ -870,10 +929,19 @@ describe("teams are built only on match day, as the extractor read the ask", () 
   const TUE_KICKOFF = new Date("2026-09-29T19:30:00Z");
   const TUE_MORNING = new Date("2026-09-29T08:00:00Z");
 
+  // A people-together swap is applied on the teams as they stand since
+  // 2026-11-16 (`team-swap-apply.ts` "keep"); here it says it cannot place
+  // "these guys", as the real one would, and never builds anything.
+  const applySwap = vi.fn(async () => ({
+    kind: "refused" as const,
+    reply: "I haven't changed the teams. I can't find a player called *These guys* for this match.",
+    logReason: "keep refused",
+  }));
   async function runAt(now: Date, body: string, facts: unknown, state = squadWorld()) {
     const { model } = stubModel({ [body]: facts });
     const r = recorder(model, state, {
       selectTeamsMatch: async () => ({ id: "match-tue", date: TUE_KICKOFF }),
+      applySwap,
     });
     const res = await runTeamOpsBatch({
       orgId: "org-1",
@@ -894,12 +962,14 @@ describe("teams are built only on match day, as the extractor read the ask", () 
     expect(out.reply).toBe("I'll build the teams on match day, just ask me then.");
   });
 
-  it("THE INCIDENT, as the extractor reads it now: people put together, one line, nothing built", async () => {
+  it("THE INCIDENT, as the extractor reads it now: people put together, a change to the teams as they stand, nothing built", async () => {
     for (const now of [THU_2251, TUE_MORNING]) {
+      applySwap.mockClear();
       const { r, out } = await runAt(now, JOKE, JOKE_AS_SWAP);
       expect(r.generated).toEqual([]);
       expect(out.teamsGenerated).toBe(false);
-      expect(out.reply).toBe("Sorry, I can't do that one yet.");
+      expect(applySwap).toHaveBeenCalledTimes(1);
+      expect(out.reply).toMatch(/I haven't changed the teams/);
     }
   });
 
@@ -940,9 +1010,11 @@ describe("teams are built only on match day, as the extractor read the ask", () 
     expect(early.r.generated).toEqual([]);
     expect(early.out.reply).toBe("Takımları maç günü kuracağım, o gün benden isteyin yeter.");
 
-    const joke = await runAt(TUE_MORNING, "@Match Time beni Sait ile aynı takıma koy", JOKE_AS_SWAP, trState);
-    expect(joke.r.generated).toEqual([]);
-    expect(joke.out.reply).toBe("Kusura bakmayın, bunu henüz yapamıyorum.");
+    // A rename is still the one-line "can't" (people put together are a
+    // change to the teams as they stand since 2026-11-16).
+    const rename = await runAt(TUE_MORNING, "@Match Time takımların adı Aslanlar ve Kaplanlar olsun", teamsFacts({ action: "rename" }), trState);
+    expect(rename.r.generated).toEqual([]);
+    expect(rename.out.reply).toBe("Kusura bakmayın, bunu henüz yapamıyorum.");
 
     const onTheDay = await runAt(TUE_MORNING, "@Match Time takımları kur", teamsFacts(), trState);
     expect(onTheDay.r.generated).toEqual([{ matchId: "match-tue" }]);
@@ -997,6 +1069,21 @@ describe("a swap the teams extractor read is applied from its facts, never by th
     expect([...res.outcomes.values()][0].reply).toBe("Sorry, I can't do that one yet.");
     // The same dead end as any team change this path cannot make (2026-11-17).
     expect([...res.outcomes.values()][0].intent).toBe("team_request_unsupported");
+  });
+
+  it("'keep Elvin and Sait apart' on the teams as they stand: applied from the facts, never the balancer (2026-11-16)", async () => {
+    const KEEP = "@Match Time keep Elvin and Sait apart";
+    const { model } = stubModel({ [KEEP]: teamsFacts({ action: "swap", apart: [["Elvin", "Sait"]] }) });
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "🔁 Swapped *Sait* and *Abid*, nobody dropped.", logReason: "keep" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: KEEP })], deps: r.deps });
+    expect(r.generated).toEqual([]);
+    expect(applySwap).toHaveBeenCalledTimes(1);
+    expect((applySwap.mock.calls[0] as unknown as [{ facts: { apart: string[][] } }])[0].facts.apart).toEqual([["Elvin", "Sait"]]);
+    const out = [...res.outcomes.values()][0];
+    expect(out.reply).toBe("🔁 Swapped *Sait* and *Abid*, nobody dropped.");
+    expect(out.react).toBe("✅");
+    expect(out.teamSheetPost).toBe(true);
   });
 
   it("a swap that throws says nothing and is reported", async () => {

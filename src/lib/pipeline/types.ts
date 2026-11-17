@@ -696,8 +696,21 @@ export interface TeamFacts {
    * `generateTeamsForMatch` takes an absolute team per player and has no
    * notion of "together", so the constraint is preserved by pinning the
    * whole group to the same side rather than by a new balancer concept.
+   *
+   * 2026-11-16: the balancer HAS a notion of "together" now
+   * (`team-constraints.ts`), so a pairing reaches it as a group, and the
+   * arbitrary colour is gone.
    */
   pairings: string[][];
+  /**
+   * "keep Dan and Craig apart", "put them in separate teams" (2026-11-16,
+   * the Vets: the request had no field and was silently ignored). One
+   * array per group of verbatim person references who must be SPLIT: two
+   * people on different sides, a bigger group spread as evenly as two
+   * sides allow. The other half of `pairings`. Optional so older stubs
+   * keep their shape; the parser always sets it.
+   */
+  apart?: string[][];
   /**
    * For "set" (2026-10-30, FNF HQ: a team sheet pasted back to be used):
    * the two sides as written, the first side as red. Optional for older
@@ -1607,8 +1620,13 @@ export type ProposedWrite =
       /** Include references that resolved to nobody. Reported to the
        *  group ("couldn't find … — ignored"), never dropped silently. */
       unmatchedIncludes: string[];
-      /** Absolute team pins, from `swaps` AND from resolved pairings. */
+      /** Absolute team pins, from `swaps`. */
       pinned: Array<{ userId: string; name: string; team: "RED" | "YELLOW" }>;
+      /** Resolved groups who must share a side (`pairings`) and who must
+       *  be split (`apart`), each of two or more players (2026-11-16).
+       *  Optional so writes built before them keep their shape. */
+      together?: Array<Array<{ userId: string; name: string }>>;
+      apart?: Array<Array<{ userId: string; name: string }>>;
       /** Pin references that resolved to nobody. */
       unmatchedPins: string[];
       /** Per-match display names, when the message supplied both. */

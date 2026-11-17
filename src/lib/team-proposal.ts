@@ -134,6 +134,7 @@ import type { PersonPicker, PersonPicks, WhoRosterMember } from "./pipeline/who-
 import { loadClubWhoRoster } from "./club-who-roster";
 import { recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { DEFAULT_SEED_RATING } from "./default-seed";
+import { constraintLines, planConstraintChange } from "./team-constraints";
 import { perTeamFor, playerRange, teamsNeeded } from "./flex-format-rules";
 import { justPlayedMatch, playedGameReplacements, teamCommandFixesPlayedGame } from "./played-game-rules";
 import type { HqSquadChange } from "./hq-squad-reader-prompt";
@@ -473,9 +474,9 @@ function resolveName(
 function commandNames(command: TeamCommand): string[] {
   switch (command.kind) {
     case "reshuffle":
-      return [...command.sides.map((x) => x.name), ...command.together.flat()];
+      return [...command.sides.map((x) => x.name), ...command.together.flat(), ...(command.apart ?? []).flat()];
     case "change":
-      return [...command.moves, ...command.sides.map((x) => x.name), ...command.together.flat()];
+      return [...command.moves, ...command.sides.map((x) => x.name), ...command.together.flat(), ...(command.apart ?? []).flat()];
     case "set":
       return [...command.red, ...command.yellow];
     default:
@@ -553,14 +554,19 @@ export async function handleTeamCommand(args: {
   const match = await commandMatch(orgId, now, command);
   if (!match) return { outcome: "teams-no-match", replyText: s.tp_no_match };
 
-  const build = async (pins: Record<string, SheetTeam> = {}): Promise<TeamReply> => {
+  /** `apart`: people the new teams must split (2026-11-16); each group is
+   *  said met or not above the proposal, from what the balancer made. */
+  const build = async (pins: Record<string, SheetTeam> = {}, apart: Array<Array<{ userId: string; name: string }>> = []): Promise<TeamReply> => {
     if (!args.addressed) {
       // Untagged, and not a reply to MatchTime: the organisers' own talk
       // about the teams. Nothing built, nothing said.
       console.log(`[team-proposal] ${args.messageId}: would build teams on match ${match.id}, not asked of MatchTime: nothing done`);
       return { outcome: "teams-not-asked", replyText: null };
     }
-    const res = await gen(deps)(match.id, Object.keys(pins).length ? { pinnedToTeam: pins } : {});
+    const res = await gen(deps)(match.id, {
+      ...(Object.keys(pins).length ? { pinnedToTeam: pins } : {}),
+      ...(apart.length ? { apart: apart.map((g) => g.map((m) => m.userId)) } : {}),
+    });
     if (!res.ok) {
       console.log(`[team-proposal] ${args.messageId}: teams not built on match ${match.id}`);
       // A whole sentence, never the generator's bare fragment: the count
@@ -575,7 +581,9 @@ export async function handleTeamCommand(args: {
     console.log(
       `[team-proposal] ${args.messageId}: teams built on match ${match.id}, ${sheet.slots.length} on the teams, ${Object.keys(pins).length} pinned`,
     );
-    return { outcome: "teams-built", replyText: await propose(sheet, lang, now, announce) };
+    const proposal = await propose(sheet, lang, now, announce);
+    const lines = constraintLines({ together: [], apart, unmet: res.unmet ?? { together: [], apart: [] }, lang });
+    return { outcome: "teams-built", replyText: lines.length ? `${lines.join("\n")}\n\n${proposal}` : proposal };
   };
 
   const sheet = await loadSheet(match, lang);
@@ -607,14 +615,18 @@ export async function handleTeamCommand(args: {
   });
 
   /** New teams, keeping who was put on a side or together. Named against the whole squad. */
-  const buildWith = async (sides: Array<{ name: string; to: SheetTeam }>, together: string[][]): Promise<TeamReply> => {
-    const res = resolveAll([...sides.map((x) => x.name), ...together.flat()], sheet.squad, args.senderUserId, people, clubNameOf);
+  const buildWith = async (sides: Array<{ name: string; to: SheetTeam }>, together: string[][], apart: string[][] = []): Promise<TeamReply> => {
+    const res = resolveAll([...sides.map((x) => x.name), ...together.flat(), ...apart.flat()], sheet.squad, args.senderUserId, people, clubNameOf);
     if (!res.ok) return unclear(res.problems);
     const one = (raw: string) => (resolveName(raw, sheet.squad, args.senderUserId, people) as { userId: string }).userId;
-    return build(pinsFor(sides.map((x) => ({ ids: [one(x.name)], to: x.to })), together.map((g) => g.map(one))));
+    const squadName = new Map(sheet.squad.map((p) => [p.userId, p.name]));
+    const apartGroups = apart
+      .map((g) => [...new Set(g.map(one))].map((userId) => ({ userId, name: squadName.get(userId) ?? nameOf(userId) })))
+      .filter((g) => g.length >= 2);
+    return build(pinsFor(sides.map((x) => ({ ids: [one(x.name)], to: x.to })), together.map((g) => g.map(one))), apartGroups);
   };
 
-  if (command.kind === "reshuffle") return buildWith(command.sides, command.together);
+  if (command.kind === "reshuffle") return buildWith(command.sides, command.together, command.apart);
 
   if (command.kind === "show") {
     if (sheet.slots.length === 0) return build();
@@ -629,7 +641,7 @@ export async function handleTeamCommand(args: {
   // No teams yet: a pair or a side is a build that keeps them; a move is not.
   if (sheet.slots.length === 0) {
     if (command.kind === "change" && !command.swapSides && command.moves.length === 0) {
-      return buildWith(command.sides, command.together);
+      return buildWith(command.sides, command.together, command.apart);
     }
     return { outcome: "teams-no-teams", replyText: s.tp_no_teams };
   }
@@ -656,7 +668,8 @@ export async function handleTeamCommand(args: {
     lead = s.tp_suggested(words);
   } else {
     const { moves, sides, together, swapSides } = command;
-    const simple = !swapSides && sides.length === 0 && together.length === 0;
+    const apart = command.apart ?? [];
+    const simple = !swapSides && sides.length === 0 && together.length === 0 && apart.length === 0;
     // "swap A and B": the two must be two players, on different teams.
     if (simple && moves.length === 2) {
       const res = resolveSwap([[moves[0], moves[1]]], sheet.players, people, clubNameOf);
@@ -667,12 +680,12 @@ export async function handleTeamCommand(args: {
       }
       outcome = "teams-swapped";
     }
-    const res = resolveAll([...moves, ...sides.map((x) => x.name), ...together.flat()], sheet.players, args.senderUserId, people, clubNameOf);
+    const res = resolveAll([...moves, ...sides.map((x) => x.name), ...together.flat(), ...apart.flat()], sheet.players, args.senderUserId, people, clubNameOf);
     if (!res.ok) return unclear(res.problems);
     const one = (raw: string) => (resolveName(raw, sheet.players, args.senderUserId, people) as { userId: string }).userId;
     const sideIds = sides.map((x) => ({ userId: one(x.name), to: x.to }));
     // "put Ali in Red" when he is: one line, as before.
-    if (!swapSides && moves.length === 0 && together.length === 0 && sideIds.length === 1) {
+    if (!swapSides && moves.length === 0 && together.length === 0 && apart.length === 0 && sideIds.length === 1) {
       const slot = sheet.slots.find((x) => x.userId === sideIds[0].userId)!;
       if (slot.team === sideIds[0].to) {
         return { outcome: "teams-already-there", replyText: s.tp_already_on({ name: nameOf(slot.userId), team: label(slot.team) }) };
@@ -704,6 +717,26 @@ export async function handleTeamCommand(args: {
     if (plan.evenedBy.length) {
       const to = plan.team.get(plan.evenedBy[0])!;
       lead = s.tp_evened({ names: plan.evenedBy.map(nameOf).join(", "), team: label(to) });
+    }
+    // People kept apart (2026-11-16): on the teams as the change above left
+    // them, the fewest further swaps that split them while keeping every
+    // group put together, and each group said met or not.
+    if (apart.length > 0) {
+      const togetherIds = together.map((g) => [...new Set(g.map(one))]);
+      const apartIds = apart.map((g) => [...new Set(g.map(one))]);
+      const keep = planConstraintChange({
+        slots: sheet.slots.map((x) => ({ userId: x.userId, team: plan.team.get(x.userId) ?? x.team, playing: x.playing })),
+        together: togetherIds,
+        apart: apartIds,
+        rating: await rating(),
+      });
+      plan = { ...plan, team: keep.team };
+      const named = (gs: string[][]) => gs.filter((g) => g.length >= 2).map((g) => g.map((userId) => ({ userId, name: nameOf(userId) })));
+      const lines = constraintLines({ together: named(togetherIds), apart: named(apartIds), unmet: keep.unmet, lang });
+      lead = [lead, ...lines].filter(Boolean).join("\n");
+      const changedNow = sheet.slots.some((x) => keep.team.get(x.userId) !== x.team);
+      // Nothing moved: the lines are the whole answer (met, or why not).
+      if (!changedNow) return { outcome: "teams-unchanged", replyText: lines.join("\n") || s.tp_nothing_to_change };
     }
   }
 

@@ -791,6 +791,21 @@ export const tr: Strings = {
   team_gen_note_unmatched_includes: (p) => `_(${p.names.join(", ")} listede bulunamadı, atlandı)_`,
   team_gen_note_unmatched_pins: (p) => `_(${p.names.join(", ")} takım sabitleme için bulunamadı, atlandı)_`,
 
+  // ── kim kiminle oynar (2026-11-16) ─────────────────────────────────
+  teams_apart_met: (p) => (p.many ? `${p.names} takımlara dağıtıldı.` : `${p.names} farklı takımlarda.`),
+  teams_together_met: (p) => `${p.names} aynı takımda.`,
+  teams_apart_unmet: (p) =>
+    `${p.names} farklı takımlara konamadı, başka bir istekle ya da takım sayılarıyla çakışıyor; yapabildiğimin en yakını bu.`,
+  teams_together_unmet: (p) =>
+    `${p.names} aynı takıma konamadı, başka bir istekle ya da takım sayılarıyla çakışıyor; yapabildiğimin en yakını bu.`,
+  teams_keep_swapped: (p) => `🔁 ${p.pairs} yer değiştirdi, kimse çıkarılmadı.`,
+  teams_keep_pair: (p) => `*${p.a}* ile *${p.b}*`,
+  teams_keep_nothing_to_change: "Değiştirmem gereken bir şey yoktu.",
+  teams_keep_updated: "Güncel takımlar:",
+  teams_keep_not_made:
+    "Takımlar henüz kurulmadı. Kurmamı isterken kimlerin aynı ya da farklı takımda olacağını aynı mesajda söyleyin (örneğin *@Match Time takımları kur, Dan ile Craig ayrı takımlarda olsun*).",
+  teams_keep_refused: (p) => `Takımları değiştirmedim. ${p.why} Hiçbir şey değişmedi ve kimse çıkarılmadı.`,
+
   // ── row R170 (2026-09-29): teams only on request, on match day ─────
 
   team_ops_not_match_day: "Takımları maç günü kuracağım, o gün benden isteyin yeter.",
@@ -1258,6 +1273,7 @@ export const tr: Strings = {
         `🟥🟦 *Dengeli takımlar nasıl çalışır*\n` +
         `Maç günü gruptaki herkes beni etiketleyip takımları isteyebilir (örneğin *@Match Time takımları kur*), ben de form puanlarına göre herkesi iki dengeli takıma bölerim.\n` +
         `Kadroları doğrudan gruba yazarım. Bir eşleşmeyi beğenmediniz mi? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın (örn. _"@Match Time Ali ile Can'ı değiştir"_). Takımları yeniden göstermemi (örn. *"@Match Time takımları göster"*) ya da takımlar aynı kalıp renkleri değiştirmemi (örn. *@Match Time renkleri değiştir*) istediğiniz zaman isteyebilirsiniz.\n` +
+        `İki oyuncu ayrı takımlarda ya da aynı takımda mı olsun? Takımları isterken söyleyin (örn. _"@Match Time takımları kur, Sam ile Alex ayrı takımlarda olsun"_) ya da takımlar çıktıktan sonra (örn. _"@Match Time Sam ile Alex'i ayır"_), en az değişiklikle ayarlarım. Yapamazsam nedenini söylerim.\n` +
         `Yorgun, hasta, sakat ya da formda mısınız? Beni etiketleyip söyleyin (örn. _"@Match Time yorgunum, bu maç için puanımı düşür"_). Sadece o maç için yapacağım puan ayarını size söylerim, isterseniz değiştirebilirsiniz (örn. _"@Match Time -1 yap"_).\n` +
         `İki tam takıma bir kişi mi eksik? Kulüp oynadığı en az kişi sayısını ayarladıysa takımları o sayıdan itibaren kurarım, örneğin 7'ye karşı 6, bir kişi eksik takıma daha güçlü oyuncular düşecek şekilde dengelerim.\n` +
         `Hazır olunca beni etiketleyip istemeniz yeter.`,
@@ -1363,8 +1379,7 @@ export const tr: Strings = {
     if (p.topic === "teams" && p.squad) {
       lines.push(`🟥🟦 *"@Match Time takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`);
       lines.push(`↩️ Önceki takım listelerimden birine *"@Match Time bunları kullan"* diye yanıt verin ya da beni etiketleyip iki takımı yapıştırın: o takımları *@Match Time EVET* yazmanız için geri getiririm.`);
-      lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik. Maç günü başlama saatinden sonra bunlar ve *"@Match Time Sam yerine Ben'i koy"* oynanan maçı düzeltir; oyuncu grubuna bir şey gönderilmez.`);
-      lines.push(`✅ *@Match Time EVET*: önerilen takımları kesinleştiririm.`);
+      lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik. Maç günü başlama saatinden sonra bunlar ve *"@Match Time Sam yerine Ben'i koy"* oynanan maçı düzeltir; oyuncu grubuna bir şey gönderilmez.`);      lines.push(`✅ *@Match Time EVET*: önerilen takımları kesinleştiririm.`);
     }
     if (p.topic === "players") {
       if (p.squad) {

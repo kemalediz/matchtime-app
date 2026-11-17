@@ -665,6 +665,14 @@ export default async function AdminGuidePage() {
         <code>@Match Time swap the colours</code> work too.
       </p>
       <p>
+        To keep two players apart, or together, say so with the request (
+        <code>@Match Time generate the teams, keep Dan and Leo apart</code>)
+        or on teams already out (<code>@Match Time keep Dan and Leo apart</code>
+        , which makes the fewest swaps). The balancer treats it as a rule, still
+        balances the ratings around it, and says in its reply if a request
+        can&apos;t be met.
+      </p>
+      <p>
         If someone drops after the teams are out, whoever replaces them (a
         bench player who claims the spot, or &quot;Sam is replacing
         Joe&quot;) goes straight into the same team, so you don&apos;t have to

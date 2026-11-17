@@ -63,8 +63,8 @@ export interface SideRef {
  */
 export type TeamCommand =
   | { kind: "show" }
-  | { kind: "reshuffle"; sides: SideRef[]; together: string[][] }
-  | { kind: "change"; swapSides: boolean; moves: string[]; sides: SideRef[]; together: string[][] }
+  | { kind: "reshuffle"; sides: SideRef[]; together: string[][]; apart?: string[][] }
+  | { kind: "change"; swapSides: boolean; moves: string[]; sides: SideRef[]; together: string[][]; apart?: string[][] }
   | { kind: "suggest" }
   | { kind: "restore" }
   | { kind: "set"; red: string[]; yellow: string[] };
@@ -80,11 +80,15 @@ export function teamCommandFromFacts(facts: {
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
   moves?: string[];
   pairings?: string[][];
+  apart?: string[][];
   swapSides?: boolean;
   sides?: { red: string[]; yellow: string[] };
 }): TeamCommand | { kind: "unclear" } | { kind: "form" } {
   const sides: SideRef[] = facts.swaps.map((x) => ({ name: x.personRef.trim(), to: x.team })).filter((x) => x.name);
   const together = (facts.pairings ?? []).map((g) => g.map((n) => n.trim()).filter(Boolean)).filter((g) => g.length >= 2);
+  // People kept apart (2026-11-16): new teams split them, a change to the
+  // teams as they stand moves the fewest (`team-constraints.ts`).
+  const apart = (facts.apart ?? []).map((g) => g.map((n) => n.trim()).filter(Boolean)).filter((g) => g.length >= 2);
   // A form note (2026-11-10): how a player will play in this match. Not a
   // team command: nothing changes, the rating adjuster reads it from the
   // chat when the teams are made (`formNoteReplyFor`, form-note.ts).
@@ -98,14 +102,16 @@ export function teamCommandFromFacts(facts: {
     const yellow = clean(facts.sides?.yellow);
     return red.length && yellow.length ? { kind: "set", red, yellow } : { kind: "unclear" };
   }
-  if (facts.action === "generate") return { kind: "reshuffle", sides, together };
+  // `apart` only when asked, so a command without it keeps its old shape.
+  const withApart = apart.length > 0 ? { apart } : {};
+  if (facts.action === "generate") return { kind: "reshuffle", sides, together, ...withApart };
   // The organisers' group neither renames nor clears teams (2026-10-30:
   // "clear" is a players' group action, `team-clear.ts`).
   if (facts.action === "rename" || facts.action === "clear") return { kind: "unclear" };
   const moves = (facts.moves ?? []).map((m) => m.trim()).filter(Boolean);
   const swapSides = facts.swapSides === true;
-  if (!swapSides && moves.length === 0 && sides.length === 0 && together.length === 0) return { kind: "unclear" };
-  return { kind: "change", swapSides, moves, sides, together };
+  if (!swapSides && moves.length === 0 && sides.length === 0 && together.length === 0 && apart.length === 0) return { kind: "unclear" };
+  return { kind: "change", swapSides, moves, sides, together, ...withApart };
 }
 
 // ── Changing teams that exist ─────────────────────────────────────────

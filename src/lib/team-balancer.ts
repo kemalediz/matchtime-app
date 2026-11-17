@@ -1,4 +1,5 @@
 import { PlayerWithRating, TeamResult } from "@/types";
+import { cleanGroups, constraintPins, unmetConstraints, type UnmetConstraints } from "./team-constraints";
 
 /**
  * Team balancing.
@@ -39,10 +40,23 @@ export interface BalanceOptions {
    *  full sides, exactly as before. The caller decides it
    *  (`teamsNeeded`, flex-format-rules.ts). */
   minPlayers?: number;
+  /** Groups of player ids who must share a side ("put Dan and Ali on the
+   *  same team"), and groups who must be split ("keep Dan and Craig
+   *  apart": two on different sides, a bigger group spread evenly).
+   *  Hard constraints, balanced within (2026-11-16, `team-constraints.ts`).
+   *  When they clash with each other, a pin or the side sizes, the teams
+   *  are still made, as close as they can be, and `unmet` says which
+   *  groups they break. */
+  together?: string[][];
+  apart?: string[][];
 }
 
-export function balanceTeams(opts: BalanceOptions): TeamResult {
-  const { players, perTeam, strategy, composition, pinnedToTeam } = opts;
+/** The teams, and the together and apart groups they could not keep
+ *  (both empty when every group holds, or none was given). */
+export type BalancedTeams = TeamResult & { unmet: UnmetConstraints };
+
+export function balanceTeams(opts: BalanceOptions): BalancedTeams {
+  const { players, perTeam, strategy, composition } = opts;
 
   const needed = Math.max(2, Math.min(opts.minPlayers ?? perTeam * 2, perTeam * 2));
   if (players.length < needed) {
@@ -52,12 +66,36 @@ export function balanceTeams(opts: BalanceOptions): TeamResult {
   // odd one on red (13 is 7 and 6).
   const n = Math.min(players.length, perTeam * 2);
   const sides: Sides = { red: Math.ceil(n / 2), yellow: Math.floor(n / 2) };
+  const selected = players.slice(0, n);
 
-  if (strategy === "position-aware" && composition) {
-    return balancePositionAware(players.slice(0, n), sides, composition, pinnedToTeam ?? {});
-  }
-  // "rating-only" and (for now) "role-quota" fall through to rating-only.
-  return balanceRatingOnly(players.slice(0, n), sides, pinnedToTeam ?? {});
+  // Together and apart become pins: a side for every player in a group,
+  // chosen so the groups fit and the ratings balance best; everyone else
+  // is drafted around them as before.
+  const together = cleanGroups(opts.together);
+  const apart = cleanGroups(opts.apart);
+  const constrained = together.length > 0 || apart.length > 0;
+  const ratingOf = new Map(selected.map((p) => [p.id, p.rating]));
+  const pinnedToTeam = constrained
+    ? constraintPins({
+        ids: selected.map((p) => p.id),
+        pins: opts.pinnedToTeam ?? {},
+        together,
+        apart,
+        sides,
+        rating: (id) => ratingOf.get(id) ?? 0,
+      })
+    : (opts.pinnedToTeam ?? {});
+
+  const result =
+    strategy === "position-aware" && composition
+      ? balancePositionAware(selected, sides, composition, pinnedToTeam)
+      : // "rating-only" and (for now) "role-quota" fall through to rating-only.
+        balanceRatingOnly(selected, sides, pinnedToTeam, constrained);
+  const side = new Map<string, "RED" | "YELLOW">([
+    ...result.red.map((p) => [p.id, "RED"] as [string, "RED"]),
+    ...result.yellow.map((p) => [p.id, "YELLOW"] as [string, "YELLOW"]),
+  ]);
+  return { ...result, unmet: unmetConstraints((id) => side.get(id), { together, apart }) };
 }
 
 /** How many players each side takes. */
@@ -72,6 +110,8 @@ function balanceRatingOnly(
   selected: PlayerWithRating[],
   sides: Sides,
   pinnedToTeam: Record<string, "RED" | "YELLOW">,
+  /** A together or apart group was pinned: even the free players around it. */
+  constrained = false,
 ): TeamResult {
 
   const red: PlayerWithRating[] = [];
@@ -98,7 +138,9 @@ function balanceRatingOnly(
   // Uneven sides (2026-11-03): the greedy draft leaves the extra player's
   // whole rating on the bigger side. One pass of pairwise swaps that narrow
   // the gap in total, which is all an exhaustive search would add here.
-  if (sides.red !== sides.yellow) improveBySwaps(red, yellow, pinnedToTeam);
+  // The same pass after a together or apart group was pinned: the greedy
+  // draft cannot see that a pinned group left one side heavy.
+  if (sides.red !== sides.yellow || constrained) improveBySwaps(red, yellow, pinnedToTeam);
 
   return {
     red,

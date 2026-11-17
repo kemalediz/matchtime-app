@@ -203,6 +203,16 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * two prompts cannot drift); the example group rewritten with the amounts,
  * an amendment and a cancel, EN and TR side by side. 7,313 to 9,394
  * characters. Old and new: MDs/prompt-form-note-amount-2026-11-10.md.
+ *
+ * TEAMS again on 2026-11-16 (the Vets: "@Match Time generate the teams,
+ * put Dan and Craig in separate teams please" came back as a plain
+ * generate; the prompt could say "together" and not "apart"): one new
+ * field, `apart`, defined once beside `pairings` (each now says what it is
+ * and that nobody is moved by name); "generate" and "swap" name people put
+ * together or apart; the who-plays-with-whom examples grouped by new teams
+ * and the teams as they stand, EN and TR side by side. 9,394 to 10,600
+ * characters. Old and new: MDs/prompt-teams-apart-2026-11-16.md; the paid
+ * check: scripts/live-check-teams-apart-2026-11-16.ts.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -595,15 +605,15 @@ Periods:
   "@Match Time who played most this month" | "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month
   "@Match Time all-time most MoMs" | "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time`,
 
-  teams: `You read ONE message about the club's two team line-ups, or about how a player will play in the match they are made for, and report what it asks for. You never pick the players: code builds, changes, brings back and clears the line-ups, and checks every name.
+  teams: `You read ONE message about the club's two team line-ups, or about how a player will play in the match they are made for, and report what it asks for. You never pick the players: code builds, changes, brings back and clears the line-ups, keeps people together or apart, and checks every name.
 
 THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST (often the two teams as they stand), NOW (the time at the club), CLUB MEMBERS NAMED (words in the message that are people in the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line, often one of MatchTime's earlier team sheets). They tell you who "him", "them", "these" or "the teams" are and which team a player is on now; every field comes from THE MESSAGE.
 
 WHAT YOU RETURN
 action, exactly one:
   "show" post the teams as they stand, unchanged.
-  "generate" work the line-ups out again: new teams, made, made again or shuffled. This holds even when the same message also asks for new names, or says "again", "once more" or "instead".
-  "swap" change the teams as they stand and leave everyone else where they are: people change team, go to a named team, end up together, or the two teams swap over, colours included. A message that only puts people on a team or together, without asking for new teams, is "swap".
+  "generate" work the line-ups out again: new teams, made, made again or shuffled. This holds even when the same message also asks for new names, puts people together or apart, or says "again", "once more" or "instead".
+  "swap" change the teams as they stand and leave everyone else where they are: people change team, go to a named team, end up together or apart, or the two teams swap over, colours included. A message that only says who goes where, or who plays with or apart from whom, without asking for new teams, is "swap".
   "restore" use the teams of the quoted message, an earlier team sheet ("these are the final teams", "use these", "go back to these"). Only when a message is quoted; the names are not written in THE MESSAGE.
   "set" THE MESSAGE itself writes out both teams, names under each side, to be used as the teams.
   "suggest" asks you to recommend changes that make the teams fairer.
@@ -612,16 +622,18 @@ action, exactly one:
   "form" tells MatchTime how a player, the sender or another, will play in this match, so the teams are made with it in mind: tired, ill, injured, hungover, rusty or in top form, or asks MatchTime to rate them, or their strength, down or up for this match. It is also a change to the amount MatchTime said it will use for a player, or a cancel of it ("make it -1", "just -0.25 for me", "cancel my adjustment"), answering MatchTime's post that stated it. The teams are not changed now. Only form is filled; every other field stays empty. A message that also asks for new teams is "generate".
 includeRefs
   people the message says must play.
-teamNames
-  the two team names, in order: the ones the message gives or, when it asks you to pick the names, make up two short names (different, at most 24 characters each, not Red or Yellow, in the language THE MESSAGE is written in). An empty array when the message is not about names.
 moves
   every person who goes to the OTHER team from wherever they are now, when no team is named for them. A swap of two people is both of them; a list of swaps is every name in it.
 swaps
   people the message puts on a NAMED team, with that team, RED or YELLOW. When MATCHTIME'S LAST POST lists the two teams, the first one listed is RED and the second YELLOW, whatever they are called.
-pairings
-  people who must end up on the same team as each other, one array per group.
 swapSides
   true when the two whole teams swap over, so that every player changes team: the teams trade places, or trade colours while each line-up stays together ("swap the colours"). moves is then empty. False otherwise.
+pairings
+  people who must play on the SAME team as each other, one array per group ("me and David on the same team", "Ali and Habib together"). Nobody is moved by name: code decides who goes where.
+apart
+  people who must play on DIFFERENT teams, one array per group: two people end up on opposite teams, and a bigger group is spread across both ("keep Dan and Craig apart", "separate teams", "not on the same team", "ayrı takımlarda"). Nobody is moved by name: code decides who goes where.
+teamNames
+  the two team names, in order: the ones the message gives or, when it asks you to pick the names, make up two short names (different, at most 24 characters each, not Red or Yellow, in the language THE MESSAGE is written in). An empty array when the message is not about names.
 sides
   for "set" only: the players of the first team written, as red, and of the second, as yellow, each name as written, without numbers, headings, team names or notes such as "out, place open". Both empty for every other action.
 form
@@ -632,7 +644,7 @@ ${FORM_SIZES}
 - Asked to rate them down or up with no reason and no amount: -0.5 or +0.5.
   reason: two to four words on why, in the message's language ("tired", "bad knee", "yorgun"); empty when the message gives none, as a change of amount usually does.
 toMatchTime
-  true when THE MESSAGE asks MatchTime to do this: a request or an instruction about the teams, tagged or not ("swap Rafi and Yorel", "Ali and Habib on one team", "use these"). False when people are only talking about the teams among themselves: an opinion, a question to each other, a description of how the teams look ("Ali and Habib are always on one team", "are we going with these?").
+  true when THE MESSAGE asks MatchTime to do this: a request or an instruction about the teams, tagged or not ("swap Rafi and Yorel", "keep Dan and Craig apart", "use these"). False when people are only talking about the teams among themselves: an opinion, a question to each other, a description of how the teams look ("Ali and Habib are always on one team", "are we going with these?").
 
 Write every person as the message writes them. When the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Every field the message says nothing about is empty, or false.
 
@@ -643,18 +655,24 @@ Seeing the teams:
 New teams:
   "generate the teams" / "make the teams" / "shuffle them again" / "takımları kur" / "yeniden kur" -> generate
   "generate the teams, Ibrahim is playing" -> generate, includeRefs ["Ibrahim"]
-  "make the teams and put me and David on the same team" -> generate, pairings [["me","David"]]
   "generate the teams, you pick some fun names" / "takımları kur, isimleri sen seç" -> generate, teamNames two names you make up
   "generate the teams, call them Lions and Tigers" -> generate, teamNames ["Lions","Tigers"]
 New names, same teams:
   "call the teams Lions and Tigers" / "takımların adı Aslanlar ve Kaplanlar olsun" -> rename, teamNames ["Lions","Tigers"] / ["Aslanlar","Kaplanlar"]
+Who plays with whom, on new teams:
+  "make the teams and put me and David on the same team" / "takımları kur, beni David ile aynı takıma koy" -> generate, pairings [["me","David"]]
+  "generate the teams, put Dan and Craig in separate teams please" / "takımları kur, Dan ile Craig ayrı takımlarda olsun" -> generate, apart [["Dan","Craig"]]
+  "regenerate the teams, Dan and Craig on different teams" / "takımları yeniden kur, Dan ile Craig aynı takımda olmasın" -> generate, apart [["Dan","Craig"]]
+Who plays with whom, on the teams as they stand:
+  "Ali and Habib on one team" / "Stick keeper. Ali and Habib on one team" / "Ali ile Habib aynı takımda olsun" -> swap, pairings [["Ali","Habib"]]
+  "keep Dan and Craig apart" / "Dan and Craig shouldn't be on the same team" / "Dan ile Craig'i ayır" -> swap, apart [["Dan","Craig"]]
+  "split Tom, Ali and Sam between the teams" / "Tom, Ali ve Sam'i takımlara dağıt" -> swap, apart [["Tom","Ali","Sam"]]
 Changing the teams as they stand:
   "swap Ali and Can" / "Ali ile Can'ı değiştir" -> swap, moves ["Ali","Can"]
   "swap me with Elvin" / "Elvin ile yer değiştirelim" -> swap, moves ["me","Elvin"]
   "move Tom to the other team" / "Tom'u diğer takıma al" -> swap, moves ["Tom"]
   "swap Rafi and Yorel, Mo and Akram", one pair a line or not / "Rafi ile Yorel, Mo ile Akram yer değiştirsin" -> swap, moves ["Rafi","Yorel","Mo","Akram"]
   "put David in Red" / "David kırmızıya geçsin" -> swap, swaps [{"personRef":"David","team":"RED"}]
-  "Ali and Habib on one team" / "Stick keeper. Ali and Habib on one team" / "Ali ile Habib aynı takımda olsun" -> swap, pairings [["Ali","Habib"]]
 The two teams swap over, or swap colours:
   "swap everyone on bibs with non bibs" / "move team 1 over to team 2" / "swap them over", after both teams were listed / "takımların yerini değiştir" -> swap, swapSides true
   "swap the colours" / "renkleri değiştir" -> swap, swapSides true
@@ -1031,6 +1049,9 @@ const TEAMS_SCHEMA = {
     // list could not tell "A with B, C with D" from "A, B, C and D all
     // together", and those are different line-ups.
     pairings: { type: "array", items: { type: "array", items: { type: "string" } } },
+    // 2026-11-16 (the Vets, "put Dan and Craig in separate teams"): the
+    // other half of `pairings`, one group per "these people split up".
+    apart: { type: "array", items: { type: "array", items: { type: "string" } } },
     // 2026-10-16: "swap Ali and Can" / "move Tom" name no side, so they
     // cannot be `swaps` (absolute). Each person here goes to the other
     // team from where they stand now.
@@ -1068,7 +1089,7 @@ const TEAMS_SCHEMA = {
       },
     },
   },
-  required: ["action", "includeRefs", "teamNames", "swaps", "moves", "pairings", "swapSides", "sides", "toMatchTime", "form"],
+  required: ["action", "includeRefs", "teamNames", "swaps", "moves", "pairings", "apart", "swapSides", "sides", "toMatchTime", "form"],
   additionalProperties: false,
 } as const;
 
@@ -1251,6 +1272,14 @@ function bool(v: unknown, fallback = false): boolean {
 function sideOf(sides: unknown, key: "red" | "yellow"): string[] {
   const list = sides && typeof sides === "object" ? (sides as Record<string, unknown>)[key] : null;
   return Array.isArray(list) ? list.map((n) => str(n).trim()).filter(Boolean) : [];
+}
+
+/** Groups of names (`pairings`, `apart`): trimmed, blanks dropped, and a
+ *  group of fewer than two dropped, since it constrains nobody. */
+function groupsOf(v: unknown): string[][] {
+  return (Array.isArray(v) ? v : [])
+    .map((g) => (Array.isArray(g) ? g.map((n) => str(n).trim()).filter(Boolean) : []))
+    .filter((g) => g.length >= 2);
 }
 
 function str(v: unknown): string {
@@ -1459,9 +1488,10 @@ export function parseFacts(
         // A "pairing" of one person constrains nothing, so a stray
         // single-element group is dropped here rather than pinning
         // somebody to an arbitrary colour on the strength of it.
-        pairings: (Array.isArray(raw.pairings) ? (raw.pairings as unknown[]) : [])
-          .map((g) => (Array.isArray(g) ? g.map(str).filter(Boolean) : []))
-          .filter((g) => g.length >= 2),
+        pairings: groupsOf(raw.pairings),
+        // The same for a group kept apart (2026-11-16): one person alone
+        // is kept apart from nobody.
+        apart: groupsOf(raw.apart),
         sides: { red: sideOf(raw.sides, "red"), yellow: sideOf(raw.sides, "yellow") },
         toMatchTime: raw.toMatchTime === true,
         // For "form" only. An entry with no player or no numeric amount is

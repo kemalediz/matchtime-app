@@ -65,6 +65,7 @@ import { appUrl } from "./app-url";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import type { ProposedWrite } from "./pipeline/types";
+import { constraintLines, type UnmetConstraints } from "./team-constraints";
 
 export type EngineGenerateTeamsWrite = Extract<ProposedWrite, { kind: "generate_teams" }>;
 
@@ -173,10 +174,17 @@ export function composeGenerateTeamsReply(args: {
   pinnedLog: string[];
   unmatchedIncludes: string[];
   unmatchedPins: string[];
+  /** Who plays with or apart from whom, one line a group, met or not
+   *  (`constraintLines`, 2026-11-16). Nearest the post: the answer to
+   *  what the message asked. */
+  constraintLines?: string[];
   lang?: Lang | string | null;
 }): string {
   const s = t(args.lang);
   let text = args.groupPost;
+  if (args.constraintLines && args.constraintLines.length > 0) {
+    text = `${args.constraintLines.join("\n")}\n\n${text}`;
+  }
   if (args.includedNames.length > 0) {
     text = `${s.team_gen_note_including({ names: args.includedNames })}\n\n${text}`;
   }
@@ -199,7 +207,8 @@ export function composeGenerateTeamsReply(args: {
  *  result carries an extra `matchId` on the ok arm and is assignable to
  *  this. */
 export type TeamGenerationOutcome =
-  | { ok: true; groupPost: string }
+  /** `unmet`: the together and apart groups the teams could not keep. */
+  | { ok: true; groupPost: string; unmet?: UnmetConstraints }
   | { ok: false; reason: string };
 
 export interface TeamOpsApplyDeps {
@@ -256,6 +265,9 @@ export interface TeamOpsApplyDeps {
     opts: {
       pinnedToTeam?: Record<string, "RED" | "YELLOW">;
       teamNames?: [string, string];
+      /** User ids who must share a side, and who must be split (2026-11-16). */
+      together?: string[][];
+      apart?: string[][];
     },
   ) => Promise<TeamGenerationOutcome>;
 }
@@ -356,6 +368,8 @@ export async function applyGenerateTeams(args: {
     const pinnedToTeam: Record<string, "RED" | "YELLOW"> = {};
     for (const p of write.pinned) pinnedToTeam[p.userId] = p.team;
 
+    const together = (write.together ?? []).filter((g) => g.length >= 2);
+    const apart = (write.apart ?? []).filter((g) => g.length >= 2);
     const result = await deps.generateTeams(matchId, {
       // `undefined` rather than `{}` when empty, exactly as
       // `route.ts:3655-3658` passes it: an empty object and an absent
@@ -363,6 +377,8 @@ export async function applyGenerateTeams(args: {
       // call means they cannot diverge if that ever stops being true.
       ...(Object.keys(pinnedToTeam).length > 0 ? { pinnedToTeam } : {}),
       ...(write.teamNames ? { teamNames: write.teamNames } : {}),
+      ...(together.length > 0 ? { together: together.map((g) => g.map((m) => m.userId)) } : {}),
+      ...(apart.length > 0 ? { apart: apart.map((g) => g.map((m) => m.userId)) } : {}),
     });
 
     if (!result.ok) {
@@ -388,6 +404,14 @@ export async function applyGenerateTeams(args: {
         pinnedLog,
         unmatchedIncludes: write.unmatchedIncludes,
         unmatchedPins: write.unmatchedPins,
+        // Every group asked for, said met or not, read from what the
+        // balancer made (`unmet`), so the words match the sheet.
+        constraintLines: constraintLines({
+          together,
+          apart,
+          unmet: result.unmet ?? { together: [], apart: [] },
+          lang,
+        }),
         lang,
       }),
       react: "⚽",
