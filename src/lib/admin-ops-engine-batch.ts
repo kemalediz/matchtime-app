@@ -324,6 +324,10 @@ export interface AdminOpsMessageOutcome {
    *  again", for a message whose own teams part then makes them
    *  (several instructions, 2026-11-16). Absent otherwise. */
   replyIfTeamsMade?: string;
+  /** The match a size switch changed (2026-11-17): a switch done with
+   *  `partOfSeveral` sent the organisers nothing, and the route sends them
+   *  that match's list after the batch's claims. Absent otherwise. */
+  switchedMatchId?: string;
 }
 
 export interface AdminOpsBatchResult {
@@ -331,6 +335,23 @@ export interface AdminOpsBatchResult {
   outcomes: Map<string, AdminOpsMessageOutcome>;
   degradations: string[];
   cost: { usd: number; calls: number; ms: number };
+  /** With `applyNow`: the messages read here but not applied, with what the
+   *  extractor read of them and the games it was shown, for the pass after
+   *  the attendance engine (`preRead`). Absent without `applyNow`. */
+  deferred?: AdminOpsPreRead;
+}
+
+/**
+ * What the admin extractor already read of some messages (Sutton FC,
+ * 2026-11-17): the route reads a batch's admin messages before the
+ * attendance engine and applies only its match changes there; the rest are
+ * applied after the engine from this, never read twice.
+ */
+export interface AdminOpsPreRead {
+  facts: ReadonlyMap<string, Facts>;
+  /** The games to come the extractor was shown: a game number it chose is
+   *  checked against this same list. */
+  games: readonly GameToCome[];
 }
 
 export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
@@ -419,7 +440,7 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     explicit: boolean;
     /** False: no list queued for the players' group (`partOfSeveral`). */
     groupList?: boolean;
-  }) => Promise<{ outcome: string; replyText: string | null; replyIfTeamsMade?: string }>;
+  }) => Promise<{ outcome: string; replyText: string | null; replyIfTeamsMade?: string; matchId?: string }>;
   /** The club's games to come, shown to the admin extractor as GAMES TO
    *  COME (2026-11-10, move_game). Defaults to `game-move-words.ts`;
    *  injected so tests need no database. */
@@ -457,17 +478,30 @@ export async function runAdminOpsBatch(args: {
   silence?: SilenceFacts;
   /**
    * Every message here is one part of a message with several instructions
-   * (2026-11-16): a size switch queues no list of its own for the players'
-   * group, because that message's one reply carries the list or the team
-   * sheet, built from the database after every part.
+   * (2026-11-16), or a match change done before its batch's attendance
+   * claims (2026-11-17): a size switch queues no list of its own for the
+   * players' group, because that message's one reply carries the list or
+   * the team sheet, built from the database after every part and claim.
    */
   partOfSeveral?: boolean;
+  /**
+   * SEVERAL MESSAGES IN ONE BATCH (Sutton FC, 2026-11-17). Given each read
+   * message's admin action (the extractor's fact), the ids to apply NOW.
+   * Every other message read here is not applied and is handed back in
+   * `deferred`, with its facts, for the pass after the attendance engine
+   * (`pipeline/multi-route.ts`'s `matchChangesFirst` says which). Absent:
+   * every message is applied, as always.
+   */
+  applyNow?: (actions: ReadonlyMap<string, string>) => ReadonlySet<string>;
+  /** What an earlier pass of this batch already read (`deferred`): those
+   *  messages are not read again, and the games shown are the same. */
+  preRead?: AdminOpsPreRead;
 }): Promise<AdminOpsBatchResult> {
   const { orgId, now, messages, history, enabled, deps } = args;
   const t0 = Date.now();
 
   // ── Ownership, part 1: everything knowable without a model ─────────
-  const candidates = messages.filter(
+  let candidates = messages.filter(
     (m) => !m.gated && stepSevenOwnsRoute(m.route, enabled, ADMIN_OPS_ROUTES),
   );
   if (candidates.length === 0) return empty();
@@ -520,8 +554,9 @@ export async function runAdminOpsBatch(args: {
   // The club's games to come (2026-11-10, move_game): shown to the model,
   // numbered, and its game number checked against this same list. A failed
   // read shows "none", so no game can be named and nothing is moved.
-  const gamesShown: GameToCome[] =
-    (await (deps.gamesToCome ?? (async (o: string, n: Date) => (await import("./game-move-words")).loadGamesToCome(o, n)))(orgId, now).catch(
+  const gamesShown: readonly GameToCome[] = args.preRead
+    ? args.preRead.games
+    : (await (deps.gamesToCome ?? (async (o: string, n: Date) => (await import("./game-move-words")).loadGamesToCome(o, n)))(orgId, now).catch(
       (err: unknown) => {
         console.error("[admin-ops-engine] reading the games to come failed:", err instanceof Error ? err.message : "failed");
         return null;
@@ -531,8 +566,14 @@ export async function runAdminOpsBatch(args: {
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, Facts>();
+  // Read once (2026-11-17): what an earlier pass of this batch read is used
+  // as read, with no second extractor call.
+  for (const m of candidates) {
+    const read = args.preRead?.facts.get(m.waMessageId);
+    if (read) factsById.set(m.waMessageId, read);
+  }
   await fanOutWarmFirst(
-    candidates,
+    candidates.filter((m) => !factsById.has(m.waMessageId)),
     (m) => extractorCacheKey(m.route as Route),
     async (m) => {
       const res = await extractForRouteTraced("admin_ops", model, m.route as Route, {
@@ -573,6 +614,24 @@ export async function runAdminOpsBatch(args: {
       factsById.set(m.waMessageId, res.facts);
     },
   );
+
+  // ── Applied now, or after the attendance engine (2026-11-17) ───────
+  // Only what `applyNow` names goes on below; every other message read is
+  // handed back with its facts. A message whose read failed is not: it was
+  // reported above, once, and nothing would read it differently later.
+  let deferred: AdminOpsPreRead | undefined;
+  if (args.applyNow) {
+    const actions = new Map<string, string>();
+    for (const m of candidates) {
+      const f = factsById.get(m.waMessageId);
+      if (f?.kind === "admin") actions.set(m.waMessageId, (f as AdminFacts).action);
+    }
+    const now_ = args.applyNow(actions);
+    const later = candidates.filter((m) => factsById.has(m.waMessageId) && !now_.has(m.waMessageId));
+    deferred = { facts: new Map(later.map((m) => [m.waMessageId, factsById.get(m.waMessageId)!])), games: gamesShown };
+    for (const m of later) factsById.delete(m.waMessageId);
+    candidates = candidates.filter((m) => now_.has(m.waMessageId));
+  }
 
   // ── The payment target, decided once, before anything is owned ─────
   //
@@ -1034,8 +1093,12 @@ export async function runAdminOpsBatch(args: {
     try {
       const apply = deps.applySwitchFormatWords ?? (async (a) => (await import("./format-switch-words")).applySwitchFormatWords(a));
       const r = await apply({ orgId, ...ask, via: "whatsapp", lang: state.features.language, now, ...(args.partOfSeveral ? { groupList: false } : {}) });
-      const o = replyOnly(id, r.replyText, r.outcome, `switch_format by an organiser: ${r.outcome}${args.partOfSeveral ? "; one part of several, no list of its own" : ""}`);
-      cancelOutcomes.push(r.replyIfTeamsMade ? { ...o, replyIfTeamsMade: r.replyIfTeamsMade } : o);
+      const o = replyOnly(id, r.replyText, r.outcome, `switch_format by an organiser: ${r.outcome}${args.partOfSeveral ? "; done with other parts or claims, no list of its own" : ""}`);
+      cancelOutcomes.push({
+        ...o,
+        ...(r.replyIfTeamsMade ? { replyIfTeamsMade: r.replyIfTeamsMade } : {}),
+        ...(r.matchId && r.outcome.startsWith("format-switched") ? { switchedMatchId: r.matchId } : {}),
+      });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error(`[admin-ops-engine] ${id}: switch_format threw:`, err);
@@ -1063,6 +1126,7 @@ export async function runAdminOpsBatch(args: {
    *  whatever the rest of this function returns, on EVERY path below:
    *  they depend on nothing the engine or the apply layer does. */
   const finish = (r: AdminOpsBatchResult): AdminOpsBatchResult => {
+    if (deferred) r.deferred = deferred;
     for (const o of cancelOutcomes) {
       r.ownedIds.add(o.waMessageId);
       r.outcomes.set(o.waMessageId, o);
