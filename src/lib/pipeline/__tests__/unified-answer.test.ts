@@ -599,6 +599,17 @@ describe("a dead end: a tagged message MatchTime could not act on (2026-11-17, t
     expect(text).not.toContain("WHAT MATCHTIME CAN DO");
   });
 
+  it("how the club is run says MatchTime records a game's score when tagged with it, and who may change it, by audience (the score route's own rules)", () => {
+    const players = buildUnifiedContext(input()).text;
+    expect(players).toContain(
+      "- Scores: after a game, someone who played in it or an admin tags MatchTime with the score, and MatchTime records it for the last game played; a score already recorded is corrected the same way.",
+    );
+    const hq = buildUnifiedContext(input({ audience: "organisers" })).text;
+    expect(hq).toContain(
+      "- Scores: after a game, anyone here or in the players' group tags MatchTime with the score, and MatchTime records it for the last game played; only an organiser can change a score already recorded.",
+    );
+  });
+
   it("an ordinary question carries neither", () => {
     const { text } = buildUnifiedContext(input());
     expect(text).not.toContain("NOT DONE:");

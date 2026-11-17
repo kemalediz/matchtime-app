@@ -30,7 +30,7 @@ import type { OrgFeatures } from "../src/lib/org-features.ts";
 import type { HelpClubFacts } from "../src/lib/help-club-facts.ts";
 import type { ClubSnapshot, Member, Route, SquadState, StatsSnapshot } from "../src/lib/pipeline/types.ts";
 
-const MAX_USD = 1;
+const MAX_USD = Number(process.env.MAX_USD ?? 1);
 
 // DRY=1: a stub model, $0, to check the wiring before the one paid pass.
 const DRY = process.env.DRY === "1";
@@ -50,7 +50,7 @@ const inner: PipelineModel = DRY
 const model: PipelineModel = {
   name: "metered",
   async complete(req) {
-    if (usd >= MAX_USD - 0.05) throw new Error(`stopped before $${MAX_USD}`);
+    if (usd >= MAX_USD * 0.9) throw new Error(`stopped before $${MAX_USD}`);
     const r = await inner.complete(req);
     calls++;
     usd += r.costUsd ?? 0;

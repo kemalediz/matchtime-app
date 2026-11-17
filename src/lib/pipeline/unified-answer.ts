@@ -517,6 +517,16 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
   L.push(`- Who posts the squad list: ${announcer === "organisers" ? "the organisers" : "MatchTime"}`);
   L.push(`- Who fills an open place: ${state.features.benchPickMode === "organiser" ? "the organisers choose from the bench" : "the first on the bench moves up"}`);
   L.push(`- Man of the Match is chosen by: ${state.features.momChosenBy === "organisers" ? "the organisers" : "the players' vote"}`);
+  // Scores (2026-11-17, a dead end answered "I can't record a score from a
+  // message", untrue): who may report and change one, as the score route
+  // decides it (`engine.ts` handleScore in the players' group,
+  // `admin-group-score.ts` in HQ).
+  // No example score: its digits would count as grounded numbers.
+  L.push(
+    audience === "organisers"
+      ? `- Scores: after a game, anyone here or in the players' group tags MatchTime with the score, and MatchTime records it for the last game played; only an organiser can change a score already recorded.`
+      : `- Scores: after a game, someone who played in it or an admin tags MatchTime with the score, and MatchTime records it for the last game played; a score already recorded is corrected the same way.`,
+  );
   if (input.squadMode === "monthly") L.push(...MONTHLY_RULES);
   // What MatchTime does while the squad is not full (round 3, 2026-11-12:
   // "what happens if 14 don't confirm?" had nothing to be answered from).
