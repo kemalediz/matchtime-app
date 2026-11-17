@@ -31,6 +31,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     activity: { findFirst: vi.fn().mockResolvedValue(null) },
     membership: { findMany: (...a: unknown[]) => membershipFindMany(...a) },
+    attendance: { groupBy: vi.fn().mockResolvedValue([]) },
     userAlias: { findMany: vi.fn().mockResolvedValue([]) },
     organisation: { findUnique: vi.fn().mockResolvedValue({ lastParticipantSweepAt: null }) },
     rating: { findMany: vi.fn().mockResolvedValue([]) },
@@ -55,6 +56,7 @@ function twoClubPlayer() {
     {
       role: "PLAYER",
       leftAt: null,
+      createdAt: new Date("2026-04-18T00:00:00Z"),
       provisionallyAddedAt: null,
       seedRating: 7,
       user: {
