@@ -4931,6 +4931,17 @@ export const en = {
     `✅ Done: the squad has a limit again, *${p.activityName}* with ${p.places} places. Everyone already in stays in; anyone who says *IN* after it is full goes on the bench.`,
   os_already_on: (p: { min: number }): string => `No change: there is already no squad limit. Everyone who says *IN* plays; the minimum is ${p.min}.`,
   os_already_off: (p: { places: number }): string => `No change: the squad already has a limit of ${p.places} places.`,
+  /** A size asked for while the squad has no limit: nothing changes. */
+  os_no_format:
+    "This club has no number a side: everyone who says *IN* plays, and the teams are split evenly between whoever is in. To bring a limit back, tag me and say so, for example *@Match Time put the limit and the bench back*.",
+  /** The minimum set by WhatsApp while the squad has no limit. */
+  os_min_set: (p: { activityName: string; min: number }): string =>
+    `✅ Done: *${p.activityName}* needs at least ${p.min} players. Below that I'll ask for players and warn you; there is still no most.`,
+  os_min_unchanged: (p: { activityName: string; min: number }): string => `No change: *${p.activityName}* already needs at least ${p.min} players.`,
+  /** A most asked for while the squad has no limit. */
+  os_no_max: "There is no most while the squad has no limit: everyone who says *IN* plays. To bring a limit back, tag me and say so.",
+  /** A minimum that cannot be (below 2, or not a whole number). */
+  os_min_refused: "The fewest players has to be a whole number, at least 2.",
   /** A place opened and nobody is waiting: one line in the group. */
   mwk_pool_group: (p: { open: number; when: string; price: string | null }): string =>
     `🎟 ${p.open} ${p.open === 1 ? "place" : "places"} open for *${p.when}*${p.price ? `, ${p.price} PAYG` : ""}. ` +

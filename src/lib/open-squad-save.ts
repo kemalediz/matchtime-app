@@ -22,6 +22,7 @@ import { db } from "./db";
 import { t } from "./i18n/t";
 import { joinList } from "./i18n/text";
 import { openSquadMinimum } from "./open-squad";
+import { matchFormatTitle } from "./match-format-title";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -50,6 +51,36 @@ async function gameFacts(orgId: string, now: Date): Promise<{ name: string; min:
     min: openSquadMinimum({ minPlayers: a?.minPlayers ?? null, playersPerTeam: perTeam }),
     places: a?.matches?.[0]?.maxPlayers ?? perTeam * 2,
   };
+}
+
+/**
+ * THE MINIMUM OF AN OPEN SQUAD'S GAME, by WhatsApp ("@Match Time we can
+ * play with 12") or the activities page: any whole number from 2, with no
+ * format to check it against; null is back to two full sides of the sport.
+ * A most is refused: there is none while the squad has no limit.
+ */
+export async function saveOpenSquadMinimum(p: {
+  activityId: string;
+  /** The minimum said; null: back to two full sides. */
+  min: number | null;
+  /** A most was said too (refused when no minimum is). */
+  maxAsked?: boolean;
+  lang: string | null;
+}): Promise<{ outcome: "player-range-set" | "player-range-cleared" | "player-range-unchanged" | "player-range-refused"; replyText: string }> {
+  const s = t(p.lang);
+  if (p.min === null && p.maxAsked) return { outcome: "player-range-refused", replyText: s.os_no_max };
+  if (p.min !== null && !(Number.isInteger(p.min) && p.min >= 2 && p.min <= 99)) return { outcome: "player-range-refused", replyText: s.os_min_refused };
+  const a = await db.activity.findUnique({
+    where: { id: p.activityId },
+    select: { name: true, minPlayers: true, maxPlayers: true, sport: { select: { playersPerTeam: true } } },
+  });
+  if (!a) return { outcome: "player-range-refused", replyText: s.os_min_refused };
+  const activityName = matchFormatTitle(a.name, null, { openSquad: true });
+  const after = openSquadMinimum({ minPlayers: p.min, playersPerTeam: a.sport.playersPerTeam });
+  if ((a.minPlayers ?? null) === p.min) return { outcome: "player-range-unchanged", replyText: s.os_min_unchanged({ activityName, min: after }) };
+  await db.activity.update({ where: { id: p.activityId }, data: { minPlayers: p.min } });
+  console.log(`[open-squad] activity=${p.activityId} minimum ${p.min ?? "two full sides"}`);
+  return { outcome: p.min === null ? "player-range-cleared" : "player-range-set", replyText: s.os_min_set({ activityName, min: after }) };
 }
 
 export async function setOpenSquad(p: { orgId: string; on: boolean; actorUserId: string | null; now: Date }): Promise<OpenSquadReply> {

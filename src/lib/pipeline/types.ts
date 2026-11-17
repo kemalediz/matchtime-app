@@ -872,6 +872,7 @@ export interface AdminFacts {
     | "player_numbers"
     | "switch_format"
     | "move_game"
+    | "open_squad"
     | "other";
   /** bulk_payment */
   payerRef?: string;
@@ -964,6 +965,11 @@ export interface AdminFacts {
   quietFrom?: string;
   /** quiet_hours: when they end, the same way. */
   quietTo?: string;
+  /** open_squad (2026-11-17, the Vets: "the main squad will always expand
+   *  or shrink without any limits and a bench"): put a limit back, the
+   *  setting off. Set only when true; absent means switch the open squad
+   *  on (`open-squad-save.ts`). */
+  openSquadOff?: true;
   /**
    * The message is spoken to MatchTime itself, not to a person or the
    * others in the chat (2026-10-22, FNF HQ: "@Kemal can we ask Sutton

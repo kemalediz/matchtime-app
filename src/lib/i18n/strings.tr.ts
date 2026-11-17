@@ -3521,6 +3521,12 @@ export const tr: Strings = {
     `✅ Tamam: kadronun yine bir sınırı var, *${p.activityName}* için ${p.places} kişi. Listede olan herkes kalır; kadro dolduktan sonra *VARIM* yazan yedeğe girer.`,
   os_already_on: (p) => `Değişiklik yok: zaten kadro sınırı yok. *VARIM* yazan herkes oynar; en az ${p.min} kişi gerekir.`,
   os_already_off: (p) => `Değişiklik yok: kadronun zaten ${p.places} kişilik bir sınırı var.`,
+  os_no_format:
+    "Bu kulüpte takım başına bir sayı yok: *VARIM* yazan herkes oynar, takımlar gelenler arasında eşit bölünür. Sınırı geri getirmek için beni etiketleyip söyleyin, örneğin *@Match Time kadro sınırını ve yedekleri geri getir*.",
+  os_min_set: (p) => `✅ Tamam: *${p.activityName}* için en az ${p.min} oyuncu gerekiyor. Bunun altında oyuncu arar ve sizi uyarırım; üst sınır yine yok.`,
+  os_min_unchanged: (p) => `Değişiklik yok: *${p.activityName}* için zaten en az ${p.min} oyuncu gerekiyor.`,
+  os_no_max: "Kadro sınırı yokken üst sınır da yok: *VARIM* yazan herkes oynar. Sınırı geri getirmek için beni etiketleyip söyleyin.",
+  os_min_refused: "En az oyuncu sayısı tam sayı olmalı, en az 2.",
   mwk_pool_group: (p) => `🎟 *${p.when}* maçında ${p.open} yer açık${p.price ? `, maç başı ${p.price} (PAYG)` : ""}. İlk *VARIM* yazan alır.`,
   mwk_dm_sender_not_matched: (p) =>
     `📋 Yapıştırdığın listedeki ${p.names.join(", ")} adını bir oyuncuyla eşleştiremedim, bu yüzden kimseyi eklemedim. ` +

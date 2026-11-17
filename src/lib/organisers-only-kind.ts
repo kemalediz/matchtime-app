@@ -28,6 +28,7 @@ export function organisersOnlyKindOfAction(action: string | null | undefined): O
     case "player_numbers":
     case "switch_format":
     case "move_game":
+    case "open_squad":
     case "season_break":
       return "settings";
     default:

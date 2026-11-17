@@ -6,9 +6,12 @@ const state = vi.hoisted(() => ({
   updates: [] as Array<{ id: string; minPlayers: number | null; maxPlayers: number | null }>,
   /** Matches still to come, as `savePlayerRange` reads them (already switched ones). */
   matches: [] as Array<{ date: Date; maxPlayers: number }>,
+  /** The club has no squad limit (open-squad.ts). */
+  openSquad: false,
 }));
 vi.mock("@/lib/db", () => ({
   db: {
+    organisation: { findUnique: vi.fn(async () => ({ openSquad: state.openSquad })) },
     match: { findMany: vi.fn(async () => state.matches) },
     activity: {
       findMany: vi.fn(async () => state.games.map((g) => ({ id: g.id, name: g.name, dayOfWeek: g.dayOfWeek }))),
@@ -35,6 +38,47 @@ beforeEach(() => {
   state.games = [{ ...VETS }];
   state.updates = [];
   state.matches = [];
+  state.openSquad = false;
+});
+
+describe("applyPlayerRangeWords for an OPEN SQUAD (2026-11-17): the minimum is the only number", () => {
+  const FOOTBALL = { ...VETS, name: "Football 7-a-side" };
+  beforeEach(() => {
+    state.openSquad = true;
+    state.games = [{ ...FOOTBALL }];
+  });
+
+  it("'we can play with 12' sets the minimum, no format in the reply", async () => {
+    const r = await ask({ minPlayers: 12 });
+    expect(state.updates).toEqual([{ id: "vets-mon", minPlayers: 12, maxPlayers: undefined }]);
+    expect(r).toEqual({ outcome: "player-range-set", replyText: "✅ Done: *Football* needs at least 12 players. Below that I'll ask for players and warn you; there is still no most." });
+  });
+
+  it("any whole number from 2, above the old format's places too (16 on a 7-a-side)", async () => {
+    expect((await ask({ minPlayers: 16 })).outcome).toBe("player-range-set");
+    expect(state.updates[0].minPlayers).toBe(16);
+  });
+
+  it("a most is refused, nothing written; 1 is refused", async () => {
+    expect((await ask({ minPlayers: null, maxPlayers: 16 })).replyText).toBe(
+      "There is no most while the squad has no limit: everyone who says *IN* plays. To bring a limit back, tag me and say so.",
+    );
+    expect((await ask({ minPlayers: 1 })).outcome).toBe("player-range-refused");
+    expect(state.updates).toEqual([]);
+  });
+
+  it("back to full teams clears it: two full sides of the sport (14)", async () => {
+    state.games = [{ ...FOOTBALL, minPlayers: 12 }];
+    const r = await ask({ minPlayers: null, fullTeams: true });
+    expect(state.updates).toEqual([{ id: "vets-mon", minPlayers: null, maxPlayers: undefined }]);
+    expect(r.replyText).toContain("at least 14 players");
+  });
+
+  it("Turkish, and the same again is unchanged", async () => {
+    state.games = [{ ...FOOTBALL, minPlayers: 12 }];
+    const r = await ask({ minPlayers: 12, lang: "tr" });
+    expect(r).toEqual({ outcome: "player-range-unchanged", replyText: "Değişiklik yok: *Football* için zaten en az 12 oyuncu gerekiyor." });
+  });
 });
 
 describe("pickGame", () => {

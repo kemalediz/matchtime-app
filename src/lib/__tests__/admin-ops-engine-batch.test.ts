@@ -1411,6 +1411,50 @@ describe("quiet hours by WhatsApp", () => {
   });
 });
 
+// ── 2026-11-17 (the Vets: "the main squad will always expand or shrink
+// without any limits and a bench"): the open squad on, or a limit back, by
+// tagging MatchTime. An owner or admin, with the Pi's real tag, only.
+
+describe("open squad by WhatsApp", () => {
+  const ON = "@Match Time no limit on the squad";
+  const OPEN_FACTS = { ...BLAST_FACTS, action: "open_squad", lookbackMatches: 0, playersFrom: [], clubRef: "", openSquadOff: false, toMatchTime: true };
+
+  const outcomeOf = async (m: Partial<AdminOpsBatchMessage> = {}, facts: Record<string, unknown> = OPEN_FACTS) => {
+    const { model } = stubModel({ [ON]: facts });
+    const r = recorder(model, paidWorld());
+    const calls: Array<{ orgId: string; on: boolean; actorUserId: string | null }> = [];
+    const res = await run({
+      messages: [msg({ body: ON, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
+      deps: {
+        ...r.deps,
+        onlyOrganisersLine: onlyKemal,
+        applyOpenSquad: async (a) => (calls.push({ orgId: a.orgId, on: a.on, actorUserId: a.actorUserId }), { outcome: a.on ? "open-squad-on" : "open-squad-off", replyText: "✅ Done." }),
+      },
+    });
+    return { out: res.outcomes.get(`wa-${ON.slice(0, 14)}`), calls };
+  };
+
+  it("an organiser, tagged: switched on through the one core, as the sender", async () => {
+    const { out, calls } = await outcomeOf();
+    expect(calls).toEqual([{ orgId: "org-1", on: true, actorUserId: "u-kemal" }]);
+    expect(out).toMatchObject({ reply: "✅ Done.", intent: "open-squad-on" });
+  });
+
+  it("a limit back: switched off", async () => {
+    const { calls } = await outcomeOf({}, { ...OPEN_FACTS, openSquadOff: true });
+    expect(calls[0]).toMatchObject({ on: false });
+  });
+
+  it("a player: the one line naming who can, nothing changed; untagged: nothing", async () => {
+    const player = await outcomeOf({ senderUserId: "u-zair", senderName: fullName("zair") });
+    expect(player.out?.reply).toBe("Only Kemal can change that.");
+    expect(player.calls).toEqual([]);
+    const untagged = await outcomeOf({ tagged: false, taggedExplicitly: false });
+    expect(untagged.out?.reply ?? null).toBeNull();
+    expect(untagged.calls).toEqual([]);
+  });
+});
+
 // ── 2026-11-03 (the Vets play 6, 7 or 8 a side): a game's fewest and most
 // players, and one game switched to another size, by tagging MatchTime. An
 // owner or admin only.

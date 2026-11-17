@@ -797,6 +797,7 @@ THE ACTION, exactly one. A question, an opinion or a discussion about whether to
   "retry_ask" try MatchTime's last request again, or say that what stopped it is now done or fixed, naming nothing new ("done, try again", "added the venue location"). A message that names the place is "set_venue"; one that asks for something again in full ("now ask the pool") is that action.
   "quiet_hours" switch the club's quiet hours (the night hours MatchTime holds its own messages in) off or on, or set when they start or end. Asking about them, or talking about them, is "other".
   "player_numbers" set how many players a game is played with, for every week: the fewest (MatchTime warns about low numbers only below it), the most (a game may then be made bigger, up to it), or both ("we can play with 12", "we play 12 to 16", "up to 8 a side"), or go back to needing two full sides. Saying how many are coming, or asking how many are needed, is "other".
+  "open_squad" take the limit off the club's squad, so everyone who says IN plays, with no bench and no number a side ("no limit, anyone can play", "no bench, the pitch is big enough for everyone"), or put a limit and a bench back. A fewest or most number of players is "player_numbers". Asking whether there is a limit, or talking about it, is "other".
   "switch_format" play ONE game with a different number a side, bigger or smaller ("make it 8 aside", "6 a side on Monday"), or a yes to MatchTime's own offer to switch a game ("Shall we go 8-a-side?"). Asking whether to switch, or talking about it, is "other".
   "move_game" change when a game kicks off: ONE game to another time, or to another day of its own week ("move Monday's game to 8:15", "tonight we start at 8"), or the club's weekly game from now on ("from now on we kick off at 8:15", "we play Tuesdays from now on"). A different number a side is "switch_format". Asking what time a game is, or talking about a time, is "other".
   "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back. "Free" as in able to play ("I'm free Tuesday") is not this.
@@ -827,6 +828,7 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
   minPlayers (player_numbers): the fewest players said, as written ("12", "on iki" is 12); 0 when no number is said or it goes back to full sides.
   maxPlayers (player_numbers): the most players said, as written ("up to 16" is 16, "en fazla 8'e 8" is 8); 0 when none is said.
   fullTeams (player_numbers): true when it goes back to needing two full sides ("back to full teams", "yine tam takım").
+  openSquadOff (open_squad): true when it puts a limit and a bench back; false when it takes the limit off.
   size (switch_format): the number of players said for that game, as written ("8 aside" is 8, "16 players" is 16); for a yes to MatchTime's offer, the number a side the offer names; 0 when none is said.
   aSide (player_numbers, switch_format): true when the numbers count the players on ONE side ("8 aside", "6 to 8 a side", "8'e 8", "6 kişilik oynayalım", MatchTime's "8-a-side"); false when they count everyone ("12 players", "16 kişiyle").
   game (move_game): the number of the game meant in GAMES TO COME: the one the message names by its day or date ("Monday's", "the 23rd", "pazartesi"), the first that fits for "tonight", "this week" or "next week", and the first when it names none and every game listed is the same weekly game. For the weekly game from now on, any game of that weekly game. 0 when none is listed, or the games listed are different weekly games and the message names none (MatchTime then asks which). An answer to MatchTime's question which game to move is move_game, with the game the answer picks and the day and time that question names.
@@ -921,6 +923,11 @@ How many players a game is played with, every week:
   "@Match Time back to full teams" / "@Match Time yine tam takım" -> player_numbers, fullTeams true
   "@Match Time how many do we need?" / "@Match Time kaç kişi lazım?" -> other
   "we're 12 tonight" / "bu akşam 12 kişiyiz" -> other, toMatchTime false
+No limit on the squad, or a limit back:
+  "@Match Time no limit on the squad, everyone who says in plays" / "@Match Time kadro sınırı yok, varım diyen herkes oynar" -> open_squad
+  "@Match Time the squad expands or shrinks without any limit and no bench, the pitch is big" / "@Match Time yedek yok, saha büyük, herkes gelebilir" -> open_squad
+  "@Match Time put the limit and the bench back" / "@Match Time kadro sınırını ve yedekleri geri getir" -> open_squad, openSquadOff true
+  "@Match Time is there a limit on numbers?" / "@Match Time kadro sınırı var mı?" -> other
 One game a different size:
   "@Match Time make it 8 aside" / "@Match Time 8'e 8 yapalım" -> switch_format, size 8, aSide true
   "@Match Time 6 kişilik oynayalım" / "@Match Time let's play 6 a side" -> switch_format, size 6, aSide true
@@ -1196,7 +1203,7 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "switch_format", "move_game", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "other"],
     },
     // season_break (2026-10-29): the months with no football, and the
     // months it is back in, each "YYYY-MM".
@@ -1239,6 +1246,8 @@ const ADMIN_SCHEMA = {
     minPlayers: { type: "number" },
     maxPlayers: { type: "number" },
     fullTeams: { type: "boolean" },
+    // open_squad (2026-11-17): true puts a limit and a bench back.
+    openSquadOff: { type: "boolean" },
     size: { type: "number" },
     aSide: { type: "boolean" },
     // move_game (2026-11-10): the game's number in GAMES TO COME (0: none
@@ -1252,7 +1261,7 @@ const ADMIN_SCHEMA = {
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "size", "aSide", "game", "newDay", "newTime", "everyWeek", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "openSquadOff", "size", "aSide", "game", "newDay", "newTime", "everyWeek", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1624,7 +1633,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "switch_format", "move_game", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1687,6 +1696,9 @@ export function parseFacts(
         ...(action === "quiet_hours" && raw.quietOff === true ? { quietOff: true as const } : {}),
         ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietFrom === "string" && raw.quietFrom.trim() ? { quietFrom: raw.quietFrom.trim() } : {}),
         ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietTo === "string" && raw.quietTo.trim() ? { quietTo: raw.quietTo.trim() } : {}),
+        // open_squad (2026-11-17): a limit back only when true; absent is
+        // the limit taken off.
+        ...(action === "open_squad" && raw.openSquadOff === true ? { openSquadOff: true as const } : {}),
         // player_numbers (2026-11-03): back to full sides only when true, and
         // then no minimum; whole numbers from 1, checked by the save core.
         ...(action === "player_numbers" && raw.fullTeams === true ? { fullTeams: true as const } : {}),
