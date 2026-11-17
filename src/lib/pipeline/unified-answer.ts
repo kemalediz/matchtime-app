@@ -54,6 +54,7 @@ import { stripLongDashes } from "../house-style";
 import { formatLondon } from "../london-time";
 import { differenceInMonths } from "date-fns";
 import type { HelpClubFacts } from "../help-club-facts";
+import { matchFormatTitle } from "../match-format-title";
 import type {
   PaymentSnapshot,
   RatingProgress,
@@ -248,6 +249,15 @@ const MONTHLY_RULES = [
   "- The month's list starts from the list the organisers post for the month.",
 ];
 
+/** The same, for a club with no squad limit (open-squad.ts): no open
+ *  place, no bench. */
+const MONTHLY_RULES_OPEN_SQUAD = [
+  "- The squad is a MONTHLY squad: the regulars who paid for the month are on the month's list and in every game of the month without saying anything, so nobody needs to confirm.",
+  "- A regular who can't make a game says OUT.",
+  "- A pay as you go player says IN to play a game and pays for that game only; there is no limit and no bench.",
+  "- The month's list starts from the list the organisers post for the month.",
+];
+
 function paymentLines(p: PaymentSnapshot | null | undefined): string[] {
   if (!p) return ["PAYMENTS: not available right now."];
   switch (p.kind) {
@@ -391,7 +401,7 @@ function statsLines(input: UnifiedAnswerInput, s: StatsSnapshot, squadIds: Array
     s.elo.slice(0, GROUP_LIST_CAP).forEach((r, i) => L.push(`${i + 1}. ${r.name}: ${r.rating} from ${r.matches} matches`));
   }
   if (s.teamOfSeason && s.teamOfSeason.slots.length) {
-    L.push("", `TEAM OF THE SEASON (${s.teamOfSeason.sportName}, best average rating per position, ${TEAM_OF_SEASON_MIN_GAMES}+ rated matches):`);
+    L.push("", `TEAM OF THE SEASON (${matchFormatTitle(s.teamOfSeason.sportName, null, { openSquad: input.state.features.openSquad === true })}, best average rating per position, ${TEAM_OF_SEASON_MIN_GAMES}+ rated matches):`);
     s.teamOfSeason.slots.forEach((x) => L.push(`- ${x.name}${x.position && x.position !== "ANY" ? ` (${x.position})` : ""}: ${d1(x.avg)} from ${x.games} rated matches`));
   }
   if (s.mrReliable.length) {
@@ -515,7 +525,14 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
   }
   const announcer = input.listAnnouncer ?? state.features.listAnnouncer;
   L.push(`- Who posts the squad list: ${announcer === "organisers" ? "the organisers" : "MatchTime"}`);
-  L.push(`- Who fills an open place: ${state.features.benchPickMode === "organiser" ? "the organisers choose from the bench" : "the first on the bench moves up"}`);
+  // No squad limit (open-squad.ts): no places to fill, no bench.
+  const openSquad = state.features.openSquad === true;
+  const minimum = state.openSquadMinimum ?? state.maxPlayers;
+  if (openSquad) {
+    L.push(`- Squad limit: none. Everyone who says IN plays; there is no bench and no number a side. The fewest to play is ${minimum}.`);
+  } else {
+    L.push(`- Who fills an open place: ${state.features.benchPickMode === "organiser" ? "the organisers choose from the bench" : "the first on the bench moves up"}`);
+  }
   L.push(`- Man of the Match is chosen by: ${state.features.momChosenBy === "organisers" ? "the organisers" : "the players' vote"}`);
   // Scores (2026-11-17, a dead end answered "I can't record a score from a
   // message", untrue): who may report and change one, as the score route
@@ -531,7 +548,7 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
         ? `- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.`
         : `- Scores: after a game, someone who played in it or an admin tags MatchTime with the score, and MatchTime records it for the last game played. Someone who played in it or an admin can correct a recorded score the same way.`,
   );
-  if (input.squadMode === "monthly") L.push(...MONTHLY_RULES);
+  if (input.squadMode === "monthly") L.push(...(openSquad ? MONTHLY_RULES_OPEN_SQUAD : MONTHLY_RULES));
   // What MatchTime does while the squad is not full (round 3, 2026-11-12:
   // "what happens if 14 don't confirm?" had nothing to be answered from).
   // The 17:00 post is `daily-update-rules.ts`: it goes out while places are
@@ -540,7 +557,11 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
   if (state.features.attendance) {
     const monthly = input.squadMode === "monthly";
     const where = !monthly && announcer === "organisers" ? "to the organisers in HQ" : "in the players' group";
-    L.push(`- While places are open, MatchTime posts ${monthly ? "the month's list" : "the squad"} with a call for players at 17:00 ${where}, until the drop-out deadline.`);
+    L.push(
+      openSquad
+        ? `- Only while fewer than ${minimum} are in, MatchTime posts ${monthly ? "the month's list" : "the squad"} with a call for players at 17:00 ${where}, until the drop-out deadline.`
+        : `- While places are open, MatchTime posts ${monthly ? "the month's list" : "the squad"} with a call for players at 17:00 ${where}, until the drop-out deadline.`,
+    );
   }
   if (input.clubFacts) {
     // Nothing asks partner clubs or the pool by itself: an organiser does
