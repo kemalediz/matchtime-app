@@ -318,6 +318,7 @@ import { CANCELLED_NOTICE_LOOKBACK_MS, SAME_FIXTURE_MS, cancelledMatchToMention 
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageAddressesBot, messageTagsBot, piMentionsBot } from "@/lib/interaction-contract";
 import { alreadyThereLine, newSilenceFacts, taggedSilence } from "@/lib/tagged-silence";
+import { answerDeadEnds, isDeadEnd } from "@/lib/dead-end-answer";
 import { offerCalloffIfCalled } from "@/lib/calloff-offer";
 import { mergeRecruitReply } from "@/lib/recruit-request";
 import {
@@ -2695,6 +2696,20 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
             .map(([id]) => id),
         ],
   );
+  // This group's week of chat, for the open answer and the dead ends.
+  const playersWeekChat = async () =>
+    (await import("@/lib/week-chat")).playersWeekChat({
+      orgId: org.id,
+      groupId: body.groupId,
+      now,
+      batch: all.map((m) => ({
+        waMessageId: m.waMessageId,
+        author: senderLabel(m.waMessageId),
+        body: m.body,
+        timestamp: m.timestamp,
+        stored: seenMap.has(m.waMessageId),
+      })),
+    });
   const answerBatch =
     fresh.length > 0
       ? await runAnswerBatch({
@@ -2709,19 +2724,7 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
           // The open answer reads THIS group's week of chat, MatchTime's
           // lines included; read only when an open question is owned
           // (Kemal, 2026-11-10, `lib/week-chat.ts`).
-          weekChat: async () =>
-            (await import("@/lib/week-chat")).playersWeekChat({
-              orgId: org.id,
-              groupId: body.groupId,
-              now,
-              batch: all.map((m) => ({
-                waMessageId: m.waMessageId,
-                author: senderLabel(m.waMessageId),
-                body: m.body,
-                timestamp: m.timestamp,
-                stored: seenMap.has(m.waMessageId),
-              })),
-            }),
+          weekChat: playersWeekChat,
           // Same contract as step 6: if the route's registration match
           // and the owner's state load ever disagree, the owner takes
           // nothing rather than answer about a different match.
@@ -4717,6 +4720,48 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
       reasoningSuffix: "tagged to MatchTime, nothing written, queued or said: the not-understood line",
       intent: "not_understood",
     });
+  }
+
+  // ── A DEAD END GOES TO THE UNIFIED ANSWER (2026-11-17) ─────────────
+  //   The canned "can't do that" and not-understood lines above are only
+  //   the fallback: each tagged dead end (by its outcome's intent, never
+  //   the words, `dead-end-answer.ts`) is answered by the unified answer,
+  //   which says what MatchTime can do instead. Not a message with several
+  //   instructions or a joined answer: its reply carries more than the line.
+  if (unifiedAnswersEnabledForApiRequest(request) && !aiCapped) {
+    const deadEnds = fresh.filter((m) => {
+      const r = results.find((x) => x.waMessageId === m.waMessageId);
+      return (
+        !!r &&
+        isDeadEnd(r, piMentionsBot(m)) &&
+        !lateById.has(m.waMessageId) &&
+        !alsoRoutesById.has(m.waMessageId) &&
+        !answerBatch?.alsoAnswered.has(m.waMessageId)
+      );
+    });
+    const answered = await answerDeadEnds({
+      orgId: org.id,
+      now,
+      messages: deadEnds.map(ownerMessageOf),
+      history: ownerHistory,
+      weekChat: playersWeekChat,
+      expectedMatchId: activeMatchForReply?.id ?? null,
+      enabled: stepSevenEnabled,
+      monthNotStarted,
+      poolEnv: () => poolEnvForApiRequest(request),
+    });
+    for (const [id, a] of answered) {
+      const r = results.find((x) => x.waMessageId === id)!;
+      r.reply = nextMatchForReply ? enforceProximity(a.reply, nextMatchForReply.date, org.language) : a.reply;
+      r.intent = a.intent;
+      r.handledBy = "llm";
+      await augmentAnalysis({
+        waMessageId: id,
+        action: "dead-end-answered",
+        reasoningSuffix: "tagged to MatchTime, nothing done: the unified answer instead of the canned line",
+        intent: a.intent,
+      });
+    }
   }
 
   // ── AN ORGANISER CALLING THE GAME OFF WITHOUT A TAG ────────────────

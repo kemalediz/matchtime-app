@@ -912,12 +912,23 @@ export async function runAnswerBatch(args: {
    * (`unified-answer.ts`) in place of the set answers. Off: unchanged.
    */
   unified?: boolean;
+  /**
+   * DEAD ENDS (2026-11-17, `dead-end-answer.ts`), UNIFIED_ANSWERS only: the
+   * ids of TAGGED messages MatchTime took no action on (no handler for what
+   * was asked, or nothing came of it). Each is read as a `question` whose
+   * topic is `other`, with NO extractor call (the owner's extractor already
+   * read it and found nothing to do), and answered by the unified answer,
+   * told NOT DONE and shown this group's help menu. A failed or refused
+   * answer is not owned, so the caller keeps its line. Ignored when off.
+   */
+  deadEnds?: ReadonlySet<string>;
 }): Promise<AnswerBatchResult> {
   const { orgId, now, history, expectedMatchId, enabled, deps } = args;
   const unified = args.unified ?? isUnifiedAnswersEnabled();
   const alsoAsks: ReadonlySet<string> = args.alsoAsks ?? new Set<string>();
+  const deadEnds: ReadonlySet<string> = unified ? (args.deadEnds ?? new Set<string>()) : new Set<string>();
   const messages: AnswerBatchMessage[] = args.messages.map((m) =>
-    alsoAsks.has(m.waMessageId) && !m.gated ? { ...m, route: "question" as Route } : m,
+    (alsoAsks.has(m.waMessageId) || deadEnds.has(m.waMessageId)) && !m.gated ? { ...m, route: "question" as Route } : m,
   );
   const organisers = args.audience === "organisers";
   const t0 = Date.now();
@@ -948,7 +959,7 @@ export async function runAnswerBatch(args: {
   const candidates = messages.filter(
     (m) =>
       !m.gated &&
-      stepSevenOwnsRoute(m.route, enabled, ANSWER_ROUTES) &&
+      (deadEnds.has(m.waMessageId) || stepSevenOwnsRoute(m.route, enabled, ANSWER_ROUTES)) &&
       (asksMatchTime(m) || clarificationFor.has(m.waMessageId)),
   );
   if (candidates.length === 0) return empty();
@@ -1128,6 +1139,12 @@ export async function runAnswerBatch(args: {
     eligible,
     (m) => extractorCacheKey(m.route as Route),
     async (m) => {
+      // A dead end is not read again: its owner's extractor found nothing
+      // to do, and the unified answer reads the message itself.
+      if (deadEnds.has(m.waMessageId)) {
+        factsById.set(m.waMessageId, { kind: "question", topic: "other", personRef: null, statedCount: null });
+        return;
+      }
       // A message from the person MatchTime asked "who do you mean?" is
       // read AS IT IS, shown that earlier question (MATCHTIME ASKED); the
       // extractor says whether it answers it (`answersClarification`) and
@@ -1797,8 +1814,22 @@ export async function runAnswerBatch(args: {
           console.error("[answer-engine] unified own stats read failed:", err);
         }
       }
+      // A dead end is shown this group's help menu, worded for who asks: what
+      // MatchTime CAN do instead. A menu that cannot be read is left out.
+      let deadEnd: { capabilities: string | null } | null = null;
+      if (deadEnds.has(id)) {
+        let capabilities: string | null = null;
+        try {
+          const help = deps.helpReply ?? defaultHelpReply(orgId, args.poolEnv ?? (async () => ({})));
+          capabilities = await help({ topic: null }, features, { admin: organisers || !!asker?.isAdmin });
+        } catch (err) {
+          console.error(`[answer-engine] ${id}: the help menu for a dead end was not read:`, err);
+        }
+        deadEnd = { capabilities };
+      }
       const g = await answerUnified({
         model,
+        ...(deadEnd ? { deadEnd } : {}),
         audience: organisers ? "organisers" : "players",
         state,
         squadKnown: squadBlock === null,

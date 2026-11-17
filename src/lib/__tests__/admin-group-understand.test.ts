@@ -2813,4 +2813,69 @@ describe("several instructions in one HQ message", () => {
     expect(r?.outcome).toBe("hq-not-understood");
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
   });
+
+  it("no part did anything, UNIFIED_ANSWERS on: the unified answer, once", async () => {
+    squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
+    switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-not-a-suggestion", replyText: null });
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: "Which of those would you like first?" });
+    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: byExtractor }, unifiedAnswers: true });
+    expect(r?.replyText).toBe("Which of those would you like first?");
+    expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: true });
+  });
+});
+
+// 2026-11-17: a tagged message HQ has no action for got a canned line ("I
+// can't do that from this group", "I didn't catch what you'd like me to
+// do"). With UNIFIED_ANSWERS on, it is handed to the unified answer
+// (`answerHqQuestion` with `deadEnd`), told NOT DONE and shown the HQ menu;
+// the canned line is only the fallback when that answer fails.
+describe("a dead end in HQ goes to the unified answer (UNIFIED_ANSWERS on)", () => {
+  const ANSWER = "I can't book pitches. I can cancel or move a game, or ask the partner clubs for players: tag me and say which.";
+  const on = { unifiedAnswers: true };
+
+  it("admin_ops read as 'other': the unified answer, not the one line", async () => {
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: ANSWER });
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "other" }) };
+    const r = await ask("@Match Time book the pitch for Friday", "admin_ops", { deps, ...on });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-dead-end-answered", replyText: ANSWER });
+    expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: true, messageId: "wa-9" });
+    expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
+  });
+
+  it("the unified answer fails: the one line, as before", async () => {
+    hqQuestion.answerHqQuestion.mockResolvedValue(null);
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "other" }) };
+    const r = await ask("@Match Time book the pitch for Friday", "admin_ops", { deps, ...on });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-not-here", replyText: "I can't do that from this group." });
+  });
+
+  it("an admin action done elsewhere but not from HQ keeps its one line: it says where it is done", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "reminder" }) };
+    const r = await ask("@Match Time remind me on Monday", "admin_ops", { deps, ...on });
+    expect(r?.outcome).toBe("hq-not-here");
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+  });
+
+  it("a tagged score message that is not a score: the unified answer", async () => {
+    hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-not-understood", replyText: "I didn't catch what you'd like me to do." });
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: "There's no game waiting for a score." });
+    const r = await ask("@Match Time bibs 9 no bibs 4", "score", on);
+    expect(r?.replyText).toBe("There's no game waiting for a score.");
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: true });
+  });
+
+  it("with UNIFIED_ANSWERS off nothing changes: the one line, no answer asked", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "other" }) };
+    const r = await ask("@Match Time book the pitch for Friday", "admin_ops", { deps, unifiedAnswers: false });
+    expect(r?.replyText).toBe("I can't do that from this group.");
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+  });
+
+  it("untagged: silent, nothing asked", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "other" }) };
+    expect(await ask("book the pitch for Friday", "admin_ops", { deps, botMentioned: false, ...on })).toBeNull();
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+  });
 });

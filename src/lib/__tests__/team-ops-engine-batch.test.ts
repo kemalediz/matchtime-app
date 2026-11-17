@@ -601,6 +601,8 @@ describe("actions this module does not own are handed on, with a reason", () => 
     const res = await run({ messages: [msg({ body })], deps: r.deps });
     expect(res.ownedIds.size).toBe(1);
     expect([...res.outcomes.values()][0].reply).toBe("Sorry, I can't do that one yet.");
+    // A dead end the analyze route hands to the unified answer (2026-11-17).
+    expect([...res.outcomes.values()][0].intent).toBe("team_request_unsupported");
     expect(r.generated).toEqual([]);
   });
 
@@ -993,6 +995,8 @@ describe("a swap the teams extractor read is applied from its facts, never by th
     const r = recorder(model, squadWorld(), { applySwap });
     const res = await run({ messages: [msg({ body: TWO })], deps: r.deps });
     expect([...res.outcomes.values()][0].reply).toBe("Sorry, I can't do that one yet.");
+    // The same dead end as any team change this path cannot make (2026-11-17).
+    expect([...res.outcomes.values()][0].intent).toBe("team_request_unsupported");
   });
 
   it("a swap that throws says nothing and is reported", async () => {

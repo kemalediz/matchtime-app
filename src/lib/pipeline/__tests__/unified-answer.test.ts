@@ -577,3 +577,39 @@ describe("round 3: who is in, when the organisers post the list (FNF group 'Naji
     expect(buildUnifiedContext(input()).text).not.toMatch(/not shared in this group/);
   });
 });
+
+describe("a dead end: a tagged message MatchTime could not act on (2026-11-17, the Vets organiser deleted the 'can't do that' line twice)", () => {
+  const MENU = "ℹ️ *MatchTime help*\n🗓️ *schedule*: when and where you play\n🤝 *partners*: playing with partner clubs";
+
+  it("the context says nothing was done and shows what MatchTime can do here, before THE MESSAGE", () => {
+    const { text } = buildUnifiedContext(input({ question: "@Match Time book the pitch for Friday", deadEnd: { capabilities: MENU } }));
+    const can = text.indexOf("WHAT MATCHTIME CAN DO");
+    const notDone = text.indexOf("NOT DONE:");
+    const message = text.indexOf("THE MESSAGE (from");
+    expect(can).toBeGreaterThan(text.indexOf("THE CLUB'S RECORDS"));
+    expect(text).toContain("🤝 *partners*: playing with partner clubs");
+    expect(notDone).toBeGreaterThan(can);
+    expect(notDone).toBeLessThan(message);
+    expect(text.trimEnd().endsWith("@Match Time book the pitch for Friday")).toBe(true);
+  });
+
+  it("a dead end whose help menu could not be read still says nothing was done", () => {
+    const { text } = buildUnifiedContext(input({ deadEnd: { capabilities: null } }));
+    expect(text).toContain("NOT DONE:");
+    expect(text).not.toContain("WHAT MATCHTIME CAN DO");
+  });
+
+  it("an ordinary question carries neither", () => {
+    const { text } = buildUnifiedContext(input());
+    expect(text).not.toContain("NOT DONE:");
+    expect(text).not.toContain("WHAT MATCHTIME CAN DO");
+  });
+
+  it("the prompt: a request says it wasn't done and what can be done instead; unclear asks one question; a jab gets a friendly line", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/NOT DONE line/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/say in one line that you haven't done it, then what can be done instead/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/ask one short question about it rather than guess/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/A joke or a jab at you gets one short, friendly line/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"book the pitch for Friday" \/ "cuma için sahayı ayarla"/);
+  });
+});

@@ -1111,7 +1111,9 @@ export async function runTeamOpsBatch(args: {
         // is said in one line, as any other unsupported team request.
         reply: !r ? null : r.kind === "unsupported" ? requestNotHandledReply(state.features.language) : r.reply,
         react: applied ? "✅" : null,
-        intent: sides ? "team_colour_swap" : "team_swap",
+        // A change this path cannot make is the same dead end as any other
+        // unsupported team request (`dead-end-answer.ts`, 2026-11-17).
+        intent: r?.kind === "unsupported" ? "team_request_unsupported" : sides ? "team_colour_swap" : "team_swap",
         action: !r ? "none" : applied ? (sides ? "colour-swap" : "team-swap") : r.kind === "refused" ? "team-swap-refused" : "reply",
         reasoning: `${TEAM_OPS_HANDLED_BY} (${m.route}): swap read by the teams extractor; ${r ? r.logReason : "the change failed"}`,
         matchId: null,

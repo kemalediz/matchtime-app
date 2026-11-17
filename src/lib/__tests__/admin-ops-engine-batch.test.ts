@@ -840,6 +840,8 @@ describe("every failure hands the message back to the analyzer", () => {
     expect(res.ownedIds.size).toBe(1);
     const out = [...res.outcomes.values()][0];
     expect(out.reply).toBe("Sorry, I can't do that one yet.");
+    // A dead end the analyze route hands to the unified answer (2026-11-17).
+    expect(out.intent).toBe("request_not_handled");
     expect(out.react).toBeNull();
     expect(out.recruitRequest).toBe(false);
     expect(out.statsBlastRequest).toBe(false);
