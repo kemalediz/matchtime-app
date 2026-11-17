@@ -56,6 +56,16 @@ export function placesToFill(p: { openSquad: boolean; confirmed: number; maxPlay
 }
 
 /**
+ * How many regulars a month's list may hold (monthly squad): two full
+ * sides of the format, or no cap at all for an open squad, whose main
+ * squad "expands or shrinks without any limits". Infinity, never a big
+ * number written anywhere: it only bounds a count in memory.
+ */
+export function monthRegularCap(playersPerTeam: number, openSquad: boolean | null | undefined): number {
+  return openSquad === true ? Number.POSITIVE_INFINITY : playersPerTeam * 2;
+}
+
+/**
  * The players a side for an open squad: whoever is in, split into two
  * even sides, the odd one on the first (15 is 8 v 7, 19 is 10 v 9).
  * Handed to the balancer as its `perTeam`, so it never leaves anyone out.

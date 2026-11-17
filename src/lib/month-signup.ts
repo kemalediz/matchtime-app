@@ -82,6 +82,7 @@ import { carryFromMonthStart, isBreakMonth, londonMonthStart, monthStartToDate, 
 import { monthSetupCopy } from "./i18n/month-setup";
 import { dayLabel, monthNameLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
+import { monthRegularCap } from "./open-squad";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 const HOUR_MS = 60 * 60 * 1000;
@@ -191,7 +192,7 @@ const MONTH_SELECT = {
   activity: {
     select: { name: true, venue: true, dayOfWeek: true, time: true, sport: { select: { playersPerTeam: true } } },
   },
-  org: { select: { language: true } },
+  org: { select: { language: true, openSquad: true } },
   members: {
     orderBy: { createdAt: "asc" },
     select: {
@@ -276,7 +277,8 @@ async function toSignupMonth(row: MonthRow): Promise<SignupMonth | null> {
     kickoffs,
     firstKickoff: kickoffs[0],
     endsAt: row.listOpenedAt ? signupEndsAt(row.listOpenedAt, kickoffs[0]) : null,
-    maxRegulars: row.activity.sport.playersPerTeam * 2,
+    // An open squad (open-squad.ts) has no cap on its regulars.
+    maxRegulars: monthRegularCap(row.activity.sport.playersPerTeam, row.org?.openSquad),
     fixture,
     matches,
     // Somebody who has left the group is not on the list. Their row stays
@@ -520,7 +522,11 @@ export async function openMonthList(args: {
 }): Promise<string | null> {
   const { orgId, activity, monthStart, now } = args;
   const fixture = { orgId, venue: activity.venue, dayOfWeek: activity.dayOfWeek };
+  // The format's places, for each game's row; never changed by the open
+  // squad (open-squad.ts), which only lifts the cap on the regulars.
   const maxRegulars = activity.sport.playersPerTeam * 2;
+  const openSquad = (await db.organisation.findUnique({ where: { id: orgId }, select: { openSquad: true } }))?.openSquad === true;
+  const regularCap = monthRegularCap(activity.sport.playersPerTeam, openSquad);
 
   // Who is carried over: read before the transaction, written inside it.
   let carried: ReturnType<typeof planCarryOver> = [];
@@ -541,7 +547,7 @@ export async function openMonthList(args: {
     );
     carried = planCarryOver({
       previous: previous.map((p) => ({ userId: p.userId, kind: p.kind, tier: p.tier, slot: p.slot, left: p.leftAt !== null, here: here.has(p.userId) })),
-      maxRegulars,
+      maxRegulars: regularCap,
     });
   }
 
