@@ -143,6 +143,8 @@ export async function GET() {
       listAnnouncer: normaliseListAnnouncer(org.listAnnouncer),
       // 2026-10-18: who chooses Man of the Match.
       momChosenBy: normaliseMomChooser(org.momChosenBy),
+      // 2026-11-17: no squad limit, no bench, no format (open-squad.ts).
+      openSquad: org.openSquad === true,
     },
     billing,
     // "Monthly squad" (2026-10-05, slice 2). "weekly" for every club that

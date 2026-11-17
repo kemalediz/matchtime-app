@@ -61,6 +61,7 @@ export const SETTING_INFO_KEYS = [
   "rollingSquad",
   "benchPickMode",
   "benchPickFallback",
+  "openSquad",
   "listAnnouncer",
   "dropOutDeadline",
   "listPublish",
@@ -900,6 +901,46 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Yedek listesinin nereye gideceğini Yönetici mesajları ayarı belirler.",
         "Organizatörler seçince Zamanında kimse seçmezse ayarı görünür.",
         "Son çıkış saati ayarlıysa MatchTime yöneticilerinizden ancak o saatten sonra seçim ister. Seçimi 09:00 ile 23:00 arasında ister.",
+      ],
+    },
+  },
+  openSquad: {
+    en: {
+      title: "No squad limit",
+      what: [
+        "Everyone who says IN plays, however many there are. There is no bench and nobody is ever told the squad is full.",
+        "There is no number a side either: posts name the game without one, and the teams are whoever is in, split into two even sides (15 players is 8 against 7).",
+        "The only number is the game's minimum players (on the Activities page). Below it MatchTime asks for players, in the 17:00 post and by asking partner clubs, and warns you the day before. At or above it, it asks for nobody.",
+      ],
+      example: "📋 *Football, Mon 23 Nov at 20:15*\n\n*November squad:*\n1. Ali\n2. Ben\n...\n\n*Pay as you go:*\n13. Zeeshan\nAnyone else, say *IN* to play, £8.",
+      choices: [
+        { name: ON.en, text: "No limit and no bench. You can also switch it by tagging MatchTime, for example *@Match Time no limit on the squad*." },
+        { name: OFF.en, text: "The squad has the game's own places and a bench. Switching it off bumps nobody: everyone already in stays in." },
+      ],
+      newClubs: "Off.",
+      suits: "Clubs with a pitch big enough for anyone who turns up.",
+      together: [
+        "While it is on, who fills an open place does not matter: no place is ever full.",
+        "The minimum players on the Activities page is the number MatchTime chases to.",
+      ],
+    },
+    tr: {
+      title: "Kadro sınırı yok",
+      what: [
+        "VARIM yazan herkes oynar, kaç kişi olursa olsun. Yedek yoktur ve kimseye kadronun dolu olduğu söylenmez.",
+        "Takım başına bir sayı da yoktur: mesajlar maçı sayısız anar, takımlar gelenler arasında iki eşit tarafa bölünür (15 oyuncu 8'e 7).",
+        "Tek sayı maçın en az oyuncu sayısıdır (Aktiviteler sayfasında). Bunun altında MatchTime 17:00 mesajında ve partner kulüplere sorarak oyuncu arar, bir gün önceden sizi uyarır. Bu sayıda ya da üstünde kimseye sormaz.",
+      ],
+      example: "📋 *futbol, 23 Kasım Pazartesi 20:15*\n\n*Kasım kadrosu:*\n1. Ali\n2. Ben\n...\n\n*Maç başı ödeyenler:*\n13. Zeeshan\nBaşka gelmek isteyen *VARIM* yazsın, £8.",
+      choices: [
+        { name: ON.tr, text: "Sınır ve yedek yok. MatchTime'ı etiketleyerek de değiştirebilirsiniz, örneğin *@Match Time kadro sınırı yok*." },
+        { name: OFF.tr, text: "Kadronun maçın kendi yer sayısı ve yedekleri vardır. Kapatmak kimseyi çıkarmaz: listede olan herkes kalır." },
+      ],
+      newClubs: "Kapalı.",
+      suits: "Sahası gelen herkese yetecek kadar büyük kulüpler.",
+      together: [
+        "Açıkken boşalan yeri kimin dolduracağı önemli değildir: hiçbir zaman yer dolmaz.",
+        "Aktiviteler sayfasındaki en az oyuncu sayısı, MatchTime'ın tamamlamaya çalıştığı sayıdır.",
       ],
     },
   },

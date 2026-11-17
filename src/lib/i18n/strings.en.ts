@@ -4931,6 +4931,9 @@ export const en = {
     `✅ Done: the squad has a limit again, *${p.activityName}* with ${p.places} places. Everyone already in stays in; anyone who says *IN* after it is full goes on the bench.`,
   os_already_on: (p: { min: number }): string => `No change: there is already no squad limit. Everyone who says *IN* plays; the minimum is ${p.min}.`,
   os_already_off: (p: { places: number }): string => `No change: the squad already has a limit of ${p.places} places.`,
+  /** /admin/settings, the Bench card. */
+  os_setting_label: "No squad limit",
+  os_setting_blurb: "Everyone who says IN plays: no bench, no number a side. MatchTime only asks for players below the game's minimum.",
   /** A size asked for while the squad has no limit: nothing changes. */
   os_no_format:
     "This club has no number a side: everyone who says *IN* plays, and the teams are split evenly between whoever is in. To bring a limit back, tag me and say so, for example *@Match Time put the limit and the bench back*.",
