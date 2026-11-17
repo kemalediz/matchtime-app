@@ -181,11 +181,15 @@ export const en = {
     maxPlayers: number;
     need: number;
     matchLabel?: string | null;
+    /** No squad limit (open-squad.ts): no "of N", never "full"; `need` is
+     *  then how many more the game needs to be played. */
+    openSquad?: boolean;
   }): string => {
-    const count = `*${p.confirmed}/${p.maxPlayers}*`;
+    const count = p.openSquad ? `*${p.confirmed} in*` : `*${p.confirmed}/${p.maxPlayers}*`;
     const head = p.matchLabel
       ? `📋 Here's the squad${p.withBench ? " and bench" : ""} for *${p.matchLabel}*: `
       : `📋 Based on all the messages I've picked up, here's the latest squad${p.withBench ? " and bench" : ""}: `;
+    if (p.openSquad) return head + (p.need > 0 ? `${count}, need *${p.need} more* to play 🙏` : `${count} ✅ Anyone else, say *IN*.`);
     return head + (p.need > 0 ? `${count}, need *${p.need} more* 🙏` : `${count} ✅ full squad.`);
   },
   /** The line above the squad post when this week's match is cancelled
@@ -370,8 +374,10 @@ export const en = {
 
   // ── row 68: buildAnnounceMatchPost (scheduler-copy.ts) ───────────
 
-  announce_match: (p: { activityName: string; dateLabel: string; venue: string; maxPlayers: number }): string =>
-    `📅 *${p.activityName}*: *${p.dateLabel}* at ${p.venue}.\n\nSay *IN* to join. First ${p.maxPlayers} confirmed play.`,
+  /** `openSquad` (2026-11-17, open-squad.ts): no limit, so no "first N". */
+  announce_match: (p: { activityName: string; dateLabel: string; venue: string; maxPlayers: number; openSquad?: boolean }): string =>
+    `📅 *${p.activityName}*: *${p.dateLabel}* at ${p.venue}.\n\nSay *IN* to join. ` +
+    (p.openSquad ? `Everyone who says IN plays.` : `First ${p.maxPlayers} confirmed play.`),
 
   /** Row 68m: the announcement of a club on "monthly" with no month in
    *  MatchTime yet (the Vets incident, 3 Nov 2026). The regulars paid for
@@ -386,8 +392,9 @@ export const en = {
 
   // ── row 71: buildSquadRosterBlock (scheduler-copy.ts) ────────────
 
-  roster_confirmed_header: (p: { confirmed: number; maxPlayers: number }): string =>
-    `*Confirmed (${p.confirmed}/${p.maxPlayers}):*`,
+  /** `openSquad` (open-squad.ts): no places, so the count alone. */
+  roster_confirmed_header: (p: { confirmed: number; maxPlayers: number; openSquad?: boolean }): string =>
+    p.openSquad ? `*Confirmed (${p.confirmed}):*` : `*Confirmed (${p.confirmed}/${p.maxPlayers}):*`,
   roster_nobody_yet: "_nobody yet_",
 
   // ── row 71b: buildSquadFullEveningPost (scheduler-copy.ts) ───────
@@ -436,7 +443,11 @@ export const en = {
   // ── rows 6 to 30: the batch answers (compose.ts) ───────────────────
 
   /** `bench` is `benchClause` (squad-count-line.ts), "" with nobody on it. */
-  answer_count: (p: { stated: boolean; confirmed: number; maxPlayers: number; kickoffLabel: string; need: number; bench: string }): string => {
+  answer_count: (p: { stated: boolean; confirmed: number; maxPlayers: number; kickoffLabel: string; need: number; bench: string; openSquad?: boolean }): string => {
+    if (p.openSquad) {
+      const head = p.stated ? `Not quite, we're ${p.confirmed} for ${p.kickoffLabel}` : `We're ${p.confirmed} for ${p.kickoffLabel}`;
+      return `${head}${p.need > 0 ? `, need ${p.need} more to play 🙏` : ` ✅ Anyone else, say *IN*.`}`;
+    }
     const head = p.stated
       ? `Not quite, we're ${p.confirmed}/${p.maxPlayers} for ${p.kickoffLabel}${p.bench}`
       : `We're ${p.confirmed}/${p.maxPlayers} for ${p.kickoffLabel}${p.bench}`;
@@ -889,6 +900,10 @@ export const en = {
   recruit_no_match: "There's no upcoming match to invite players to.",
   recruit_full_squad: (p: { matchName: string }): string =>
     `The squad for *${p.matchName}* is already full, so there are no open spots to recruit for.`,
+  /** An open squad (open-squad.ts) at or above its minimum: nobody is
+   *  invited, and nobody is turned away either. */
+  recruit_enough_players: (p: { matchName: string }): string =>
+    `*${p.matchName}* already has enough players to play, so I haven't invited anyone. Anyone else can still say *IN*.`,
 
   // ── row 63: buildBulkCancelAnnouncement (block-booking.ts) ─────────
 
@@ -1627,18 +1642,34 @@ export const en = {
     `This group plays as a monthly squad. Paid for the month? You're on the month's list and in every game, no need to say anything. Can't make one? Say *Out* and your place opens for someone else.\n` +
     `Pay as you go? Say *In* to take an open place, and you pay for that game only.`,
 
+  /** "help availability" for a club with no squad limit (2026-11-17,
+   *  open-squad.ts): every IN plays, no bench; MatchTime asks for players
+   *  only below the game's minimum. `monthly`: the month's regulars. */
+  onbHelpAvailabilityOpenSquad: (p: { monthly: boolean }): string =>
+    `⚽ *Squad & availability: how it works*\n` +
+    (p.monthly
+      ? `This group plays as a monthly squad. Paid for the month? You're on the month's list and in every game, no need to say anything. Pay as you go? Say *In* to play that game, and you pay for that game only.\n`
+      : `Just say *In* or *Out* in the group to mark yourself for the next game, or say a teammate can't make it (for example *Sam is out*). No need to tag me, I read it automatically.\n`) +
+    `There's no squad limit and no bench: everyone who says *In* plays. Can't make it? Say *Out*. I only ask for more players while there are fewer than the minimum to play.`,
+  /** Under "help teams" for a club with no squad limit. */
+  onbHelpTeamsOpenSquad: "No squad limit here, so no number a side: the teams are whoever is in, split into two even sides (15 players is 8 against 7).",
+  /** Under an organiser's "help availability": the squad limit by WhatsApp. */
+  onbHelpOpenSquadOrganiser: (p: { on: boolean }): string =>
+    p.on
+      ? `To put a limit and a bench back, tag me and say so (for example *@Match Time put the limit and the bench back*), or use the Bench card in the settings.`
+      : `Pitch big enough for anyone? Tag me and say so (for example *@Match Time no limit on the squad*): everyone who says In plays, with no bench.`,
   /** "help availability" (2026-10-31): the friend link (#488), as
    *  friend-link/rules.ts and friend-link.en.ts do it. Appended to every
    *  availability explainer by buildHelpReply. */
-  onbHelpFriendLink: `👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.`,
+  onbHelpFriendLink: (p: { openSquad?: boolean } = {}): string => `👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game${p.openSquad ? "" : " (on the bench if it's full)"} and in the MatchTime player pool. The link works until kick-off.`,
   /** "help friend" (2026-10-31): the friend link's own topic, from
    *  friend-link/rules.ts, book.ts, withdraw.ts and friend-link.en.ts.
    *  `fees`: the club takes match fees (`paymentCollection`). An organiser
    *  also gets `onbHelpFriendLinkOrganiser` (buildHelpReply). */
-  onbHelpFriend: (p: { fees: boolean }): string =>
+  onbHelpFriend: (p: { fees: boolean; openSquad?: boolean }): string =>
     `👥 *Bringing a friend: how it works*\n` +
     `Say in the group that a friend is coming (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them.\n` +
-    `Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.\n` +
+    `Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game${p.openSquad ? "" : " (on the bench if it's full)"} and in the MatchTime player pool. The link works until kick-off.\n` +
     `If your friend can't make it, they can message me on WhatsApp or tap the button on their page to give the place back.` +
     (p.fees ? `\n💷 Your friend pays the match fee like any guest, after the game (in a monthly club, as a pay as you go player).` : ""),
   /** The same, for an organiser: his own add is direct (friend link D1). */
@@ -1744,17 +1775,29 @@ export const en = {
    *  doors). `attendance`: IN for pay as you go and the friend link need
    *  it. `pool`: the pool is open for the club, asked from the match page
    *  (pool/ask-round.ts). */
-  hq_help_players_monthly: (p: { attendance: boolean; pool: boolean }): string =>
+  /** `openSquad` (open-squad.ts): no open place and no bench to speak of. */
+  hq_help_players_monthly: (p: { attendance: boolean; pool: boolean; openSquad?: boolean }): string =>
     [
       `👥 *How players join your monthly squad*:`,
       `📋 *"@Match Time add Tom to the November list, he's paid"*: a regular for the month's games still to play, and on the next game's squad.`,
       ...(p.attendance
+        ? p.openSquad
+          ? [
+              `🙋 Pay as you go: a player says *In* in the players' group to play, and pays for that game only.`,
+              `👥 A player can bring a friend: they say so in the players' group and I DM them a link for their friend, which puts them in the game.`,
+            ]
+          : [
+              `🙋 Pay as you go: a player can say *In* in the players' group to take an open place, and pays for that game only.`,
+              `👥 A player can bring a friend: they say so in the players' group and I DM them a link for their friend, which takes an open place (on the bench if it's full).`,
+            ]
+        : []),
+      ...(p.pool
         ? [
-            `🙋 Pay as you go: a player can say *In* in the players' group to take an open place, and pays for that game only.`,
-            `👥 A player can bring a friend: they say so in the players' group and I DM them a link for their friend, which takes an open place (on the bench if it's full).`,
+            p.openSquad
+              ? `🌍 Short of the minimum? Ask nearby players from the MatchTime player pool from the match page.`
+              : `🌍 A place still open? Ask nearby players from the MatchTime player pool from the match page.`,
           ]
         : []),
-      ...(p.pool ? [`🌍 A place still open? Ask nearby players from the MatchTime player pool from the match page.`] : []),
     ].join("\n"),
 
   // ── The safe YES in the admin group (2026-10-16, admin-group-confirm-rules.ts) ──
@@ -3428,7 +3471,8 @@ export const en = {
   rolling_announce_lead: (p: { activityName: string; dateLabel: string; venue: string; deadline: string }): string =>
     `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
     `Everyone who played last time is in again. Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,
-  rolling_in_header: (p: { confirmed: number; maxPlayers: number }): string =>
+  rolling_in_header: (p: { confirmed: number; maxPlayers: number; openSquad?: boolean }): string =>
+    p.openSquad ? `*In (${p.confirmed}):*` :
     `*In (${p.confirmed}/${p.maxPlayers}):*`,
   rolling_waiting_header: (p: { count: number }): string => `*Bench (${p.count}):*`,
   rolling_tail_open: (p: { open: number }): string =>
@@ -3501,8 +3545,8 @@ export const en = {
   /** WDL3 (D3): the final list at publish time. */
   list_published_head: (p: { activityName: string; dateLabel: string; venue: string }): string =>
     `📋 *${p.activityName}* list, *${p.dateLabel}*, ${p.venue}`,
-  list_published_playing_header: (p: { confirmed: number; maxPlayers: number }): string =>
-    `*Playing (${p.confirmed}/${p.maxPlayers}):*`,
+  list_published_playing_header: (p: { confirmed: number; maxPlayers: number; openSquad?: boolean }): string =>
+    p.openSquad ? `*Playing (${p.confirmed}):*` : `*Playing (${p.confirmed}/${p.maxPlayers}):*`,
   list_published_open: (p: { open: number }): string =>
     p.open === 1 ? "1 place still open." : `${p.open} places still open.`,
   list_published_footer: "Can't make it now? Say *OUT* as soon as you can so a replacement can be brought in.",
@@ -4896,6 +4940,50 @@ export const en = {
     `${p.open} ${p.open === 1 ? "place" : "places"} open${p.price ? `, ${p.price}` : ""}. Say *IN* to go on the bench, and the organisers will pick who plays.`,
   /** No place is free. */
   mwk_list_full: "The squad is full.",
+  /** OPEN SQUAD (2026-11-17, open-squad.ts): no limit, so no places open.
+   *  In place of the places line: anyone else is asked to say IN, with the
+   *  PAYG price when set; below the game's minimum, how many more it needs
+   *  first. `short` is 0 at or above the minimum. */
+  mwk_list_open_squad: (p: { price: string | null; short: number }): string =>
+    `${p.short > 0 ? `${p.short} more needed to play. ` : ""}Anyone else, say *IN* to play${p.price ? `, ${p.price}` : ""}.`,
+  /** Under an open squad's regulars: nobody's place "opens up". */
+  mwk_list_all_in_open: "You're all in, no need to say anything. Can't make it? Say *Out*.",
+
+  // ── Open squad on or off (2026-11-17, open-squad-save.ts) ────────────
+  // The reply to the organiser who switched it, by WhatsApp or the page.
+  /** Switched on. `min` is the game's minimum. */
+  os_on: (p: { min: number }): string =>
+    `✅ Done: no squad limit and no bench from now on. Everyone who says *IN* plays, and the teams are split evenly between whoever is in. I'll only ask for players while you're below ${p.min}.`,
+  /** After `os_on` or `os_already_on`: who was waiting on the bench and is
+   *  in now (`names` already joined). */
+  os_moved_up: (p: { names: string; many: boolean }): string =>
+    `${p.names} ${p.many ? "were" : "was"} on the bench and ${p.many ? "are" : "is"} in now.`,
+  /** Switched off: the places are the game's own format again. */
+  os_off: (p: { activityName: string; places: number }): string =>
+    `✅ Done: the squad has a limit again, *${p.activityName}* with ${p.places} places. Everyone already in stays in; anyone who says *IN* after it is full goes on the bench.`,
+  os_already_on: (p: { min: number }): string => `No change: there is already no squad limit. Everyone who says *IN* plays; the minimum is ${p.min}.`,
+  os_already_off: (p: { places: number }): string => `No change: the squad already has a limit of ${p.places} places.`,
+  /** An open squad's late IN after the teams are made (review of #623):
+   *  the line over the redrawn sheet, and the mark beside his name. */
+  os_join_lead: (p: { joins: Array<{ name: string; teamLabel: string }> }): string =>
+    `➕ ${p.joins.map((j) => `*${j.name}* joins *${j.teamLabel}*`).join(", ")}.`,
+  os_join_note: "(new)",
+  /** /admin/activities: the most box, disabled while the squad has no limit. */
+  os_max_disabled: "No most while the squad has no limit (Settings, Bench card).",
+  /** /admin/settings, the Bench card. */
+  os_setting_label: "No squad limit",
+  os_setting_blurb: "Everyone who says IN plays: no bench, no number a side. MatchTime only asks for players below the game's minimum.",
+  /** A size asked for while the squad has no limit: nothing changes. */
+  os_no_format:
+    "This club has no number a side: everyone who says *IN* plays, and the teams are split evenly between whoever is in. To bring a limit back, tag me and say so, for example *@Match Time put the limit and the bench back*.",
+  /** The minimum set by WhatsApp while the squad has no limit. */
+  os_min_set: (p: { activityName: string; min: number }): string =>
+    `✅ Done: *${p.activityName}* needs at least ${p.min} players. Below that I'll ask for players and warn you; there is still no most.`,
+  os_min_unchanged: (p: { activityName: string; min: number }): string => `No change: *${p.activityName}* already needs at least ${p.min} players.`,
+  /** A most asked for while the squad has no limit. */
+  os_no_max: "There is no most while the squad has no limit: everyone who says *IN* plays. To bring a limit back, tag me and say so.",
+  /** A minimum that cannot be (below 2, or not a whole number). */
+  os_min_refused: "The fewest players has to be a whole number, at least 2.",
   /** A place opened and nobody is waiting: one line in the group. */
   mwk_pool_group: (p: { open: number; when: string; price: string | null }): string =>
     `🎟 ${p.open} ${p.open === 1 ? "place" : "places"} open for *${p.when}*${p.price ? `, ${p.price} PAYG` : ""}. ` +
@@ -5088,7 +5176,9 @@ export const en = {
   mth_signup_open: (p: { when: string }): string =>
     `Sign-up is open until ${p.when}. The list is posted in your group, and names come in by pasted list, by message or on the sign-up page.`,
   mth_signup_ended: "Sign-up has ended. The weekly list runs this month now. You can still change who is on it here.",
-  mth_signup_counts: (p: { regulars: number; max: number; payg: number; waiting: number }): string =>
+  /** `max` null: no squad limit (open-squad.ts), so no cap and no waiting. */
+  mth_signup_counts: (p: { regulars: number; max: number | null; payg: number; waiting: number }): string =>
+    p.max === null ? `Regulars: ${p.regulars} (no limit). PAYG: ${p.payg}.` :
     `Regulars: ${p.regulars} of ${p.max}. PAYG: ${p.payg}. Waiting for a regular place: ${p.waiting}.`,
   mth_kind_waiting: "Waiting for a regular place",
   mth_payg_days: (p: { days: string }): string => `PAYG on ${p.days}`,
@@ -5513,7 +5603,12 @@ export const en = {
   //   With "The organisers", MatchTime sends the squad to the admin
   //   channel instead of the players' group (organisers-list-copy.ts).
   /** The admin list update's first line. "of", never a slash. */
-  oa_header: (p: { activityName: string; whenLabel: string; confirmed: number; maxPlayers: number }): string => {
+  /** `openSquad` (open-squad.ts): `maxPlayers` is the minimum; the count alone, never "full". */
+  oa_header: (p: { activityName: string; whenLabel: string; confirmed: number; maxPlayers: number; openSquad?: boolean }): string => {
+    if (p.openSquad) {
+      const short = Math.max(0, p.maxPlayers - p.confirmed);
+      return `📋 *Squad for ${p.activityName}, ${p.whenLabel}*: ${p.confirmed} in, no squad limit${short > 0 ? `, ${short} more needed to play` : ""}.`;
+    }
     const open = Math.max(0, p.maxPlayers - p.confirmed);
     const tail = open === 0 ? "full" : `${open} ${open === 1 ? "space" : "spaces"}`;
     return `📋 *Squad for ${p.activityName}, ${p.whenLabel}*: ${p.confirmed} of ${p.maxPlayers} in, ${tail}.`;
@@ -6202,6 +6297,10 @@ export const en = {
     `*Partner clubs:* I didn't ask ${p.partner}: they've already had two asks today, the most a club gets in one day. Try again tomorrow.`,
   xaskw_refused_no_places: (p: { partner: string }) =>
     `*Partner clubs:* I didn't ask ${p.partner}: every place in this game is taken, so there's nobody to find.`,
+  /** An open squad (open-squad.ts) at or above its minimum: nobody to find. */
+  xaskw_refused_enough: (p: { partner: string }) =>
+    `*Partner clubs:* I didn't ask ${p.partner}: you already have enough players for this game, and anyone else can still say IN.`,
+  xaskw_line_enough: (p: { partner: string }) => `• *${p.partner}*: not asked, you already have enough players for this game.`,
   xaskw_refused_paused: (p: { partner: string }) =>
     `*Partner clubs:* I didn't ask ${p.partner}: they're paused on MatchTime for now. Ask another partner club, or try again once they're back.`,
   xaskw_refused_unreachable: (p: { partner: string }) =>

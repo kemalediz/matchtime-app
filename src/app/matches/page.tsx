@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { gameNameFor } from "@/lib/match-format-title";
 import { getUserOrg, isOrgAdmin } from "@/lib/org";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -39,7 +40,7 @@ export default async function MatchesPage() {
     where: { activity: { orgId }, date: { gte: new Date() } },
     orderBy: { date: "asc" },
     include: {
-      activity: { include: { sport: true } },
+      activity: { include: { sport: true, org: { select: { openSquad: true } } } },
       attendances: { where: { status: { in: ["CONFIRMED", "BENCH"] } } },
     },
   });
@@ -69,6 +70,8 @@ export default async function MatchesPage() {
     const confirmed = m.attendances.filter((a) => a.status === "CONFIRMED").length;
     const bench = m.attendances.filter((a) => a.status === "BENCH").length;
     const myStatus = myAttMap.get(m.id) ?? null;
+    // An open squad (open-squad.ts): the count alone, no places, no format.
+    const openSquad = m.activity.org?.openSquad === true;
     const pct = Math.min(100, Math.round((confirmed / m.maxPlayers) * 100));
     const barColor =
       confirmed >= m.maxPlayers
@@ -100,7 +103,7 @@ export default async function MatchesPage() {
         <div className="p-5 space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="font-semibold text-slate-800 truncate">{m.activity.name}</p>
+              <p className="font-semibold text-slate-800 truncate">{gameNameFor(m.activity.name, m.maxPlayers, openSquad, { sportName: m.activity.sport.name })}</p>
               <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-sm text-slate-500 mt-1">
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5" />
@@ -120,11 +123,11 @@ export default async function MatchesPage() {
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-1.5 text-slate-500">
                 <Users className="w-3.5 h-3.5" />
-                {confirmed}/{m.maxPlayers}
+                {openSquad ? `${confirmed} in` : `${confirmed}/${m.maxPlayers}`}
                 {bench > 0 && <span className="ml-2 text-slate-400">· {bench} bench</span>}
               </span>
               <span className="inline-flex px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
-                {m.activity.sport.name}
+                {openSquad ? gameNameFor(m.activity.sport.name, null, true) : m.activity.sport.name}
               </span>
             </div>
             <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">

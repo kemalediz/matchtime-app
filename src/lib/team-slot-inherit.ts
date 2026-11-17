@@ -165,3 +165,56 @@ export function decideSlotInherits(args: {
   }
   return out;
 }
+
+/** A confirmed player given a NEW seat on a side (an open squad). */
+export interface OpenSquadJoin {
+  userId: string;
+  team: InheritTeam;
+}
+
+/**
+ * AN OPEN SQUAD'S LATE INS (review of #623, open-squad.ts). With no squad
+ * limit a player can say IN after the teams are made, with no vacated
+ * slot to take. He joins the side with fewer players on it; with the
+ * sides level, the side with the lower total rating; with those level
+ * too, Red. Several arrivals go in the order they joined, each counted
+ * before the next. Only CONFIRMED holders count on a side: a slot held by
+ * a player who is out is nobody. Run AFTER `decideSlotInherits`, on the
+ * sheet it left, so a vacated slot is still taken first.
+ *
+ * Pure: the ratings come in as a function.
+ */
+export function decideOpenSquadJoins(args: {
+  rows: InheritRow[];
+  teams: InheritSlot[];
+  ratingOf: (userId: string) => number;
+}): OpenSquadJoin[] {
+  const { rows, teams, ratingOf } = args;
+  if (teams.length === 0) return [];
+  const statusOf = new Map(rows.map((r) => [r.userId, r.status]));
+  const seated = new Set(teams.map((t) => t.userId));
+  const side = { RED: { count: 0, total: 0 }, YELLOW: { count: 0, total: 0 } };
+  for (const t of teams) {
+    if (statusOf.get(t.userId) !== "CONFIRMED") continue;
+    side[t.team].count++;
+    side[t.team].total += ratingOf(t.userId);
+  }
+  const arrivals = rows
+    .filter((r) => r.status === "CONFIRMED" && !seated.has(r.userId))
+    .sort((a, b) => a.position - b.position || (a.userId < b.userId ? -1 : 1));
+  const out: OpenSquadJoin[] = [];
+  for (const a of arrivals) {
+    const team: InheritTeam =
+      side.RED.count !== side.YELLOW.count
+        ? side.RED.count < side.YELLOW.count
+          ? "RED"
+          : "YELLOW"
+        : side.YELLOW.total < side.RED.total
+          ? "YELLOW"
+          : "RED";
+    side[team].count++;
+    side[team].total += ratingOf(a.userId);
+    out.push({ userId: a.userId, team });
+  }
+  return out;
+}

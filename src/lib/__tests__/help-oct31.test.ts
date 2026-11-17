@@ -64,10 +64,10 @@ describe("help availability explains the friend link", () => {
   });
 
   it("the exact friend line, EN and TR", () => {
-    expect(t("en").onbHelpFriendLink).toBe(
+    expect(t("en").onbHelpFriendLink()).toBe(
       `👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.`,
     );
-    expect(t("tr").onbHelpFriendLink).toBe(
+    expect(t("tr").onbHelpFriendLink()).toBe(
       `👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.`,
     );
   });

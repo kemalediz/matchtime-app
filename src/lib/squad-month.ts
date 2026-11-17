@@ -13,6 +13,7 @@
  * before anything is read.
  */
 import { db } from "./db";
+import { monthSignupCap } from "./open-squad";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { defaultPayBy } from "./month-payment-rules";
@@ -315,7 +316,7 @@ export interface MonthFixtureView {
      *  sign-up ends, as an ISO instant. Null for a month started part-way. */
     signupEndsAt: string | null;
     /** The regular places: the format's squad size. */
-    maxRegulars: number;
+    maxRegulars: number | null;
     /** Slice 4: the price, when one is set. `payByAt` is an ISO instant. */
     concessionPerGamePence: number | null;
     venueCostPence: number | null;
@@ -375,6 +376,7 @@ export async function loadMonthPage(
         pricedAt: true,
         startedMidMonthAt: true,
         listOpenedAt: true,
+        regularCapFloor: true,
         members: {
           where: { leftAt: null },
           orderBy: [{ slot: "asc" }, { createdAt: "asc" }],
@@ -408,7 +410,7 @@ export async function loadMonthPage(
       where: { activity: { orgId }, date: { gte: monthFrom, lt: new Date(monthFrom.getTime() + 32 * 24 * 60 * 60 * 1000) } },
       select: { id: true, date: true },
     }),
-    db.organisation.findUnique({ where: { id: orgId }, select: { seasonBreakMonths: true } }),
+    db.organisation.findUnique({ where: { id: orgId }, select: { seasonBreakMonths: true, openSquad: true } }),
   ]);
   const dayOfMatch = new Map(matches.map((x) => [x.id, Number(formatLondon(x.date, "d"))]));
   // In a month MatchTime opened itself, a member who has left the group is
@@ -433,7 +435,8 @@ export async function loadMonthPage(
         sharePerGamePence: m.sharePerGamePence,
         startedMidMonth: m.startedMidMonthAt !== null,
         signupEndsAt: m.listOpenedAt && first ? signupEndsAt(m.listOpenedAt, first).toISOString() : null,
-        maxRegulars: a.sport.playersPerTeam * 2,
+        // No squad limit (open-squad.ts): no regular cap to show.
+        maxRegulars: org?.openSquad === true ? null : monthSignupCap({ playersPerTeam: a.sport.playersPerTeam, openSquad: false, capFloor: m.regularCapFloor }),
         concessionPerGamePence: m.concessionPerGamePence,
         venueCostPence: m.venueCostPence,
         payByAt: m.payByAt ? m.payByAt.toISOString() : null,
@@ -548,4 +551,24 @@ export async function setSeasonBreak(
     await db.sentNotification.delete({ where: { key: mark.key } }).catch(() => {});
   }
   return { ok: true, months: wanted, keptGames };
+}
+
+/**
+ * NO SQUAD LIMIT SWITCHED OFF PART-WAY THROUGH A MONTH (review of #623,
+ * open-squad-save.ts): this month and any earlier one still running keep
+ * room for every regular they had signed (`regularCapFloor`), so the next
+ * week's seed and the sign-up bump nobody. A month that starts later is
+ * not touched: the format's places apply from its sign-up. Returns how
+ * many months were marked.
+ */
+export async function liftMonthCapForOpenSquadOff(orgId: string, now: Date): Promise<number> {
+  const current = londonMonthStart(now);
+  const months = await db.squadMonth.findMany({
+    where: { orgId, status: { not: "closed" }, monthStart: { lte: new Date(`${current}T00:00:00.000Z`) } },
+    select: { id: true, _count: { select: { members: { where: { kind: "regular", leftAt: null } } } } },
+  });
+  for (const m of months) {
+    await db.squadMonth.update({ where: { id: m.id }, data: { regularCapFloor: m._count.members } });
+  }
+  return months.length;
 }

@@ -518,7 +518,9 @@ export function buildSignupList(p: { members: SignupMember[]; maxRegulars: numbe
     while (bySlot.has(n)) n++;
     bySlot.set(n, m);
   }
-  const last = Math.max(p.maxRegulars, ...bySlot.keys());
+  // An open squad's cap is Infinity (`monthRegularCap`): the list is then
+  // its regulars and no empty places.
+  const last = Math.max(Number.isFinite(p.maxRegulars) ? p.maxRegulars : 0, ...bySlot.keys());
   const slots: SignupList["slots"] = [];
   for (let n = 1; n <= last; n++) {
     const m = bySlot.get(n);

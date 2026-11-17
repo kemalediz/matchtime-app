@@ -33,6 +33,9 @@ export interface PoolOfferFacts {
   sport: PoolSportKey;
   /** Players per side, where the sport has formats; null otherwise. */
   format: number | null;
+  /** The club has no squad limit (open-squad.ts): the game is told with no
+   *  number a side. `format` stays, for matching players. */
+  noFormat?: boolean;
   kickoff: Date;
   durationMins: number;
   venueName: string;
@@ -69,10 +72,10 @@ export function milesLabel(lang: Lang, miles: number): { miles: string; one: boo
 }
 
 /** "7-a-side football game": the offer's game in words. */
-export function gameOf(lang: Lang, f: Pick<PoolOfferFacts, "sport" | "format">): string {
+export function gameOf(lang: Lang, f: Pick<PoolOfferFacts, "sport" | "format" | "noFormat">): string {
   const c = poolCopy(lang);
   const sport = sportLabel(f.sport, lang);
-  return f.format ? c.game_with_format({ format: t(lang).sj_per_side_option({ perSide: f.format }), sport }) : c.game_plain({ sport });
+  return f.format && !f.noFormat ? c.game_with_format({ format: t(lang).sj_per_side_option({ perSide: f.format }), sport }) : c.game_plain({ sport });
 }
 
 export function styleOf(lang: Lang, style: PlayStyle | null): string | null {

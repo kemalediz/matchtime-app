@@ -46,7 +46,7 @@ import { nameMentions as nameMentionsByModel } from "./pipeline/mention-names";
 import { loadMentionRoster } from "./mention-roster";
 import { personPickerFor } from "./pipeline/identify-batch";
 import { buildClaimGuestNameAsk } from "./owner-deps";
-import { moveNamedSlot } from "./team-slot-fill";
+import { joinTeamSlot, moveNamedSlot } from "./team-slot-fill";
 import { recordTentative, resolveTentative } from "./tentative-store";
 import { provisionNewPerson } from "./resolve-or-provision-name";
 import { adminGroupSourceRef } from "./admin-added";
@@ -289,6 +289,10 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
         moveTeamSlot: async (matchId, fromUserId, toUserId) => {
           const res = await db.$transaction((tx) => moveNamedSlot(tx, matchId, fromUserId, toUserId));
           if (res.kind === "refused") throw new Error(`slot move refused (${res.reason})`);
+        },
+        // An open squad's late IN (review of #623): a new seat.
+        joinTeamSlot: async (matchId, userId, team) => {
+          await db.$transaction((tx) => joinTeamSlot(tx, matchId, userId, team));
         },
         openBenchPromptUserIds: async (matchId) =>
           (

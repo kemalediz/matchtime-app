@@ -187,6 +187,31 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * 21,516 characters. Old and new: MDs/prompt-move-game-old.md and
  * MDs/prompt-move-game-new.md; the paid check: scripts/live-check-move-game.ts.
  *
+ * And on 2026-11-17, REWRITTEN WHOLE (the Vets: "the main squad will always
+ * expand or shrink without any limits and a bench"; review of #623: one
+ * game's words must never flip a club setting). One rule stated once before
+ * the actions: ONE GAME, OR THE CLUB FROM NOW ON. The actions, the fields
+ * and the examples are now grouped the same way (finding players, one game,
+ * the club from now on, anything else). A new action, `open_squad` (the
+ * squad limit itself, standing and club-wide; its field `openSquadOff`),
+ * with one-game wording ("no limit tonight", "anyone can play this week")
+ * shown as "other", numbers ("max 14 again", "set the minimum to 10") as
+ * `player_numbers`, and "back to full teams" said to be about the fewest,
+ * never the squad limit. Every other action's definition, field and example
+ * is unchanged in meaning. 21,516 to 23,859 characters. Old and new side by
+ * side in PR #623; the paid check is the manager's.
+ *
+ * The paid check found one regression (2026-11-17): HQ's "no, not Bilal",
+ * answering MatchTime's "Make Bilal Ahmed free for Fri 16 Oct? Reply YES.",
+ * came back fee_waiver for Bilal. Main had never said how a no to
+ * MatchTime's own question reads, and passed by default (12 of 12 on the
+ * dev key); open_squad inserted into main's order failed 3 of 12, the
+ * rewrite 6 of 16. Now said once, where the context is explained: a short
+ * answer takes the question's action only when it agrees or picks; a no or
+ * a change of mind asks for nothing ("other"), with one example among the
+ * free places (a held-out wording, not the check's). 12 of 12, and 5 runs of
+ * scripts/live-check-free-places.ts. 23,859 to 24,238 characters.
+ *
  * The TEAMS extractor, 2026-11-10 (Sutton FC, "@Match Time reduce my
  * strength for this match as I am quite tired." went to the settings
  * page): one action, `form`, defined once beside the others (how a player
@@ -786,20 +811,27 @@ The latest game or an earlier one:
 
   admin: `You read ONE message from a football club's chat (the organisers' group, the players' group, or a private message to the bot) and report what it asks MatchTime, the club's bot, to do, and whether it is spoken to MatchTime at all. You report the words; code decides what happens. Messages are English or Turkish, often mixed.
 
-THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club), GAMES TO COME (the club's games still to be played, numbered, soonest first) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, which game is meant, and what a short answer answers. The action and every field come from THE MESSAGE.
+THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club), GAMES TO COME (the club's games still to be played, numbered, soonest first) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, which game is meant, and what a short answer answers. A short answer to MatchTime's own question takes that question's action only when it agrees or picks one of the options offered; a no or a change of mind ("no, leave it", "hold on, not him", "hayır, kalsın") asks for nothing and is "other", unless it asks for something else instead. The action and every field come from THE MESSAGE.
+
+ONE GAME, OR THE CLUB FROM NOW ON. Some actions change one game; others change how the club runs every week. A message about one game ("tonight", "this week", "on Monday", "for Friday's game") never changes a club setting. A club setting needs a standing intent: "from now on", "every week", "for this group", or a rule said with no game named.
 
 THE ACTION, exactly one. A question, an opinion or a discussion about whether to do something ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
+Finding players:
   "recruit" find players who are not in the squad yet, or invite particular people to play; playersFrom says who or from where. Showing, listing or counting the squad is "other", and so is talking about another club or the player pool.
+One game:
   "cancel_match" call off one of the club's games: cancel it, it is not happening, no game. Of a game whose time has gone: it never took place ("it didn't happen", "olmadı").
   "restore_match" put a called-off game back on: it is back on, uncancel it, it goes ahead after all. Of a game whose time has gone: it did take place after all.
-  "season_break" no football for a whole MONTH or more ("no football in December", "aralıkta maç yok"), or the football is back in a month ("we're back in January", "ocakta başlıyoruz"). One game off ("no game Friday", "bu hafta maç yok") is "cancel_match".
-  "set_venue" tell MatchTime where the club plays: name its pitch or venue, or pick one of the places MatchTime listed. Asking where the game is, or talking about a pitch, is "other".
-  "retry_ask" try MatchTime's last request again, or say that what stopped it is now done or fixed, naming nothing new ("done, try again", "added the venue location"). A message that names the place is "set_venue"; one that asks for something again in full ("now ask the pool") is that action.
-  "quiet_hours" switch the club's quiet hours (the night hours MatchTime holds its own messages in) off or on, or set when they start or end. Asking about them, or talking about them, is "other".
-  "player_numbers" set how many players a game is played with, for every week: the fewest (MatchTime warns about low numbers only below it), the most (a game may then be made bigger, up to it), or both ("we can play with 12", "we play 12 to 16", "up to 8 a side"), or go back to needing two full sides. Saying how many are coming, or asking how many are needed, is "other".
   "switch_format" play ONE game with a different number a side, bigger or smaller ("make it 8 aside", "6 a side on Monday"), or a yes to MatchTime's own offer to switch a game ("Shall we go 8-a-side?"). Asking whether to switch, or talking about it, is "other".
   "move_game" change when a game kicks off: ONE game to another time, or to another day of its own week ("move Monday's game to 8:15", "tonight we start at 8"), or the club's weekly game from now on ("from now on we kick off at 8:15", "we play Tuesdays from now on"). A different number a side is "switch_format". Asking what time a game is, or talking about a time, is "other".
   "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back. "Free" as in able to play ("I'm free Tuesday") is not this.
+The club, from now on:
+  "season_break" no football for a whole MONTH or more ("no football in December", "aralıkta maç yok"), or the football is back in a month ("we're back in January", "ocakta başlıyoruz"). One game off ("no game Friday", "bu hafta maç yok") is "cancel_match".
+  "set_venue" tell MatchTime where the club plays: name its pitch or venue, or pick one of the places MatchTime listed. Asking where the game is, or talking about a pitch, is "other".
+  "quiet_hours" switch the club's quiet hours (the night hours MatchTime holds its own messages in) off or on, or set when they start or end. Asking about them, or talking about them, is "other".
+  "player_numbers" set how many players the club's game is played with every week: the fewest (MatchTime warns about low numbers only below it), the most (a game may then be made bigger, up to it), or both ("we can play with 12", "we play 12 to 16", "up to 8 a side", "max 14 again", "set the minimum to 10"), or the fewest back to two full sides ("back to full teams"). Saying how many are coming, or asking how many are needed, is "other".
+  "open_squad" the squad limit itself, for the whole club from now on: take it away, so everyone who says IN plays every week with no bench and no number a side ("no squad limit from now on", "remove the bench for this group"), or put the limit and the bench back. Only a standing change for the club: words about one game ("no limit tonight", "anyone can play this week") are not this, and any number of players, fewest or most, is "player_numbers". Asking whether there is a limit, or talking about it, is "other".
+Anything else:
+  "retry_ask" try MatchTime's last request again, or say that what stopped it is now done or fixed, naming nothing new ("done, try again", "added the venue location"). A message that names the place is "set_venue"; one that asks for something again in full ("now ask the pool") is that action.
   "bulk_payment" someone paid for several players.
   "reminder" MatchTime is to remind the sender, at a time.
   "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open their link) is "other".
@@ -807,6 +839,7 @@ THE ACTION, exactly one. A question, an opinion or a discussion about whether to
 
 THE FIELDS. Fill toMatchTime always and the others for the action; every other field is "", 0, false or [].
   toMatchTime (always): true when the message tells or asks MatchTime itself to do something: it tags the bot, replies to MatchTime's own post, answers the question MatchTime just asked, or is an instruction that names and tags nobody else ("ask the group if anyone can play"). False when it speaks to a person or to the others: it tags or names a person to ask them, or asks the others whether to do it or whether they can ("can we ask...?", "should we...?", "you able to find players?").
+Finding players:
   playersFrom (recruit): who is to be invited, never guessed: the people tagged, or every place the message means the players are to come from; [] when it says neither (MatchTime then asks).
     "named" the particular people tagged with @ in THE MESSAGE, in the message it replies to, or in the message just above it ("DM these people", "message the people above", "invite them"). Code finds who they are; you only say they are meant. MatchTime invites exactly those people, so "named" stands alone, never beside a place.
     "club" the club's own players (its regulars, the lads, its past players, its players' group: "the group", "the main group").
@@ -815,8 +848,17 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
     "everywhere" or "wherever you can" ("her yerden", "nereden olursa") is the three places. An answer to MatchTime's own question about where to look (MATCHTIME'S LAST POST, or the message replied to) is recruit from the places it picks, however short: "both" is the two places the question offers (of three, the partner clubs and the pool), "all" is every place it offers, and a yes to a question offering one place is that place.
   lookbackMatches (recruit from the club): how many recent matches to draw the club's own players from ("the last 5 matches" is 5, "the last couple of games" is 2); 0 when no number is named.
   clubRef (recruit from partners): the other club's name as written, without a Turkish case ending ("Sutton'a" is "Sutton"); "" when no club is named.
+One game:
   matchDay (cancel_match, restore_match, fee_waiver, player_numbers, switch_format): the day named for the game, as written ("tonight", "next Friday", "cuma", "last Tuesday"); "" when none or only "this week".
   pastGame (cancel_match, restore_match): true when the game meant has already been, or should have been, played: it says the game didn't happen or did happen after all, or names a game gone by ("last Tuesday's", "the last match", "yesterday", "dün", "geçen hafta").
+  size (switch_format): the number of players said for that game, as written ("8 aside" is 8, "16 players" is 16); for a yes to MatchTime's offer, the number a side the offer names; 0 when none is said.
+  game (move_game): the number of the game meant in GAMES TO COME: the one the message names by its day or date ("Monday's", "the 23rd", "pazartesi"), the first that fits for "tonight", "this week" or "next week", and the first when it names none and every game listed is the same weekly game. For the weekly game from now on, any game of that weekly game. 0 when none is listed, or the games listed are different weekly games and the message names none (MatchTime then asks which). An answer to MatchTime's question which game to move is move_game, with the game the answer picks and the day and time that question names.
+  newDay (move_game): the day of the week it moves to, "monday" to "sunday"; "" when the day stays.
+  newTime (move_game): the new kickoff as a 24-hour London time "HH:MM". A time with no am or pm is the one nearest the game's own kickoff ("8:15" for a 20:30 game is "20:15", "8" is "20:00", "10am" is "10:00"); "" when the time stays.
+  everyWeek (move_game): true when it changes the weekly game from now on ("from now on", "every week", "artık", "her hafta", "bundan sonra"); false for one game.
+  coveredRefs (fee_waiver, bulk_payment): the people the action is about, one entry each, as written: those given or losing the free place, or those paid for. "he" or "him" is the person named, else the author of the quoted message.
+  undo (fee_waiver): true when it takes a free place back.
+The club, from now on:
   breakMonths (season_break): each month with no football, as "YYYY-MM", the next such month from NOW ("December" in October 2026 is "2026-12"; "December and January" is both).
   playMonths (season_break): each month the football is on or back in, as "YYYY-MM" the same way.
   venueName (set_venue): the pitch or venue as named, without a Turkish case ending ("Powerleague Shoreditch'te" is "Powerleague Shoreditch"). For a pick from MatchTime's numbered list of places, the name that list was for.
@@ -826,15 +868,10 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
   quietTo (quiet_hours): when they end, the same way ("8am" is "08:00", "sabah 9" is "09:00"); "" when not said.
   minPlayers (player_numbers): the fewest players said, as written ("12", "on iki" is 12); 0 when no number is said or it goes back to full sides.
   maxPlayers (player_numbers): the most players said, as written ("up to 16" is 16, "en fazla 8'e 8" is 8); 0 when none is said.
-  fullTeams (player_numbers): true when it goes back to needing two full sides ("back to full teams", "yine tam takım").
-  size (switch_format): the number of players said for that game, as written ("8 aside" is 8, "16 players" is 16); for a yes to MatchTime's offer, the number a side the offer names; 0 when none is said.
+  fullTeams (player_numbers): true when the fewest goes back to two full sides ("back to full teams", "yine tam takım"). This is about the fewest, never about the squad limit.
   aSide (player_numbers, switch_format): true when the numbers count the players on ONE side ("8 aside", "6 to 8 a side", "8'e 8", "6 kişilik oynayalım", MatchTime's "8-a-side"); false when they count everyone ("12 players", "16 kişiyle").
-  game (move_game): the number of the game meant in GAMES TO COME: the one the message names by its day or date ("Monday's", "the 23rd", "pazartesi"), the first that fits for "tonight", "this week" or "next week", and the first when it names none and every game listed is the same weekly game. For the weekly game from now on, any game of that weekly game. 0 when none is listed, or the games listed are different weekly games and the message names none (MatchTime then asks which). An answer to MatchTime's question which game to move is move_game, with the game the answer picks and the day and time that question names.
-  newDay (move_game): the day of the week it moves to, "monday" to "sunday"; "" when the day stays.
-  newTime (move_game): the new kickoff as a 24-hour London time "HH:MM". A time with no am or pm is the one nearest the game's own kickoff ("8:15" for a 20:30 game is "20:15", "8" is "20:00", "10am" is "10:00"); "" when the time stays.
-  everyWeek (move_game): true when it changes the weekly game from now on ("from now on", "every week", "artık", "her hafta", "bundan sonra"); false for one game.
-  coveredRefs (fee_waiver, bulk_payment): the people the action is about, one entry each, as written: those given or losing the free place, or those paid for. "he" or "him" is the person named, else the author of the quoted message.
-  undo (fee_waiver): true when it takes a free place back.
+  openSquadOff (open_squad): true when it puts the squad limit and the bench back ("put the limit back", "bring the bench back"); false when it takes the limit away.
+Anything else:
   payerRef (bulk_payment): who paid, as written.
   count (bulk_payment): how many players they paid for.
   phrase (reminder): the time phrase exactly as written ("tomorrow at 6"), kept as a record.
@@ -848,11 +885,11 @@ Spoken to MatchTime, or to a person:
   "should we ask the group?" / "gruba soralım mı?" -> other, toMatchTime false
   "shall we try the pool?" / "havuza soralım mı?" -> other, toMatchTime false
   "you able to find players?" / "oyuncu bulabilir misin?" (to another organiser) -> other, toMatchTime false
-The people tagged, not a place:
+Finding players: the people tagged, not a place:
   "@Match Time DM these people", replying to a message that tags people / "@Match Time bu kişilere özelden yaz" -> recruit, playersFrom ["named"]
   "@Match Time DM the people above" / "@Match Time yukarıda etiketlenenlere mesaj at" -> recruit, playersFrom ["named"]
   "@Match Time invite @Ali and @Sam for tonight" / "@Match Time @Ali ve @Sam'i bu akşama davet et" -> recruit, playersFrom ["named"]
-Players from one place:
+Finding players from one place:
   "@Match Time ask the group" / "@Match Time gruba sor" -> recruit, playersFrom ["club"]
   "message the lads from the last 5 matches and invite them" / "son 5 maçta oynayanlara yaz, davet et" -> recruit, playersFrom ["club"], lookbackMatches 5
   "ask the regulars if they can play" / "düzenli gelenlere sor, oynayabilirler mi" -> recruit, playersFrom ["club"]
@@ -862,7 +899,7 @@ Players from one place:
   "@Match Time ask the pool for a player" / "@Match Time havuzdan bir oyuncu bul" -> recruit, playersFrom ["pool"]
   "find someone nearby for tonight" / "bu akşam için yakınlardan birini bul" -> recruit, playersFrom ["pool"]
   "get us a player from the app" / "uygulamadan bir oyuncu bulur musun" -> recruit, playersFrom ["pool"]
-Players from several places, or from none said:
+Finding players from several places, or from none said:
   "find me players from partner clubs and the player pool" / "partnerlere ve havuza sor" -> recruit, playersFrom ["partners","pool"]
   "ask Sutton and the pool" / "Sutton'a ve havuza sor" -> recruit, playersFrom ["partners","pool"], clubRef "Sutton"
   "ask the group and our partner clubs" / "gruba ve partner kulüplere sor" -> recruit, playersFrom ["club","partners"]
@@ -880,7 +917,7 @@ Talk about a club or the pool, not a request:
   "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other, toMatchTime false
   "did Sutton ever get back to us?" -> other, toMatchTime false
   "the pool lad last week was good" / "geçen haftaki havuz oyuncusu iyiydi" -> other, toMatchTime false
-A game off, or back on (pastGame false unless shown):
+One game off, or back on (pastGame false unless shown):
   "Cancel the session" / "maçı iptal et" -> cancel_match, matchDay ""
   "storm, no game Friday" / "bu hafta maç yok" -> cancel_match, matchDay "Friday" / ""
   "it's back on, uncancel Friday" / "maç yapılıyor, iptali geri al" -> restore_match, matchDay "Friday" / ""
@@ -888,39 +925,6 @@ A game off, or back on (pastGame false unless shown):
   "cancel the last match, we didn't play" / "geçen haftaki maçı iptal et, oynamadık" -> cancel_match, matchDay "" / "geçen hafta", pastGame true
   "Tuesday's game did go ahead after all" / "salı maçı aslında oynandı" -> restore_match, matchDay "Tuesday" / "salı", pastGame true
   "should we cancel Friday?" / "the session should be cancelled anyway" -> other, toMatchTime false
-A month or more off, or back (NOW is October 2026 here):
-  "@Match Time no football in December" / "@Match Time aralıkta maç yok" -> season_break, breakMonths ["2026-12"]
-  "no games December or January, back in February" / "aralık ve ocakta maç yok, şubatta dönüyoruz" -> season_break, breakMonths ["2026-12","2027-01"], playMonths ["2027-02"]
-  "@Match Time we're back mid January" / "@Match Time ocak ortasında dönüyoruz" -> season_break, playMonths ["2027-01"]
-  "are we playing in December?" / "aralıkta maç var mı?" -> other
-The club's pitch:
-  "@Match Time our pitch is Goals Sutton" / "@Match Time sahamız Goals Sutton" -> set_venue, venueName "Goals Sutton"
-  "we play at Powerleague Shoreditch now" / "artık Powerleague Shoreditch'te oynuyoruz" -> set_venue, venueName "Powerleague Shoreditch"
-  answering MatchTime's "I found more than one place for *Goals Sutton*. Which one is it?" and its list: "2" / "ikincisi" -> set_venue, venueName "Goals Sutton", venueChoice 2; "the first one" / "birincisi" -> venueChoice 1
-  "@Match Time where is the game?" / "@Match Time maç nerede?" -> other
-  "the pitch at Goals was flooded" / "Goals'un sahası su basmıştı" -> other, toMatchTime false
-Trying again after MatchTime said it could not do something:
-  "@Match Time added the venue location" / "@Match Time tamam ekledim" -> retry_ask
-  "done, try again" / "şimdi dene" -> retry_ask
-  "@Match Time I've switched the pool on, go ahead" / "@Match Time havuzu açtım, devam et" -> retry_ask
-  "@Match Time thanks" / "@Match Time teşekkürler" -> other
-The club's quiet hours:
-  "@Match Time turn off quiet hours now" / "@Match Time sessiz saatleri kapat" -> quiet_hours, quietOff true
-  "@Match Time switch quiet hours back on" / "@Match Time sessiz saatleri tekrar aç" -> quiet_hours
-  "@Match Time quiet hours from 22:00 to 8am" / "@Match Time sessiz saatler 22:00 ile 08:00 arası" -> quiet_hours, quietFrom "22:00", quietTo "08:00"
-  "@Match Time don't post before 7am" / "@Match Time sabah 7'den önce mesaj atma" -> quiet_hours, quietTo "07:00"
-  "@Match Time are quiet hours on?" / "@Match Time sessiz saatler açık mı?" -> other
-  "the quiet hours held my message again" / "sessiz saatler yine mesajımı bekletti" -> other, toMatchTime false
-How many players a game is played with, every week:
-  "@Match Time we can play with 12" / "@Match Time 12 kişiyle de oynarız" -> player_numbers, minPlayers 12
-  "@Match Time minimum 12 players" / "@Match Time en az 12 kişi" -> player_numbers, minPlayers 12
-  "@Match Time we're fine with 12, two down is ok" / "@Match Time 12 kişi de olur, iki eksik oynarız" -> player_numbers, minPlayers 12
-  "@Match Time we play 12 to 16" / "@Match Time 12 ile 16 kişi arası oynuyoruz" -> player_numbers, minPlayers 12, maxPlayers 16
-  "@Match Time 6 to 8 a side" / "@Match Time 6'ya 6 ile 8'e 8 arası" -> player_numbers, minPlayers 6, maxPlayers 8, aSide true
-  "@Match Time minimum 8 on Thursday" / "@Match Time perşembe en az 8 kişi" -> player_numbers, minPlayers 8, matchDay "on Thursday" / "perşembe"
-  "@Match Time back to full teams" / "@Match Time yine tam takım" -> player_numbers, fullTeams true
-  "@Match Time how many do we need?" / "@Match Time kaç kişi lazım?" -> other
-  "we're 12 tonight" / "bu akşam 12 kişiyiz" -> other, toMatchTime false
 One game a different size:
   "@Match Time make it 8 aside" / "@Match Time 8'e 8 yapalım" -> switch_format, size 8, aSide true
   "@Match Time 6 kişilik oynayalım" / "@Match Time let's play 6 a side" -> switch_format, size 6, aSide true
@@ -935,14 +939,57 @@ When a game kicks off (GAMES TO COME here: 1. Monday 16 November 2026 at 20:30 (
   "the 23rd" / "23'ündeki", answering MatchTime's "Which game shall I move to 20:15: Mon 16 Nov 20:30 or Mon 23 Nov 20:30?" -> move_game, game 2, newTime "20:15"
   "@Match Time what time is kick off?" / "@Match Time maç saat kaçta?" -> other
   "shall we kick off at 8 next week?" / "haftaya 8'de mi başlasak?" (to the others) -> other, toMatchTime false
-Free places and payments:
+Free places in a game, and payments:
   "Bilal washed the bibs, he's free this week" -> fee_waiver, coveredRefs ["Bilal"]
   "put Bilal down as free on Friday" / "Ali ve Can cuma günü ödemesin" -> fee_waiver, coveredRefs ["Bilal"] / ["Ali","Can"], matchDay "on Friday" / "cuma günü"
   "Bilal bu akşam ücretsiz oynasın" -> fee_waiver, coveredRefs ["Bilal"], matchDay "bu akşam"
   "scrap that, Tom isn't free, he pays" / "Ali ücretsiz değil, ödesin" -> fee_waiver, coveredRefs ["Tom"] / ["Ali"], undo true
   "should Bilal play free?" -> other, toMatchTime false
+  "no, leave it" / "hayır, kalsın", answering MatchTime's "Make Tom free for Friday?" -> other
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
+A month or more off, or back (NOW is October 2026 here):
+  "@Match Time no football in December" / "@Match Time aralıkta maç yok" -> season_break, breakMonths ["2026-12"]
+  "no games December or January, back in February" / "aralık ve ocakta maç yok, şubatta dönüyoruz" -> season_break, breakMonths ["2026-12","2027-01"], playMonths ["2027-02"]
+  "@Match Time we're back mid January" / "@Match Time ocak ortasında dönüyoruz" -> season_break, playMonths ["2027-01"]
+  "are we playing in December?" / "aralıkta maç var mı?" -> other
+The club's pitch:
+  "@Match Time our pitch is Goals Sutton" / "@Match Time sahamız Goals Sutton" -> set_venue, venueName "Goals Sutton"
+  "we play at Powerleague Shoreditch now" / "artık Powerleague Shoreditch'te oynuyoruz" -> set_venue, venueName "Powerleague Shoreditch"
+  answering MatchTime's "I found more than one place for *Goals Sutton*. Which one is it?" and its list: "2" / "ikincisi" -> set_venue, venueName "Goals Sutton", venueChoice 2; "the first one" / "birincisi" -> venueChoice 1
+  "@Match Time where is the game?" / "@Match Time maç nerede?" -> other
+  "the pitch at Goals was flooded" / "Goals'un sahası su basmıştı" -> other, toMatchTime false
+The club's quiet hours:
+  "@Match Time turn off quiet hours now" / "@Match Time sessiz saatleri kapat" -> quiet_hours, quietOff true
+  "@Match Time switch quiet hours back on" / "@Match Time sessiz saatleri tekrar aç" -> quiet_hours
+  "@Match Time quiet hours from 22:00 to 8am" / "@Match Time sessiz saatler 22:00 ile 08:00 arası" -> quiet_hours, quietFrom "22:00", quietTo "08:00"
+  "@Match Time don't post before 7am" / "@Match Time sabah 7'den önce mesaj atma" -> quiet_hours, quietTo "07:00"
+  "@Match Time are quiet hours on?" / "@Match Time sessiz saatler açık mı?" -> other
+  "the quiet hours held my message again" / "sessiz saatler yine mesajımı bekletti" -> other, toMatchTime false
+How many players the club's game is played with, every week:
+  "@Match Time we can play with 12" / "@Match Time 12 kişiyle de oynarız" -> player_numbers, minPlayers 12
+  "@Match Time minimum 12 players" / "@Match Time en az 12 kişi" -> player_numbers, minPlayers 12
+  "@Match Time set the minimum to 10" / "@Match Time en az 10 kişi olsun" -> player_numbers, minPlayers 10
+  "@Match Time we're fine with 12, two down is ok" / "@Match Time 12 kişi de olur, iki eksik oynarız" -> player_numbers, minPlayers 12
+  "@Match Time we play 12 to 16" / "@Match Time 12 ile 16 kişi arası oynuyoruz" -> player_numbers, minPlayers 12, maxPlayers 16
+  "@Match Time max 14 again" / "@Match Time yine en fazla 14 kişi" -> player_numbers, maxPlayers 14
+  "@Match Time 6 to 8 a side" / "@Match Time 6'ya 6 ile 8'e 8 arası" -> player_numbers, minPlayers 6, maxPlayers 8, aSide true
+  "@Match Time minimum 8 on Thursday" / "@Match Time perşembe en az 8 kişi" -> player_numbers, minPlayers 8, matchDay "on Thursday" / "perşembe"
+  "@Match Time back to full teams" / "@Match Time yine tam takım" -> player_numbers, fullTeams true
+  "@Match Time how many do we need?" / "@Match Time kaç kişi lazım?" -> other
+  "we're 12 tonight" / "bu akşam 12 kişiyiz" -> other, toMatchTime false
+The squad limit, for the whole club from now on:
+  "@Match Time no squad limit from now on, everyone who says in plays" / "@Match Time bundan sonra kadro sınırı yok, varım diyen herkes oynar" -> open_squad
+  "@Match Time remove the bench for this group, the pitch is big enough for everyone" / "@Match Time bu grupta yedek olmasın, saha herkese yeter" -> open_squad
+  "@Match Time put the limit and the bench back" / "@Match Time kadro sınırını ve yedekleri geri getir" -> open_squad, openSquadOff true
+  "@Match Time no limit tonight, anyone can come" / "@Match Time bu akşam sınır yok, isteyen gelsin" -> other
+  "@Match Time anyone can play this week" / "@Match Time bu hafta herkes oynayabilir" -> other
+  "@Match Time is there a limit on numbers?" / "@Match Time kadro sınırı var mı?" -> other
+Trying again after MatchTime said it could not do something:
+  "@Match Time added the venue location" / "@Match Time tamam ekledim" -> retry_ask
+  "done, try again" / "şimdi dene" -> retry_ask
+  "@Match Time I've switched the pool on, go ahead" / "@Match Time havuzu açtım, devam et" -> retry_ask
+  "@Match Time thanks" / "@Match Time teşekkürler" -> other
 Reminders and stats:
   "remind me tomorrow at 6 to bring the bibs" / "yarın 6'da yelekleri getirmeyi hatırlat", NOW Tuesday 20 October 2026 -> reminder, phrase "tomorrow at 6" / "yarın 6'da", remindAt "2026-10-21 18:00", note "bring the bibs" / "yelekleri getirmeyi"
   "@Match Time send everyone their stats" / "@Match Time DM the squad their ratings links" -> stats_blast
@@ -1196,7 +1243,7 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "switch_format", "move_game", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "other"],
     },
     // season_break (2026-10-29): the months with no football, and the
     // months it is back in, each "YYYY-MM".
@@ -1239,6 +1286,8 @@ const ADMIN_SCHEMA = {
     minPlayers: { type: "number" },
     maxPlayers: { type: "number" },
     fullTeams: { type: "boolean" },
+    // open_squad (2026-11-17): true puts a limit and a bench back.
+    openSquadOff: { type: "boolean" },
     size: { type: "number" },
     aSide: { type: "boolean" },
     // move_game (2026-11-10): the game's number in GAMES TO COME (0: none
@@ -1252,7 +1301,7 @@ const ADMIN_SCHEMA = {
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "size", "aSide", "game", "newDay", "newTime", "everyWeek", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "openSquadOff", "size", "aSide", "game", "newDay", "newTime", "everyWeek", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1624,7 +1673,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "switch_format", "move_game", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1687,6 +1736,9 @@ export function parseFacts(
         ...(action === "quiet_hours" && raw.quietOff === true ? { quietOff: true as const } : {}),
         ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietFrom === "string" && raw.quietFrom.trim() ? { quietFrom: raw.quietFrom.trim() } : {}),
         ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietTo === "string" && raw.quietTo.trim() ? { quietTo: raw.quietTo.trim() } : {}),
+        // open_squad (2026-11-17): a limit back only when true; absent is
+        // the limit taken off.
+        ...(action === "open_squad" && raw.openSquadOff === true ? { openSquadOff: true as const } : {}),
         // player_numbers (2026-11-03): back to full sides only when true, and
         // then no minimum; whole numbers from 1, checked by the save core.
         ...(action === "player_numbers" && raw.fullTeams === true ? { fullTeams: true as const } : {}),

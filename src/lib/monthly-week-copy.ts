@@ -131,12 +131,25 @@ export function buildWeekListPost(p: {
    *  at the end of the list (the compact form: under its squad-full line).
    *  Shown only while no place is open. */
   nextSizePerSide?: number | null;
+  /** No squad limit (2026-11-17, open-squad.ts): no places line and no
+   *  "squad is full", but an invitation to anyone else to say IN, with how
+   *  many more the game needs while it is below its minimum (`short`).
+   *  The caller passes a title with no size in it. */
+  openSquad?: boolean;
+  /** Open squad only: how many more to reach the game's minimum. */
+  short?: number;
   lang?: LangArg;
 }): string {
   const s = t(p.lang);
-  const oneMore = p.nextSizePerSide && p.list.open <= 0 ? flexFormatCopy(p.lang).oneMoreUp({ perSide: p.nextSizePerSide }) : null;
+  const openSquad = p.openSquad === true;
+  const oneMore = !openSquad && p.nextSizePerSide && p.list.open <= 0 ? flexFormatCopy(p.lang).oneMoreUp({ perSide: p.nextSizePerSide }) : null;
+  /** The places line: open places, an open squad's invitation, or null (full). */
+  const placesLine = (price: string | null): string | null =>
+    openSquad
+      ? s.mwk_list_open_squad({ price, short: Math.max(0, p.short ?? 0) })
+      : weekListOpenLine(p.list.open, price, p.organiserPicks === true, p.lang);
   if (p.compact) {
-    const open = weekListOpenLine(p.list.open, paygPriceLabel(p.paygPricePence), p.organiserPicks === true, p.lang);
+    const open = placesLine(paygPriceLabel(p.paygPricePence));
     const out = [weekListTitleLine(p.title, p.matchDate, p.lang), "", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full];
     if (oneMore) out.push(oneMore);
     return out.join("\n");
@@ -157,7 +170,7 @@ export function buildWeekListPost(p: {
 
   // Pay as you go straight after the squad (Kemal, 2026-11-09), its
   // places line closing it: with no PAYG names yet, that line alone.
-  const open = weekListOpenLine(p.list.open, price, p.organiserPicks === true, p.lang);
+  const open = placesLine(price);
   if (payg.length > 0) {
     lines.push("", s.mwk_list_payg);
     payg.forEach((slot, i) => lines.push(`${squad.length + i + 1}. ${nameOf(slot.userId)}`));
@@ -167,7 +180,7 @@ export function buildWeekListPost(p: {
   }
 
   // The squad's own line ("you're all in"), then who is not playing.
-  if (squad.length > 0) lines.push("", s.mwk_list_all_in);
+  if (squad.length > 0) lines.push("", openSquad ? s.mwk_list_all_in_open : s.mwk_list_all_in);
   const section = (title: string, names: WeekName[]): void => {
     if (names.length === 0) return;
     lines.push("", title);

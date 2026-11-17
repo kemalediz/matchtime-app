@@ -50,7 +50,7 @@
  *     requests, and is keyed on the match alone so unrelated matches
  *     never wait on each other.
  */
-import { decideSlotInherits, type InheritTeam } from "./team-slot-inherit";
+import { decideOpenSquadJoins, decideSlotInherits, type InheritTeam } from "./team-slot-inherit";
 
 /** A slot that changed hands. `slotId` is the `TeamAssignment` row. */
 export interface AppliedSlotMove {
@@ -81,6 +81,10 @@ export interface SlotFillTx {
       select: { id: true; userId: true; team: true };
     }) => Promise<Array<{ id: string; userId: string; team: string }>>;
     update: (args: { where: { id: string }; data: { userId: string } }) => Promise<unknown>;
+    /** A NEW seat (an open squad's late IN, `seatOpenSquadArrivals`).
+     *  Optional so the structural doubles of the older paths keep their
+     *  shape; Prisma's client always has it. */
+    create?: (args: { data: { matchId: string; userId: string; team: InheritTeam } }) => Promise<unknown>;
   };
   benchSlotOffer: {
     updateMany: (args: {
@@ -212,4 +216,49 @@ export async function moveNamedSlot(
   }
   const healed = await fillVacatedSlots(tx, matchId);
   return { kind: "refused", reason: reason!, healed };
+}
+
+/** A new seat given to an open squad's late IN. */
+export interface AppliedSlotJoin {
+  userId: string;
+  team: InheritTeam;
+}
+
+/**
+ * AN OPEN SQUAD'S LATE INS, SEATED (review of #623, open-squad.ts). Under
+ * the slot lock: every confirmed player with no seat first takes a slot a
+ * player who is out still holds (the replacement rule, `fillVacatedSlots`),
+ * and anyone left joins the smaller side (`decideOpenSquadJoins`: level
+ * sides, the lower total rating). Idempotent: a second call seats nobody.
+ * Only for a club with no squad limit; the caller checks.
+ */
+export async function seatOpenSquadArrivals(
+  tx: SlotFillTx,
+  matchId: string,
+  ratingOf: (userId: string) => number,
+): Promise<{ moves: AppliedSlotMove[]; joins: AppliedSlotJoin[] }> {
+  const moves = await fillVacatedSlots(tx, matchId);
+  const { rows, teams } = await readWorld(tx, matchId);
+  if (teams.length === 0) return { moves, joins: [] };
+  const joins = decideOpenSquadJoins({
+    rows: rows.map((r) => ({ userId: r.userId, status: r.status as "CONFIRMED" | "BENCH" | "DROPPED", position: r.position })),
+    teams: teams.map((t) => ({ userId: t.userId, team: t.team as InheritTeam })),
+    ratingOf,
+  });
+  for (const j of joins) await tx.teamAssignment.create!({ data: { matchId, userId: j.userId, team: j.team } });
+  return { moves, joins };
+}
+
+/**
+ * ONE named new seat, the engine's `team_slot_join` write, applied only
+ * if it is still true under the lock: the player is confirmed and has no
+ * seat. Returns whether a row was written.
+ */
+export async function joinTeamSlot(tx: SlotFillTx, matchId: string, userId: string, team: InheritTeam): Promise<boolean> {
+  await lockTeamSlots(tx, matchId);
+  const { rows, teams } = await readWorld(tx, matchId);
+  if (teams.length === 0 || teams.some((t) => t.userId === userId)) return false;
+  if (rows.find((r) => r.userId === userId)?.status !== "CONFIRMED") return false;
+  await tx.teamAssignment.create!({ data: { matchId, userId, team } });
+  return true;
 }

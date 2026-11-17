@@ -199,6 +199,46 @@ export default async function AdminGuidePage() {
         </li>
       </ul>
 
+      <h3 id="no-squad-limit">No squad limit: everyone who says IN plays</h3>
+      <p>
+        If your pitch is big enough for anyone who turns up, switch on{" "}
+        <strong>No squad limit</strong>. Everyone who says IN plays, however
+        many there are: nobody goes on the bench and nobody is told the squad
+        is full. Saying OUT just makes the squad smaller.
+      </p>
+      <ul>
+        <li>
+          In <strong>Settings</strong>, under <strong>Bench</strong>. Or tag
+          MatchTime in WhatsApp, in your admin group or the players&apos;
+          group: <code>@Match Time no limit on the squad</code>, and{" "}
+          <code>@Match Time put the limit and the bench back</code> to switch
+          it off. Only an organiser or admin can change it.
+        </li>
+        <li>
+          There is no number a side: posts name the game without one (for
+          example &quot;Football&quot;, not &quot;Football 7-a-side&quot;), and
+          the teams are whoever is in, split into two even sides (15 players is
+          8 against 7). MatchTime never suggests another size.
+        </li>
+        <li>
+          The only number is the minimum (above, or{" "}
+          <code>@Match Time we can play with 12</code>). Below it MatchTime asks
+          for players in the 17:00 post, the chases and any partner club ask,
+          and warns you the day before. At or above it, it asks for nobody.
+        </li>
+        <li>
+          The week&apos;s list keeps the squad and pay as you go sections and
+          ends with a line inviting anyone else to say IN, with your pay as you
+          go price.
+        </li>
+        <li>
+          Switching it on brings anyone waiting on the bench into the squad.
+          Switching it off goes back to your game&apos;s own places: everyone
+          already in stays in, and anyone who says IN after the squad is full
+          goes on the bench.
+        </li>
+      </ul>
+
       {/* ───────────────────────────────────────────────── */}
       <h2 id="schedule">3. Changing the schedule</h2>
 

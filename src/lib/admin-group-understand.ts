@@ -1314,6 +1314,15 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
           const r = await applyPlayerRangeWords({ orgId: org.id, ...playerRangeWordsOf(facts), lang });
           return said(`hq-${r.outcome}`, r.replyText);
         }
+        // No squad limit, or a limit back (2026-11-17, the Vets), through
+        // the settings page's own core (`open-squad-save.ts`). An
+        // organiser's alone.
+        if (facts.kind === "admin" && facts.action === "open_squad") {
+          if (!actor) return onlyOrganisers("settings");
+          const { setOpenSquad } = await import("./open-squad-save");
+          const r = await setOpenSquad({ orgId: org.id, on: facts.openSquadOff !== true, actorUserId: actor, now });
+          return said(`hq-${r.outcome}`, r.replyText);
+        }
         if (facts.kind === "admin" && facts.action === "switch_format") {
           if (!actor) return onlyOrganisers("settings");
           // HQ acts on a real tag only; the suggestion is the players' group's.

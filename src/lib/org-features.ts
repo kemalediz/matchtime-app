@@ -26,6 +26,7 @@ import { normaliseBenchPickMode, type BenchPickMode } from "./squad-capacity";
 import { normaliseSquadMode, type SquadMode } from "./squad-month-rules";
 import { normaliseListAnnouncer, type ListAnnouncer } from "./list-announcer";
 import { normaliseMomChooser, type MomChooser } from "./mom-chooser";
+import { normaliseOpenSquad } from "./open-squad";
 import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours, type QuietHoursRow } from "./message-hours";
 
 export { FEATURE_META } from "./org-features-meta";
@@ -107,6 +108,11 @@ export interface OrgFeatures {
    *  every hand-built fixture keeps its shape; absent means the default,
    *  ON 23:00 to 09:00, today's behaviour. Its own row on /admin/settings. */
   quietHours?: QuietHours;
+  /** Open squad (2026-11-17, `Organisation.openSquad`, open-squad.ts): no
+   *  squad limit, no bench, no format; the minimum is the only number.
+   *  Optional so every hand-built fixture keeps its shape; absent is off,
+   *  today's behaviour. Its own row on /admin/settings. */
+  openSquad?: boolean;
 }
 
 
@@ -130,6 +136,7 @@ const ALL_OFF: OrgFeatures = {
   listAnnouncer: "matchtime",
   momChosenBy: "players",
   gearReminder: false,
+  openSquad: false,
 };
 
 function fromRow(row: {
@@ -152,6 +159,7 @@ function fromRow(row: {
   listAnnouncer?: string | null;
   momChosenBy?: string | null;
   featureGearReminder?: boolean | null;
+  openSquad?: boolean | null;
 } & QuietHoursRow): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
@@ -181,6 +189,8 @@ function fromRow(row: {
     gearReminder: row.featureGearReminder ?? true,
     // Absent columns (an older caller's select): the default, ON 23:00 to 09:00.
     quietHours: quietHoursOf(row),
+    // Absent (an older caller's select): off, today's behaviour.
+    openSquad: normaliseOpenSquad(row.openSquad),
   };
 }
 
@@ -204,6 +214,7 @@ const SELECT = {
   listAnnouncer: true,
   momChosenBy: true,
   featureGearReminder: true,
+  openSquad: true,
   ...QUIET_HOURS_SELECT,
 } as const;
 

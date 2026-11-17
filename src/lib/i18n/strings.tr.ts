@@ -219,10 +219,11 @@ export const tr: Strings = {
   // ── row 1: composeSquadStatusPost ────────────────────────────────
 
   squad_status_lead: (p) => {
-    const count = `*${p.confirmed}/${p.maxPlayers}*`;
+    const count = p.openSquad ? `*${p.confirmed} kişi*` : `*${p.confirmed}/${p.maxPlayers}*`;
     const head = p.matchLabel
       ? `📋 *${p.matchLabel}* maçının kadrosu${p.withBench ? " ve yedekleri" : ""}: `
       : `📋 Aldığım mesajlara göre son kadro${p.withBench ? " ve yedekler" : ""}: `;
+    if (p.openSquad) return head + (p.need > 0 ? `${count}, oynamak için *${p.need} kişi daha* lazım 🙏` : `${count} ✅ İsteyen *VARIM* yazsın.`);
     return head + (p.need > 0 ? `${count}, *${p.need} kişi daha* lazım 🙏` : `${count} ✅ kadro tamam.`);
   },
   squad_status_cancelled: (p) => `❌ *${p.dayLabel}* maçı iptal edildi.`,
@@ -353,7 +354,8 @@ export const tr: Strings = {
   // ── row 68: buildAnnounceMatchPost ───────────────────────────────
 
   announce_match: (p) =>
-    `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\nKatılmak için *VARIM* yazın. İlk ${p.maxPlayers} kişi oynar.`,
+    `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\nKatılmak için *VARIM* yazın. ` +
+    (p.openSquad ? `*VARIM* yazan herkes oynar.` : `İlk ${p.maxPlayers} kişi oynar.`),
 
   announce_match_monthly: (p) =>
     `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
@@ -364,7 +366,7 @@ export const tr: Strings = {
 
   // ── row 71: buildSquadRosterBlock ────────────────────────────────
 
-  roster_confirmed_header: (p) => `*Onaylananlar (${p.confirmed}/${p.maxPlayers}):*`,
+  roster_confirmed_header: (p) => (p.openSquad ? `*Onaylananlar (${p.confirmed}):*` : `*Onaylananlar (${p.confirmed}/${p.maxPlayers}):*`),
   roster_nobody_yet: "_henüz kimse yok_",
 
   // ── row 71b: buildSquadFullEveningPost ───────────────────────────
@@ -407,6 +409,10 @@ export const tr: Strings = {
   // ── rows 6 to 30: the batch answers ────────────────────────────────
 
   answer_count: (p) => {
+    if (p.openSquad) {
+      const head = p.stated ? `Tam değil, ${p.kickoffLabel} için ${p.confirmed} kişiyiz` : `${p.kickoffLabel} için ${p.confirmed} kişiyiz`;
+      return `${head}${p.need > 0 ? `, oynamak için ${p.need} kişi daha lazım 🙏` : ` ✅ İsteyen *VARIM* yazsın.`}`;
+    }
     const head = p.stated
       ? `Tam değil, ${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz${p.bench}`
       : `${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz${p.bench}`;
@@ -769,6 +775,7 @@ export const tr: Strings = {
 
   recruit_no_match: "Oyuncu davet edilecek yaklaşan bir maç yok.",
   recruit_full_squad: (p) => `*${p.matchName}* kadrosu zaten dolu, davet edecek açık yer yok.`,
+  recruit_enough_players: (p) => `*${p.matchName}* için zaten yeterince oyuncu var, bu yüzden kimseyi davet etmedim. İsteyen yine de *VARIM* yazabilir.`,
 
   // ── row 63: buildBulkCancelAnnouncement ────────────────────────────
 
@@ -1345,11 +1352,22 @@ export const tr: Strings = {
     `⚽ *Kadro ve katılım nasıl çalışır*\n` +
     `Bu grup aylık kadroyla oynuyor. Ayın ücretini ödediyseniz ayın listesindesiniz ve tüm maçlardasınız, bir şey yazmanıza gerek yok. Bir maça gelemiyorsanız *yokum* yazın, yeriniz başkasına açılır.\n` +
     `Maç başı mı ödüyorsunuz? Boş bir yeri almak için *varım* yazın, sadece o maçın ücretini ödersiniz.`,
-  onbHelpFriendLink: `👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.`,
+  onbHelpAvailabilityOpenSquad: (p) =>
+    `⚽ *Kadro ve katılım nasıl çalışır*\n` +
+    (p.monthly
+      ? `Bu grup aylık kadroyla oynuyor. Ayın ücretini ödediyseniz ayın listesindesiniz ve tüm maçlardasınız, bir şey yazmanıza gerek yok. Maç başı mı ödüyorsunuz? O maçta oynamak için *varım* yazın, sadece o maçın ücretini ödersiniz.\n`
+      : `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter. Bir takım arkadaşınız gelemiyorsa onu da yazabilirsiniz (örneğin *Sami gelemiyor*). Beni etiketlemenize gerek yok, otomatik okurum.\n`) +
+    `Kadro sınırı ve yedek yok: *varım* yazan herkes oynar. Gelemiyor musunuz? *yokum* yazın. Yalnızca oynamak için gereken en az sayının altındayken oyuncu ararım.`,
+  onbHelpTeamsOpenSquad: "Burada kadro sınırı yok, takım başına sayı da yok: takımlar gelenler arasında iki eşit tarafa bölünür (15 oyuncu 8'e 7).",
+  onbHelpOpenSquadOrganiser: (p) =>
+    p.on
+      ? `Kadro sınırını ve yedekleri geri getirmek için beni etiketleyip söyleyin (örneğin *@Match Time kadro sınırını ve yedekleri geri getir*) ya da ayarlardaki Yedekler kartını kullanın.`
+      : `Saha gelen herkese yetiyor mu? Beni etiketleyip söyleyin (örneğin *@Match Time kadro sınırı yok*): *varım* yazan herkes oynar, yedek olmaz.`,
+  onbHelpFriendLink: (p = {}) => `👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer${p.openSquad ? "" : " (kadro doluysa yedeğe)"} ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.`,
   onbHelpFriend: (p) =>
     `👥 *Arkadaş getirmek nasıl çalışır*\n` +
     `Bir arkadaşınızın geleceğini grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim.\n` +
-    `Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.\n` +
+    `Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer${p.openSquad ? "" : " (kadro doluysa yedeğe)"} ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.\n` +
     `Arkadaşınız gelemezse bana WhatsApp'tan yazarak ya da sayfasındaki düğmeye basarak yerini geri verebilir.` +
     (p.fees ? `\n💷 Arkadaşınız maç ücretini her misafir gibi maçtan sonra öder (aylık kulüplerde maç başı ödeyen oyuncu olarak).` : ""),
   onbHelpFriendLinkOrganiser: `Bir organizatör birini eklediğinde doğrudan listeye girer. Misafir mi getiriyorsunuz? Onun WhatsApp kişi kartını bana paylaşın ve oynayacağını yazın, örneğin *bu akşama ekle* (burada, organizatör grubunda beni etiketleyerek ya da özelden). Onu misafir olarak eklerim, saati, harita bağlantısıyla sahayı ve ücreti ona özelden gönderirim; maçla ilgili her sorusunu bana yazabilir.`,
@@ -1431,12 +1449,23 @@ export const tr: Strings = {
       `👥 *Oyuncular aylık kadronuza nasıl katılır*:`,
       `📋 *"@Match Time Tom'u Kasım listesine ekle, ödedi"*: ayın kalan maçları için düzenli oyuncu olur ve bir sonraki maçın kadrosuna girer.`,
       ...(p.attendance
+        ? p.openSquad
+          ? [
+              `🙋 Maç başı ödeyenler: bir oyuncu oynamak için oyuncu grubunda *varım* yazar, sadece o maçın ücretini öder.`,
+              `👥 Bir oyuncu arkadaşını getirebilir: oyuncu grubunda söyler, ben de ona arkadaşı için bir bağlantı gönderirim. Arkadaşı maça girer.`,
+            ]
+          : [
+              `🙋 Maç başı ödeyenler: bir oyuncu boş bir yeri almak için oyuncu grubunda *varım* yazabilir, sadece o maçın ücretini öder.`,
+              `👥 Bir oyuncu arkadaşını getirebilir: oyuncu grubunda söyler, ben de ona arkadaşı için bir bağlantı gönderirim. Arkadaşı boş bir yeri alır (kadro doluysa yedeğe girer).`,
+            ]
+        : []),
+      ...(p.pool
         ? [
-            `🙋 Maç başı ödeyenler: bir oyuncu boş bir yeri almak için oyuncu grubunda *varım* yazabilir, sadece o maçın ücretini öder.`,
-            `👥 Bir oyuncu arkadaşını getirebilir: oyuncu grubunda söyler, ben de ona arkadaşı için bir bağlantı gönderirim. Arkadaşı boş bir yeri alır (kadro doluysa yedeğe girer).`,
+            p.openSquad
+              ? `🌍 En az oyuncu sayısının altında mısınız? Maç sayfasından yakındaki MatchTime oyuncu havuzu oyuncularına sorun.`
+              : `🌍 Hâlâ boş yer mi var? Maç sayfasından yakındaki MatchTime oyuncu havuzu oyuncularına sorun.`,
           ]
         : []),
-      ...(p.pool ? [`🌍 Hâlâ boş yer mi var? Maç sayfasından yakındaki MatchTime oyuncu havuzu oyuncularına sorun.`] : []),
     ].join("\n"),
   hq_confirm_teams: (p) => `Bu EVET, ${p.day} için önerilen takımlara mı?`,
   hq_confirm_list: `Bu EVET, buraya yapıştırılan kadro listesine mi?`,
@@ -2502,7 +2531,7 @@ export const tr: Strings = {
   rolling_announce_lead: (p) =>
     `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
     `Geçen maçta oynayan herkes yine kadroda. Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
-  rolling_in_header: (p) => `*Kadroda (${p.confirmed}/${p.maxPlayers}):*`,
+  rolling_in_header: (p) => (p.openSquad ? `*Kadroda (${p.confirmed}):*` : `*Kadroda (${p.confirmed}/${p.maxPlayers}):*`),
   rolling_waiting_header: (p) => `*Yedek listesi (${p.count}):*`,
   rolling_tail_open: (p) => `${p.open} yer boş: almak için *VARIM* yazın.`,
   rolling_tail_open_organiser: (p) =>
@@ -2536,7 +2565,7 @@ export const tr: Strings = {
 
   // ── Haftalık saatler (2026-09-30) ──
   list_published_head: (p) => `📋 *${p.activityName}* listesi, *${p.dateLabel}*, ${p.venue}`,
-  list_published_playing_header: (p) => `*Oynayanlar (${p.confirmed}/${p.maxPlayers}):*`,
+  list_published_playing_header: (p) => (p.openSquad ? `*Oynayanlar (${p.confirmed}):*` : `*Oynayanlar (${p.confirmed}/${p.maxPlayers}):*`),
   list_published_open: (p) => `${p.open} yer hâlâ boş.`,
   list_published_footer: "Artık gelemiyorsanız yerinize birinin alınabilmesi için hemen *YOKUM* yazın.",
   wd_dropout_label: "Son çıkış saati",
@@ -3504,6 +3533,27 @@ export const tr: Strings = {
   mwk_list_open_organiser: (p) =>
     `${p.open} yer boş${p.price ? `, ${p.price}` : ""}. Yedeğe girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.`,
   mwk_list_full: "Kadro tam.",
+  mwk_list_open_squad: (p) =>
+    `${p.short > 0 ? `Oynamak için ${p.short} kişi daha lazım. ` : ""}Başka gelmek isteyen *VARIM* yazsın${p.price ? `, ${p.price}` : ""}.`,
+  mwk_list_all_in_open: "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın.",
+  os_on: (p) =>
+    `✅ Tamam: artık kadro sınırı ve yedek yok. *VARIM* yazan herkes oynar, takımlar gelenler arasında eşit bölünür. Yalnızca ${p.min} kişinin altındayken oyuncu ararım.`,
+  os_moved_up: (p) => `Yedekte bekleyen ${p.names} artık kadroda.`,
+  os_off: (p) =>
+    `✅ Tamam: kadronun yine bir sınırı var, *${p.activityName}* için ${p.places} kişi. Listede olan herkes kalır; kadro dolduktan sonra *VARIM* yazan yedeğe girer.`,
+  os_already_on: (p) => `Değişiklik yok: zaten kadro sınırı yok. *VARIM* yazan herkes oynar; en az ${p.min} kişi gerekir.`,
+  os_already_off: (p) => `Değişiklik yok: kadronun zaten ${p.places} kişilik bir sınırı var.`,
+  os_join_lead: (p) => `➕ ${p.joins.map((j) => `*${j.name}* *${j.teamLabel}* takıma katıldı`).join(", ")}.`,
+  os_join_note: "(yeni)",
+  os_max_disabled: "Kadro sınırı yokken üst sınır da yok (Ayarlar, Yedekler kartı).",
+  os_setting_label: "Kadro sınırı yok",
+  os_setting_blurb: "VARIM yazan herkes oynar: yedek yok, takım başına sayı yok. MatchTime yalnızca maçın en az oyuncu sayısının altında oyuncu arar.",
+  os_no_format:
+    "Bu kulüpte takım başına bir sayı yok: *VARIM* yazan herkes oynar, takımlar gelenler arasında eşit bölünür. Sınırı geri getirmek için beni etiketleyip söyleyin, örneğin *@Match Time kadro sınırını ve yedekleri geri getir*.",
+  os_min_set: (p) => `✅ Tamam: *${p.activityName}* için en az ${p.min} oyuncu gerekiyor. Bunun altında oyuncu arar ve sizi uyarırım; üst sınır yine yok.`,
+  os_min_unchanged: (p) => `Değişiklik yok: *${p.activityName}* için zaten en az ${p.min} oyuncu gerekiyor.`,
+  os_no_max: "Kadro sınırı yokken üst sınır da yok: *VARIM* yazan herkes oynar. Sınırı geri getirmek için beni etiketleyip söyleyin.",
+  os_min_refused: "En az oyuncu sayısı tam sayı olmalı, en az 2.",
   mwk_pool_group: (p) => `🎟 *${p.when}* maçında ${p.open} yer açık${p.price ? `, maç başı ${p.price} (PAYG)` : ""}. İlk *VARIM* yazan alır.`,
   mwk_dm_sender_not_matched: (p) =>
     `📋 Yapıştırdığın listedeki ${p.names.join(", ")} adını bir oyuncuyla eşleştiremedim, bu yüzden kimseyi eklemedim. ` +
@@ -3629,7 +3679,8 @@ export const tr: Strings = {
   mth_signup_open: (p) =>
     `Kayıt ${p.when} tarihine kadar açık. Liste grubunuza gönderildi; isimler yapıştırılan listeyle, mesajla ya da kayıt sayfasından gelir.`,
   mth_signup_ended: "Kayıt bitti. Bu ay artık haftalık liste yürüyor. Listede kimin olduğunu buradan yine değiştirebilirsiniz.",
-  mth_signup_counts: (p) => `Daimi: ${p.regulars} / ${p.max}. PAYG: ${p.payg}. Daimi yer bekleyen: ${p.waiting}.`,
+  mth_signup_counts: (p) =>
+    p.max === null ? `Daimi: ${p.regulars} (sınır yok). PAYG: ${p.payg}.` : `Daimi: ${p.regulars} / ${p.max}. PAYG: ${p.payg}. Daimi yer bekleyen: ${p.waiting}.`,
   mth_kind_waiting: "Daimi yer bekliyor",
   mth_payg_days: (p) => `PAYG günleri: ${p.days}`,
   mth_act_regular: "Daimi yap",
@@ -3972,6 +4023,10 @@ export const tr: Strings = {
     `MatchTime artık ${p.club} yönetici grubunda${p.group ? ` ("${p.group}")` : ""} mesaj gönderemiyor: orada yalnızca yöneticiler mesaj gönderebiliyor. ` +
     `MatchTime orada grup yöneticisi yapılana ya da bu ayar kapatılana kadar yönetici mesajları size DM olarak gelecek.`,
   oa_header: (p) => {
+    if (p.openSquad) {
+      const short = Math.max(0, p.maxPlayers - p.confirmed);
+      return `📋 *${p.activityName} kadrosu, ${p.whenLabel}*: ${p.confirmed} kişi var, kadro sınırı yok${short > 0 ? `, oynamak için ${short} kişi daha lazım` : ""}.`;
+    }
     const open = Math.max(0, p.maxPlayers - p.confirmed);
     const tail = open === 0 ? "kadro tam" : `${open} yer boş`;
     return `📋 *${p.activityName} kadrosu, ${p.whenLabel}*: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var, ${tail}.`;
@@ -4493,6 +4548,9 @@ export const tr: Strings = {
   xaskw_refused_daily_cap: (p) =>
     `*Partner kulüpler:* ${p.partner} kulübüne sormadım: bugün zaten iki istek aldılar, bir kulübün bir günde alabileceği en fazla istek bu. Yarın yeniden deneyin.`,
   xaskw_refused_no_places: (p) => `*Partner kulüpler:* ${p.partner} kulübüne sormadım: bu maçta bütün yerler dolu, aranacak kimse yok.`,
+  xaskw_refused_enough: (p) =>
+    `*Partner kulüpler:* ${p.partner} kulübüne sormadım: bu maç için yeterince oyuncunuz var, isteyen yine de *VARIM* yazabilir.`,
+  xaskw_line_enough: (p) => `• *${p.partner}*: sorulmadı, bu maç için yeterince oyuncunuz var.`,
   xaskw_refused_paused: (p) =>
     `*Partner kulüpler:* ${p.partner} kulübüne sormadım: şu an MatchTime'da duraklatılmış durumdalar. Başka bir partner kulübe sorun ya da geri döndüklerinde yeniden deneyin.`,
   xaskw_refused_unreachable: (p) =>

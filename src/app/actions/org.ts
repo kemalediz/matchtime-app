@@ -329,6 +329,24 @@ const FEATURE_COLUMN: Record<string, string> = {
   gearReminder: "featureGearReminder",
 };
 
+/**
+ * "No squad limit" on /admin/settings (2026-11-17, open-squad.ts): the same
+ * core the WhatsApp tag uses (`setOpenSquad`), so switching it on brings in
+ * anyone waiting on the bench, and switching it off bumps nobody. OWNER and
+ * ADMIN only. Returns the sentence the group's organisers would have heard,
+ * for the toast.
+ */
+export async function setOpenSquadSetting(orgId: string, on: boolean): Promise<{ ok: true; openSquad: boolean; message: string }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const { requireOrgAdmin } = await import("@/lib/org");
+  await requireOrgAdmin(session.user.id, orgId);
+  const { setOpenSquad } = await import("@/lib/open-squad-save");
+  const r = await setOpenSquad({ orgId, on, actorUserId: session.user.id, now: new Date() });
+  revalidatePath("/admin/settings");
+  return { ok: true, openSquad: on, message: r.replyText.replace(/\*/g, "") };
+}
+
 export async function setOrgFeature(
   orgId: string,
   feature: string,

@@ -30,6 +30,7 @@ import { db } from "./db";
 import { pickHqMatch } from "./match-cancel-rules";
 import { resizeMatch } from "./format-resize";
 import { flexFormatCopy } from "./i18n/flex-format";
+import { t } from "./i18n/t";
 import { normaliseLang } from "./i18n/lang";
 import { weekdayLabel } from "./i18n/dates";
 import { sameWhatsAppMessage } from "./quoted-message";
@@ -66,6 +67,10 @@ export async function applySwitchFormatWords(p: {
   groupList?: boolean;
 }): Promise<SwitchWordsResult> {
   const c = flexFormatCopy(p.lang);
+  // An open squad (2026-11-17, open-squad.ts) has no number a side to
+  // switch: say so, and how to bring a limit back. Nothing changes.
+  const org = await db.organisation.findUnique({ where: { id: p.orgId }, select: { openSquad: true } });
+  if (org?.openSquad === true) return { outcome: "format-open-squad", replyText: t(p.lang).os_no_format };
   if (p.quotedId) {
     const yes = await answerSuggestion({ orgId: p.orgId, quotedId: p.quotedId, actorUserId: p.actorUserId, via: p.via, lang: p.lang, now: p.now });
     if (yes) return yes;

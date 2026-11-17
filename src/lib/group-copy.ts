@@ -47,8 +47,13 @@ export function composeSquadStatusPost(args: {
   /** This week's match is cancelled: its day, "Fri 23 Oct". The post
    *  leads with that (`cancelled-match-notice.ts`). */
   cancelledDayLabel?: string | null;
+  /** No squad limit (open-squad.ts). `maxPlayers` is then the game's
+   *  minimum (or the count, when above it): no "of N", never "full", and
+   *  a 🥁 only for a player still needed to play. */
+  openSquad?: boolean;
 }): string {
-  const { confirmed, bench, maxPlayers } = args;
+  const { confirmed, bench } = args;
+  const maxPlayers = args.openSquad ? Math.max(args.maxPlayers, confirmed.length) : args.maxPlayers;
   const s = t(args.lang);
   const need = Math.max(0, maxPlayers - confirmed.length);
   const lead = s.squad_status_lead({
@@ -57,6 +62,7 @@ export function composeSquadStatusPost(args: {
     maxPlayers,
     need,
     matchLabel: args.matchLabel,
+    ...(args.openSquad ? { openSquad: true } : {}),
   });
   const post = [lead, "", buildSlotRosterBlock({ header: s.playing_header, confirmed, bench, maxPlayers, lang: args.lang })].join("\n");
   return withCancelledLine(post, args.cancelledDayLabel, args.lang);
@@ -226,7 +232,12 @@ export interface SquadTruth {
    *  check above matches the plain names. Absent: the plain names print. */
   confirmedDisplay?: string[];
   benchDisplay?: string[];
+  /** The places; for an OPEN SQUAD (open-squad.ts) the game's minimum or
+   *  the count, whichever is more, so "need N more" means "to play" and no
+   *  count above it reads as impossible. */
   maxPlayers: number;
+  /** No squad limit: the post says "N in", never "of N" or "full". */
+  openSquad?: boolean;
   /** Every name the group knows — active members plus anyone on this
    *  match. Used ONLY to decide whether a capitalised word in the reply
    *  is a person, so that "adding Tuesday to the calendar" is not read
@@ -587,6 +598,7 @@ function composeSquadTruthPost(truth: SquadTruth, lang?: Lang | string | null): 
     lang,
     matchLabel: truth.matchLabel,
     cancelledDayLabel: truth.cancelledDayLabel,
+    ...(truth.openSquad ? { openSquad: true } : {}),
   });
 }
 

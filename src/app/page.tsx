@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { gameNameFor } from "@/lib/match-format-title";
 import { getUserOrg, isOrgAdmin } from "@/lib/org";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -101,7 +102,7 @@ export default async function DashboardPage() {
     },
     orderBy: { date: "asc" },
     include: {
-      activity: { include: { sport: true } },
+      activity: { include: { sport: true, org: { select: { openSquad: true } } } },
       attendances: { where: { status: { in: ["CONFIRMED", "BENCH"] } } },
     },
   });
@@ -183,6 +184,8 @@ export default async function DashboardPage() {
 
   const confirmedCount = nextMatch?.attendances.filter((a) => a.status === "CONFIRMED").length ?? 0;
   const benchCount = nextMatch?.attendances.filter((a) => a.status === "BENCH").length ?? 0;
+  // An open squad (open-squad.ts) has no places: the count alone, never "Full".
+  const openSquad = nextMatch?.activity.org?.openSquad === true;
   const slotsRemaining = nextMatch ? Math.max(0, nextMatch.maxPlayers - confirmedCount) : 0;
   const deadlinePassed = nextMatch ? isBefore(nextMatch.attendanceDeadline, new Date()) : false;
   const progressPct = nextMatch
@@ -294,7 +297,7 @@ export default async function DashboardPage() {
           </div>
           <div className="p-6 space-y-4">
             <div>
-              <p className="text-lg font-semibold text-slate-800">{nextMatch.activity.name}</p>
+              <p className="text-lg font-semibold text-slate-800">{gameNameFor(nextMatch.activity.name, nextMatch.maxPlayers, openSquad, { sportName: nextMatch.activity.sport.name })}</p>
               <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-5 mt-2 text-sm text-slate-500">
                 <span className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4" />
@@ -312,9 +315,11 @@ export default async function DashboardPage() {
               <div className="flex items-center justify-between text-sm mb-1.5">
                 <span className="flex items-center gap-1.5 font-medium text-slate-700">
                   <Users className="w-4 h-4 text-slate-400" />
-                  {confirmedCount}/{nextMatch.maxPlayers} confirmed
+                  {openSquad ? `${confirmedCount} in` : `${confirmedCount}/${nextMatch.maxPlayers} confirmed`}
                 </span>
-                {slotsRemaining > 0 ? (
+                {openSquad ? (
+                  <span className="text-slate-500">No squad limit</span>
+                ) : slotsRemaining > 0 ? (
                   <span className="text-slate-500">{slotsRemaining} slot{slotsRemaining !== 1 ? "s" : ""} left</span>
                 ) : (
                   <span className="text-green-600 font-medium">

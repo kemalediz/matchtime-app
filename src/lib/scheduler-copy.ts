@@ -42,6 +42,8 @@ export function buildAnnounceMatchPost(
     dateLabel: string;
     venue: string;
     maxPlayers: number;
+    /** No squad limit (open-squad.ts): everyone who says IN plays. */
+    openSquad?: boolean;
   } & WithLang,
 ): string {
   return t(args.lang).announce_match(args);
@@ -76,12 +78,14 @@ export function buildSquadRosterBlock(
     confirmed: NamedRow[];
     bench: NamedRow[];
     maxPlayers: number;
+    /** No squad limit (open-squad.ts): the count alone, no "of N". */
+    openSquad?: boolean;
   } & WithLang,
 ): string {
   const { confirmed, bench, maxPlayers } = args;
   const s = t(args.lang);
   const lines: string[] = [];
-  lines.push(s.roster_confirmed_header({ confirmed: confirmed.length, maxPlayers }));
+  lines.push(s.roster_confirmed_header({ confirmed: confirmed.length, maxPlayers, ...(args.openSquad ? { openSquad: true } : {}) }));
   if (confirmed.length === 0) {
     lines.push(s.roster_nobody_yet);
   } else {
@@ -461,19 +465,26 @@ export function buildRollingAnnouncePost(
     bench: NamedRow[];
     maxPlayers: number;
     organiserPicks?: boolean;
+    /** No squad limit (open-squad.ts): `maxPlayers` is the minimum; the
+     *  count alone and the invitation, never "full" or "places open". */
+    openSquad?: boolean;
   } & WithLang,
 ): string {
   const s = t(args.lang);
   const lines: string[] = [
     s.rolling_announce_lead(args),
     ``,
-    s.rolling_in_header({ confirmed: args.confirmed.length, maxPlayers: args.maxPlayers }),
+    s.rolling_in_header({ confirmed: args.confirmed.length, maxPlayers: args.maxPlayers, ...(args.openSquad ? { openSquad: true } : {}) }),
     ...numbered(args.confirmed, s.unnamed),
   ];
   if (args.bench.length > 0) {
     lines.push(``, s.rolling_waiting_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
   }
   const open = Math.max(0, args.maxPlayers - args.confirmed.length);
+  if (args.openSquad) {
+    lines.push(``, s.mwk_list_open_squad({ price: null, short: open }));
+    return lines.join("\n");
+  }
   const tail =
     open === 0
       ? s.rolling_tail_full
@@ -512,9 +523,25 @@ export function buildListPublishedPost(
     confirmed: NamedRow[];
     bench: NamedRow[];
     maxPlayers: number;
+    /** No squad limit (open-squad.ts): `maxPlayers` is the minimum, the
+     *  count is said alone, and below the minimum it says how many more
+     *  are needed to play, never "places open". */
+    openSquad?: boolean;
   } & WithLang,
 ): string {
   const s = t(args.lang);
+  if (args.openSquad) {
+    const short = Math.max(0, args.maxPlayers - args.confirmed.length);
+    return [
+      s.list_published_head(args),
+      ``,
+      s.list_published_playing_header({ confirmed: args.confirmed.length, maxPlayers: args.maxPlayers, openSquad: true }),
+      ...numbered(args.confirmed, s.unnamed),
+      ``,
+      s.mwk_list_open_squad({ price: null, short }),
+      s.list_published_footer,
+    ].join("\n");
+  }
   const lines: string[] = [
     s.list_published_head(args),
     ``,

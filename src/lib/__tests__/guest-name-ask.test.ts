@@ -132,3 +132,13 @@ describe("the ask path is READ-ONLY by construction", () => {
     expect(Object.keys(r).sort()).toEqual(["ask", "reason"]);
   });
 });
+
+describe("an open squad (review of #623, item 7): there is always room", () => {
+  it("untagged, at or past the format's places: still asked", () => {
+    expect(ask({ tagged: false, confirmedCount: 14, maxPlayers: 14, openSquad: true }).ask).toBe(true);
+    expect(ask({ tagged: false, confirmedCount: 19, maxPlayers: 14, openSquad: true }).ask).toBe(true);
+  });
+  it("off: a full squad is not asked, as before", () => {
+    expect(ask({ tagged: false, confirmedCount: 14, maxPlayers: 14 }).ask).toBe(false);
+  });
+});

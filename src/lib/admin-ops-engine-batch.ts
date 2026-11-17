@@ -414,6 +414,9 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     lang: string | null;
     now: Date;
   }) => Promise<{ outcome: string; replyText: string }>;
+  /** "No limit on the squad" (2026-11-17). Defaults to `open-squad-save.ts`,
+   *  the settings page's own core; injected so tests need no database. */
+  applyOpenSquad?: (a: { orgId: string; on: boolean; actorUserId: string | null; now: Date }) => Promise<{ outcome: string; replyText: string }>;
   /** "We play 12 to 16" (2026-11-03). Defaults to `player-range-words.ts`,
    *  the activities page's own save core; injected so tests need no database. */
   applyPlayerRangeWords?: (a: {
@@ -713,6 +716,8 @@ export async function runAdminOpsBatch(args: {
   const quietAsks = new Map<string, { off: boolean; from: string | null; to: string | null }>();
   /** player_numbers (2026-11-03): an organiser's fewest and most players. */
   const rangeAsks = new Map<string, PlayerRangeWords>();
+  /** open_squad (2026-11-17): an organiser's squad limit off, or back on. */
+  const openSquadAsks = new Map<string, { on: boolean; actorUserId: string | null }>();
   /** switch_format (2026-11-03): an organiser's one game to another size. */
   const switchAsks = new Map<string, { perSide: number; matchDay: string | null; actorUserId: string; quotedId: string | null; explicit: boolean }>();
   /** move_game (2026-11-10): an organiser's game to another day or time. */
@@ -774,7 +779,14 @@ export async function runAdminOpsBatch(args: {
     // a side): the same gates.
     // A game's day or time (2026-11-10, "@Match Time move Monday's game to
     // 8:15"): the same gates, through the door HQ uses.
-    if (facts.action === "season_break" || facts.action === "quiet_hours" || facts.action === "player_numbers" || facts.action === "move_game") {
+    // The squad limit off, or back (2026-11-17, the Vets): the same gates.
+    if (
+      facts.action === "season_break" ||
+      facts.action === "quiet_hours" ||
+      facts.action === "player_numbers" ||
+      facts.action === "move_game" ||
+      facts.action === "open_squad"
+    ) {
       if (!(m.tagged && (m.taggedExplicitly === true))) {
         hand(`${facts.action} without an explicit MatchTime tag`);
         continue;
@@ -787,6 +799,8 @@ export async function runAdminOpsBatch(args: {
         quietAsks.set(m.waMessageId, { off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null });
       } else if (facts.action === "player_numbers") {
         rangeAsks.set(m.waMessageId, playerRangeWordsOf(facts));
+      } else if (facts.action === "open_squad") {
+        openSquadAsks.set(m.waMessageId, { on: facts.openSquadOff !== true, actorUserId: m.senderUserId ?? null });
       } else if (facts.action === "move_game") {
         moveAsks.set(m.waMessageId, moveGameWordsOf(facts));
       } else {
@@ -1063,6 +1077,18 @@ export async function runAdminOpsBatch(args: {
       console.error(`[admin-ops-engine] ${id}: season_break threw:`, err);
       degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: season_break threw (${detail}); nothing was said`);
       cancelOutcomes.push(replyOnly(id, null, "noise", `season_break threw (${detail}); the write FAILED and nothing was said`, true));
+    }
+  }
+  for (const [id, ask] of openSquadAsks) {
+    try {
+      const apply = deps.applyOpenSquad ?? (async (a) => (await import("./open-squad-save")).setOpenSquad(a));
+      const r = await apply({ orgId, ...ask, now });
+      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `open_squad by an organiser: ${r.outcome}`));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[admin-ops-engine] ${id}: open_squad threw:`, err);
+      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: open_squad threw (${detail}); nothing was said`);
+      cancelOutcomes.push(replyOnly(id, null, "noise", `open_squad threw (${detail}); the write FAILED and nothing was said`, true));
     }
   }
   for (const [id, ask] of quietAsks) {

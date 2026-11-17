@@ -80,6 +80,15 @@ export async function applyPlayerRangeWords(p: PlayerRangeWords & { orgId: strin
   if (picked.kind === "which") return { outcome: "player-range-which", replyText: c.whichGame({ names: games.map((g) => g.name), url }) };
   if (!p.fullTeams && p.minPlayers === null && p.maxPlayers === null) return { outcome: "player-range-refused", replyText: c.noNumbers({ url }) };
 
+  // AN OPEN SQUAD (2026-11-17, open-squad.ts): the minimum is the only
+  // number, set on its own, with no format to check it against; a most is
+  // refused (there is none).
+  const org = await db.organisation.findUnique({ where: { id: p.orgId }, select: { openSquad: true } });
+  if (org?.openSquad === true) {
+    const { saveOpenSquadMinimum } = await import("./open-squad-save");
+    return saveOpenSquadMinimum({ activityId: picked.game.id, min: p.fullTeams ? null : p.minPlayers, maxAsked: p.maxPlayers !== null, lang: p.lang });
+  }
+
   const r = await savePlayerRange({
     activityId: picked.game.id,
     // "Back to full teams" clears the minimum; a number said sets it; a

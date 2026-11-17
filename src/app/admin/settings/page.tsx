@@ -35,7 +35,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { renameDraftClub, setOrgFeature, setOrgLanguage, setOrgTeamLabels, setWeeklyRoutine } from "@/app/actions/org";
+import { renameDraftClub, setOpenSquadSetting, setOrgFeature, setOrgLanguage, setOrgTeamLabels, setWeeklyRoutine } from "@/app/actions/org";
 import { WeeklyDeadlineRows, type DayTimeValue } from "@/components/settings/weekly-deadline-rows";
 import { t } from "@/lib/i18n/t";
 import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
@@ -116,6 +116,8 @@ interface OrgData {
     listAnnouncer?: "matchtime" | "organisers";
     /** 2026-10-18: who chooses Man of the Match. */
     momChosenBy?: "players" | "organisers";
+    /** 2026-11-17: no squad limit, no bench, no format (open-squad.ts). */
+    openSquad?: boolean;
   };
   /** Club fee billing (slice B2): null or absent with billing off and for
    *  an exempt club, so nothing new shows. */
@@ -345,6 +347,23 @@ export default function SettingsPage() {
     } catch {
       setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad: !next } } : prev));
       toast.error(s.wr_save_failed);
+    } finally {
+      setSavingRoutine(null);
+    }
+  }
+
+  // No squad limit (2026-11-17, open-squad.ts): the WhatsApp tag's own core.
+  async function toggleOpenSquad(next: boolean) {
+    if (!org) return;
+    setSavingRoutine("openSquad");
+    setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad: prev.weeklyRoutine?.rollingSquad ?? false, openSquad: next } } : prev));
+    try {
+      const res = await setOpenSquadSetting(org.id, next);
+      settingSaved();
+      toast.success(res.message);
+    } catch {
+      setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad: prev.weeklyRoutine?.rollingSquad ?? false, openSquad: !next } } : prev));
+      toast.error(t(org.language).wr_save_failed);
     } finally {
       setSavingRoutine(null);
     }
@@ -873,6 +892,19 @@ export default function SettingsPage() {
             })}
           >
             <div className={rows}>
+              {/* No squad limit (2026-11-17): everyone who says IN plays, no bench. */}
+              <FeatureSwitchRow
+                settingKey="openSquad"
+                label={s.os_setting_label}
+                blurb={s.os_setting_blurb}
+                on={org.weeklyRoutine?.openSquad === true}
+                disabled={savingRoutine === "openSquad"}
+                onToggle={() => toggleOpenSquad(org.weeklyRoutine?.openSquad !== true)}
+                lang={org.language}
+                title={org.weeklyRoutine?.openSquad === true ? w.st_switch_disable : w.st_switch_enable}
+                ariaLabel={s.os_setting_label}
+                testId="setting-open-squad"
+              />
               {featureRow("bench")}
               {/* Organiser pick (slice 2b): who fills an open place. */}
               <PickModeRows

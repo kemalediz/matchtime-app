@@ -245,7 +245,7 @@ async function monthlyJoinLines(args: {
     // The pool line is left out rather than the answer.
     console.error(`[admin-group] ${args.orgId}: help players pool read failed:`, err);
   }
-  return t(args.lang).hq_help_players_monthly({ attendance: args.features.attendance === true, pool: poolOpen });
+  return t(args.lang).hq_help_players_monthly({ attendance: args.features.attendance === true, pool: poolOpen, ...(args.features.openSquad ? { openSquad: true } : {}) });
 }
 
 /**

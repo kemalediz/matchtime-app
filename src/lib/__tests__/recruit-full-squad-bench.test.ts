@@ -174,6 +174,30 @@ describe("inviteRecentPlayers — a full squad with the BENCH feature OFF", () =
   });
 });
 
+describe("inviteRecentPlayers — an OPEN SQUAD (2026-11-17): only below the minimum", () => {
+  const openMatch = (n: number) => ({
+    ...upcoming(FULL_SQUAD.slice(0, n)),
+    activity: { name: "Football 7-a-side", minPlayers: 12, sport: { playersPerTeam: 7 } },
+  });
+
+  it("at or above the minimum (13 of a 14-place match): nobody invited, and no \"full\" or bench", async () => {
+    getOrgFeatures.mockResolvedValue({ attendance: true, bench: true, openSquad: true });
+    matchFindFirst.mockResolvedValue(openMatch(13));
+    const res = await inviteRecentPlayers(ORG);
+    expect(res.ok).toBe(true);
+    expect(res.reason).toBe("*Football* already has enough players to play, so I haven't invited anyone. Anyone else can still say *IN*.");
+    expect(botJobCreate).not.toHaveBeenCalled();
+  });
+
+  it("below the minimum (10 of 12): the blast asks for the 2 short", async () => {
+    getOrgFeatures.mockResolvedValue({ attendance: true, bench: true, openSquad: true });
+    matchFindFirst.mockResolvedValue(openMatch(10));
+    const res = await inviteRecentPlayers(ORG);
+    expect(res.need).toBe(2);
+    expect(res.invited).toBe(2);
+  });
+});
+
 describe("inviteRecentPlayers — a squad that is NOT full (the working path)", () => {
   it("still blasts the recent non-responders, bench feature or no bench feature", async () => {
     for (const bench of [true, false]) {

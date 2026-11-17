@@ -34,6 +34,7 @@ import type { ClubSnapshot, PartnerAskView, SquadState } from "./types";
 import { gamesOverlap } from "../partner-ask-rules";
 import { bareWhatsAppId } from "../quoted-message";
 import { loadPlayerNames } from "../player-display-name";
+import { openSquadMinimum } from "../open-squad";
 
 /** Statuses `selectRegistrationMatch` considers, plus COMPLETED so the
  *  "previous match still in flight" guard can see the whole picture. */
@@ -63,6 +64,7 @@ export async function loadSquadState(
       activity: {
         select: {
           venue: true,
+          minPlayers: true,
           sport: { select: { name: true, playersPerTeam: true, teamLabels: true } },
         },
       },
@@ -196,6 +198,18 @@ export async function loadSquadState(
         })
       ).map((t) => ({ userId: t.userId, team: t.team as "RED" | "YELLOW" }))
     : [];
+  // AN OPEN SQUAD WITH A SHEET OUT (review of #623): the club ratings of
+  // the squad, so a late IN joins the right side (`decideOpenSquadJoins`).
+  // One read, only for such a club; the same ratings the balancer uses.
+  const teamRatings =
+    features.openSquad && teams.length > 0
+      ? Object.fromEntries(
+          await (await import("../team-generation")).clubRatingsFor(
+            orgId,
+            rows.filter((r) => r.status === "CONFIRMED").map((r) => r.userId),
+          ),
+        )
+      : null;
 
   // THE LAST MATCH ACTUALLY PLAYED — see `SquadState.completedMatch`.
   //
@@ -243,7 +257,8 @@ export async function loadSquadState(
     select: { sport: { select: { name: true, playersPerTeam: true } } },
   });
   const currentTotal = match?.maxPlayers ?? 0;
-  const smallerFormats = activities
+  // An open squad (open-squad.ts) has no format: no other format either.
+  const smallerFormats = (features.openSquad ? [] : activities)
     .map((a) => ({
       sportName: a.sport.name,
       totalPlayers: totalPlayersFor(a.sport.playersPerTeam),
@@ -341,10 +356,24 @@ export async function loadSquadState(
   // shown is then the next one, and the post says so first. From the rows
   // already loaded (30 days, every status); the window is the helper's.
   const cancelled = cancelledMatchToMention(matches, match ? { id: match.id, date: match.date } : null, now);
+  // AN OPEN SQUAD (2026-11-17, open-squad.ts) has no places. What the
+  // composer and the answers count to is the game's minimum, or the count
+  // when it is above it, so "need N more" means "to play", nothing is ever
+  // "full", and no count reads as more than the game can hold. The engine
+  // never caps an open squad (`canTakeFreePlace`).
+  const openMinimum =
+    match && features.openSquad
+      ? openSquadMinimum({ minPlayers: match.activity.minPlayers ?? null, playersPerTeam: match.activity.sport.playersPerTeam })
+      : null;
 
   return {
     matchId: match?.id ?? null,
-    maxPlayers: match?.maxPlayers ?? 0,
+    maxPlayers: match
+      ? openMinimum !== null
+        ? Math.max(openMinimum, rows.filter((r) => r.status === "CONFIRMED").length)
+        : match.maxPlayers
+      : 0,
+    ...(openMinimum !== null ? { openSquadMinimum: openMinimum } : {}),
     kickoffLabel: match ? kickoffLabel(lang, match.date) : t(lang).no_match_label,
     matchLabel: match ? dayCommaTimeLabel(lang, match.date) : null,
     matchDayName: match ? weekdayLabel(lang, match.date) : null,
@@ -360,6 +389,7 @@ export async function loadSquadState(
       offeredToUserIds: benchIds,
     })),
     teams,
+    ...(teamRatings ? { teamRatings } : {}),
     teamLabels: [redLabel, yellowLabel],
     completedMatch: completed
       ? {
@@ -411,6 +441,7 @@ export async function loadSquadState(
       benchPickMode: features.benchPickMode,
       listAnnouncer: features.listAnnouncer ?? "matchtime",
       momChosenBy: features.momChosenBy ?? "players",
+      openSquad: features.openSquad === true,
     },
     reclaimUserIds,
     smallerFormats,

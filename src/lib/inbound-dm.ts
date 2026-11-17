@@ -141,6 +141,7 @@ import {
 import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
+import { gameNameFor } from "@/lib/match-format-title";
 import { LANGS } from "@/lib/i18n/lang";
 import {
   buildAdminRecruitDmReply,
@@ -988,11 +989,12 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
             id: true,
             date: true,
             status: true,
+            maxPlayers: true,
             activity: {
               select: {
                 orgId: true,
                 name: true,
-                org: { select: { language: true, benchPickMode: true } },
+                org: { select: { language: true, benchPickMode: true, openSquad: true } },
               },
             },
           },
@@ -1043,7 +1045,7 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
           ...facts,
           playerName: user.name,
           clubName: org0?.name ?? null,
-          matchName: row0.match.activity.name,
+          matchName: gameNameFor(row0.match.activity.name, row0.match.maxPlayers, row0.match.activity.org.openSquad),
           matchWhen: dayCommaTimeLabel(tentLang, row0.match.date),
         }));
         if (verdict.decision === "in") isIn = true;
@@ -1149,7 +1151,7 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
               failed: writeFailed,
               status: newStatus,
               organiser: row.match.activity.org.benchPickMode === "organiser",
-              matchName: row.match.activity.name,
+              matchName: gameNameFor(row.match.activity.name, row.match.maxPlayers, row.match.activity.org.openSquad),
               matchWhen: dayCommaTimeLabel(tentLang, row.match.date),
               lang: tentLang,
             }),

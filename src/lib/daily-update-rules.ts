@@ -70,6 +70,11 @@ export interface DailyUpdateFacts {
   bench: number;
   /** The "Squad complete" post was claimed today (London). */
   squadLockedToday: boolean;
+  /** No squad limit (2026-11-17, open-squad.ts). `open` is then how many
+   *  are short of the game's minimum, and there is no bench: the post goes
+   *  out only below the minimum, and at or above it nothing does. Optional;
+   *  absent is off. */
+  openSquad?: boolean;
 }
 
 /** Why nothing goes out. */
@@ -80,7 +85,9 @@ export type DailySkip =
   | "month-list-in-group"
   | "after-deadline"
   | "bench-covered"
-  | "squad-locked-today";
+  | "squad-locked-today"
+  /** An open squad at or above its minimum: nothing to ask for. */
+  | "enough-players";
 
 export type DailyUpdate =
   /** Match day, teams made: the two line-ups. */
@@ -114,6 +121,14 @@ export function decideDailyUpdate(f: DailyUpdateFacts): DailyUpdate {
   // The month's list is never posted once the teams are out, whatever the
   // day: the team sheet is the announcement then (`decideListPost`).
   if (f.squad === "month" && f.teamsOut) return { post: null, why: "teams-out" };
+  // OPEN SQUAD: below the minimum the group is asked for players, as a
+  // place open is; at or above it there is nothing to ask, no bench to
+  // fill and no "squad is locked" (there is no full).
+  if (f.openSquad === true) {
+    if (f.open <= 0) return { post: null, why: "enough-players" };
+    if (!f.beforeDeadline) return { post: null, why: "after-deadline" };
+    return f.squad === "month" ? { post: "month-list", benchAsk: false } : { post: "chase" };
+  }
   // A weekly squad, full, with the teams out: nothing on any day, to anyone
   // (Kemal, 2026-11-05: the teams and the poster are out, the squad again
   // "just creates noise"). Match day's line-ups above still win; a place

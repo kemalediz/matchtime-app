@@ -44,9 +44,14 @@ export interface FreePlaceInput {
   isReclaim: boolean;
   /** A BenchSlotOffer is open on this match (the fallback is running). */
   openBenchOffer: boolean;
+  /** The club has no squad limit (`Organisation.openSquad`, open-squad.ts):
+   *  every IN takes a place, whatever the count and whoever is acting.
+   *  Optional; absent is off, today's rule. */
+  openSquad?: boolean;
 }
 
 export function canTakeFreePlace(p: FreePlaceInput): boolean {
+  if (p.openSquad === true) return true;
   const room = p.confirmed < p.maxPlayers;
   if (p.pickMode !== "organiser") return room;
   return room && (p.actorIsAdmin || p.isReclaim || p.openBenchOffer);

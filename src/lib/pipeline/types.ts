@@ -872,6 +872,7 @@ export interface AdminFacts {
     | "player_numbers"
     | "switch_format"
     | "move_game"
+    | "open_squad"
     | "other";
   /** bulk_payment */
   payerRef?: string;
@@ -964,6 +965,11 @@ export interface AdminFacts {
   quietFrom?: string;
   /** quiet_hours: when they end, the same way. */
   quietTo?: string;
+  /** open_squad (2026-11-17, the Vets: "the main squad will always expand
+   *  or shrink without any limits and a bench"): put a limit back, the
+   *  setting off. Set only when true; absent means switch the open squad
+   *  on (`open-squad-save.ts`). */
+  openSquadOff?: true;
   /**
    * The message is spoken to MatchTime itself, not to a person or the
    * others in the chat (2026-10-22, FNF HQ: "@Kemal can we ask Sutton
@@ -1092,8 +1098,17 @@ export interface SquadState {
    *  null = no match to register anyone for, or registration is blocked
    *  because a previous match is still in flight. */
   matchId: string | null;
-  /** Format TOTAL across both teams (7-a-side → 14). Never per-team. */
+  /** Format TOTAL across both teams (7-a-side → 14). Never per-team. For
+   *  an OPEN SQUAD (open-squad.ts) there are no places: it is the game's
+   *  minimum, or the count when above it (load-state.ts). */
   maxPlayers: number;
+  /** An open squad's minimum to play (`openSquadMinimum`), for the answer
+   *  context. Absent for every other club. */
+  openSquadMinimum?: number;
+  /** An open squad with a team sheet out: each confirmed player's club
+   *  rating (`clubRatingsFor`), so a late IN joins the right side
+   *  (`decideOpenSquadJoins`). Absent for every other club. */
+  teamRatings?: Record<string, number>;
   /** Pre-formatted for the composer, so it needs no clock and no
    *  timezone library: "Tue 21:30". */
   kickoffLabel: string;
@@ -1298,6 +1313,11 @@ export interface SquadState {
      *  the admin group's score handling only. Optional; absent means
      *  "players". */
     momChosenBy?: "players" | "organisers";
+    /** Open squad (2026-11-17, open-squad.ts): every IN takes a place,
+     *  never the bench; no format; the minimum is the only number. Read by
+     *  `applyClaim` through `canTakeFreePlace`, the rule `registerAttendance`
+     *  uses too. Optional; absent is off. */
+    openSquad?: boolean;
   };
   /**
    * RECLAIMS (slice 2b, 2026-10-01): players whose last move on this
@@ -1612,6 +1632,21 @@ export type ProposedWrite =
       fromName: string;
       toUserId: string;
       toName: string;
+      team: "RED" | "YELLOW";
+      sourceMessageId: string;
+      reason: string;
+    }
+  | {
+      /**
+       * A NEW SEAT ON A SIDE for an OPEN SQUAD's late IN (review of #623,
+       * open-squad.ts): no vacated slot to inherit, so he joins the
+       * smaller side (`decideOpenSquadJoins`). The apply layer creates the
+       * `TeamAssignment` row under the slot lock, only if he is still
+       * confirmed and has no seat.
+       */
+      kind: "team_slot_join";
+      userId: string;
+      name: string;
       team: "RED" | "YELLOW";
       sourceMessageId: string;
       reason: string;
@@ -2069,6 +2104,9 @@ export type SpeechIntent =
         /** DROPPED, as opposed to demoted to the bench. */
         outWentOut: boolean;
       }>;
+      /** An OPEN SQUAD's late INs given a new seat (review of #623,
+       *  `decideOpenSquadJoins`): who, and which side. Absent: none. */
+      joins?: Array<{ inName: string; team: "RED" | "YELLOW" }>;
     }
   /** A resolved "Confirmed" whose writes were all idempotent. Saying
    *  nothing there is the silent-no-op failure in miniature. */

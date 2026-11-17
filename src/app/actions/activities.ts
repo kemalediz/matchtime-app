@@ -146,9 +146,20 @@ export async function updateActivity(
 export async function setActivityPlayerRange(activityId: string, range: { min?: number | null; max?: number | null }) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
-  const activity = await db.activity.findUnique({ where: { id: activityId }, select: { orgId: true, org: { select: { language: true } } } });
+  const activity = await db.activity.findUnique({ where: { id: activityId }, select: { orgId: true, minPlayers: true, maxPlayers: true, org: { select: { language: true, openSquad: true } } } });
   if (!activity) throw new Error("Activity not found");
   await requireOrgAdmin(session.user.id, activity.orgId);
+  // An open squad (2026-11-17, open-squad.ts): the minimum is the only
+  // number, any whole number from 2, with no format to check it against.
+  // The most box is not read (there is none while the squad has no limit).
+  if (activity.org?.openSquad === true) {
+    if (range.min === undefined) return { minPlayers: activity.minPlayers, maxPlayers: activity.maxPlayers };
+    const { saveOpenSquadMinimum } = await import("@/lib/open-squad-save");
+    const o = await saveOpenSquadMinimum({ activityId, min: range.min, lang: activity.org.language });
+    if (o.outcome === "player-range-refused") throw new Error(o.replyText);
+    revalidatePath("/admin/activities");
+    return { minPlayers: range.min, maxPlayers: activity.maxPlayers };
+  }
   const r = await savePlayerRange({ activityId, ...range });
   if (!r.ok && r.error === "switched-match") {
     const lang = normaliseLang(activity.org?.language);

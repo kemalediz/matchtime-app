@@ -170,6 +170,14 @@ async function underRoundLock<R extends { status: string }>(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`xask-fill:${matchId}`}))`;
       if (!fill) return { r: await write(), full: false };
+      // AN OPEN SQUAD (review of #623, open-squad.ts): the ask was for the
+      // shortfall, but every yes takes a place; nobody hears it has gone.
+      // (A test double with no `match` reads as an ordinary club.)
+      const club =
+        typeof tx.match?.findUnique === "function"
+          ? await Promise.resolve(tx.match.findUnique({ where: { id: matchId }, select: { activity: { select: { org: { select: { openSquad: true } } } } } })).catch(() => null)
+          : null;
+      if (club?.activity?.org?.openSquad === true) return { r: await write(), full: false };
       const f = await fill();
       if (!f || f.placed >= f.wanted) return null;
       const r = await write();

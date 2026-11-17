@@ -71,8 +71,8 @@ const SPECS: Record<SettingsCardId, CardSearchSpec> = {
   },
   bench: {
     title: nav("bench"),
-    settings: ["bench", "benchPickMode", "benchPickFallback"],
-    keywords: { en: ["bench", "substitutes", "reserves", "open place"], tr: ["yedek", "yedekler", "boş yer"] },
+    settings: ["bench", "benchPickMode", "benchPickFallback", "openSquad"],
+    keywords: { en: ["bench", "substitutes", "reserves", "open place", "no limit", "squad limit"], tr: ["yedek", "yedekler", "boş yer", "sınır yok", "kadro sınırı"] },
   },
   ratings: {
     title: nav("ratings"),

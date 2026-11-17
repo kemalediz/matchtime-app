@@ -136,6 +136,7 @@ import { recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { DEFAULT_SEED_RATING } from "./default-seed";
 import { constraintLines, planConstraintChange } from "./team-constraints";
 import { perTeamFor, playerRange, teamsNeeded } from "./flex-format-rules";
+import { openSquadMinimum } from "./open-squad";
 import { justPlayedMatch, playedGameReplacements, teamCommandFixesPlayedGame } from "./played-game-rules";
 import type { HqSquadChange } from "./hq-squad-reader-prompt";
 import { recordAttendanceEvent, type AttendanceEventSink, type AttendanceStatusLike } from "./attendance-events";
@@ -336,6 +337,10 @@ async function loadSheet(match: MatchRow, lang: string | null | undefined, extra
     // same rule `generateTeamsForMatch` applies.
     needed: sport
       ? (() => {
+          // An open squad (open-squad.ts): its minimum, no format.
+          if ((org as { openSquad?: boolean } | null)?.openSquad === true) {
+            return openSquadMinimum({ minPlayers: activity.minPlayers ?? null, playersPerTeam: sport.playersPerTeam });
+          }
           const range = playerRange({ minPlayers: activity.minPlayers ?? null, maxPlayers: activity.maxPlayers ?? null, playersPerTeam: sport.playersPerTeam });
           const perTeam = perTeamFor({ maxPlayers: match.maxPlayers ?? 0, playersPerTeam: sport.playersPerTeam });
           return teamsNeeded({ places: perTeam * 2, range });

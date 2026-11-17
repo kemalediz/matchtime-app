@@ -131,6 +131,10 @@ export type HelpFeatures = {
    *  availability" also says how a month starts from his list. A missing
    *  value reads as off. */
   monthly?: boolean;
+  /** No squad limit (`Organisation.openSquad`, 2026-11-17, open-squad.ts):
+   *  everyone who says IN plays, no bench, no number a side; "help
+   *  availability" and "help teams" say so. A missing value reads as off. */
+  openSquad?: boolean;
 };
 
 /** The help builder's view of a club's live flags. One mapping, so every
@@ -150,6 +154,7 @@ export function helpFeaturesFrom(
     listAnnouncer?: string | null;
     benchPickMode?: string | null;
     squadMode?: string | null;
+    openSquad?: boolean | null;
   },
   club?: HelpClubFacts,
 ): HelpFeatures {
@@ -166,6 +171,7 @@ export function helpFeaturesFrom(
     organisersAnnounce: organisersAnnounce(f),
     organiserPicks: f.benchPickMode === "organiser",
     monthly: f.squadMode === "monthly",
+    ...(f.openSquad === true ? { openSquad: true } : {}),
     ...(club ? { pool: club.pool, partners: club.partners } : {}),
   };
 }
@@ -371,7 +377,7 @@ export function buildHelpReply(
     // with attendance off it works nowhere, so the answer says so and how
     // attendance is switched on, like any flag topic that is off.
     const body =
-      s.onbHelpFriend({ fees: features.paymentCollection === true }) + adminTail(s.onbHelpFriendLinkOrganiser);
+      s.onbHelpFriend({ fees: features.paymentCollection === true, ...(features.openSquad ? { openSquad: true } : {}) }) + adminTail(s.onbHelpFriendLinkOrganiser);
     if (topicIsOn(topic, features)) return body;
     const switchOn = s.onbHelpSwitchOn({
       topic: "availability",
@@ -388,22 +394,33 @@ export function buildHelpReply(
     }
     // A monthly squad (2026-11-03): the month's regulars are in every game,
     // so the weekly "say In or Out for the next game" is not how it works.
+    // No squad limit (2026-11-17): everyone who says IN plays, no bench;
+    // the teams are whoever is in, split evenly (open-squad.ts).
+    const openSquad = features.openSquad === true;
     const base =
       organisers && (topic === "availability" || topic === "reminders")
         ? s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks })
-        : topic === "availability" && features.monthly === true
-          ? s.onbHelpAvailabilityMonthly
-          : topic === "availability" && picks
-            ? s.onbHelpAvailabilityOrganiserPicks
-            : s.onbHelpExplainer({ topic });
+        : topic === "availability" && openSquad
+          ? s.onbHelpAvailabilityOpenSquad({ monthly: features.monthly === true })
+          : topic === "availability" && features.monthly === true
+            ? s.onbHelpAvailabilityMonthly
+            : topic === "availability" && picks
+              ? s.onbHelpAvailabilityOrganiserPicks
+              : topic === "teams" && openSquad
+                ? `${s.onbHelpExplainer({ topic })}\n${s.onbHelpTeamsOpenSquad}`
+                : s.onbHelpExplainer({ topic });
     // The friend link (#488, 2026-10-31) is part of saying who plays: a
     // player's friend joins by his own link (friend-link/rules.ts); an
     // organiser's add stays direct (D1).
     const explainer =
       topic === "availability"
-        ? `${base}\n${s.onbHelpFriendLink}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}${admin && features.monthly ? `\n\n${s.onbHelpMonthListOrganiser}` : ""}` +
+        ? `${base}\n${s.onbHelpFriendLink(openSquad ? { openSquad: true } : {})}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}${admin && features.monthly ? `\n\n${s.onbHelpMonthListOrganiser}` : ""}` +
           // DM the people a message tagged (2026-11-09, named-invite.ts).
-          (admin ? `\n${s.onbHelpDmTaggedOrganiser}` : "")
+          (admin ? `\n${s.onbHelpDmTaggedOrganiser}` : "") +
+          // No squad limit by tagging (2026-11-17): told only while it is
+          // on (how to put a limit back), and to a club that has never
+          // had a bench line of its own it would be noise otherwise.
+          (admin && openSquad ? `\n${s.onbHelpOpenSquadOrganiser({ on: true })}` : "")
         : base;
     if (topicIsOn(topic, features)) {
       return `${explainer}\n\n${s.onbHelpOnStatus({ audience: ctx.audience, url: topicUrl })}`;

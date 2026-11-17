@@ -67,7 +67,10 @@ import { swapGuardFor, type SwapCandidate, type SwapGuardClaim } from "../team-s
 // The 2026-09-15 replacement rule, pure and beside the pure core it is
 // built out of (§13) rather than inlined here — its header carries the
 // incident, the state-check argument and the pairing order.
-import { decideSlotInherits } from "../team-slot-inherit";
+import { decideOpenSquadJoins, decideSlotInherits } from "../team-slot-inherit";
+/** A player with no club rating yet, when a late IN picks a side: the
+ *  default seed (`DEFAULT_SEED_RATING`). */
+const DEFAULT_JOIN_RATING = 6;
 import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { isRawDigitName, resolvePerson } from "./identity";
 import { refKey } from "../person-ref-key";
@@ -1360,6 +1363,7 @@ export function decide(input: EngineInput): EngineResult {
           confirmedCount: confirmedCount(w),
           maxPlayers: state.maxPlayers,
           alreadyAsked: !!msg.senderUserId && state.guestAskedUserIds.includes(msg.senderUserId),
+          openSquad: state.features.openSquad === true,
         });
         out.reasons.push(`guest-name-ask: ${decision.reason}`);
         if (decision.ask && !askedWhoMentionedHere) {
@@ -2824,7 +2828,9 @@ export function decide(input: EngineInput): EngineResult {
         // never model-authored so they cannot be wrong; THIS one is
         // model-authored, so a figure that cannot be true is refused and
         // said out loud rather than quietly clamped and then announced.
-        if (count > state.maxPlayers) {
+        // An open squad has no format to cap it: the squad as it stands.
+        const creditCap = state.features.openSquad ? Math.max(state.maxPlayers, confirmedCount(w)) : state.maxPlayers;
+        if (count > creditCap) {
           degrade(
             `payment credit for ${count} players exceeds the format's ${state.maxPlayers}; refusing`,
           );
@@ -3398,7 +3404,9 @@ export function decide(input: EngineInput): EngineResult {
     confirmedBefore >= state.maxPlayers &&
     confirmedCount(w) < state.maxPlayers &&
     vacated.length > 0 &&
-    !organiserPickQuiet;
+    !organiserPickQuiet &&
+    // An open squad has no places to open (open-squad.ts).
+    state.features.openSquad !== true;
 
   // ═══════════════════════════════════════════════════════════════════
   // …AND A FOURTH ARM, IN FRONT OF ALL THREE (2026-09-15, same night)
@@ -3559,10 +3567,39 @@ export function decide(input: EngineInput): EngineResult {
     }
   }
 
-  if (rideOn && inherits.length > 0) {
+  // ── AN OPEN SQUAD'S LATE INS (review of #623, open-squad.ts) ─────────
+  // No squad limit: an IN after the teams are made has no vacated slot to
+  // take. He joins the smaller side (level: the lower total rating) on
+  // the sheet the inherits above left, with a seat write, and rides the
+  // same one post that redraws the sheet. A drop changes nothing here:
+  // the sides stay as they are until an organiser remakes the teams.
+  const joins =
+    rideOn && state.features.openSquad === true && w.teams.length > 0
+      ? decideOpenSquadJoins({
+          rows: [...w.rows.values()].map((r) => ({ userId: r.userId, status: r.status, position: r.position })),
+          teams: w.teams,
+          ratingOf: (id) => state.teamRatings?.[id] ?? DEFAULT_JOIN_RATING,
+        })
+      : [];
+  if (rideOn) {
+    for (const j of joins) {
+      w.teams = [...w.teams, { userId: j.userId, team: j.team }];
+      writes.push({
+        kind: "team_slot_join",
+        userId: j.userId,
+        name: nameOf(w, j.userId),
+        team: j.team,
+        sourceMessageId: rideOn,
+        reason: `${nameOf(w, j.userId)} joins ${j.team}: no squad limit, the smaller side`,
+      });
+    }
+  }
+
+  if (rideOn && (inherits.length > 0 || joins.length > 0)) {
     speech.push({
       kind: "replacement_teams_post",
       messageId: rideOn,
+      ...(joins.length > 0 ? { joins: joins.map((j) => ({ inName: nameOf(w, j.userId), team: j.team })) } : {}),
       swaps: inherits.map((m) => ({
         outName: nameOf(w, m.fromUserId),
         inName: nameOf(w, m.toUserId),
@@ -3825,7 +3862,10 @@ function applyClaim(args: {
   // sound when the squad is full. Treating it as explicit regenerates
   // the 2026-08-31 incident: a bench row rendered beside four empty
   // slots.
-  const explicitBench = polarity === "bench" && !target.claim.contingent;
+  // OPEN SQUAD (2026-11-17, open-squad.ts): there is no bench, so a bench
+  // request is an IN like any other, and every IN takes a place.
+  const openSquad = state.features.openSquad === true;
+  const explicitBench = polarity === "bench" && !target.claim.contingent && !openSquad;
   const confirmed = confirmedCount(w);
   // WHO MAY TAKE A FREE PLACE (slice 2b): the one shared rule. For a
   // first-come club (every club until it chooses otherwise, Sutton FC
@@ -3838,6 +3878,7 @@ function applyClaim(args: {
     actorIsAdmin: args.actorIsAdmin === true,
     isReclaim: existing?.status === "DROPPED" && (state.reclaimUserIds ?? []).includes(userId),
     openBenchOffer: w.offers.length > 0,
+    openSquad,
   });
 
   if (existing && (existing.status === "CONFIRMED" || existing.status === "BENCH")) {

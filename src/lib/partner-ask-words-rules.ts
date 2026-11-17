@@ -114,6 +114,9 @@ export interface PartnerReplyContext {
   firstCome?: boolean;
   day?: string | null;
   settingsLink?: string;
+  /** No squad limit (open-squad.ts): "no places" then means the game has
+   *  its minimum already, and is said so, never "every place is taken". */
+  openSquad?: boolean;
 }
 
 /** A refusal for ONE partner, as a whole sentence: what happened, why, and
@@ -126,19 +129,19 @@ function refusalSentence(lang: string | null, partner: string, r: AskRefusal | "
   if (r === "daily-cap") return s.xaskw_refused_daily_cap({ partner });
   if (r === "already-open")
     return s.xaskw_refused_already_open({ partner, askedOn: open?.askedOn ?? null, day: ctx.day ?? null, awaiting: open?.awaiting === true });
-  if (r === "no-places") return s.xaskw_refused_no_places({ partner });
+  if (r === "no-places") return ctx.openSquad ? s.xaskw_refused_enough({ partner }) : s.xaskw_refused_no_places({ partner });
   if (PAUSED_REFUSALS.has(r)) return s.xaskw_refused_paused({ partner });
   if (UNREACHABLE.has(r)) return s.xaskw_refused_unreachable({ partner });
   return s.xaskw_refused_generic({ partner });
 }
 
 /** A refusal as a partner's line in a several-partner reply. */
-function refusalLine(lang: string | null, partner: string, r: AskRefusal | "not-found", cutoffHours: number, open?: OpenPartnerAsk | null): string {
+function refusalLine(lang: string | null, partner: string, r: AskRefusal | "not-found", cutoffHours: number, open?: OpenPartnerAsk | null, openSquad = false): string {
   const s = t(lang);
   if (r === "too-late") return s.xaskw_line_too_late({ partner, hours: cutoffHours });
   if (r === "daily-cap") return s.xaskw_line_daily_cap({ partner });
   if (r === "already-open") return s.xaskw_line_already_open({ partner, askedOn: open?.askedOn ?? null, awaiting: open?.awaiting === true });
-  if (r === "no-places") return s.xaskw_line_no_places({ partner });
+  if (r === "no-places") return openSquad ? s.xaskw_line_enough({ partner }) : s.xaskw_line_no_places({ partner });
   if (PAUSED_REFUSALS.has(r)) return s.xaskw_line_paused({ partner });
   if (UNREACHABLE.has(r)) return s.xaskw_line_unreachable({ partner });
   return s.xaskw_line_generic({ partner });
@@ -173,7 +176,7 @@ export function composePartnerAskReply(
       ? s.xaskw_line_posted({ partner })
       : result === "awaiting"
         ? s.xaskw_line_awaiting({ partner })
-        : refusalLine(lang, partner, result, opts.cutoffHours, open),
+        : refusalLine(lang, partner, result, opts.cutoffHours, open, opts.openSquad === true),
   );
   // A refusal a setting can lift (the cut-off): the settings card's link,
   // once, after the list.

@@ -1427,6 +1427,10 @@ export async function runAttendanceEngineBatch(args: {
   // not accept. Loud rather than quiet — four seatbelts were found dead on
   // 2026-08-31, all silent.
   for (const a of applied) {
+    if (a.write.kind === "team_slot_join" && !a.ok) {
+      degradations.push(`team seat for ${a.write.name} (${a.write.team}) was not written: ${a.error ?? "unknown"}`);
+      continue;
+    }
     if (a.write.kind !== "team_slot_inherit" || a.ok) continue;
     degradations.push(
       `team slot ${a.write.fromName} → ${a.write.toName} did not move: ${a.error ?? "unknown"}`,

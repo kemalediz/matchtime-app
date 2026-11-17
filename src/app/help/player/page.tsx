@@ -156,6 +156,11 @@ export default function PlayerGuidePage() {
         there were places open, MatchTime leaves you there; say{" "}
         <code>IN</code> whenever you want to play.
       </p>
+      <p id="no-squad-limit">
+        Some clubs have <strong>no squad limit</strong>: everyone who says{" "}
+        <code>IN</code> plays, however many there are, so there is no bench
+        at all. The teams are whoever is in, split into two even sides.
+      </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="questions">5. Asking MatchTime questions</h2>

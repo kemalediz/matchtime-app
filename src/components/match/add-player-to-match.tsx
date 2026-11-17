@@ -22,9 +22,12 @@ interface ExistingPlayer {
 export function AddPlayerToMatch({
   matchId,
   existingPlayers,
+  noBench = false,
 }: {
   matchId: string;
   existingPlayers: ExistingPlayer[];
+  /** No squad limit (open-squad.ts): no bench, so no bench box. */
+  noBench?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -159,6 +162,7 @@ export function AddPlayerToMatch({
         </div>
       )}
 
+      {!noBench && (
       <label className="mt-3 flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
         <input
           type="checkbox"
@@ -168,6 +172,7 @@ export function AddPlayerToMatch({
         />
         Add to bench instead of the squad
       </label>
+      )}
 
       <div className="mt-3 flex items-center gap-2">
         <button

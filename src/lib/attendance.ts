@@ -115,6 +115,13 @@ export async function registerAttendance(
     /** See `cancelAttendance`'s option of the same name: a CONFIRMED
      *  player moved to the bench hands the bench fill back to the caller. */
     deferBenchFill?: boolean;
+    /**
+     * An OPEN SQUAD's late IN after the teams are made (review of #623):
+     * by default he is seated (a vacated slot, else the smaller side) and
+     * the group sees the redrawn sheet (`open-squad-seat.ts`). False: the
+     * caller seats and announces him itself (the engine's apply layer).
+     */
+    seatOnTeams?: boolean;
   },
 ) {
   // TypeScript makes `options.event` mandatory for everything under
@@ -126,9 +133,16 @@ export async function registerAttendance(
   const eventContext = options.event ?? UNATTRIBUTED_ATTENDANCE_CONTEXT;
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { select: { orgId: true, org: { select: { benchPickMode: true, squadMode: true } } } } },
+    include: { activity: { select: { orgId: true, org: { select: { benchPickMode: true, squadMode: true, openSquad: true } } } } },
   });
   if (!match) throw new Error("Match not found");
+
+  // OPEN SQUAD (2026-11-17, open-squad.ts): no limit and no bench. Every
+  // IN takes a place whatever the count, and a bench request is an IN
+  // (there is no bench to go to). Optional chaining: unit-test doubles
+  // build the match without its org.
+  const openSquad = match.activity.org?.openSquad === true;
+  if (openSquad && options?.benchIntent) options = { ...options, benchIntent: undefined };
 
   // WHO MAY TAKE A FREE PLACE (slice 2b): the one rule the engine's react
   // uses too. A first-come club (every club until it chooses otherwise,
@@ -137,6 +151,7 @@ export async function registerAttendance(
   const pickMode = normaliseBenchPickMode(match.activity.org?.benchPickMode);
   let organiserFacts: { actorIsAdmin: boolean; isReclaim: boolean; openBenchOffer: boolean } | null = null;
   const mayTakeFreePlace = async (confirmedNow: number, prior: { status: string } | null): Promise<boolean> => {
+    if (openSquad) return canTakeFreePlace({ confirmed: confirmedNow, maxPlayers: match.maxPlayers, pickMode, actorIsAdmin: false, isReclaim: false, openBenchOffer: false, openSquad });
     if (pickMode !== "organiser" || confirmedNow >= match.maxPlayers) return confirmedNow < match.maxPlayers;
     if (!organiserFacts) {
       const [actorIsAdmin, reclaims, openOffers] = await Promise.all([
@@ -487,6 +502,17 @@ export async function registerAttendance(
     await announceSquadFullIfJustFilled(matchId).catch((err) =>
       console.error("[attendance] squad-full announce failed:", err),
     );
+    // AN OPEN SQUAD'S LATE IN (review of #623): with teams already made
+    // he joins them, and the group sees the redrawn sheet. Never fails
+    // the write; the organiser can remake the teams.
+    if (openSquad && options?.seatOnTeams !== false) {
+      try {
+        const { seatOpenSquadLateIns } = await import("./open-squad-seat");
+        await seatOpenSquadLateIns(matchId);
+      } catch (err) {
+        console.error(`[attendance] seating ${userId} on the teams failed:`, err instanceof Error ? err.message : err);
+      }
+    }
   }
 
   return {

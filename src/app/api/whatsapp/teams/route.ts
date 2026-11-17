@@ -60,7 +60,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     match: {
       // The size this game is played at (`match-format-title.ts`).
-      name: matchFormatTitle(match.activity.name, match.maxPlayers),
+      name: matchFormatTitle(match.activity.name, match.maxPlayers, { openSquad: org.openSquad === true }),
       date: formatLondon(match.date, "EEEE d MMMM 'at' HH:mm"),
     },
     teams: {

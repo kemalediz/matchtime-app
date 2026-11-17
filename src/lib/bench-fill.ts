@@ -364,8 +364,14 @@ export async function sweepBenchFill(orgId: string, now: Date = new Date()): Pro
   try {
     const org = await db.organisation.findUnique({
       where: { id: orgId },
-      select: { benchPickMode: true, featureBench: true },
+      select: { benchPickMode: true, featureBench: true, openSquad: true },
     });
+    // NO SQUAD LIMIT (review of #623): there is no bench, so whoever is
+    // still on one (a write that raced the switch) is promoted.
+    if (org?.openSquad === true) {
+      const { promoteOpenSquadBench } = await import("./open-squad-save");
+      return await promoteOpenSquadBench(orgId, now);
+    }
     if (!fillsByItself(org)) return 0;
     const matches = await db.match.findMany({
       where: { activity: { orgId }, status: { in: [...LIVE] }, date: { gt: now } },

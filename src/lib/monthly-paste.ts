@@ -272,7 +272,7 @@ export async function handleMonthlyPaste(args: {
             : null;
     if (hint === "previous") selfBeforeSeed = false;
     else if (hint === null && previous) {
-      const last = buildWeekList({ members: previous.members, rows: previous.rows, maxPlayers: previous.maxPlayers });
+      const last = buildWeekList({ members: previous.members, rows: previous.rows, maxPlayers: previous.maxPlayers, openSquad: previous.openSquad });
       selfBeforeSeed = !pasteShowsSameList({ list, week: last, roster });
     }
   }
@@ -282,6 +282,7 @@ export async function handleMonthlyPaste(args: {
     members: week.members,
     rows: week.rows,
     maxPlayers: week.maxPlayers,
+    openSquad: week.openSquad,
     roster,
     matchMonth: Number(formatLondon(week.matchDate, "M")),
     // Before the regulars are on the match (the hours after one game ends)
@@ -598,7 +599,7 @@ export async function handleMonthlyPaste(args: {
   try {
     const after = await loadMonthlyWeek(matchId);
     if (after?.seeded) {
-      const weekList = buildWeekList({ members: after.members, rows: after.rows, maxPlayers: after.maxPlayers });
+      const weekList = buildWeekList({ members: after.members, rows: after.rows, maxPlayers: after.maxPlayers, openSquad: after.openSquad });
       if (pasteShowsSameList({ list, week: weekList, roster })) {
         await recordWeekListShown(matchId, (await renderWeekList(after)).hash, "month-list-seen");
       }

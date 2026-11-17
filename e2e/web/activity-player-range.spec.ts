@@ -72,6 +72,21 @@ test("odd numbers, a minimum above the places and a maximum below them are refus
   expect(await rangeOf(db)).toEqual({ min: 8, max: 12 });
 });
 
+test("no squad limit (review of #623): the most box is disabled with a note, and any minimum from 2 saves", async ({ page, db }) => {
+  await (db as unknown as { run: (sql: string, p?: unknown[]) => Promise<unknown> }).run(`UPDATE "Organisation" SET "openSquad" = true WHERE id = (SELECT "orgId" FROM "Activity" WHERE id = $1)`, [ACTIVITY_ID]);
+  const { min, max } = await openEdit(page);
+  await expect(max).toBeDisabled();
+  await expect(page.getByTestId("activity-max-players-hint")).toHaveText("No most while the squad has no limit (Settings, Bench card).");
+  await expect(page.getByTestId("activity-player-range-allows")).toHaveCount(0);
+  // Odd and above the format's 10 places: fine with no squad limit.
+  await min.fill("11");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect.poll(() => rangeOf(db)).toEqual({ min: 11, max: 12 });
+  await expect(page.getByTestId("activity-player-range-row")).toHaveCount(0);
+  await (db as unknown as { run: (sql: string, p?: unknown[]) => Promise<unknown> }).run(`UPDATE "Organisation" SET "openSquad" = false WHERE id = (SELECT "orgId" FROM "Activity" WHERE id = $1)`, [ACTIVITY_ID]);
+  await (db as unknown as { run: (sql: string, p?: unknown[]) => Promise<unknown> }).run(`UPDATE "Activity" SET "minPlayers" = 8 WHERE id = $1`, [ACTIVITY_ID]);
+});
+
 test("emptied: back to the game's own size", async ({ page, db }) => {
   const { min, max } = await openEdit(page);
   await min.fill("");

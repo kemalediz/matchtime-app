@@ -66,6 +66,8 @@ import {
   type ChaseKind,
 } from "./chase-lead";
 import type { SmallerFormat } from "./format-switch";
+import { openSquadMinimum } from "./open-squad";
+import { matchFormatTitle } from "./match-format-title";
 
 export type { ChaseKind } from "./chase-lead";
 
@@ -248,11 +250,11 @@ export async function composeChaseText(input: {
   const now = input.now ?? new Date();
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: input.groupId },
-    select: { id: true, language: true },
+    select: { id: true, language: true, openSquad: true },
   });
   if (!org) return null;
 
-  const match = await db.match.findFirst({
+  const found = await db.match.findFirst({
     where: input.matchId
       ? { id: input.matchId, activity: { orgId: org.id } }
       : {
@@ -262,7 +264,7 @@ export async function composeChaseText(input: {
         },
     include: {
       activity: {
-        select: { name: true, venue: true, sport: { select: { name: true, playersPerTeam: true } } },
+        select: { name: true, venue: true, minPlayers: true, sport: { select: { name: true, playersPerTeam: true } } },
       },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
@@ -272,7 +274,19 @@ export async function composeChaseText(input: {
     },
     orderBy: { date: "asc" },
   });
-  if (!match) return null;
+  if (!found) return null;
+  // OPEN SQUAD (2026-11-17, open-squad.ts): no format and no places. The
+  // chase only runs below the game's minimum, so the number it counts to
+  // is the minimum, the game's name has no size, and no smaller format is
+  // ever proposed.
+  const openSquad = org.openSquad === true;
+  const match = openSquad
+    ? {
+        ...found,
+        maxPlayers: openSquadMinimum({ minPlayers: found.activity.minPlayers, playersPerTeam: found.activity.sport.playersPerTeam }),
+        activity: { ...found.activity, name: matchFormatTitle(found.activity.name, found.maxPlayers, { openSquad }) },
+      }
+    : found;
 
   // The smaller formats this club has set up, largest first (the
   // format-switch line proposes the first one the squad would fill).
@@ -285,7 +299,7 @@ export async function composeChaseText(input: {
   const seen = new Set<string>();
   const alternatives: SmallerFormat[] = [];
   for (const a of siblings) {
-    if (a.sport.name.split(" ")[0] !== family || a.sport.playersPerTeam >= currentPpt || seen.has(a.sport.name)) continue;
+    if (openSquad || a.sport.name.split(" ")[0] !== family || a.sport.playersPerTeam >= currentPpt || seen.has(a.sport.name)) continue;
     seen.add(a.sport.name);
     alternatives.push({ sportName: a.sport.name, totalPlayers: a.sport.playersPerTeam * 2 });
   }

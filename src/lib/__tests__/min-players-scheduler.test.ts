@@ -9,7 +9,7 @@
  * Driven through the real `computeDuePosts` with Prisma mocked (the
  * harness of announce-monthly-club.test.ts).
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 type Overrides = Record<string, Record<string, (...a: unknown[]) => unknown>>;
 const overrides: Overrides = {};
@@ -63,6 +63,7 @@ vi.mock("@/lib/admin-channel", async (orig) => ({
 }));
 
 import { computeDuePosts } from "@/lib/bot-scheduler";
+import { rosterShownKey, squadFingerprint } from "@/lib/roster-shown";
 
 const GROUP = "group-vets@g.us";
 const ORG = { id: "org-vets", whatsappGroupId: GROUP, whatsappBotEnabled: true, paygPricePence: null };
@@ -334,5 +335,82 @@ describe("review #517: a switched-up match is not 'low numbers' at the format's 
     const out = await runWith(m, SUN_10AM, f);
     const dm = out.find((i) => i.key === switchKey(m.id)) as { text: string } | undefined;
     expect(dm?.text).toBeUndefined();
+  });
+});
+
+// OPEN SQUAD (2026-11-17, open-squad.ts): no format, no places. The
+// minimum is the only number: the 18:00 warning fires below it, naming the
+// game with no size; the "Low numbers" switch offer never fires (there is
+// no format to switch to); the 17:00 post asks only while below it.
+describe("open squad: the minimum is the only number", () => {
+  beforeEach(() => {
+    features.squadMode = "weekly";
+    features.openSquad = true;
+  });
+  afterEach(() => {
+    delete features.openSquad;
+  });
+  const f = [
+    { name: "Football 7-a-side", ppt: 7, minPlayers: 12 },
+    { name: "Football 5-a-side", ppt: 5, minPlayers: null },
+  ];
+  /** Fri 6 Nov 17:05 London: a weekday's 17:00 post. */
+  const FRI_5PM = new Date("2026-11-06T17:05:00.000Z");
+  const evening = (out: Array<{ key: string }>, id: string) => out.filter((i) => i.key.startsWith(`${id}:evening-update:`));
+
+  it("18:00, 11 of a minimum of 12: 'Match in trouble' naming 12 and the game with no size", async () => {
+    const m = vetsGame(11, 12);
+    const out = await runWith(m, SUN_6PM, f);
+    const dm = out.find((i) => i.key === cancelKey(m.id)) as { text: string } | undefined;
+    expect(dm!.text).toContain("below the minimum to play (12)");
+    expect(dm!.text).toContain("*Football*");
+    expect(dm!.text).not.toMatch(/a-side/);
+  });
+
+  it("18:00, 16 in on a 14-place format: nothing", async () => {
+    const m = vetsGame(16, 12);
+    expect((await runWith(m, SUN_6PM, f)).some((i) => i.key === cancelKey(m.id))).toBe(false);
+  });
+
+  it("10:00, 11 of 12 with a 5-a-side to switch to: no switch offer", async () => {
+    const m = vetsGame(11, 12);
+    expect((await runWith(m, SUN_10AM, f)).some((i) => i.key === switchKey(m.id))).toBe(false);
+  });
+
+  it("the squad the reply path just showed (its fingerprint, on the match's own places) is not listed again at 17:00", async () => {
+    const m = vetsGame(10, 12);
+    const fp = squadFingerprint({
+      confirmedUserIds: (m.attendances as Array<{ userId: string }>).map((a) => a.userId),
+      benchUserIds: [],
+      maxPlayers: m.maxPlayers as number,
+    });
+    const shownAt = new Date(FRI_5PM.getTime() - 30 * 60_000);
+    adminChannel.on = true;
+    formats = f;
+    overrides.organisation = { findFirst: async () => ORG, findUnique: async () => ORG };
+    overrides.match = { findMany: async () => [m] };
+    overrides.squadMonth = { findMany: async () => [] };
+    overrides.sentNotification = {
+      findMany: async (args: unknown) => {
+        const where = (args as { where?: { kind?: unknown; key?: unknown } }).where ?? {};
+        if (where.kind) return [{ key: rosterShownKey(m.id, fp, shownAt), kind: "roster-shown", createdAt: shownAt }];
+        return [];
+      },
+    };
+    const res = await computeDuePosts(GROUP, FRI_5PM);
+    const post = (res?.instructions ?? []).find((i) => i.key.startsWith(`${m.id}:evening-update:`)) as { text: string } | undefined;
+    expect(post).toBeDefined();
+    expect(post!.text).not.toContain("*Confirmed (10):*");
+  });
+
+  it("17:00: 13 in (above 12, below the format's 14): nothing; 10 in: the chase for 2, no size, no places", async () => {
+    const full = vetsGame(13, 12);
+    expect(evening(await runWith(full, FRI_5PM, f), full.id)).toEqual([]);
+    const short = vetsGame(10, 12);
+    const posts = evening(await runWith(short, FRI_5PM, f), short.id) as Array<{ key: string; text: string }>;
+    expect(posts).toHaveLength(1);
+    expect(posts[0].text).toContain("need *2 more*");
+    expect(posts[0].text).toContain("*Confirmed (10):*");
+    expect(posts[0].text).not.toMatch(/a-side|\/1[24]|places open/);
   });
 });

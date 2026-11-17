@@ -215,18 +215,25 @@ export function buildOpenAnswerContext(input: OpenAnswerInput): { text: string; 
   } else {
     const confirmed = namesByStatus(state, "CONFIRMED", fallback);
     const bench = namesByStatus(state, "BENCH", fallback);
-    const perSide = state.maxPlayers % 2 === 0 ? `, ${state.maxPlayers / 2} a side` : "";
-    L.push(`UPCOMING MATCH: ${state.matchLabel ?? state.kickoffLabel}${state.venue.trim() ? ` at ${state.venue.trim()}` : ""}, ${state.maxPlayers} players${perSide}`);
-    L.push(`Places left: ${Math.max(0, state.maxPlayers - confirmed.length)}`);
-    L.push(
-      `Who fills an open place: ${state.features.benchPickMode === "organiser" ? "the organisers choose from the bench" : "the first on the bench moves up"}`,
-    );
+    if (state.features.openSquad === true) {
+      // No squad limit (2026-11-17, open-squad.ts).
+      const min = state.openSquadMinimum ?? state.maxPlayers;
+      L.push(`UPCOMING MATCH: ${state.matchLabel ?? state.kickoffLabel}${state.venue.trim() ? ` at ${state.venue.trim()}` : ""}. No squad limit: everyone who says IN plays, no bench, no number a side.`);
+      L.push(`Fewest to play: ${min}. Players still needed to play: ${Math.max(0, min - confirmed.length)}`);
+    } else {
+      const perSide = state.maxPlayers % 2 === 0 ? `, ${state.maxPlayers / 2} a side` : "";
+      L.push(`UPCOMING MATCH: ${state.matchLabel ?? state.kickoffLabel}${state.venue.trim() ? ` at ${state.venue.trim()}` : ""}, ${state.maxPlayers} players${perSide}`);
+      L.push(`Places left: ${Math.max(0, state.maxPlayers - confirmed.length)}`);
+      L.push(
+        `Who fills an open place: ${state.features.benchPickMode === "organiser" ? "the organisers choose from the bench" : "the first on the bench moves up"}`,
+      );
+    }
     const hideNames = audience === "players" && state.features.listAnnouncer === "organisers";
     if (hideNames) {
-      L.push(`SQUAD: ${confirmed.length} of ${state.maxPlayers}. The organisers post the list, so no squad or bench names are given here, and MatchTime names nobody in the squad or on the bench, even when the chat shows the list.`);
+      L.push(`SQUAD: ${confirmed.length}${state.features.openSquad ? "" : ` of ${state.maxPlayers}`}. The organisers post the list, so no squad or bench names are given here, and MatchTime names nobody in the squad or on the bench, even when the chat shows the list.`);
       L.push(`BENCH: ${bench.length} on the bench.`);
     } else {
-      L.push(`SQUAD, ${confirmed.length} of ${state.maxPlayers}, in the order they joined:`);
+      L.push(`SQUAD, ${confirmed.length}${state.features.openSquad ? "" : ` of ${state.maxPlayers}`}, in the order they joined:`);
       L.push(...(confirmed.length ? numbered(confirmed) : ["  nobody yet"]));
       L.push("BENCH, in order:");
       L.push(...(bench.length ? numbered(bench) : ["  nobody"]));

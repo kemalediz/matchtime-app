@@ -403,7 +403,7 @@ export async function sweepPool(now: Date = new Date(), env?: Env): Promise<{ cl
         places: true,
         via: true,
         createdAt: true,
-        org: { select: { featurePlayerPool: true } },
+        org: { select: { featurePlayerPool: true, openSquad: true } },
         match: { select: { date: true, status: true, isHistorical: true } },
       },
     });
@@ -431,6 +431,8 @@ export async function sweepPool(now: Date = new Date(), env?: Env): Promise<{ cl
           roundPlaced: fill.placed,
           roundWanted: fill.wanted,
           placesOpen,
+          // An open squad (open-squad.ts): every yes takes a place.
+          openSquad: ask.org.openSquad === true,
         });
         if (reason) {
           if (await closePoolAsk(ask.id, reason, now, env)) closed++;
