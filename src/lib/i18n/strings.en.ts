@@ -1641,6 +1641,22 @@ export const en = {
     `This group plays as a monthly squad. Paid for the month? You're on the month's list and in every game, no need to say anything. Can't make one? Say *Out* and your place opens for someone else.\n` +
     `Pay as you go? Say *In* to take an open place, and you pay for that game only.`,
 
+  /** "help availability" for a club with no squad limit (2026-11-17,
+   *  open-squad.ts): every IN plays, no bench; MatchTime asks for players
+   *  only below the game's minimum. `monthly`: the month's regulars. */
+  onbHelpAvailabilityOpenSquad: (p: { monthly: boolean }): string =>
+    `⚽ *Squad & availability: how it works*\n` +
+    (p.monthly
+      ? `This group plays as a monthly squad. Paid for the month? You're on the month's list and in every game, no need to say anything. Pay as you go? Say *In* to play that game, and you pay for that game only.\n`
+      : `Just say *In* or *Out* in the group to mark yourself for the next game, or say a teammate can't make it (for example *Sam is out*). No need to tag me, I read it automatically.\n`) +
+    `There's no squad limit and no bench: everyone who says *In* plays. Can't make it? Say *Out*. I only ask for more players while there are fewer than the minimum to play.`,
+  /** Under "help teams" for a club with no squad limit. */
+  onbHelpTeamsOpenSquad: "No squad limit here, so no number a side: the teams are whoever is in, split into two even sides (15 players is 8 against 7).",
+  /** Under an organiser's "help availability": the squad limit by WhatsApp. */
+  onbHelpOpenSquadOrganiser: (p: { on: boolean }): string =>
+    p.on
+      ? `To put a limit and a bench back, tag me and say so (for example *@Match Time put the limit and the bench back*), or use the Bench card in the settings.`
+      : `Pitch big enough for anyone? Tag me and say so (for example *@Match Time no limit on the squad*): everyone who says In plays, with no bench.`,
   /** "help availability" (2026-10-31): the friend link (#488), as
    *  friend-link/rules.ts and friend-link.en.ts do it. Appended to every
    *  availability explainer by buildHelpReply. */

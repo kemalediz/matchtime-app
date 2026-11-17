@@ -1352,6 +1352,17 @@ export const tr: Strings = {
     `⚽ *Kadro ve katılım nasıl çalışır*\n` +
     `Bu grup aylık kadroyla oynuyor. Ayın ücretini ödediyseniz ayın listesindesiniz ve tüm maçlardasınız, bir şey yazmanıza gerek yok. Bir maça gelemiyorsanız *yokum* yazın, yeriniz başkasına açılır.\n` +
     `Maç başı mı ödüyorsunuz? Boş bir yeri almak için *varım* yazın, sadece o maçın ücretini ödersiniz.`,
+  onbHelpAvailabilityOpenSquad: (p) =>
+    `⚽ *Kadro ve katılım nasıl çalışır*\n` +
+    (p.monthly
+      ? `Bu grup aylık kadroyla oynuyor. Ayın ücretini ödediyseniz ayın listesindesiniz ve tüm maçlardasınız, bir şey yazmanıza gerek yok. Maç başı mı ödüyorsunuz? O maçta oynamak için *varım* yazın, sadece o maçın ücretini ödersiniz.\n`
+      : `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter. Bir takım arkadaşınız gelemiyorsa onu da yazabilirsiniz (örneğin *Sami gelemiyor*). Beni etiketlemenize gerek yok, otomatik okurum.\n`) +
+    `Kadro sınırı ve yedek yok: *varım* yazan herkes oynar. Gelemiyor musunuz? *yokum* yazın. Yalnızca oynamak için gereken en az sayının altındayken oyuncu ararım.`,
+  onbHelpTeamsOpenSquad: "Burada kadro sınırı yok, takım başına sayı da yok: takımlar gelenler arasında iki eşit tarafa bölünür (15 oyuncu 8'e 7).",
+  onbHelpOpenSquadOrganiser: (p) =>
+    p.on
+      ? `Kadro sınırını ve yedekleri geri getirmek için beni etiketleyip söyleyin (örneğin *@Match Time kadro sınırını ve yedekleri geri getir*) ya da ayarlardaki Yedekler kartını kullanın.`
+      : `Saha gelen herkese yetiyor mu? Beni etiketleyip söyleyin (örneğin *@Match Time kadro sınırı yok*): *varım* yazan herkes oynar, yedek olmaz.`,
   onbHelpFriendLink: `👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.`,
   onbHelpFriend: (p) =>
     `👥 *Arkadaş getirmek nasıl çalışır*\n` +
