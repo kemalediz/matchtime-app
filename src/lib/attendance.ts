@@ -3,6 +3,7 @@ import { requestBenchConfirmationOnDrop, queueSlotEmojiRefresh } from "./bot-sch
 import { announceSquadFullIfJustFilled } from "./squad-announce";
 import {
   EXPLICIT_BENCH_NOTE,
+  EXPLICIT_BENCH_WITH_ROOM_NOTE,
   UNATTRIBUTED_ATTENDANCE_CONTEXT,
   recordAttendanceEvent,
   type AttendanceEventContext,
@@ -100,6 +101,9 @@ export async function registerAttendance(
      * `event.actorUserId`'s membership.
      */
     actorIsAdmin?: boolean;
+    /** See `cancelAttendance`'s option of the same name: a CONFIRMED
+     *  player moved to the bench hands the bench fill back to the caller. */
+    deferBenchFill?: boolean;
   },
 ) {
   // TypeScript makes `options.event` mandatory for everything under
@@ -304,7 +308,11 @@ export async function registerAttendance(
           eventContext.note ??
           (row.status === "BENCH"
             ? options?.benchIntent === "explicit"
-              ? EXPLICIT_BENCH_NOTE
+              ? // Chose to wait while a place was his: the bench never
+                // moves him up by itself (`bench-fill-rules.ts`).
+                confirmedCount < match.maxPlayers && existing?.status !== "CONFIRMED"
+                ? EXPLICIT_BENCH_WITH_ROOM_NOTE
+                : EXPLICIT_BENCH_NOTE
               : heldForOrganisers
                 ? ORGANISER_PICK_BENCH_NOTE
                 : "squad full, no slot to give"
@@ -426,7 +434,21 @@ export async function registerAttendance(
 
   // If we forced BENCH on a previously-confirmed user, slots may have
   // shifted up for others — refresh emojis like cancelAttendance does.
+  let benchFill: (() => Promise<void>) | undefined;
   if (existing?.status === "CONFIRMED" && status === "BENCH") {
+    // The place he left goes to the first one waiting on the bench, never
+    // back to him (he is held: `bench-fill-rules.ts`). A first-come club
+    // only; nothing for the others. Never fails this write.
+    const fill = async () => {
+      try {
+        const { fillOpenPlacesFromBench } = await import("./bench-fill");
+        await fillOpenPlacesFromBench(matchId, { actorKind: "system", sourceRef: `bench-demote:${userId}`, vacatedByUserId: userId });
+      } catch (err) {
+        console.error(`[attendance] bench fill after ${userId} moved to the bench failed:`, err instanceof Error ? err.message : err);
+      }
+    };
+    if (options.deferBenchFill) benchFill = fill;
+    else await fill();
     await queueSlotEmojiRefresh(matchId);
   }
 
@@ -459,6 +481,8 @@ export async function registerAttendance(
       confirmedCount + (status === "CONFIRMED" && existing?.status !== "CONFIRMED" ? 1 : 0) -
       (existing?.status === "CONFIRMED" && status === "BENCH" ? 1 : 0),
     maxPlayers: match.maxPlayers,
+    // Only with `deferBenchFill`, and only when a place was opened.
+    ...(benchFill ? { benchFill } : {}),
   };
 }
 
@@ -480,6 +504,16 @@ export async function cancelAttendance(
      * without the rolling squad.
      */
     occurredAt?: Date;
+    /**
+     * Hand the bench fill back to the caller instead of running it now
+     * (2026-11-17). A batch of writes from one message ("Mojib is replacing
+     * Najib", "swap Tom for Ben") must land its named replacement BEFORE
+     * the bench fills what is left, or the first player on the bench would
+     * take Najib's place and Mojib would land on the bench. The caller
+     * runs the returned `benchFill` once the batch is written
+     * (`attendance-engine.ts`). Absent: the fill runs here, as always.
+     */
+    deferBenchFill?: boolean;
   } = {},
 ) {
   const eventContext = event ?? UNATTRIBUTED_ATTENDANCE_CONTEXT;
@@ -563,11 +597,13 @@ export async function cancelAttendance(
     );
   });
 
-  // If someone in the confirmed 14 dropped, we DON'T auto-promote any more.
-  // Instead we ask the first bench player via WhatsApp 👍/👎 first (they
-  // may have mentally checked out). The bot-scheduler creates a
-  // PendingBenchConfirmation; subsequent /due-posts cycles post the prompt
-  // and handle confirmation/timeout.
+  let benchFill: (() => Promise<void>) | undefined;
+  // A CONFIRMED player's place opened. In a first-come club the first
+  // player on the bench takes it at once and is told by DM (2026-11-17,
+  // `bench-fill.ts`; from 2026-04-19 to then the bench was ASKED instead,
+  // which left the list at "need 1 more" beside a bench). An
+  // organiser-pick club's admins choose. `requestBenchConfirmationOnDrop`
+  // decides which.
   if (wasConfirmed) {
     // Re-arm the "squad full" announcement. It dedupes on
     // `<matchId>:squad-locked` (once per match) — but a squad can
@@ -585,7 +621,8 @@ export async function cancelAttendance(
     // slot is being filled. On 👍 the reaction handler will transfer
     // this user's TeamAssignment to the bench player and announce the
     // swap to the group.
-    await requestBenchConfirmationOnDrop(matchId, userId);
+    if (options?.deferBenchFill) benchFill = () => requestBenchConfirmationOnDrop(matchId, userId);
+    else await requestBenchConfirmationOnDrop(matchId, userId);
     // Slots have shifted up — queue retroactive react updates so
     // every confirmed player's IN message shows their NEW slot emoji.
     // Idempotent and bounded; bot picks them up on its next 5-min tick.
@@ -638,7 +675,7 @@ export async function cancelAttendance(
     }).catch((err) => console.error("[attendance] late drop-out notice failed:", err));
   }
 
-  return { status: "DROPPED" as const };
+  return { status: "DROPPED" as const, ...(benchFill ? { benchFill } : {}) };
 }
 
 /** R4: one notice to the club's organisers, in the club's language. */

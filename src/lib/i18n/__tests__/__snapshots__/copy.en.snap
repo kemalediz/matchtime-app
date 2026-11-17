@@ -855,7 +855,7 @@ See you all there ⚽
 
 See you all there ⚽
 
-🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.
+🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out, the first on the bench moves up and I message them.
 
 ### R186 payments_live_announcement / every method
 💳 *Match fees now go through MatchTime*
@@ -990,7 +990,7 @@ _nobody yet_
 *Bench (0):*
 _nobody yet_
 
-🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.
+🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out, the first on the bench moves up and I message them.
 
 ### R71b buildSquadFullEveningPost / bench of two, still asks
 🗓 *Tuesday 7-a-side*: squad is full, *14/14* ✅
@@ -1015,7 +1015,7 @@ _nobody yet_
 1. Erdal Ozkan
 2. Amir Ahmadi
 
-🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.
+🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out, the first on the bench moves up and I message them.
 
 ### R71b buildSquadFullEveningPost / bench of 3, no ask
 🗓 *Tuesday 7-a-side*: squad is full, *14/14* ✅
@@ -1218,7 +1218,7 @@ Here's what I do:
 
 🗒  *Daily reminders*: Every day at 5pm, while there are places to fill or fewer than 3 on the bench, I'll repost the list so we all see what's needed.
 
-🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
+🔁  *Bench promotion*: If someone drops, the first on the bench moves up and I message them. If they can't make it they reply *OUT* and the next one moves up.
 
 ⚽  *Teams*: Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I post auto-balanced sides. Objections? Tell me what to change the same way (for example "@Match Time swap Sam with Alex") and an admin will apply it.
 
@@ -1444,10 +1444,10 @@ Just reply *IN* here to take it. No rush and no timeout, whoever is free first g
 Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏
 
 ### R53 buildBenchIntroLine / reactions off
-🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
+🔁  *Bench promotion*: If someone drops, the first on the bench moves up and I message them. If they can't make it they reply *OUT* and the next one moves up.
 
 ### R54 buildFullSquadBenchInvite / reactions off
-*Tuesday 7-a-side* is full at 14 of 14, but the bench is open. Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group and the first to reply *IN* takes the slot. 🙏
+*Tuesday 7-a-side* is full at 14 of 14, but the bench is open. Say *IN* and I'll put you on the bench. If someone drops out, the first on the bench moves up and I message them. 🙏
 
 ### R55 buildBenchAskedLine / reactions off
 Asking *Erdal Ozkan* to step up, they're tagged here and just need to reply *IN*. Squad is *13/14* until they confirm.
@@ -1468,10 +1468,10 @@ React 👍 here or reply *IN* to take it. No rush and no timeout, whoever is fre
 Want it? Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN* there. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏
 
 ### R53 buildBenchIntroLine / reactions on
-🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to react 👍 or reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
+🔁  *Bench promotion*: If someone drops, the first on the bench moves up and I message them. If they can't make it they reply *OUT* and the next one moves up.
 
 ### R54 buildFullSquadBenchInvite / reactions on
-*Tuesday 7-a-side* is full at 14 of 14, but the bench is open. Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group and the first to react 👍 or reply *IN* takes the slot. 🙏
+*Tuesday 7-a-side* is full at 14 of 14, but the bench is open. Say *IN* and I'll put you on the bench. If someone drops out, the first on the bench moves up and I message them. 🙏
 
 ### R55 buildBenchAskedLine / reactions on
 Asking *Erdal Ozkan* to step up, they've been tagged here with a 👍 prompt. Squad is *13/14* until they confirm.
@@ -1941,7 +1941,7 @@ Tag me with *help* and a topic to learn more, e.g. *@Match Time help availabilit
 ⚽ *Squad & availability: how it works*
 Just say *In* or *Out* in the group to mark yourself for the next game, or say a teammate can't make it (for example *Sam is out*). No need to tag me, I read it automatically.
 I keep a live, numbered squad list. When it's full, extra players go on the *bench* in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.
-If you drop out, I can nudge the bench to step in so we're never short. Say *Out* any time and I'll sort the rest.
+If you drop out, the first on the bench moves up and I message them, so we're never short. Say *Out* any time and I'll sort the rest.
 👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.
 
 ✅ It's on for this club.
@@ -3690,7 +3690,7 @@ Here's what I do:
 
 🗒  *Daily reminders*: Every day at 5pm, while there are places to fill or fewer than 3 on the bench, I'll repost the list so we all see what's needed.
 
-🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
+🔁  *Bench promotion*: If someone drops, the first on the bench moves up and I message them. If they can't make it they reply *OUT* and the next one moves up.
 
 ⚽  *Teams*: Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I post auto-balanced sides. Objections? Tell me what to change the same way (for example "@Match Time swap Sam with Alex") and an admin will apply it.
 
@@ -3917,8 +3917,8 @@ The squad is full for Fri 19:15: 14 of 14. Nothing to ask the main chat for.
 Already asked in the main chat at 14:05 for 1 player. Ask me again and I'll post it again.
 
 ### OPK8 settings: who fills an open place
-Who fills an open place: First to say IN, or the organisers pick from the bench.
-First to say IN / The organisers pick
+Who fills an open place: The first on the bench moves up, or the organisers pick from the bench.
+First on the bench / The organisers pick
 If nobody picks in time
 Offer it to the bench / Leave it open
 Saved
@@ -4099,7 +4099,7 @@ Good news: Thursday Ladies is approved. I'm in "Thursday Ladies 5s" and I'm stay
 
 I read the recent messages in "Thursday Ladies 5s" and found nothing that needs a setting changed, so MatchTime is on its standard setup.
 
-Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.
+Standard setup: players say In or Out each week, and a free place goes to the first player on the bench, who I message.
 
 ⚙️ *Check or change how your group runs:*
 https://matchtime.ai/r/settings
@@ -4121,7 +4121,7 @@ Good news: Thursday Ladies is approved. I'm in "Thursday Ladies 5s" and I'm stay
 
 I couldn't read your group's recent messages, so MatchTime is on its standard setup. That's fine: check the settings below and reply *GO* when you're happy.
 
-Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.
+Standard setup: players say In or Out each week, and a free place goes to the first player on the bench, who I message.
 
 ⚙️ *Check or change how your group runs:*
 https://matchtime.ai/r/settings
@@ -4141,7 +4141,7 @@ Your first three months are free. The free period starts when I go live in the g
 ### SUP4 composeSetupAskDm / no reading at all (the reading is off), a group with no name
 Good news: Thursday Ladies is approved. I'm in your group and I'm staying quiet there until you tell me to start.
 
-Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.
+Standard setup: players say In or Out each week, and a free place goes to the first player on the bench, who I message.
 
 ⚙️ *Check or change how your group runs:*
 https://matchtime.ai/r/settings
@@ -4167,7 +4167,7 @@ Worth a check (I changed nothing here):
 🔎 The chat names Mabley Green as the pitch; your weekly game says Hackney Marshes.
 Change it here: https://matchtime.ai/r/sched
 
-Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.
+Standard setup: players say In or Out each week, and a free place goes to the first player on the bench, who I message.
 
 ⚙️ *Check or change how your group runs:*
 https://matchtime.ai/r/learned
@@ -4223,7 +4223,7 @@ Good news: Thursday Ladies is approved. I'm in "Thursday Ladies 5s" and I'm stay
 
 I read the recent messages in "Thursday Ladies 5s" and found nothing that needs a setting changed, so MatchTime is on its standard setup.
 
-Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.
+Standard setup: players say In or Out each week, and a free place goes to the first player on the bench, who I message.
 
 ⚙️ *Check or change how your group runs:*
 https://matchtime.ai/r/settings
@@ -4255,7 +4255,7 @@ Good news: Thursday Ladies is approved. I'm in "Thursday Ladies 5s" and I'm stay
 
 I read the recent messages in "Thursday Ladies 5s" and found nothing that needs a setting changed, so MatchTime is on its standard setup.
 
-Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.
+Standard setup: players say In or Out each week, and a free place goes to the first player on the bench, who I message.
 
 ⚙️ *Check or change how your group runs:*
 https://matchtime.ai/r/settings
@@ -4410,7 +4410,7 @@ The squad is full.
 
 You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
 
-🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.
+🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out, the first on the bench moves up and I message them.
 
 ### MWK10 buildMonthlyDailyPost / same list seen lately, a place open
 📋 *Monday 7-a-side, Mon 12 Oct at 20:00*
@@ -4422,7 +4422,7 @@ You're all in, no need to say anything. Can't make it? Say *Out* and your place 
 
 The squad is full.
 
-🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.
+🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out, the first on the bench moves up and I message them.
 
 ### MWK2 buildPaygPoolGroupPost / with a price
 🎟 1 place open for *Mon 12 Oct, 20:00*, £8 PAYG. First to say *IN* gets it.

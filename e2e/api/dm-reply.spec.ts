@@ -276,5 +276,9 @@ test("a cold 'OUT' DM drops the player and tells the group", async ({ request, d
   const att = await attendance(db, U.player);
   expect(att?.status).toBe("DROPPED");
 
-  expect(await groupPostsLike(db, "*Pat Player* is OUT (replied by DM). Squad *4/5*.")).toBe(1);
+  // Zara was waiting on the bench (squad full): she moves up at once
+  // (2026-11-17), so the squad the group is told is full again.
+  expect((await attendance(db, U.extra))?.status).toBe("CONFIRMED");
+  expect(await groupPostsLike(db, "*Pat Player* is OUT (replied by DM). Squad *5/5*.")).toBe(1);
+  expect(await groupPostsLike(db, "*Zara Zest* moves up from the bench")).toBe(1);
 });

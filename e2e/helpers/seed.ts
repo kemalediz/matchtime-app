@@ -26,6 +26,7 @@
  */
 import type { PrismaClient } from "@/generated/prisma/client";
 import { E2E } from "./env";
+import { EXPLICIT_BENCH_WITH_ROOM_NOTE } from "@/lib/attendance-events";
 import { U, PHONE, NAME, ORG_ID, SPORT_ID, ACTIVITY_ID, MATCH, FEE, londonAt } from "./constants";
 
 export { U, PHONE, NAME, ORG_ID, SPORT_ID, ACTIVITY_ID, MATCH, FEE, londonAt };
@@ -301,6 +302,12 @@ async function seedAttendanceEvents(db: PrismaClient): Promise<void> {
       cause: "test-fixture",
       actorKind: "system",
       sourceRef: "e2e:seed",
+      // The upcoming match is 4 of 5 with Ben on the bench. Since
+      // 2026-11-17 a first-come club's bench fills a free place by itself
+      // (`src/lib/bench-fill.ts`), so that state is only a real one when Ben
+      // CHOSE the bench while a place was free. Said here, so the fixture
+      // world stays the world every spec was written against.
+      note: r.status === "BENCH" ? EXPLICIT_BENCH_WITH_ROOM_NOTE : null,
       at: new Date(base + i * 60_000),
     })),
   });

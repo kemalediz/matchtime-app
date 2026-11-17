@@ -61,8 +61,8 @@ export default function HelpLandingPage() {
           squad, 🪑 when you&apos;re on the bench and 👋 when you&apos;ve dropped.
         </li>
         <li>
-          <strong>Runs the bench.</strong> When someone drops, the bench is
-          offered the spot and the first to claim it plays.
+          <strong>Runs the bench.</strong> When someone drops, the first
+          player on the bench moves up and gets a DM to say so.
         </li>
         <li>
           <strong>Chases when short, stops when full.</strong> It asks the

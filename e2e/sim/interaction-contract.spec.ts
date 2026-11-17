@@ -20,7 +20,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { createGroup, SimGroup } from "./group";
-import { facts, otherClaim, otherFacts, selfIn, selfOut, addMatchAvailabilityBodies } from "../helpers/stub";
+import { facts, otherClaim, otherFacts, selfIn, selfOut } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
@@ -367,13 +367,13 @@ test.describe("third-party attendance is tag-free", () => {
 //
 // An untagged drop (an admin's since 2026-09-07, anybody's since
 // 2026-11-02) must trigger everything a drop normally triggers. The one that
-// matters to a real club is the bench-offer chain: dropping a confirmed
-// player frees a slot, and `attendance.ts:cancelAttendance` →
-// `requestBenchConfirmationOnDrop` offers it to the bench. A waived drop
-// that quietly skipped that would leave the club a player short with
-// somebody sitting on the bench waiting to be asked.
-test.describe("an admin's untagged drop still opens the bench offer", () => {
-  test("drop by an untagged ADMIN → slot freed AND offered to the bench", async ({
+// matters to a real club is the bench: dropping a confirmed player frees a
+// slot, and `attendance.ts:cancelAttendance` → `requestBenchConfirmationOnDrop`
+// gives it to the first one on the bench (since 2026-11-17,
+// `bench-fill.ts`). A waived drop that quietly skipped that would leave the
+// club a player short with somebody sitting on the bench.
+test.describe("an admin's untagged drop still fills the place from the bench", () => {
+  test("drop by an untagged ADMIN → slot freed AND the first on the bench moves up", async ({
     request,
     db,
   }) => {
@@ -400,16 +400,9 @@ test.describe("an admin's untagged drop still opens the bench offer", () => {
 
     expect(r.react).toBe("👍");
     expect(await grp.dropped()).toContain("Pete Power");
-    expect((await grp.counts()).confirmed).toBe(4);
-    // The whole point: the freed slot is offered, and to the bench.
-    const offers = await grp.openOffers();
-    expect(offers).toHaveLength(1);
-
-    // And the offer is claimable, so the chain really is the normal one.
-    addMatchAvailabilityBodies({ YES: "in" }); // the bench offer's YES, read by the model (stubbed)
-    const claim = await grp.dm("greg", "YES");
-    expect(claim.json.result).toBe("confirmed");
+    // The whole point: the freed slot goes to the bench, with no race.
     expect((await grp.attendanceOf("greg"))?.status).toBe("CONFIRMED");
+    expect((await grp.counts()).confirmed).toBe(5);
     expect(await grp.openOffers()).toHaveLength(0);
   });
 });
@@ -430,7 +423,7 @@ test.describe("an admin's untagged drop still opens the bench offer", () => {
 // the ORDINARY apply path, and that the admin-only bench guard still
 // stops a player's bench clause.
 test.describe("an untagged [OUT + BENCH], end to end", () => {
-  test("from the owner: the drop and the demote both land, and the freed slot is offered", async ({
+  test("from the owner: the drop and the demote both land, and the bench fills a freed place", async ({
     request,
     db,
   }) => {
@@ -461,17 +454,14 @@ test.describe("an untagged [OUT + BENCH], end to end", () => {
 
     expect(await grp.dropped()).toContain("Pete Power");
     expect(await grp.bench()).toContain("Dan Drummer");
-    expect((await grp.counts()).confirmed).toBe(3);
     expect(r.reply ?? "").not.toMatch(/tag/i);
 
-    // THE APPLY PATH IS THE ORDINARY ONE: the freed slot is offered to
-    // the bench, and the offer is claimable.
-    const offers = await grp.openOffers();
-    expect(offers).toHaveLength(1);
-    addMatchAvailabilityBodies({ YES: "in" }); // the bench offer's YES, read by the model (stubbed)
-    const claim = await grp.dm("greg", "YES");
-    expect(claim.json.result).toBe("confirmed");
+    // THE APPLY PATH IS THE ORDINARY ONE (2026-11-17): once the message's
+    // writes have landed, Greg, who was waiting, takes a freed place. Dan
+    // was put on the bench on purpose, so he is not moved back up.
     expect((await grp.attendanceOf("greg"))?.status).toBe("CONFIRMED");
+    expect((await grp.attendanceOf("dan"))?.status).toBe("BENCH");
+    expect((await grp.counts()).confirmed).toBe(4);
     expect(await grp.openOffers()).toHaveLength(0);
   });
 

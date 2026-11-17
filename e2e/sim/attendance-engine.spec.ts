@@ -826,14 +826,14 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(res.dms).toEqual([]);
   });
 
-  test("a drop with a BENCH behind it leaves the bench broadcast to do the talking", async ({
+  test("a drop with a BENCH behind it: the bench moves up, and its one line does the talking", async ({
     request,
     db,
   }) => {
-    // `cancelAttendance` → `requestBenchConfirmationOnDrop` opens ONE
-    // BenchSlotOffer, and the scheduler turns it into a group post
-    // tagging every bencher plus a DM each. A second "one slot open" on
-    // top of that is noise.
+    // Since 2026-11-17 `cancelAttendance` → `requestBenchConfirmationOnDrop`
+    // moves the first one on the bench up (`bench-fill.ts`), DMs him, and
+    // the group gets ONE line (on the squad-complete post, which the move
+    // re-completes). The engine itself still says nothing about the slot.
     const g = await createGroup(request, db, {
       maxPlayers: 14,
       attendance: [
@@ -845,15 +845,16 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 
     const res = await g.postBatch([{ player: "pete", body: INJURY }]);
 
-    expect(await g.counts()).toMatchObject({ confirmed: 13, bench: 1 });
-    // Not a word from the engine (2026-10-03): the offer's own post,
-    // from the scheduler, is the one announcement of this slot. See
-    // `bench-offer-single-post.spec.ts` for the two paths together.
+    expect(await g.counts()).toMatchObject({ confirmed: 14, bench: 0 });
     const speakers = res.results.filter((r) => (r.reply ?? "").length > 0);
     expect(speakers).toHaveLength(0);
     expect(res.results[0].react).toBe("👋");
-    expect(res.groupPosts).toEqual([]);
-    expect(res.dms).toEqual([]);
+    expect(res.groupPosts).toHaveLength(1);
+    expect(res.groupPosts[0]).toContain("moves up from the bench");
+    expect(res.groupPosts[0]).toContain("Squad complete");
+    expect(res.groupPosts.join("\n")).not.toMatch(/slot open|first to claim/i);
+    expect(res.dms).toHaveLength(1);
+    expect(res.dms[0].phone).toBe(g.player("quinn").phone!.replace(/^\+/, ""));
   });
 
   test("a batch with SEVERAL drops announces them once, in one sentence", async ({

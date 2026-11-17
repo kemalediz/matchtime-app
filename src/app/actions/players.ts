@@ -1270,6 +1270,17 @@ export async function removePlayerFromMatch(matchId: string, userId: string): Pr
       console.error("[players] partner guest check failed:", err instanceof Error ? err.message : "failed");
     }
   }
+  // A playing place opened: the first player on the bench takes it, as
+  // after any drop (2026-11-17, `bench-fill.ts`; first-come clubs only).
+  // Never fails the removal.
+  if (priorRow?.status === "CONFIRMED") {
+    try {
+      const { fillOpenPlacesFromBench } = await import("@/lib/bench-fill");
+      await fillOpenPlacesFromBench(matchId, { actorKind: "system", sourceRef: "admin:removePlayerFromMatch", vacatedByUserId: userId });
+    } catch (err) {
+      console.error("[players] bench fill after removal failed:", err instanceof Error ? err.message : "failed");
+    }
+  }
   revalidatePath(`/matches/${matchId}`);
   return { ok: true };
 }

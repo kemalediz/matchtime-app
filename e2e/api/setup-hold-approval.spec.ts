@@ -513,7 +513,7 @@ test("FLAG ON: the reading found nothing: the DM says so and explains the standa
     `I read the recent messages in "Mill Lane FC group" and found nothing that needs a setting changed, so MatchTime is on its standard setup.`,
   );
   expect(blocks[2]).toBe(
-    "Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.",
+    "Standard setup: players say In or Out each week, and a free place goes to the first player on the bench, who I message.",
   );
   expect(blocks[3]).toMatch(/^⚙️ /);
 });
@@ -531,7 +531,7 @@ test("FLAG ON, Turkish, no chat stored (skipped): the DM is Turkish and says the
   );
   expect(blocks[1]).toBe("Grubunuzun son mesajlarını okuyamadım, bu yüzden MatchTime standart düzeninde. Sorun değil: aşağıdaki ayarları kontrol edin ve hazır olduğunuzda *BAŞLA* yazın.");
   expect(blocks[2]).toBe(
-    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki herkese teklif edilir: ilk VARIM diyen yeri alır.",
+    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedekteki ilk oyuncuya geçer ve ona mesaj atarım.",
   );
   // The Turkish DM asks for BAŞLA and names the button "Yayına al" (as the go-live PR does).
   expect(dm.text).toContain("buraya *BAŞLA* yazın");

@@ -255,16 +255,14 @@ export const en = {
   /** How a bench place turns into a game, as one clause. Shared by the
    *  day-one intro, the full-squad recruit answer and the squad-complete
    *  invite, so the promise cannot say different things in different
-   *  places. `reactions` is BENCH_PROMPT_MENTION_REACTIONS. */
-  bench_promotion_how: (p: { reactions: boolean }): string =>
-    p.reactions
-      ? "the first to react 👍 or reply *IN* takes the slot"
-      : "the first to reply *IN* takes the slot",
+   *  places. Since 2026-11-17 the bench fills a place by itself, first
+   *  in bench order (`bench-fill.ts`): no tag, no race. */
+  bench_promotion_how: "the first on the bench moves up and I message them",
   /** The closing line of the squad-complete post when the bench feature
    *  is on. `how` is `bench_promotion_how`. */
   squad_complete_bench_invite: (p: { how: string }): string =>
     `🪑 *Bench is open.* Say *IN* and I'll put you on the bench. ` +
-    `If someone drops out I tag the bench here and ${p.how}.`,
+    `If someone drops out, ${p.how}.`,
   /** The group post that offers an open slot to the whole bench at once. */
   bench_offer_group_post: (p: { context: string; tagList: string; reactions: boolean }): string => {
     const claim = p.reactions
@@ -787,15 +785,36 @@ export const en = {
   bench_claim_open: (p: { claimer: string; confirmed: number; maxPlayers: number }): string =>
     `✅ *${p.claimer}* grabbed the open slot. Squad *${p.confirmed}/${p.maxPlayers}* 🙌`,
 
+  /** The group line when the bench filled a place by itself (2026-11-17,
+   *  `bench-fill.ts`). `names` is already bold and joined ("*A* and *B*"),
+   *  `count` how many moved up. `squad` is null when the line leads the
+   *  squad-complete post, whose header already carries the count. */
+  bench_moved_up: (p: {
+    names: string;
+    count: number;
+    dropped: string | null;
+    teamLabel: string | null;
+    squad: { confirmed: number; maxPlayers: number } | null;
+  }): string => {
+    if (p.teamLabel && p.dropped && p.count === 1) {
+      return (
+        `⬆️ ${p.names} moves up from the bench and takes *${p.dropped}*'s place on *${p.teamLabel}* 🙌\n\n` +
+        `_Want the teams rebalanced with the new line-up? Tag me and ask in your own words (for example "@Match Time regenerate the teams")._`
+      );
+    }
+    const verb = p.count === 1 ? "moves" : "move";
+    const head = `⬆️ ${p.names} ${verb} up from the bench${p.dropped && p.count === 1 ? `, replacing *${p.dropped}*` : ""}`;
+    return p.squad ? `${head}. Squad *${p.squad.confirmed}/${p.squad.maxPlayers}* 🙌` : `${head} 🙌`;
+  },
+
   // ── rows 53, 54, 55: the rest of bench-offer-copy.ts ───────────────
 
   bench_intro_line: (p: { how: string }): string =>
-    `🔁  *Bench promotion*: If someone drops, I tag the bench here and ` +
-    `${p.how}. No timeout, and nobody loses their place for missing it.`,
+    `🔁  *Bench promotion*: If someone drops, ${p.how}. ` +
+    `If they can't make it they reply *OUT* and the next one moves up.`,
   full_squad_bench_invite: (p: { matchName: string; confirmed: number; maxPlayers: number; how: string }): string =>
     `*${p.matchName}* is full at ${p.confirmed} of ${p.maxPlayers}, but the bench is open. ` +
-    `Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group ` +
-    `and ${p.how}. 🙏`,
+    `Say *IN* and I'll put you on the bench. If someone drops out, ${p.how}. 🙏`,
   bench_asked_line: (p: { benchName: string; confirmed: number; maxPlayers: number; reactions: boolean }): string => {
     const how = p.reactions
       ? "they've been tagged here with a 👍 prompt"
@@ -1543,7 +1562,7 @@ export const en = {
         `⚽ *Squad & availability: how it works*\n` +
         `Just say *In* or *Out* in the group to mark yourself for the next game, or say a teammate can't make it (for example *Sam is out*). No need to tag me, I read it automatically.\n` +
         `I keep a live, numbered squad list. When it's full, extra players go on the *bench* in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-        `If you drop out, I can nudge the bench to step in so we're never short. Say *Out* any time and I'll sort the rest.`,
+        `If you drop out, the first on the bench moves up and I message them, so we're never short. Say *Out* any time and I'll sort the rest.`,
       reminders:
         `⏰ *Reminders: how it works*\n` +
         `I gently nudge anyone who hasn't said *In* or *Out* yet, then remind the whole squad before kick-off so nobody forgets.\n` +
@@ -2108,6 +2127,18 @@ export const en = {
       `👋 Hi${hi}, a slot just opened ${p.context} and you're on the bench.\n\n` +
       `Want it? ${claim} First to claim plays. No timeout, and if you're ` +
       `not free no worries, you stay on the bench. 🙏`
+    );
+  },
+
+  /** The DM to a player the bench moved up by itself (2026-11-17,
+   *  `bench-fill.ts`). `context` is a `_plain` context clause above;
+   *  `firstName` is "" when there is no name on record. Held until the
+   *  club's quiet hours end. */
+  dm_bench_moved_up: (p: { firstName: string; context: string }): string => {
+    const hi = p.firstName ? ` ${p.firstName}` : "";
+    return (
+      `👋 Hi${hi}, a place opened ${p.context} and you were first on the bench, so you're in now ✅\n\n` +
+      `If you can't make it after all, just reply *OUT* here and I'll pass the place to the next player. 🙏`
     );
   },
 
@@ -3304,7 +3335,7 @@ export const en = {
    *  having played. */
   sj_dm_ready_rolling_first: "For the first game everyone says In once; after that the squad carries over.",
   sj_dm_ready_standard:
-    "Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.",
+    "Standard setup: players say In or Out each week, and a free place goes to the first player on the bench, who I message.",
   sj_dm_ready_settings: (p: { url: string }): string => `⚙️ *Check or change how your group runs:*\n${p.url}`,
   /** The same two lines as in `sj_dm_approved` (a test keeps them the same). */
   sj_dm_ready_schedule: (p: { url: string }): string =>
@@ -3848,8 +3879,8 @@ export const en = {
 
   // ── OPK8: /admin/settings "Weekly routine", who fills an open place. ──
   wr_pick_label: "Who fills an open place",
-  wr_pick_blurb: "First to say IN, or the organisers pick from the bench.",
-  wr_pick_first_come: "First to say IN",
+  wr_pick_blurb: "The first on the bench moves up, or the organisers pick from the bench.",
+  wr_pick_first_come: "First on the bench",
   wr_pick_organiser: "The organisers pick",
   wr_fallback_label: "If nobody picks in time",
   wr_fallback_offer: "Offer it to the bench",

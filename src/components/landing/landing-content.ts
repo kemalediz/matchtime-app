@@ -298,7 +298,7 @@ export const FEATURES: Card[] = [
     color: "purple",
     icon: "users",
     title: "Runs the bench",
-    body: "When the squad is full, late Ins go on the bench 🪑. When someone drops, the bench is offered the spot in the group and by DM, and the first to claim it plays.",
+    body: "When the squad is full, late Ins go on the bench 🪑. When someone drops, the first player on the bench moves up straight away and gets a DM to say so.",
   },
   {
     // Short of players, third (Kemal, 2026-10-28, after the bench): the chase (daily
@@ -1073,22 +1073,22 @@ export const HERO_DECK = {
           { from: "player", name: "Kai", text: "IN", time: "11:40", tick: true },
           {
             from: "bot",
-            text: "*Squad complete (14/14)* for *Thursday 7-a-side* on Thu 22 Oct, 20:00\n*Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.",
+            text: "*Squad complete (14/14)* for *Thursday 7-a-side* on Thu 22 Oct, 20:00\n*Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out, the first on the bench moves up and I message them.",
             time: "11:40",
           },
         ],
       },
     },
     {
-      // strings.en.ts bench_offer_group_post, bench_claim_replacing.
+      // strings.en.ts bench_moved_up, dm_bench_moved_up (2026-11-17).
       key: "bench",
       title: "The bench steps in",
-      body: "Someone drops out? The bench is tagged, and the first to say IN plays.",
-      visual: ["@Kai @Ben", "First to claim it plays"],
+      body: "Someone drops out? The first player on the bench moves up straight away.",
+      visual: ["Joe is out", "Kai moves up"],
       details: [
-        "Squad full? Late INs go on the bench.",
-        "Someone drops out? The bench is tagged in the group and sent a DM.",
-        "The first to claim it plays. No rush and no timeout.",
+        "Squad full? Late INs go on the bench, in order.",
+        "Someone drops out? The first on the bench moves up and gets a DM.",
+        "Can't make it after all? He replies OUT and the next one moves up.",
         "Teams already out? The new player takes the empty spot.",
       ],
       chat: {
@@ -1097,13 +1097,7 @@ export const HERO_DECK = {
         kind: "group",
         lines: [
           { from: "player", name: "Joe", text: "Can't make it tonight lads, I'm out", time: "09:12", tick: true },
-          {
-            from: "bot",
-            text: "A slot just opened for *Thursday 7-a-side* tonight. *First to claim it plays.*\n@Kai @Ben\nJust reply *IN* here to take it. No rush and no timeout.",
-            time: "09:12",
-          },
-          { from: "player", name: "Kai", text: "IN", time: "09:20", tick: true },
-          { from: "bot", text: "*Kai* is in, replacing *Joe*. Squad *14/14*", time: "09:20" },
+          { from: "bot", text: "*Kai* moves up from the bench, replacing *Joe*. Squad *14/14*", time: "09:12" },
         ],
       },
     },

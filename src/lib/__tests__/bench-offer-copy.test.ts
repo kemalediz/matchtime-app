@@ -156,10 +156,11 @@ describe("buildBenchIntroLine — what the group is PROMISED on day one", () => 
     expect(line).not.toMatch(/\breact\b/i);
   });
 
-  it("describes what actually happens: tagged here, first to reply IN plays", () => {
+  it("describes what actually happens (2026-11-17): the first on the bench moves up, OUT passes it on", () => {
     const line = buildBenchIntroLine({ mentionReactions: false });
-    expect(line).toContain("*IN*");
-    expect(line.toLowerCase()).toContain("first");
+    expect(line).toContain("the first on the bench moves up");
+    expect(line).toContain("*OUT*");
+    expect(line).not.toMatch(/tag the bench|first to reply/i);
   });
 
   it("defaults to the flag", () => {
@@ -168,8 +169,8 @@ describe("buildBenchIntroLine — what the group is PROMISED on day one", () => 
     );
   });
 
-  it("mentions the 👍 again once the flag is back on", () => {
-    expect(buildBenchIntroLine({ mentionReactions: true })).toContain("👍");
+  it("asks for no 👍 even with the flag on: nothing is claimed any more (2026-11-17)", () => {
+    expect(buildBenchIntroLine({ mentionReactions: true })).not.toContain("👍");
   });
 });
 
@@ -294,24 +295,20 @@ describe("buildFullSquadBenchInvite — the answer to a recruit ask at 14 of 14"
     );
   });
 
-  it("offers the 👍 again the moment the flag is flipped back on", () => {
+  it("asks for no 👍 even with the flag on: the bench moves up by itself (2026-11-17)", () => {
     const text = buildFullSquadBenchInvite({ ...ARGS, mentionReactions: true });
-    expect(text).toContain("👍");
-    expect(text).toContain("*IN*"); // the reply route never goes away
+    expect(text).not.toContain("👍");
+    expect(text).toContain("*IN*"); // how to get on the bench
   });
 
   it("makes the SAME promotion promise as the day-one intro line", () => {
-    // Both sentences describe one mechanism (a drop opens a
-    // BenchSlotOffer that the first claimer takes), so they share the
-    // fragment rather than each carrying their own wording. Two copies
-    // of one promise is one copy too many: a flag flip could move one
-    // and leave the other lying.
+    // Both sentences describe one mechanism (since 2026-11-17 a drop
+    // moves the first player on the bench up, `bench-fill.ts`), so they
+    // share the fragment rather than each carrying their own wording.
+    const how = "the first on the bench moves up and I message them";
     for (const on of [false, true]) {
-      const claim = on
-        ? "the first to react 👍 or reply *IN* takes the slot"
-        : "the first to reply *IN* takes the slot";
-      expect(buildBenchIntroLine({ mentionReactions: on })).toContain(claim);
-      expect(buildFullSquadBenchInvite({ ...ARGS, mentionReactions: on })).toContain(claim);
+      expect(buildBenchIntroLine({ mentionReactions: on })).toContain(how);
+      expect(buildFullSquadBenchInvite({ ...ARGS, mentionReactions: on })).toContain(how);
     }
   });
 

@@ -261,9 +261,9 @@ describe("composeSetupAskDm: the blocks, in order", () => {
       `I read the recent messages in "Riverside Tuesday 5s" and found nothing that needs a setting changed, so MatchTime is on its standard setup.`,
     );
     expect(blocks[2]).toBe(
-      // Item 9: the default offers a free place to the WHOLE bench
-      // ("First to claim it plays"), it is not handed to whoever is first.
-      "Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.",
+      // Item 9, revised 2026-11-17: a free place goes to the first player
+      // on the bench, who is messaged (`bench-fill.ts`).
+      "Standard setup: players say In or Out each week, and a free place goes to the first player on the bench, who I message.",
     );
     expect(blocks[3]).toBe("⚙️ *Check or change how your group runs:*\nhttps://mt.link/settings");
     expect(blocks).toHaveLength(8);
@@ -355,7 +355,7 @@ describe("composeSetupAskDm: the blocks, in order", () => {
       `"Riverside Tuesday 5s" grubundaki son mesajları okudum ve değiştirilmesi gereken bir ayar bulamadım, bu yüzden MatchTime standart düzeninde.`,
     );
     expect(nothing[2]).toBe(
-      "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki herkese teklif edilir: ilk VARIM diyen yeri alır.",
+      "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedekteki ilk oyuncuya geçer ve ona mesaj atarım.",
     );
     const unread = composeSetupAskDm(input({ kind: "unread" }, { lang: "tr" })).split("\n\n");
     expect(unread[1]).toBe("Grubunuzun son mesajlarını okuyamadım, bu yüzden MatchTime standart düzeninde. Sorun değil: aşağıdaki ayarları kontrol edin ve hazır olduğunuzda *BAŞLA* yazın.");

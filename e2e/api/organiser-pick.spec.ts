@@ -385,16 +385,24 @@ test("one person by DM: the owner's DM reply is read the same way", async ({ req
   expect(again.handled).not.toBe("organiser-pick");
 });
 
-test("Sutton unchanged: a first-come club fills a free place on IN and offers a drop to the bench", async ({ request, db }) => {
-  // The fixture club: 4/5 confirmed, Ben on the bench, first-come.
+test("Sutton unchanged: a first-come club fills a free place on IN, and a drop moves the first on the bench up (2026-11-17)", async ({ request, db }) => {
+  // The fixture club: 4/5 confirmed, Ben on the bench (by choice), first-come.
   await post(request, "/api/whatsapp/attendance", { phoneNumber: digits(PHONE.fresh), action: "IN", groupId: E2E.GROUP_ID });
   const fresh = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.fresh]);
   expect(fresh?.status).toBe("CONFIRMED");
-  // Its squad-complete post keeps the first-come promise, unchanged.
+  // Its squad-complete post makes the first-come promise.
   const complete = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group' AND text LIKE '%Squad complete%'`, [ORG_ID]);
-  expect(complete.map((x) => x.text).join("\n")).toContain("the first to reply *IN* takes the slot");
+  expect(complete.map((x) => x.text).join("\n")).toContain("the first on the bench moves up and I message them");
+  // Ben is now waiting because the squad is full, not by choice.
+  await db.run(
+    `INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "fromStatus", "toStatus", "fromPosition", "toPosition", cause, "actorKind", note, at)
+     VALUES ('e2e-op-ben-full', $1, $2, $3, 'BENCH', 'BENCH', 5, 6, 'test-fixture', 'system', 'squad full, no slot to give', now())`,
+    [MATCH.upcoming, U.bench, ORG_ID],
+  );
   await post(request, "/api/whatsapp/attendance", { phoneNumber: digits(PHONE.player), action: "OUT", groupId: E2E.GROUP_ID });
-  expect(await db.all(`SELECT id FROM "BenchSlotOffer" WHERE "matchId" = $1 AND "resolvedAt" IS NULL`, [MATCH.upcoming])).toHaveLength(1);
+  const ben = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.bench]);
+  expect(ben?.status).toBe("CONFIRMED");
+  expect(await db.all(`SELECT id FROM "BenchSlotOffer" WHERE "matchId" = $1 AND "resolvedAt" IS NULL`, [MATCH.upcoming])).toEqual([]);
   expect(await db.all(`SELECT id FROM "OrganiserPickRound" WHERE "orgId" = $1`, [ORG_ID])).toEqual([]);
 });
 

@@ -4107,11 +4107,26 @@ export async function queueSlotEmojiRefresh(matchId: string): Promise<void> {
 }
 
 /**
- * Bench redesign 2026-05-19: a confirmed player dropping opens ONE
- * BenchSlotOffer broadcast to EVERY current bencher. First to confirm
- * (group 👍/IN or DM yes) wins it; nobody is ever eliminated. No
- * per-person timers. Kept the old export name so cancelAttendance's
- * call site is unchanged.
+ * A CONFIRMED player has dropped: what happens to his place. Kept under
+ * its old name so `cancelAttendance`'s call site is unchanged.
+ *
+ *   organiser-pick club   nothing here: the admins pick
+ *                         (`organiser-pick.ts`), and only their fallback
+ *                         offers the place to the waiting list.
+ *   first-come club       (2026-11-17) the first player on the bench takes
+ *                         the place at once and is told by DM
+ *                         (`bench-fill.ts`). No BenchSlotOffer, no public
+ *                         "first to claim" race: the Sutton FC incident of
+ *                         17 Nov raced ONE bench player for a place that
+ *                         was plainly his, while the list said "need 1
+ *                         more". With nobody on the bench a monthly club
+ *                         offers the place to its pay-as-you-go players,
+ *                         as before; a weekly club's chase covers it.
+ *   bench switched off    as before 2026-11-17: an offer row is opened and
+ *                         the scheduler's feature gate keeps it quiet.
+ *
+ * The 2026-05-19 lessons still hold for the bench: nobody is ever dropped
+ * for silence and nothing has a timer; the DM waits for quiet hours.
  */
 export async function requestBenchConfirmationOnDrop(
   matchId: string,
@@ -4119,7 +4134,10 @@ export async function requestBenchConfirmationOnDrop(
 ): Promise<void> {
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { attendances: true, activity: { select: { org: { select: { benchPickMode: true, squadMode: true } } } } },
+    include: {
+      attendances: true,
+      activity: { select: { org: { select: { benchPickMode: true, squadMode: true, featureBench: true } } } },
+    },
   });
   if (!match) return;
 
@@ -4127,6 +4145,28 @@ export async function requestBenchConfirmationOnDrop(
   // pick (`organiser-pick.ts`), and only their fallback, when nobody picks
   // in time, offers the place to the waiting list.
   if (match.activity?.org?.benchPickMode === "organiser") return;
+
+  // A first-come club with the bench on: the bench fills the place itself.
+  // `featureBench` is read strictly (`=== true`): a test double without it
+  // keeps the offer path it was written for.
+  if (match.activity?.org?.featureBench === true) {
+    const { fillOpenPlacesFromBench } = await import("./bench-fill");
+    await fillOpenPlacesFromBench(matchId, {
+      actorKind: "system",
+      sourceRef: `drop:${replacingUserId ?? "unknown"}`,
+      vacatedByUserId: replacingUserId ?? null,
+    });
+    const stillWaiting = await db.attendance.count({ where: { matchId, status: "BENCH" } });
+    if (stillWaiting === 0 && match.activity.org.squadMode === "monthly") {
+      try {
+        const { ensureOpenPlaceOffers } = await import("./monthly-week");
+        await ensureOpenPlaceOffers(matchId);
+      } catch (err) {
+        console.error(`[scheduler] PAYG pool offer for ${matchId} failed:`, err);
+      }
+    }
+    return;
+  }
 
   const hasBench = match.attendances.some((a) => a.status === "BENCH");
   if (!hasBench) {

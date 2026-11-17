@@ -254,6 +254,14 @@ export async function applyEngineWrites(args: {
   /** Ids whose attendance write did NOT land. A slot must not be moved
    *  to somebody who has no row on this match. */
   const failedUserIds = new Set<string>();
+  /**
+   * The bench fills a place a write opened (2026-11-17, `bench-fill.ts`),
+   * but only once the WHOLE batch is written. "Mojib is replacing Najib"
+   * is an OUT then an IN: filled at once, Najib's place would go to the
+   * first player on the bench and Mojib, the replacement the message
+   * named, would land on the bench. Run in order after the slot moves.
+   */
+  const benchFills: Array<() => Promise<void>> = [];
 
   for (const w of writes) {
     // Bench-offer bookkeeping belongs to `attendance.ts` (see the
@@ -330,11 +338,11 @@ export async function applyEngineWrites(args: {
     try {
       if (w.status === "DROPPED") {
         const event = eventContextFor(w, actor, isSelf, w.sourceMessageId);
-        if (actor.sentAt) {
-          await deps.cancelAttendance(userId, matchId, event, { occurredAt: actor.sentAt });
-        } else {
-          await deps.cancelAttendance(userId, matchId, event);
-        }
+        const res = await deps.cancelAttendance(userId, matchId, event, {
+          ...(actor.sentAt ? { occurredAt: actor.sentAt } : {}),
+          deferBenchFill: true,
+        });
+        if (res?.benchFill) benchFills.push(res.benchFill);
         out.push({ write: w, userId, ok: true, status: "DROPPED" });
       } else {
         const res = await deps.registerAttendance(userId, matchId, {
@@ -344,7 +352,9 @@ export async function applyEngineWrites(args: {
           // The engine decided with the sender's admin standing (slice 2b);
           // the write decides with the same one.
           actorIsAdmin: actor.isAdmin,
+          deferBenchFill: true,
         });
+        if (res.benchFill) benchFills.push(res.benchFill);
         out.push({ write: w, userId, ok: true, status: res.status as AttStatus });
       }
     } catch (err) {
@@ -398,6 +408,18 @@ export async function applyEngineWrites(args: {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+  // ── THIRD PASS: the bench fills what the batch left open ───────────
+  // Each one re-reads the squad under the match's lock, so a place the
+  // batch already refilled is left alone. A failure here never undoes a
+  // write; the scheduler's safety net (`sweepBenchFill`) tries again.
+  for (const fill of benchFills) {
+    try {
+      await fill();
+    } catch (err) {
+      console.error(`[attendance-engine] bench fill on ${matchId} failed:`, err instanceof Error ? err.message : String(err));
     }
   }
 

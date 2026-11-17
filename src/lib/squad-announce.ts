@@ -25,9 +25,24 @@ import { normaliseLang } from "./i18n/lang";
 import { loadPlayerNames } from "./player-display-name";
 import { matchFormatTitle } from "./match-format-title";
 
+/**
+ * Where the announcement went, or null when nothing was announced (the
+ * squad is not full, the teams or the month's list speak instead, or this
+ * fill cycle was already announced). The bench fill (`bench-fill.ts`)
+ * reads it: when its "X moves up from the bench" line rode on the group
+ * post as `lead`, it sends no second message.
+ */
+export type SquadFullAnnounced = "group" | "organisers" | null;
+
 export async function announceSquadFullIfJustFilled(
   matchId: string,
-): Promise<void> {
+  opts: {
+    /** A line above the post, e.g. who just moved up from the bench. */
+    lead?: string | null;
+    /** Hold the post until then (the club's quiet hours). */
+    sendAfter?: Date | null;
+  } = {},
+): Promise<SquadFullAnnounced> {
   const m = await db.match.findUnique({
     where: { id: matchId },
     include: {
@@ -41,10 +56,10 @@ export async function announceSquadFullIfJustFilled(
       teamAssignments: { select: { id: true }, take: 1 },
     },
   });
-  if (!m) return;
+  if (!m) return null;
   const confirmed = m.attendances.filter((a) => a.status === "CONFIRMED");
   const bench = m.attendances.filter((a) => a.status === "BENCH");
-  if (confirmed.length < m.maxPlayers) return;
+  if (confirmed.length < m.maxPlayers) return null;
 
   // ── ONCE THE TEAMS ARE OUT, THE ROSTER IS NOT THE NEWS ─────────────
   //
@@ -66,7 +81,7 @@ export async function announceSquadFullIfJustFilled(
   // message. THE DEDUPE KEY IS NOT CLAIMED on this branch, deliberately:
   // a format switch deletes every assignment, and the squad that fills
   // again afterwards should still get its announcement.
-  if (m.teamAssignments.length > 0) return;
+  if (m.teamAssignments.length > 0) return null;
 
   // MONTHLY SQUAD (slice 5, 2026-10-06): a monthly club with a running
   // month reads its squad from the month's list, which is posted (and
@@ -75,7 +90,7 @@ export async function announceSquadFullIfJustFilled(
   // that list replaces. A weekly club makes no query here.
   if (m.activity.org?.squadMode === "monthly") {
     const { loadMonthlyWeek } = await import("./monthly-week");
-    if (await loadMonthlyWeek(matchId).catch(() => null)) return;
+    if (await loadMonthlyWeek(matchId).catch(() => null)) return null;
   }
 
   const key = `${matchId}:squad-locked`;
@@ -85,7 +100,7 @@ export async function announceSquadFullIfJustFilled(
       data: { matchId, kind: "group-message", key },
     });
   } catch {
-    return; // already announced this fill cycle
+    return null; // already announced this fill cycle
   }
 
   // Optional chaining because the unit test's match fixture carries no
@@ -120,7 +135,7 @@ export async function announceSquadFullIfJustFilled(
         lang,
       }),
     });
-    return;
+    return "organisers";
   }
   const benchOn = features?.bench === true;
   // An organiser-pick club (slice 2b): the waiting list, never "first to
@@ -130,21 +145,24 @@ export async function announceSquadFullIfJustFilled(
   const shown = await loadPlayerNames(m.activity.orgId, m.attendances.map((a) => a.userId), lang);
   // The words live in `group-copy.ts` (pure) so the golden snapshot can
   // pin them; this module owns the claim and the job.
+  const post = buildSquadCompletePost({
+    maxPlayers: m.maxPlayers,
+    activityName: matchFormatTitle(m.activity.name, m.maxPlayers),
+    kickoffLabel: kickoffLondon,
+    confirmed: confirmed.map((a) => shown.get(a.userId)?.display ?? a.user.name),
+    bench: bench.map((a) => shown.get(a.userId)?.display ?? a.user.name),
+    benchInvite: benchOn ? buildSquadCompleteBenchInvite({ lang, organiser }) : null,
+    lang,
+  });
   await db.botJob.create({
     data: {
       orgId: m.activity.orgId,
       kind: "group",
       // The match, so a reply quoting the squad post resolves to it.
       matchId: m.id,
-      text: buildSquadCompletePost({
-        maxPlayers: m.maxPlayers,
-        activityName: matchFormatTitle(m.activity.name, m.maxPlayers),
-        kickoffLabel: kickoffLondon,
-        confirmed: confirmed.map((a) => shown.get(a.userId)?.display ?? a.user.name),
-        bench: bench.map((a) => shown.get(a.userId)?.display ?? a.user.name),
-        benchInvite: benchOn ? buildSquadCompleteBenchInvite({ lang, organiser }) : null,
-        lang,
-      }),
+      text: opts.lead ? `${opts.lead}\n\n${post}` : post,
+      ...(opts.sendAfter ? { sendAfter: opts.sendAfter } : {}),
     },
   });
+  return "group";
 }

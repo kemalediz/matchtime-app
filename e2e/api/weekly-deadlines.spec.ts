@@ -202,15 +202,16 @@ test("Tue 20:05: the final list in the group; not before; Sutton gets none", asy
     [
       "📋 *Friday 9-a-side* list, *Friday 15 January at 20:30*, Powerleague",
       "",
-      "*Playing (3/18):*",
+      // Ali was seeded on the bench beside 15 open places. Since 2026-11-17
+      // the first poll moves him up (`bench-fill.ts`): a list never shows
+      // places open beside somebody who could take one.
+      "*Playing (4/18):*",
       "1. Hamzah Khan",
       "2. Raihan Ahmed",
       "3. Wasim Ali",
+      "4. Ali Demir",
       "",
-      "*Bench (1):*",
-      "1. Ali Demir",
-      "",
-      "15 places still open.",
+      "14 places still open.",
       "Can't make it now? Say *OUT* as soon as you can so a replacement can be brought in.",
     ].join("\n"),
   );

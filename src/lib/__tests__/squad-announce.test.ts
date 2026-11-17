@@ -75,7 +75,7 @@ const TODAY =
 
 const INVITE_NO_REACTIONS =
   "🪑 *Bench is open.* Say *IN* and I'll put you on the bench. " +
-  "If someone drops out I tag the bench here and the first to reply *IN* takes the slot.";
+  "If someone drops out, the first on the bench moves up and I message them.";
 
 function features(bench: boolean) {
   return { botEnabled: true, attendance: true, bench };
@@ -188,11 +188,8 @@ describe("buildSquadCompleteBenchInvite: the closing line", () => {
     expect(text).not.toContain("👍");
   });
 
-  it("offers the 👍 again the moment the gate is flipped back on", () => {
-    expect(buildSquadCompleteBenchInvite({ mentionReactions: true })).toBe(
-      "🪑 *Bench is open.* Say *IN* and I'll put you on the bench. " +
-        "If someone drops out I tag the bench here and the first to react 👍 or reply *IN* takes the slot.",
-    );
+  it("asks for no 👍 even with the gate on: the bench moves up by itself (2026-11-17)", () => {
+    expect(buildSquadCompleteBenchInvite({ mentionReactions: true })).toBe(INVITE_NO_REACTIONS);
   });
 
   it("defaults to the flag, so production copy cannot drift from it", () => {
