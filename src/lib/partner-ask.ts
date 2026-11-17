@@ -866,6 +866,8 @@ async function closeIfDue(ask: OpenAskRow, match: AskMatch, partnershipStatus: s
     placesOpen: places,
     roundPlaced: fill.placed,
     roundWanted: fill.wanted,
+    // An open squad (open-squad.ts): every yes takes a place; never "filled".
+    openSquad: (await Promise.resolve().then(() => db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { openSquad: true } })).catch(() => null))?.openSquad === true,
   });
   if (!reason) {
     await reportMissingPostId(ask, now);

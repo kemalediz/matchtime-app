@@ -193,6 +193,9 @@ export interface CloseInput {
    *  any of its asks, and the number the round asked for. */
   roundPlaced: number;
   roundWanted: number;
+  /** The asking club has no squad limit (open-squad.ts): every yes takes a
+   *  place, so the ask never closes as "filled". Absent: off. */
+  openSquad?: boolean;
 }
 
 /** Should this open ask close now, and why? Null: it stays open. Filled:
@@ -202,7 +205,7 @@ export function closeReason(i: CloseInput): CloseReason | null {
   if (!isOpenAskStatus(i.status)) return null;
   if (i.matchStatus === "CANCELLED") return "match-cancelled";
   if (i.partnershipStatus !== "active") return "partnership-inactive";
-  if (i.placesOpen <= 0 || i.roundPlaced >= i.roundWanted) return "filled";
+  if (i.openSquad !== true && (i.placesOpen <= 0 || i.roundPlaced >= i.roundWanted)) return "filled";
   if (i.status === "awaiting-approval" && i.now.getTime() >= i.postBy.getTime()) return "approval-expired";
   if (i.now.getTime() >= i.closesAt.getTime()) return "kickoff";
   return null;

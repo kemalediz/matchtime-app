@@ -96,10 +96,12 @@ export function poolAskCloseReason(i: {
   roundPlaced: number;
   roundWanted: number;
   placesOpen: number;
+  /** The club has no squad limit (open-squad.ts): never "filled". */
+  openSquad?: boolean;
 }): PoolAskCloseReason | null {
   if (!i.poolOpen) return "switched-off";
   if (!i.matchLive) return "match-off";
-  if (i.roundPlaced >= i.roundWanted || i.placesOpen <= 0) return "filled";
+  if (i.openSquad !== true && (i.roundPlaced >= i.roundWanted || i.placesOpen <= 0)) return "filled";
   if (i.now.getTime() >= offerEndsAt(i.kickoff).getTime()) return "kickoff";
   return null;
 }
