@@ -95,8 +95,10 @@ export async function resizeMatch(p: {
    * False: the new list is NOT queued for the players' group (2026-11-16).
    * The switch is one part of a message with several instructions, and
    * that message's ONE reply carries the list or the team sheet, built
-   * from the database after every part. The organisers' relay, the DMs and
-   * the slot reactions are unchanged. Default true.
+   * from the database after every part. The organisers' relay waits for
+   * the caller (`relayListToOrganisers`, after the batch's claims, 2026-11-17);
+   * the DMs, the slot reactions and the squad-full claim are unchanged.
+   * Default true.
    */
   groupList?: boolean;
 }): Promise<ResizeResult> {
@@ -388,10 +390,13 @@ async function renderNewList(a: {
   renderWeekList: typeof import("./monthly-week").renderWeekList;
   recordWeekListShown: typeof import("./monthly-week").recordWeekListShown;
   loadMonthlyWeek: typeof import("./monthly-week").loadMonthlyWeek;
-}): Promise<{ text: string; after: (() => Promise<void>) | null } | null> {
+}): Promise<{ text: string; after: (() => Promise<void>) | null; lock: (() => Promise<void>) | null } | null> {
   const c = flexFormatCopy(a.lang);
   let text: string;
   let after: (() => Promise<void>) | null = null;
+  // The fill cycle's `squad-locked` claim, settled to this squad on its own
+  // (2026-11-17): also for a switch that queues no list (`groupList`).
+  let lock: (() => Promise<void>) | null = null;
   if (a.monthly) {
     const week = await a.loadMonthlyWeek(a.matchId);
     if (!week || !week.seeded) return null;
@@ -417,16 +422,20 @@ async function renderNewList(a: {
     const lockedKey = `${a.matchId}:squad-locked`;
     const full = playing.length >= a.places;
     const fingerprint = squadFingerprint({ confirmedUserIds: playing.map((r) => r.userId), benchUserIds: bench.map((r) => r.userId), maxPlayers: a.places });
-    after = async () => {
+    lock = async () => {
       if (full) {
         await db.sentNotification.upsert({ where: { key: lockedKey }, create: { key: lockedKey, kind: "group-message", matchId: a.matchId }, update: {} });
       } else {
         await db.sentNotification.deleteMany({ where: { key: lockedKey } });
       }
+    };
+    const settle = lock;
+    after = async () => {
+      await settle();
       await db.sentNotification.create({ data: { key: rosterShownKey(a.matchId, fingerprint, a.now), kind: ROSTER_SHOWN_KIND, matchId: a.matchId } });
     };
   }
-  return { text, after };
+  return { text, after, lock };
 }
 
 /**
@@ -453,13 +462,19 @@ async function postNewList(a: {
   renderWeekList: typeof import("./monthly-week").renderWeekList;
   recordWeekListShown: typeof import("./monthly-week").recordWeekListShown;
   loadMonthlyWeek: typeof import("./monthly-week").loadMonthlyWeek;
-  /** False: nothing queued for the players' group (`resizeMatch`'s
-   *  `groupList`); the organisers' relay still goes. */
+  /** False: nothing sent now (`resizeMatch`'s `groupList`): neither the
+   *  players' list nor the organisers' relay, which the caller sends after
+   *  the batch (`relayListToOrganisers`). The fill cycle's claim is still
+   *  settled to the new size, so a bigger squad is announced when it fills. */
   groupList: boolean;
 }): Promise<void> {
   const built = await renderNewList(a);
   if (!built) return;
   const { text, after } = built;
+  if (!a.groupList) {
+    await built.lock?.().catch((err) => console.error(`[format-resize] squad-locked for ${a.matchId} not settled:`, err));
+    return;
+  }
   if (organisersAnnounce({ listAnnouncer: a.listAnnouncer })) {
     await sendAdminNotice({ orgId: a.orgId, text: buildOrganiserRelay(text, a.lang) });
     return;
@@ -490,35 +505,59 @@ export async function freshFormatListText(
   if (!job.matchId) return job.text;
   try {
     if (await botJobClaimed(job.id)) return job.text;
-    const match = await db.match.findUnique({
-      where: { id: job.matchId },
-      select: { id: true, date: true, maxPlayers: true, activity: { select: { orgId: true, org: { select: { language: true, squadMode: true } } } } },
-    });
-    if (!match || !(match.maxPlayers > 0)) return job.text;
-    const lang = normaliseLang(match.activity.org?.language);
-    const { loadMonthlyWeek, renderWeekList, recordWeekListShown } = await import("./monthly-week");
-    const built = await renderNewList({
-      matchId: match.id,
-      orgId: match.activity.orgId,
-      day: weekdayLabel(lang, match.date),
-      perSide: Math.floor(match.maxPlayers / 2),
-      places: match.maxPlayers,
-      lang,
-      monthly: match.activity.org?.squadMode === "monthly",
-      now,
-      renderWeekList,
-      recordWeekListShown,
-      loadMonthlyWeek,
-    });
+    const built = await renderListNow(job.matchId, now);
     if (!built || built.text === job.text) return job.text;
     const { count } = await db.botJob.updateMany({ where: { id: job.id, sentAt: null }, data: { text: built.text } });
     if (count === 0) return job.text;
-    await built.after?.().catch((err) => console.error(`[format-resize] list bookkeeping for ${match.id} at send failed:`, err));
+    await built.after?.().catch((err) => console.error(`[format-resize] list bookkeeping for ${job.matchId} at send failed:`, err));
     console.log(`[format-resize] list job ${job.id}: rendered again at send time (the squad changed since it was queued)`);
     return built.text;
   } catch (err) {
     console.error(`[format-resize] list job ${job.id}: not rendered again, sent as queued:`, err instanceof Error ? err.message : "failed");
     return job.text;
+  }
+}
+
+/** The list after a switch, rendered from the database as it is now. */
+async function renderListNow(matchId: string, now: Date) {
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    select: { id: true, date: true, maxPlayers: true, activity: { select: { orgId: true, org: { select: { language: true, squadMode: true } } } } },
+  });
+  if (!match || !(match.maxPlayers > 0)) return null;
+  const lang = normaliseLang(match.activity.org?.language);
+  const { loadMonthlyWeek, renderWeekList, recordWeekListShown } = await import("./monthly-week");
+  const built = await renderNewList({
+    matchId: match.id,
+    orgId: match.activity.orgId,
+    day: weekdayLabel(lang, match.date),
+    perSide: Math.floor(match.maxPlayers / 2),
+    places: match.maxPlayers,
+    lang,
+    monthly: match.activity.org?.squadMode === "monthly",
+    now,
+    renderWeekList,
+    recordWeekListShown,
+    loadMonthlyWeek,
+  });
+  return built ? { ...built, orgId: match.activity.orgId, lang } : null;
+}
+
+/**
+ * THE ORGANISERS' COPY OF THE LIST AFTER A SWITCH DONE WITH OTHER PARTS OR
+ * CLAIMS (2026-11-17). A club whose organisers announce the list gets the
+ * new list by its admin channel; a switch that queued nothing
+ * (`groupList: false`) leaves that to the caller, which sends it here after
+ * the batch's claims, so the organisers never get a list from before them.
+ * Never throws.
+ */
+export async function relayListToOrganisers(matchId: string, now: Date): Promise<void> {
+  try {
+    const built = await renderListNow(matchId, now);
+    if (!built) return;
+    await sendAdminNotice({ orgId: built.orgId, text: buildOrganiserRelay(built.text, built.lang) });
+  } catch (err) {
+    console.error(`[format-resize] organisers' list for ${matchId} not sent:`, err instanceof Error ? err.message : "failed");
   }
 }
 

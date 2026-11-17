@@ -153,6 +153,7 @@ import { runAdminOpsBatch, type AdminOpsMessageOutcome } from "@/lib/admin-ops-e
 import { benchBlock, notDoneLine, partsNotDone } from "@/lib/multi-instruction-reply";
 import type { Route } from "@/lib/pipeline/types";
 import { isAttendanceRoute, matchChangesFirst } from "@/lib/pipeline/multi-route";
+import { squadLockHold, withExitTasks, type AtExit } from "@/lib/squad-lock-hold";
 import { ADMIN_OPS_HANDLED_BY } from "@/lib/admin-ops-engine";
 import { runTeamOpsBatch } from "@/lib/team-ops-engine-batch";
 import { alsoTeamsIds } from "@/lib/team-also-signal";
@@ -460,7 +461,9 @@ export async function POST(request: Request) {
         // THE DAILY AI CAP (2026-09-29): every model call this request
         // makes spends from ONE club's budget, named below as soon as the
         // group resolves (`bindAiBudgetKey`). See `lib/ai-budget.ts`.
-        return await withDeferredOrgAiBudget(() => handleAnalyzeRequest(request));
+        // `withExitTasks` (review of #616): what the handler holds for the
+        // batch (the fill cycle's claim) is settled even when it throws.
+        return await withExitTasks((atExit) => withDeferredOrgAiBudget(() => handleAnalyzeRequest(request, atExit)));
       } finally {
         // What the router and each extractor said about every message,
         // onto its `AnalyzedMessage.pipelineTrace`. Once, at the end, so
@@ -472,7 +475,7 @@ export async function POST(request: Request) {
   );
 }
 
-async function handleAnalyzeRequest(request: Request) {
+async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => undefined) {
   const apiKey = request.headers.get("x-api-key");
   if (apiKey !== process.env.WHATSAPP_API_KEY) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -1308,7 +1311,7 @@ async function handleAnalyzeRequest(request: Request) {
   //
   // `let`, read again once (2026-11-17): a batch's match changes are done
   // before its attendance claims (the early admin pass below), and a game
-  // put back on, cancelled or moved there is a different registration
+  // put back on or cancelled there is a different registration
   // match for everything after it. Nothing reassigns them anywhere else.
   const loadReplyMatch = (id: string) =>
     db.match.findFirst({
@@ -2309,17 +2312,27 @@ async function handleAnalyzeRequest(request: Request) {
   // here, and given back after the batch unless the squad really is full
   // (then the reply showed it). Not in a club whose organisers announce the
   // list: their notice is theirs. No query for a batch without such a message.
-  // `let`: also taken, below, for a size switched before a batch's claims.
-  const claimSquadLock = (matchId: string) =>
-    db.sentNotification
-      .create({ data: { key: `${matchId}:squad-locked`, kind: "group-message", matchId } })
-      .then(() => true)
-      .catch(() => false);
-  let squadLockKey =
-    nextMatchForReply && !organisersMode && fresh.some((m) => alsoRoutesById.has(m.waMessageId) && !lateById.has(m.waMessageId) && !gatedIds.has(m.waMessageId))
-      ? `${nextMatchForReply.id}:squad-locked`
-      : null;
-  let heldSquadLock = squadLockKey ? await claimSquadLock(nextMatchForReply!.id) : false;
+  //
+  // TAKEN AFTER THE EARLY PASS BELOW, AND ALWAYS (review of #616). The
+  // switch done there settles the claim to the new size itself
+  // (`format-resize.ts`, also with `groupList: false`): a size INCREASE
+  // releases a claim left by a squad full at the old size. The batch then
+  // holds it whether or not it was there, so its settlement is the batch's,
+  // and a throw anywhere after settles it too (`squad-lock-hold.ts`).
+  const severalPartsBatch = fresh.some((m) => alsoRoutesById.has(m.waMessageId) && !lateById.has(m.waMessageId) && !gatedIds.has(m.waMessageId));
+  const squadLock = squadLockHold({
+    hold: async (key, matchId) => {
+      await db.sentNotification.upsert({ where: { key }, create: { key, kind: "group-message", matchId }, update: {} });
+    },
+    release: async (key) => {
+      await db.sentNotification.deleteMany({ where: { key } });
+    },
+    isFull: async (matchId) => {
+      const m = await db.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true } });
+      const confirmed = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
+      return !!m && confirmed >= m.maxPlayers;
+    },
+  });
 
   const earlyAdminBatch =
     earlyAdminRead.length > 0
@@ -2335,7 +2348,11 @@ async function handleAnalyzeRequest(request: Request) {
           ...(batchAdminIds.size > 0 ? { applyNow } : {}),
         })
       : null;
-  for (const d of earlyAdminBatch?.degradations ?? []) console.warn(`[analyze] also admin_ops: ${d}`);
+  // A batch's own admin message the early pass could not read is that
+  // message's failure: it goes on its log row and the operator note with
+  // the owners' (review of #616). The rest are a part's, logged here.
+  const isBatchAdminLine = (d: string) => [...batchAdminIds].some((id) => d.includes(id));
+  for (const d of (earlyAdminBatch?.degradations ?? []).filter((d) => !isBatchAdminLine(d))) console.warn(`[analyze] also admin_ops: ${d}`);
   // Read here and handed on: applied by the usual pass after the engine.
   const earlyDeferred = earlyAdminBatch?.deferred;
   // Done here, or read here and unreadable (reported here), and not handed
@@ -2357,8 +2374,8 @@ async function handleAnalyzeRequest(request: Request) {
     gateRouteById.get(id) === "admin_ops" ? earlyAdminBatch?.outcomes.get(id) : undefined;
   if (earlyAdminBatch && earlyAdminBatch.outcomes.size > 0) {
     // The match as the changes left it: a size the format part changed is
-    // the size the squad post says, and a game put back on (or cancelled,
-    // or moved) is the one the claims below land on and the replies name.
+    // the size the squad post says, and a game put back on (or cancelled)
+    // decides the one the claims below land on and the replies name.
     // A failed read keeps what was loaded before, as the size refresh did.
     try {
       const active = await findRegistrationMatch(org.id);
@@ -2369,19 +2386,18 @@ async function handleAnalyzeRequest(request: Request) {
       console.error(`[analyze] reading the match after the early admin pass failed:`, err);
     }
   }
-  // THE ONE POST for a size switched before the batch's claims (2026-11-17),
-  // as for a message with several parts above: the switch queued no list of
-  // its own and the batch's one squad post shows the squad after the claims,
-  // so an IN that now fills the smaller squad does not ALSO queue "Squad
-  // complete". Settled after the batch exactly as that claim is.
+  // THE ONE POST (above), taken now: for a message with several parts, and
+  // for a size switched before the batch's claims (2026-11-17), whose
+  // switch queued no list of its own either; the batch's one squad post
+  // shows the squad after the claims, so an IN that fills the squad does
+  // not ALSO queue "Squad complete".
   if (
-    !squadLockKey &&
     nextMatchForReply &&
     !organisersMode &&
-    [...(earlyAdminBatch?.outcomes ?? [])].some(([id, o]) => batchAdminIds.has(id) && o.intent.startsWith("format-switched"))
+    (severalPartsBatch ||
+      [...(earlyAdminBatch?.outcomes ?? [])].some(([id, o]) => batchAdminIds.has(id) && o.intent.startsWith("format-switched")))
   ) {
-    squadLockKey = `${nextMatchForReply.id}:squad-locked`;
-    heldSquadLock = await claimSquadLock(nextMatchForReply.id);
+    if (await squadLock.take(nextMatchForReply.id)) atExit(squadLock.settle);
   }
 
   // A monthly club with NO month at all (any status) for the registration
@@ -2549,6 +2565,16 @@ async function handleAnalyzeRequest(request: Request) {
     await sendAdminNotice({ orgId: org.id, text }).catch((err) =>
       console.error("[analyze] organisers' slot notice not queued:", err instanceof Error ? err.message : "failed"),
     );
+  }
+  // A switch done in the early pass sent the organisers nothing (review of
+  // #616): their copy of the new list goes now, after the batch's claims,
+  // once per match switched.
+  if (organisersMode) {
+    const switched = new Set([...(earlyAdminBatch?.outcomes.values() ?? [])].flatMap((o) => (o.switchedMatchId ? [o.switchedMatchId] : [])));
+    if (switched.size > 0) {
+      const { relayListToOrganisers } = await import("@/lib/format-resize");
+      for (const matchId of switched) await relayListToOrganisers(matchId, new Date());
+    }
   }
 
   // ── §10 STEP 8 — THE LAST FOUR OWNERS, AND THE END OF THE PROMPT ───
@@ -2794,6 +2820,7 @@ async function handleAnalyzeRequest(request: Request) {
     ...(answerBatch?.degradations ?? []).filter((d) => !isAlsoAsksLine(d)),
     ...(scoreBatch?.degradations ?? []),
     ...(adminOpsBatch?.degradations ?? []),
+    ...(earlyAdminBatch?.degradations ?? []).filter(isBatchAdminLine),
     ...(teamOpsBatch?.degradations ?? []),
     ...(engineBatch?.degradations ?? []),
   ];
@@ -4053,19 +4080,9 @@ async function handleAnalyzeRequest(request: Request) {
   // The fill cycle's claim taken for a several-part message (above): kept
   // only when the squad is full now, as `squad-announce.ts` would have left
   // it; otherwise given back so the next fill is announced.
-  if (heldSquadLock && squadLockKey) {
-    // The match the claim was taken on (the key's), whichever the batch
-    // ended on.
-    const lockedMatchId = squadLockKey.slice(0, -":squad-locked".length);
-    try {
-      const m = await db.match.findUnique({ where: { id: lockedMatchId }, select: { maxPlayers: true } });
-      const confirmed = await db.attendance.count({ where: { matchId: lockedMatchId, status: "CONFIRMED" } });
-      if (!m || confirmed < m.maxPlayers) await db.sentNotification.deleteMany({ where: { key: squadLockKey } });
-    } catch (err) {
-      console.error("[analyze] squad-locked claim not settled:", err instanceof Error ? err.message : "failed");
-      await db.sentNotification.deleteMany({ where: { key: squadLockKey } }).catch(() => undefined);
-    }
-  }
+  // Here, in the batch's order; the exit task does nothing after this, and
+  // settles it instead if anything above threw (`squad-lock-hold.ts`).
+  await squadLock.settle();
 
   // A change's own question whose answer the squad pass must not touch
   // (`also-asks-reply.ts`): added now, after the change's line and any list.

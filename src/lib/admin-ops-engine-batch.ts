@@ -324,6 +324,10 @@ export interface AdminOpsMessageOutcome {
    *  again", for a message whose own teams part then makes them
    *  (several instructions, 2026-11-16). Absent otherwise. */
   replyIfTeamsMade?: string;
+  /** The match a size switch changed (2026-11-17): a switch done with
+   *  `partOfSeveral` sent the organisers nothing, and the route sends them
+   *  that match's list after the batch's claims. Absent otherwise. */
+  switchedMatchId?: string;
 }
 
 export interface AdminOpsBatchResult {
@@ -436,7 +440,7 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     explicit: boolean;
     /** False: no list queued for the players' group (`partOfSeveral`). */
     groupList?: boolean;
-  }) => Promise<{ outcome: string; replyText: string | null; replyIfTeamsMade?: string }>;
+  }) => Promise<{ outcome: string; replyText: string | null; replyIfTeamsMade?: string; matchId?: string }>;
   /** The club's games to come, shown to the admin extractor as GAMES TO
    *  COME (2026-11-10, move_game). Defaults to `game-move-words.ts`;
    *  injected so tests need no database. */
@@ -1090,7 +1094,11 @@ export async function runAdminOpsBatch(args: {
       const apply = deps.applySwitchFormatWords ?? (async (a) => (await import("./format-switch-words")).applySwitchFormatWords(a));
       const r = await apply({ orgId, ...ask, via: "whatsapp", lang: state.features.language, now, ...(args.partOfSeveral ? { groupList: false } : {}) });
       const o = replyOnly(id, r.replyText, r.outcome, `switch_format by an organiser: ${r.outcome}${args.partOfSeveral ? "; done with other parts or claims, no list of its own" : ""}`);
-      cancelOutcomes.push(r.replyIfTeamsMade ? { ...o, replyIfTeamsMade: r.replyIfTeamsMade } : o);
+      cancelOutcomes.push({
+        ...o,
+        ...(r.replyIfTeamsMade ? { replyIfTeamsMade: r.replyIfTeamsMade } : {}),
+        ...(r.matchId && r.outcome.startsWith("format-switched") ? { switchedMatchId: r.matchId } : {}),
+      });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error(`[admin-ops-engine] ${id}: switch_format threw:`, err);

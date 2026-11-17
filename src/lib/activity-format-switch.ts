@@ -27,9 +27,11 @@ export async function switchMatchToActivity(p: {
   matchId: string;
   newActivityId: string;
   actorUserId: string;
-  /** False: no new list queued for the players' group (one part of a
-   *  message with several instructions, 2026-11-16; that message's one
-   *  reply carries the list). The organisers' relay still goes. */
+  /** False: no new list sent now (one part of a message with several
+   *  instructions, 2026-11-16, or a switch before a batch's claims,
+   *  2026-11-17): the players' list is the batch's one reply, and the
+   *  organisers' copy is sent by the caller after the claims
+   *  (`format-resize.ts` `relayListToOrganisers`). */
   groupList?: boolean;
 }): Promise<{ maxPlayers: number; kickoff: Date }> {
   const { matchId, newActivityId } = p;
@@ -156,9 +158,11 @@ export async function switchMatchToActivity(p: {
   // The club's organisers announce the list (2026-10-14, list-announcer.ts):
   // the post lists who is playing, so it goes to them, and they tell the
   // players. Same words, with a lead saying it was not posted in the group.
-  if (organisersAnnounce(match.activity.org)) {
+  if (p.groupList === false) {
+    // Nothing now: see `groupList`.
+  } else if (organisersAnnounce(match.activity.org)) {
     await sendAdminNotice({ orgId: match.activity.orgId, text: buildOrganiserRelay(announcement, lang) });
-  } else if (p.groupList !== false) {
+  } else {
     await db.botJob.create({
       data: {
         orgId: match.activity.orgId,

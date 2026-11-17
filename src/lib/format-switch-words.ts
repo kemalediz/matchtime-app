@@ -44,6 +44,9 @@ export interface SwitchWordsResult {
   /** The reply without the "teams are cleared" line, for a message that
    *  makes the teams right after (`ResizeResult.replyIfTeamsMade`). */
   replyIfTeamsMade?: string;
+  /** The match switched, when one was (2026-11-17): the caller sends the
+   *  organisers' copy of its list after the batch (`groupList: false`). */
+  matchId?: string;
 }
 
 export async function applySwitchFormatWords(p: {
@@ -83,11 +86,12 @@ export async function applySwitchFormatWords(p: {
     console.log(`[format-switch-words] org=${p.orgId} match=${picked.id} to the club's ${other.name} (${r.maxPlayers} places) by ${p.via}`);
     return {
       outcome: "format-switched-activity",
+      matchId: picked.id,
       replyText: c.activitySwitched({ day: weekdayLabel(normaliseLang(p.lang), r.kickoff), perSide: p.perSide, places: r.maxPlayers }),
     };
   }
   const r = await resizeMatch({ matchId: picked.id, perSide: p.perSide, actorUserId: p.actorUserId, via: p.via, now: p.now, ...(p.groupList === false ? { groupList: false } : {}) });
-  return { outcome: r.outcome, replyText: r.replyText, ...(r.replyIfTeamsMade ? { replyIfTeamsMade: r.replyIfTeamsMade } : {}) };
+  return { outcome: r.outcome, replyText: r.replyText, matchId: picked.id, ...(r.replyIfTeamsMade ? { replyIfTeamsMade: r.replyIfTeamsMade } : {}) };
 }
 
 /**

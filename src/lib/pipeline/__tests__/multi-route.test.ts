@@ -277,8 +277,8 @@ describe("matchChangesFirst: a batch's match changes, in message order, against 
     expect([...matchChangesFirst([admin("off", "cancel_match"), claim("in1")])]).toEqual(["off"]);
   });
 
-  it("a switch, a size or a game move is done before the INs, wherever it sits", () => {
-    for (const a of ["switch_format", "player_numbers", "move_game"]) {
+  it("a switch or a size is done before the INs, wherever it sits", () => {
+    for (const a of ["switch_format", "player_numbers"]) {
       expect([...matchChangesFirst([admin("x", a), claim("in1")])]).toEqual(["x"]);
       expect([...matchChangesFirst([claim("in1"), admin("x", a)])]).toEqual(["x"]);
     }
@@ -298,6 +298,11 @@ describe("matchChangesFirst: a batch's match changes, in message order, against 
     for (const a of ["bulk_payment", "reminder", "recruit", "season_break", "set_venue", "other"]) {
       expect([...matchChangesFirst([admin("x", a), claim("in1")])]).toEqual([]);
     }
+  });
+
+  it("a game moved to another day or time is NOT done first: the INs land on the game the players were answering", () => {
+    expect([...matchChangesFirst([claim("in1"), admin("mv", "move_game")])]).toEqual([]);
+    expect([...matchChangesFirst([admin("mv", "move_game"), claim("in1")])]).toEqual([]);
   });
 
   it("no attendance claim in the batch: nothing to order against, nothing moved", () => {

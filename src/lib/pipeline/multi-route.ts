@@ -112,7 +112,7 @@ export function orderedRoutes(r: { route: Route; alsoRoutes?: readonly Route[] }
  *
  *   THE RULE      A change to the match itself (`MATCH_CHANGE_ACTIONS`:
  *                 put back on, cancel, another size, the fewest and most
- *                 players, the day or time) is done before the batch's
+ *                 players) is done before the batch's
  *                 attendance claims, wherever it sits among them, UNTIL the
  *                 first cancel that comes after a claim. That cancel, and
  *                 everything after it, is done after the claims, as it
@@ -134,6 +134,11 @@ export function orderedRoutes(r: { route: Route; alsoRoutes?: readonly Route[] }
  *                 set). "In", "cancel", "back on": cancelled THEN restored,
  *                 both after the IN, never in the reverse order.
  *
+ *   NOT A GAME MOVE (review of #616). "Move Monday's game to Tuesday" is
+ *                 left where it always was, after the claims: the INs land
+ *                 on the game the players were answering, never on one
+ *                 moved under them in the same batch.
+ *
  * A batch with no attendance claim moves nothing: there is nothing to order
  * against, and it runs exactly as before.
  */
@@ -142,7 +147,6 @@ export const MATCH_CHANGE_ACTIONS: ReadonlySet<string> = new Set([
   "cancel_match",
   "switch_format",
   "player_numbers",
-  "move_game",
 ]);
 
 export interface BatchPart {

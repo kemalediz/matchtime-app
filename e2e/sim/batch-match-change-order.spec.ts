@@ -299,6 +299,109 @@ async function statusOf(grp: SimGroup): Promise<string> {
     });
   }
 
+  // ── Review of #616 ─────────────────────────────────────────────────────
+
+  /** Twelve in for a twelve-place game played 6, 7 or 8 a side, with
+   *  "Squad complete" already announced (its fill-cycle claim stands). */
+  async function fullTwelve(request: Parameters<typeof createGroup>[0], db: Parameters<typeof createGroup>[1]): Promise<SimGroup> {
+    const grp = await suttonWorld(request, db, {
+      attendance: confirmed("ava", "bea", "eli", "fin", "gus", "hal", "ian", "jon", "kit", "lev", "max", "ned"),
+      cancelled: false,
+      maxPlayers: 12,
+    });
+    await db.run(`UPDATE "Activity" SET "minPlayers" = 12, "maxPlayers" = 16 WHERE id = $1`, [grp.activityId]);
+    await db.run(
+      `INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ($1, $2, 'group-message', $3)`,
+      [`sim-lock-${grp.matchId}`, `${grp.matchId}:squad-locked`, grp.matchId],
+    );
+    return grp;
+  }
+
+  test("a bigger size switched before an IN: the next full squad is announced (Squad complete 14/14)", async ({ request, db }) => {
+    const grp = (await fullTwelve(request, db)).attach(request);
+    arm();
+
+    await grp.postBatch([
+      { player: "ava", body: SWITCH_7, tag: true },
+      { player: "cal", body: IN },
+    ]);
+    expect(await grp.attendanceOf("cal")).toMatchObject({ status: "CONFIRMED" });
+
+    const second = await grp.postBatch([{ player: "dov", body: IN }]);
+    expect(await grp.attendanceOf("dov")).toMatchObject({ status: "CONFIRMED" });
+    expect(second.groupPosts.filter((p) => p.includes("Squad complete (14/14)"))).toHaveLength(1);
+  });
+
+  test("the same through one message with several parts (#613): the next full squad is announced", async ({ request, db }) => {
+    const grp = (await fullTwelve(request, db)).attach(request);
+    const both = "@Match Time make it 7 aside and Cal is IN";
+    setRouterStub({ floor: false, bodies: { [both]: ["other_att", "admin_ops"], [IN]: "self_att" } });
+    setExtractorStub({
+      byExtractor: {
+        attendance: {
+          [IN]: SELF_IN,
+          [both]: { claims: [{ ...SELF_IN.claims[0], subject: "other", personRef: "Cal", personNamed: true }], affirmation: "none", sideRequests: [] },
+        },
+        admin: { [both]: admin("switch_format", { size: 7, aSide: true }) },
+      },
+    });
+
+    await grp.postBatch([{ player: "ava", body: both, tag: true }]);
+    expect(await grp.attendanceOf("cal")).toMatchObject({ status: "CONFIRMED" });
+
+    const second = await grp.postBatch([{ player: "dov", body: IN }]);
+    expect(second.groupPosts.filter((p) => p.includes("Squad complete (14/14)"))).toHaveLength(1);
+  });
+
+  test("a club whose organisers announce the list: their copy of the new list comes after the batch's INs, once", async ({ request, db }) => {
+    const grp = (
+      await suttonWorld(request, db, {
+        attendance: confirmed("ava", "bea", "eli", "fin", "gus", "hal", "ian", "jon", "kit", "lev", "max", "ned", "oli"),
+        cancelled: false,
+        maxPlayers: 16,
+      })
+    ).attach(request);
+    await db.run(`UPDATE "Activity" SET "minPlayers" = 12, "maxPlayers" = 16 WHERE id = $1`, [grp.activityId]);
+    await db.run(`UPDATE "Organisation" SET "listAnnouncer" = 'organisers' WHERE id = $1`, [grp.orgId]);
+    arm();
+
+    const res = await grp.postBatch([
+      { player: "ava", body: SWITCH_7, tag: true },
+      { player: "cal", body: IN },
+      { player: "dov", body: IN },
+    ]);
+    console.log(`[batch-order] organisers announce: [dms] ${JSON.stringify(res.dms)} [posts] ${JSON.stringify(res.groupPosts)}`);
+
+    expect(await grp.attendanceOf("cal")).toMatchObject({ status: "CONFIRMED" });
+    expect(await grp.attendanceOf("dov")).toMatchObject({ status: "BENCH" });
+    const relays = res.dms.filter((d) => d.text.startsWith("📋 For the organisers"));
+    // Each organiser gets the list once (Ava and Bea), and every copy is the
+    // squad AFTER the INs: Cal playing, Dov on the bench.
+    expect(relays.length).toBeGreaterThan(0);
+    expect(new Set(relays.map((d) => d.phone)).size).toBe(relays.length);
+    for (const r of relays) {
+      expect(r.text).toContain("Cal Cove");
+      expect(r.text).toContain("Dov Dale");
+    }
+    expect(res.groupPosts).toEqual([]);
+  });
+
+  test("an admin message the early pass could not read: the failure is on its log row", async ({ request, db }) => {
+    const grp = (await suttonWorld(request, db, { attendance: confirmed("ava", "bea", "eli"), cancelled: true })).attach(request);
+    setRouterStub({ floor: false, bodies: { [IN]: "self_att", [BACK_ON]: "admin_ops" } });
+    setExtractorStub({ byExtractor: { attendance: { [IN]: SELF_IN } }, failByExtractor: { admin: [BACK_ON] } });
+
+    const res = await grp.postBatch([
+      { player: "cal", body: IN },
+      { player: "ava", body: BACK_ON, tag: true },
+    ]);
+
+    const row = await db.one<{ reasoning: string | null }>(`SELECT reasoning FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [res.results[1].waMessageId]);
+    expect(row?.reasoning ?? "").toMatch(/^no owner: route=admin_ops — .+/);
+    // Read once: the pass after the engine did not try it again.
+    expect(adminReads(BACK_ON)).toBe(1);
+  });
+
   test("one message alone is what it was: a bare restore, then a bare IN, in two batches", async ({ request, db }) => {
     const grp = (await suttonWorld(request, db, { attendance: confirmed("ava", "bea", "eli"), cancelled: true })).attach(request);
     arm();
