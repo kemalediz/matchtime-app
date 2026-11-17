@@ -465,19 +465,26 @@ export function buildRollingAnnouncePost(
     bench: NamedRow[];
     maxPlayers: number;
     organiserPicks?: boolean;
+    /** No squad limit (open-squad.ts): `maxPlayers` is the minimum; the
+     *  count alone and the invitation, never "full" or "places open". */
+    openSquad?: boolean;
   } & WithLang,
 ): string {
   const s = t(args.lang);
   const lines: string[] = [
     s.rolling_announce_lead(args),
     ``,
-    s.rolling_in_header({ confirmed: args.confirmed.length, maxPlayers: args.maxPlayers }),
+    s.rolling_in_header({ confirmed: args.confirmed.length, maxPlayers: args.maxPlayers, ...(args.openSquad ? { openSquad: true } : {}) }),
     ...numbered(args.confirmed, s.unnamed),
   ];
   if (args.bench.length > 0) {
     lines.push(``, s.rolling_waiting_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
   }
   const open = Math.max(0, args.maxPlayers - args.confirmed.length);
+  if (args.openSquad) {
+    lines.push(``, s.mwk_list_open_squad({ price: null, short: open }));
+    return lines.join("\n");
+  }
   const tail =
     open === 0
       ? s.rolling_tail_full

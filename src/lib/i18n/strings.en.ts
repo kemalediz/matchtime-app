@@ -1661,15 +1661,15 @@ export const en = {
   /** "help availability" (2026-10-31): the friend link (#488), as
    *  friend-link/rules.ts and friend-link.en.ts do it. Appended to every
    *  availability explainer by buildHelpReply. */
-  onbHelpFriendLink: `👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.`,
+  onbHelpFriendLink: (p: { openSquad?: boolean } = {}): string => `👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game${p.openSquad ? "" : " (on the bench if it's full)"} and in the MatchTime player pool. The link works until kick-off.`,
   /** "help friend" (2026-10-31): the friend link's own topic, from
    *  friend-link/rules.ts, book.ts, withdraw.ts and friend-link.en.ts.
    *  `fees`: the club takes match fees (`paymentCollection`). An organiser
    *  also gets `onbHelpFriendLinkOrganiser` (buildHelpReply). */
-  onbHelpFriend: (p: { fees: boolean }): string =>
+  onbHelpFriend: (p: { fees: boolean; openSquad?: boolean }): string =>
     `👥 *Bringing a friend: how it works*\n` +
     `Say in the group that a friend is coming (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them.\n` +
-    `Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.\n` +
+    `Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game${p.openSquad ? "" : " (on the bench if it's full)"} and in the MatchTime player pool. The link works until kick-off.\n` +
     `If your friend can't make it, they can message me on WhatsApp or tap the button on their page to give the place back.` +
     (p.fees ? `\n💷 Your friend pays the match fee like any guest, after the game (in a monthly club, as a pay as you go player).` : ""),
   /** The same, for an organiser: his own add is direct (friend link D1). */
@@ -1775,17 +1775,29 @@ export const en = {
    *  doors). `attendance`: IN for pay as you go and the friend link need
    *  it. `pool`: the pool is open for the club, asked from the match page
    *  (pool/ask-round.ts). */
-  hq_help_players_monthly: (p: { attendance: boolean; pool: boolean }): string =>
+  /** `openSquad` (open-squad.ts): no open place and no bench to speak of. */
+  hq_help_players_monthly: (p: { attendance: boolean; pool: boolean; openSquad?: boolean }): string =>
     [
       `👥 *How players join your monthly squad*:`,
       `📋 *"@Match Time add Tom to the November list, he's paid"*: a regular for the month's games still to play, and on the next game's squad.`,
       ...(p.attendance
+        ? p.openSquad
+          ? [
+              `🙋 Pay as you go: a player says *In* in the players' group to play, and pays for that game only.`,
+              `👥 A player can bring a friend: they say so in the players' group and I DM them a link for their friend, which puts them in the game.`,
+            ]
+          : [
+              `🙋 Pay as you go: a player can say *In* in the players' group to take an open place, and pays for that game only.`,
+              `👥 A player can bring a friend: they say so in the players' group and I DM them a link for their friend, which takes an open place (on the bench if it's full).`,
+            ]
+        : []),
+      ...(p.pool
         ? [
-            `🙋 Pay as you go: a player can say *In* in the players' group to take an open place, and pays for that game only.`,
-            `👥 A player can bring a friend: they say so in the players' group and I DM them a link for their friend, which takes an open place (on the bench if it's full).`,
+            p.openSquad
+              ? `🌍 Short of the minimum? Ask nearby players from the MatchTime player pool from the match page.`
+              : `🌍 A place still open? Ask nearby players from the MatchTime player pool from the match page.`,
           ]
         : []),
-      ...(p.pool ? [`🌍 A place still open? Ask nearby players from the MatchTime player pool from the match page.`] : []),
     ].join("\n"),
 
   // ── The safe YES in the admin group (2026-10-16, admin-group-confirm-rules.ts) ──
@@ -3459,7 +3471,8 @@ export const en = {
   rolling_announce_lead: (p: { activityName: string; dateLabel: string; venue: string; deadline: string }): string =>
     `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
     `Everyone who played last time is in again. Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,
-  rolling_in_header: (p: { confirmed: number; maxPlayers: number }): string =>
+  rolling_in_header: (p: { confirmed: number; maxPlayers: number; openSquad?: boolean }): string =>
+    p.openSquad ? `*In (${p.confirmed}):*` :
     `*In (${p.confirmed}/${p.maxPlayers}):*`,
   rolling_waiting_header: (p: { count: number }): string => `*Bench (${p.count}):*`,
   rolling_tail_open: (p: { open: number }): string =>
@@ -5588,7 +5601,12 @@ export const en = {
   //   With "The organisers", MatchTime sends the squad to the admin
   //   channel instead of the players' group (organisers-list-copy.ts).
   /** The admin list update's first line. "of", never a slash. */
-  oa_header: (p: { activityName: string; whenLabel: string; confirmed: number; maxPlayers: number }): string => {
+  /** `openSquad` (open-squad.ts): `maxPlayers` is the minimum; the count alone, never "full". */
+  oa_header: (p: { activityName: string; whenLabel: string; confirmed: number; maxPlayers: number; openSquad?: boolean }): string => {
+    if (p.openSquad) {
+      const short = Math.max(0, p.maxPlayers - p.confirmed);
+      return `📋 *Squad for ${p.activityName}, ${p.whenLabel}*: ${p.confirmed} in, no squad limit${short > 0 ? `, ${short} more needed to play` : ""}.`;
+    }
     const open = Math.max(0, p.maxPlayers - p.confirmed);
     const tail = open === 0 ? "full" : `${open} ${open === 1 ? "space" : "spaces"}`;
     return `📋 *Squad for ${p.activityName}, ${p.whenLabel}*: ${p.confirmed} of ${p.maxPlayers} in, ${tail}.`;

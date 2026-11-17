@@ -1363,11 +1363,11 @@ export const tr: Strings = {
     p.on
       ? `Kadro sınırını ve yedekleri geri getirmek için beni etiketleyip söyleyin (örneğin *@Match Time kadro sınırını ve yedekleri geri getir*) ya da ayarlardaki Yedekler kartını kullanın.`
       : `Saha gelen herkese yetiyor mu? Beni etiketleyip söyleyin (örneğin *@Match Time kadro sınırı yok*): *varım* yazan herkes oynar, yedek olmaz.`,
-  onbHelpFriendLink: `👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.`,
+  onbHelpFriendLink: (p = {}) => `👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer${p.openSquad ? "" : " (kadro doluysa yedeğe)"} ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.`,
   onbHelpFriend: (p) =>
     `👥 *Arkadaş getirmek nasıl çalışır*\n` +
     `Bir arkadaşınızın geleceğini grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim.\n` +
-    `Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.\n` +
+    `Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer${p.openSquad ? "" : " (kadro doluysa yedeğe)"} ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.\n` +
     `Arkadaşınız gelemezse bana WhatsApp'tan yazarak ya da sayfasındaki düğmeye basarak yerini geri verebilir.` +
     (p.fees ? `\n💷 Arkadaşınız maç ücretini her misafir gibi maçtan sonra öder (aylık kulüplerde maç başı ödeyen oyuncu olarak).` : ""),
   onbHelpFriendLinkOrganiser: `Bir organizatör birini eklediğinde doğrudan listeye girer. Misafir mi getiriyorsunuz? Onun WhatsApp kişi kartını bana paylaşın ve oynayacağını yazın, örneğin *bu akşama ekle* (burada, organizatör grubunda beni etiketleyerek ya da özelden). Onu misafir olarak eklerim, saati, harita bağlantısıyla sahayı ve ücreti ona özelden gönderirim; maçla ilgili her sorusunu bana yazabilir.`,
@@ -1449,12 +1449,23 @@ export const tr: Strings = {
       `👥 *Oyuncular aylık kadronuza nasıl katılır*:`,
       `📋 *"@Match Time Tom'u Kasım listesine ekle, ödedi"*: ayın kalan maçları için düzenli oyuncu olur ve bir sonraki maçın kadrosuna girer.`,
       ...(p.attendance
+        ? p.openSquad
+          ? [
+              `🙋 Maç başı ödeyenler: bir oyuncu oynamak için oyuncu grubunda *varım* yazar, sadece o maçın ücretini öder.`,
+              `👥 Bir oyuncu arkadaşını getirebilir: oyuncu grubunda söyler, ben de ona arkadaşı için bir bağlantı gönderirim. Arkadaşı maça girer.`,
+            ]
+          : [
+              `🙋 Maç başı ödeyenler: bir oyuncu boş bir yeri almak için oyuncu grubunda *varım* yazabilir, sadece o maçın ücretini öder.`,
+              `👥 Bir oyuncu arkadaşını getirebilir: oyuncu grubunda söyler, ben de ona arkadaşı için bir bağlantı gönderirim. Arkadaşı boş bir yeri alır (kadro doluysa yedeğe girer).`,
+            ]
+        : []),
+      ...(p.pool
         ? [
-            `🙋 Maç başı ödeyenler: bir oyuncu boş bir yeri almak için oyuncu grubunda *varım* yazabilir, sadece o maçın ücretini öder.`,
-            `👥 Bir oyuncu arkadaşını getirebilir: oyuncu grubunda söyler, ben de ona arkadaşı için bir bağlantı gönderirim. Arkadaşı boş bir yeri alır (kadro doluysa yedeğe girer).`,
+            p.openSquad
+              ? `🌍 En az oyuncu sayısının altında mısınız? Maç sayfasından yakındaki MatchTime oyuncu havuzu oyuncularına sorun.`
+              : `🌍 Hâlâ boş yer mi var? Maç sayfasından yakındaki MatchTime oyuncu havuzu oyuncularına sorun.`,
           ]
         : []),
-      ...(p.pool ? [`🌍 Hâlâ boş yer mi var? Maç sayfasından yakındaki MatchTime oyuncu havuzu oyuncularına sorun.`] : []),
     ].join("\n"),
   hq_confirm_teams: (p) => `Bu EVET, ${p.day} için önerilen takımlara mı?`,
   hq_confirm_list: `Bu EVET, buraya yapıştırılan kadro listesine mi?`,
@@ -2520,7 +2531,7 @@ export const tr: Strings = {
   rolling_announce_lead: (p) =>
     `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
     `Geçen maçta oynayan herkes yine kadroda. Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
-  rolling_in_header: (p) => `*Kadroda (${p.confirmed}/${p.maxPlayers}):*`,
+  rolling_in_header: (p) => (p.openSquad ? `*Kadroda (${p.confirmed}):*` : `*Kadroda (${p.confirmed}/${p.maxPlayers}):*`),
   rolling_waiting_header: (p) => `*Yedek listesi (${p.count}):*`,
   rolling_tail_open: (p) => `${p.open} yer boş: almak için *VARIM* yazın.`,
   rolling_tail_open_organiser: (p) =>
@@ -4011,6 +4022,10 @@ export const tr: Strings = {
     `MatchTime artık ${p.club} yönetici grubunda${p.group ? ` ("${p.group}")` : ""} mesaj gönderemiyor: orada yalnızca yöneticiler mesaj gönderebiliyor. ` +
     `MatchTime orada grup yöneticisi yapılana ya da bu ayar kapatılana kadar yönetici mesajları size DM olarak gelecek.`,
   oa_header: (p) => {
+    if (p.openSquad) {
+      const short = Math.max(0, p.maxPlayers - p.confirmed);
+      return `📋 *${p.activityName} kadrosu, ${p.whenLabel}*: ${p.confirmed} kişi var, kadro sınırı yok${short > 0 ? `, oynamak için ${short} kişi daha lazım` : ""}.`;
+    }
     const open = Math.max(0, p.maxPlayers - p.confirmed);
     const tail = open === 0 ? "kadro tam" : `${open} yer boş`;
     return `📋 *${p.activityName} kadrosu, ${p.whenLabel}*: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var, ${tail}.`;

@@ -377,7 +377,7 @@ export function buildHelpReply(
     // with attendance off it works nowhere, so the answer says so and how
     // attendance is switched on, like any flag topic that is off.
     const body =
-      s.onbHelpFriend({ fees: features.paymentCollection === true }) + adminTail(s.onbHelpFriendLinkOrganiser);
+      s.onbHelpFriend({ fees: features.paymentCollection === true, ...(features.openSquad ? { openSquad: true } : {}) }) + adminTail(s.onbHelpFriendLinkOrganiser);
     if (topicIsOn(topic, features)) return body;
     const switchOn = s.onbHelpSwitchOn({
       topic: "availability",
@@ -414,7 +414,7 @@ export function buildHelpReply(
     // organiser's add stays direct (D1).
     const explainer =
       topic === "availability"
-        ? `${base}\n${s.onbHelpFriendLink}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}${admin && features.monthly ? `\n\n${s.onbHelpMonthListOrganiser}` : ""}` +
+        ? `${base}\n${s.onbHelpFriendLink(openSquad ? { openSquad: true } : {})}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}${admin && features.monthly ? `\n\n${s.onbHelpMonthListOrganiser}` : ""}` +
           // DM the people a message tagged (2026-11-09, named-invite.ts).
           (admin ? `\n${s.onbHelpDmTaggedOrganiser}` : "") +
           // No squad limit by tagging (2026-11-17): told only while it is

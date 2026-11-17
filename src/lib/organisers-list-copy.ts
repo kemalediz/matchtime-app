@@ -43,6 +43,9 @@ export function buildOrganiserListUpdate(args: {
    *  players left out because they said OUT for it. Empty, no line. */
   leftOut?: Array<{ name: string | null }> | null;
   lang: Lang | string | null | undefined;
+  /** No squad limit (open-squad.ts): `maxPlayers` is the minimum; the
+   *  count alone, never "full". */
+  openSquad?: boolean;
 }): string {
   const s = t(args.lang);
   const reasonLine = (() => {
@@ -64,6 +67,7 @@ export function buildOrganiserListUpdate(args: {
     whenLabel: args.whenLabel,
     confirmed: args.confirmed.length,
     maxPlayers: args.maxPlayers,
+    ...(args.openSquad ? { openSquad: true } : {}),
   });
   const parts = [reasonLine ? `${header}\n${reasonLine}` : header];
   parts.push(
@@ -71,6 +75,7 @@ export function buildOrganiserListUpdate(args: {
       confirmed: args.confirmed,
       bench: args.bench,
       maxPlayers: args.maxPlayers,
+      ...(args.openSquad ? { openSquad: true } : {}),
       lang: args.lang as Lang,
     }),
   );

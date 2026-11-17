@@ -367,7 +367,7 @@ const SAMPLES: SampleArgs = {
   onbHelpAvailabilityOpenSquad: { monthly: true },
   onbHelpTeamsOpenSquad: null,
   onbHelpOpenSquadOrganiser: { on: true },
-  onbHelpFriendLink: null,
+  onbHelpFriendLink: { openSquad: false },
   onbHelpFriend: { fees: true },
   onbHelpFriendLinkOrganiser: null,
   onbHelpDmTaggedOrganiser: null,

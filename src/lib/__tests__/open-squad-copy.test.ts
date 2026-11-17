@@ -5,7 +5,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { composeSquadStatusPost } from "../group-copy";
-import { buildAnnounceMatchPost, buildListPublishedPost, buildSquadRosterBlock } from "../scheduler-copy";
+import { buildAnnounceMatchPost, buildListPublishedPost, buildRollingAnnouncePost, buildSquadRosterBlock } from "../scheduler-copy";
+import { buildOrganiserListUpdate } from "../organisers-list-copy";
 
 const names = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
 const DASH = /[–—]/;
@@ -51,6 +52,25 @@ describe("the 17:00 roster and the published list, open squad", () => {
     const enough = buildListPublishedPost({ ...base, confirmed: rows(15), lang: "en" });
     expect(enough).toContain("Anyone else, say *IN* to play.");
     expect(enough).not.toMatch(/still open|needed|\/12/);
+  });
+});
+
+describe("the organisers' list update and the rolling announcement, open squad (review of #623)", () => {
+  const rows = (n: number) => names(n).map((name, i) => ({ id: `u${i}`, name }));
+  it("the organisers' update: the count, no limit, how many more below the minimum; never \"full\" or \"of N\"", () => {
+    const base = { reason: "chase" as const, activityName: "Football", whenLabel: "Mon 23 Nov", bench: [], maxPlayers: 12, openSquad: true };
+    const short = buildOrganiserListUpdate({ ...base, confirmed: rows(10), lang: "en" });
+    expect(short.split("\n")[0]).toBe("📋 *Squad for Football, Mon 23 Nov*: 10 in, no squad limit, 2 more needed to play.");
+    expect(short).toContain("*Confirmed (10):*");
+    const enough = buildOrganiserListUpdate({ ...base, reason: "announce", confirmed: rows(15), lang: "tr" });
+    expect(enough.split("\n")[0]).toBe("📋 *Football kadrosu, Mon 23 Nov*: 15 kişi var, kadro sınırı yok.");
+    expect(enough).not.toMatch(/kadro tam|\/12/);
+  });
+  it("the rolling announcement: \"In (15)\" and the invitation, never \"full\" or \"places open\"", () => {
+    const text = buildRollingAnnouncePost({ activityName: "Football", dateLabel: "Monday", venue: "Goals", deadline: "Sun 18:00", confirmed: rows(15), bench: [], maxPlayers: 12, openSquad: true, lang: "en" });
+    expect(text).toContain("*In (15):*");
+    expect(text).toContain("Anyone else, say *IN* to play.");
+    expect(text).not.toMatch(/full|places open|\/12/);
   });
 });
 

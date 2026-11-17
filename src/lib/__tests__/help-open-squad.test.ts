@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildHelpReply, helpFeaturesFrom, type HelpFeatures } from "@/lib/onboarding-conversation";
+import { t } from "@/lib/i18n/t";
 
 const BASE: HelpFeatures = {
   attendance: true,
@@ -47,6 +48,31 @@ describe("help availability, no squad limit", () => {
   it("an organiser hears how to put a limit back by tagging", () => {
     const text = buildHelpReply("availability", OPEN, "en", { audience: "admin" });
     expect(text).toContain("*@Match Time put the limit and the bench back*");
+  });
+});
+
+describe("the friend link lines, no squad limit (review of #623)", () => {
+  it("never say \"on the bench if it's full\", in either topic or language", () => {
+    for (const lang of ["en", "tr"] as const) {
+      for (const topic of ["availability", "friend"] as const) {
+        const text = buildHelpReply(topic, OPEN, lang);
+        expect(text, `${topic} ${lang}`).not.toContain("on the bench if it's full");
+        expect(text, `${topic} ${lang}`).not.toContain("kadro doluysa yedeğe");
+      }
+    }
+    expect(buildHelpReply("availability", BASE, "en")).toContain("(on the bench if it's full)");
+  });
+});
+
+describe("the organisers' \"help players\" for a monthly open squad (review of #623)", () => {
+  it("no open place, no bench, in either language", () => {
+    const en = t("en").hq_help_players_monthly({ attendance: true, pool: true, openSquad: true });
+    expect(en).toContain("🙋 Pay as you go: a player says *In* in the players' group to play, and pays for that game only.");
+    expect(en).toContain("which puts them in the game.");
+    expect(en).toContain("🌍 Short of the minimum? Ask nearby players from the MatchTime player pool from the match page.");
+    expect(en).not.toMatch(/open place|bench|still open/);
+    const tr = t("tr").hq_help_players_monthly({ attendance: true, pool: true, openSquad: true });
+    expect(tr).not.toMatch(/boş|yedeğe/);
   });
 });
 

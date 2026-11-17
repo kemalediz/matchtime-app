@@ -1629,6 +1629,7 @@ async function computeForMatch(
                   confirmed: confirmed.map((a) => a.user),
                   bench: bench.map((a) => a.user),
                   maxPlayers,
+                  openSquad,
                   lang,
                   ...listExtra,
                 }),
@@ -1804,6 +1805,7 @@ async function computeForMatch(
               confirmed: confirmed.map((a) => a.user),
               bench: bench.map((a) => a.user),
               maxPlayers,
+              openSquad,
               // Slice 2b: an organiser-pick club says IN puts you on the
               // waiting list, and the organisers pick.
               organiserPicks: features.benchPickMode === "organiser",
