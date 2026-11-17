@@ -1363,6 +1363,7 @@ export function decide(input: EngineInput): EngineResult {
           confirmedCount: confirmedCount(w),
           maxPlayers: state.maxPlayers,
           alreadyAsked: !!msg.senderUserId && state.guestAskedUserIds.includes(msg.senderUserId),
+          openSquad: state.features.openSquad === true,
         });
         out.reasons.push(`guest-name-ask: ${decision.reason}`);
         if (decision.ask && !askedWhoMentionedHere) {

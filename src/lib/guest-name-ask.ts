@@ -70,6 +70,8 @@ export interface GuestAskInput {
   confirmedCount: number;
   /** Format capacity — Match.maxPlayers, i.e. both teams. */
   maxPlayers: number;
+  /** No squad limit (open-squad.ts): there is always room. Absent: off. */
+  openSquad?: boolean;
   /** Has this player already been asked for a guest name for THIS match? */
   alreadyAsked: boolean;
 }
@@ -101,6 +103,7 @@ export function shouldAskForGuestName(input: GuestAskInput): GuestAskDecision {
   // offer is worded — the seatbelts below exist to stop MT piping up
   // UNPROMPTED, not to stonewall someone who asked.
   if (input.tagged) return { ask: true, reason: "tagged unnamed-guest offer" };
+  if (input.openSquad === true) return { ask: true, reason: "unnamed guest offered, no squad limit" };
 
   const room = Math.max(0, input.maxPlayers - input.confirmedCount);
   if (room <= 0)
