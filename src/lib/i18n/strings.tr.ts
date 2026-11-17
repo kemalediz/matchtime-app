@@ -1343,7 +1343,7 @@ export const tr: Strings = {
     `Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.\n` +
     `Arkadaşınız gelemezse bana WhatsApp'tan yazarak ya da sayfasındaki düğmeye basarak yerini geri verebilir.` +
     (p.fees ? `\n💷 Arkadaşınız maç ücretini her misafir gibi maçtan sonra öder (aylık kulüplerde maç başı ödeyen oyuncu olarak).` : ""),
-  onbHelpFriendLinkOrganiser: `Bir organizatör birini eklediğinde doğrudan listeye girer.`,
+  onbHelpFriendLinkOrganiser: `Bir organizatör birini eklediğinde doğrudan listeye girer. Misafir mi getiriyorsunuz? Onun WhatsApp kişi kartını bana paylaşın ve oynayacağını yazın, örneğin *bu akşama ekle* (burada, organizatör grubunda beni etiketleyerek ya da özelden). Onu misafir olarak eklerim, saati, harita bağlantısıyla sahayı ve ücreti ona özelden gönderirim; maçla ilgili her sorusunu bana yazabilir.`,
   onbHelpDmTaggedOrganiser: `📨 Biri oynayabilirler mi diye birkaç kişiyi mi etiketledi? O mesaja *@Match Time onlara özelden yaz* diye yanıt verin ya da *@Match Time yukarıdakilere özelden yaz* deyin, her birine sıradaki maçın davetini özelden gönderirim. Yalnızca tanıdığım numaralara, bir seferde en fazla 10 kişiye yazarım.`,
   onbHelpMonthListOrganiser:
     `📋 *Aylık kadro:* ayın listesini her zamanki gibi grupta paylaş, okuduğumu sana DM ile gönderirim. Listede tanımadığım bir isim varsa, adını bilmediğim üyeleri telefonlarıyla gösteririm; kim kimdir kendi sözlerinle söyle (örneğin _"Craig 3 numara"_) ya da aylar sayfasında seç. Evet yazınca ay başlar.\n\n` +
@@ -1394,6 +1394,7 @@ export const tr: Strings = {
         lines.push(`📣 *"@Match Time gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`);
         lines.push(`📨 Kişileri etiketleyen bir mesaja *"@Match Time onlara özelden yaz"* diye yanıt verin ya da *"@Match Time yukarıdakilere özelden yaz"* deyin: her birine sıradaki maçın davetini özelden gönderirim. Yalnızca tanıdığım numaralara, bir seferde en fazla 10 kişiye.`);
         if (p.pool) lines.push(`🌍 *"@Match Time havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
+        lines.push(`👤 Bir misafirin WhatsApp kişi kartını buraya paylaşın, sonra *"@Match Time bu akşama ekle"* yazın: onu misafir olarak eklerim (kadro doluysa yedeğe) ve saati, sahayı ve ücreti ona özelden gönderirim.`);
       }
       if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde beni etiketleyip listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın (örneğin *@Match Time 2 3*).`);
     }

@@ -679,3 +679,24 @@ describe("entries that yield no text are tallied by field name, never by content
     ).not.toThrow();
   });
 });
+
+// ── A shared contact card in a bundle (2026-11-17) ───────────────────
+// The live mapper reads a card as type "vcard" (an organiser bringing a
+// guest). A card in the JOIN history is nobody's request: it never becomes
+// a row, so its name and number never reach the server.
+describe("a shared contact card in a bundle", () => {
+  it("is no row, and its number is nowhere in the result", async () => {
+    const vcard = ["BEGIN:VCARD", "VERSION:3.0", "FN:Abu Ayoub", "TEL;waid=447700900123:+44 7700 900123", "END:VCARD"].join("\n");
+    const card: proto.IWebMessageInfo = {
+      key: { id: "3EB0CCCCCCCCCCCC0001", fromMe: false, remoteJid: GROUP, participant: ALICE },
+      message: { contactMessage: { displayName: "Abu Ayoub", vcard } },
+      messageTimestamp: T0 + 5,
+    };
+    const r = await unpackBundle(pack(encodeGroupHistory([card, msg("3EB0AAAAAAAAAAAA0002", "I am in", { participant: BOB, ts: T0 + 10 })]), "zlib"), GROUP);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows.map((x) => x.text)).toEqual(["I am in"]);
+    expect(JSON.stringify(r)).not.toContain("7700900123");
+    expect(JSON.stringify(r)).not.toContain("Abu Ayoub");
+  });
+});

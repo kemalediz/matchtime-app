@@ -49,6 +49,7 @@ describe("the HQ topics, English", () => {
         `📣 *Finding players*: ${tag}`,
         `📣 *"@Match Time ask the group if anyone can play"*: when a place is open, I ask in the main chat.`,
         `📨 Reply to a message that tags people with *"@Match Time DM them"*, or say *"@Match Time DM the people above"*: I DM each of them the invite for the next game. Only numbers I already know, up to 10 at a time.`,
+        `👤 Share a guest's WhatsApp contact here, then *"@Match Time add him for tonight"*: I add him as a guest (in, or on the bench if it's full) and DM him the time, the venue and the fee.`,
         `🙋 When I ask you to pick who plays, tag me with the numbers or names from my list, or *ALL* or *NONE* (for example *@Match Time 2 3*).`,
       ].join("\n"),
     );
@@ -105,6 +106,7 @@ describe("the HQ topics, Turkish", () => {
         `📣 *Oyuncu bulmak*: ${tag}`,
         `📣 *"@Match Time gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`,
         `📨 Kişileri etiketleyen bir mesaja *"@Match Time onlara özelden yaz"* diye yanıt verin ya da *"@Match Time yukarıdakilere özelden yaz"* deyin: her birine sıradaki maçın davetini özelden gönderirim. Yalnızca tanıdığım numaralara, bir seferde en fazla 10 kişiye.`,
+        `👤 Bir misafirin WhatsApp kişi kartını buraya paylaşın, sonra *"@Match Time bu akşama ekle"* yazın: onu misafir olarak eklerim (kadro doluysa yedeğe) ve saati, sahayı ve ücreti ona özelden gönderirim.`,
         `🙋 Kimin oynayacağını seçmenizi istediğimde beni etiketleyip listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın (örneğin *@Match Time 2 3*).`,
       ].join("\n"),
     );

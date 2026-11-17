@@ -1623,7 +1623,7 @@ export const en = {
     `If your friend can't make it, they can message me on WhatsApp or tap the button on their page to give the place back.` +
     (p.fees ? `\n💷 Your friend pays the match fee like any guest, after the game (in a monthly club, as a pay as you go player).` : ""),
   /** The same, for an organiser: his own add is direct (friend link D1). */
-  onbHelpFriendLinkOrganiser: `When an organiser adds someone, they go straight on the list.`,
+  onbHelpFriendLinkOrganiser: `When an organiser adds someone, they go straight on the list. Bringing a guest? Share his WhatsApp contact with me and say he's playing, for example *add him for tonight* (here, in the organisers' group with a tag, or by DM). I add him as a guest and DM him the time, the venue with a map link and the fee, and he can message me any question about the game.`,
   /** "help availability" for an organiser (2026-11-09): DM the people a
    *  message tagged the invite (named-invite.ts). */
   onbHelpDmTaggedOrganiser: `📨 Somebody tagged a few people to ask if they can play? Reply to that message with *@Match Time DM them*, or say *@Match Time DM the people above*, and I DM each of them the invite for the next game. I only message numbers I already know, up to 10 at a time.`,
@@ -1696,6 +1696,7 @@ export const en = {
         lines.push(`📣 *"@Match Time ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
         lines.push(`📨 Reply to a message that tags people with *"@Match Time DM them"*, or say *"@Match Time DM the people above"*: I DM each of them the invite for the next game. Only numbers I already know, up to 10 at a time.`);
         if (p.pool) lines.push(`🌍 *"@Match Time ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
+        lines.push(`👤 Share a guest's WhatsApp contact here, then *"@Match Time add him for tonight"*: I add him as a guest (in, or on the bench if it's full) and DM him the time, the venue and the fee.`);
       }
       if (p.picks) lines.push(`🙋 When I ask you to pick who plays, tag me with the numbers or names from my list, or *ALL* or *NONE* (for example *@Match Time 2 3*).`);
     }

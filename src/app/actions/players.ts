@@ -1,6 +1,7 @@
 "use server";
 
 import { isGuestMembership } from "@/lib/guest-membership";
+import { numberOwnerDecision } from "@/lib/guest-card/rules";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { onboardingSchema, playerPositionsSchema } from "@/lib/validations";
@@ -1043,7 +1044,10 @@ async function ensureOrgPlayer(
         where: { userId_orgId: { userId: existing.id, orgId } },
         select: { guestMatchId: true },
       });
-      if (!mem || isGuestMembership(mem)) return { ok: false, error: s.pg_err_number_on_matchtime };
+      // The one rule for whose number may be attached (shared with the
+      // guest card, `guest-card/rules.ts`). Here only a member: the form
+      // would make a guest an ordinary member.
+      if (numberOwnerDecision({ userExists: true, membership: mem }) !== "member") return { ok: false, error: s.pg_err_number_on_matchtime };
       if (name && !existing.name && (await isClubOwnedUser(existing.id, orgId))) {
         await db.user.update({ where: { id: existing.id }, data: { name } });
       }

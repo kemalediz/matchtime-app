@@ -38,6 +38,7 @@
  * refused for an approved club's group at queue time and again at
  * dispatch.
  */
+import { withoutContactCards } from "./guest-card/vcard";
 import { db } from "./db";
 import { t } from "./i18n/t";
 import { coerceHistoryMessages } from "./onboarding-enrichment-reconcile";
@@ -231,7 +232,7 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     // never replaces chat already stored. And it stores nothing on a link
     // already past the retention limit (captured-history-expiry.ts): the
     // next cron run would only delete it again.
-    const late = coerceHistoryMessages(input.enrichmentHistory);
+    const late = coerceHistoryMessages(withoutContactCards(input.enrichmentHistory));
     const pastRetention =
       existing.linkedAt != null && now.getTime() - existing.linkedAt.getTime() >= CAPTURED_HISTORY_RETENTION_MS;
     // The group description follows the same rule. And neither is written
@@ -268,7 +269,7 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     // group is an admin of one with a link code open. When the rule's
     // conditions do not hold (or stop holding while linking), the add
     // carries on below exactly as before.
-    const ctx = { groupId, subject, snapshot, ev, history: input.enrichmentHistory, description, now };
+    const ctx = { groupId, subject, snapshot, ev, history: withoutContactCards(input.enrichmentHistory), description, now };
     const relink = await findRelinkAfterReAdd(groupId, ev, now);
     if (relink && blocked) {
       const removedAt = relink.expect.botRemovedAt instanceof Date ? relink.expect.botRemovedAt.toISOString() : null;
@@ -332,7 +333,7 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
       organiserPresent: decision.organiserPresent,
     }, now);
   }
-  const ctx = { groupId, subject, snapshot, ev, history: input.enrichmentHistory, description, now };
+  const ctx = { groupId, subject, snapshot, ev, history: withoutContactCards(input.enrichmentHistory), description, now };
   const out = await linkGroupToRequest(ctx, {
     row,
     // Compare-and-set on the status the request had when it was matched.
@@ -631,7 +632,7 @@ export async function attachLateGroupHistory(
   enrichmentHistory: unknown,
   now: Date = new Date(),
 ): Promise<"stored" | "not-linked" | "already-stored" | "past-retention" | "empty"> {
-  const history = coerceHistoryMessages(enrichmentHistory);
+  const history = coerceHistoryMessages(withoutContactCards(enrichmentHistory));
   if (history.length === 0) return "empty";
   const linked = await db.clubConnect.findFirst({
     where: LINKED_AND_WAITING(groupId),

@@ -14,7 +14,9 @@
  *
  * A MEMBER'S FRIEND (friend link, 2026-10-31) gets Kemal's own words
  * instead: the organisers took him out of this game, he stays in the pool
- * and will keep hearing about games near him ("friend-removed").
+ * and will keep hearing about games near him ("friend-removed"). AN
+ * ORGANISER'S OWN GUEST (his contact card, 2026-11-17) hears the
+ * organisers took him out, and nothing about a pool he never joined.
  */
 import { db } from "../db";
 import { dayCommaTimeLabel } from "../i18n/dates";
@@ -22,6 +24,7 @@ import { normaliseLang } from "../i18n/lang";
 import { poolSafetyCopy } from "../i18n/pool-safety";
 import { queuePlatformDm } from "../platform-jobs";
 import { friendRemovedDm } from "../friend-link/copy";
+import { guestRemovedDm } from "../guest-card/copy";
 
 export async function tellPoolGuestRemoved(args: { userId: string; matchId: string; orgId: string; now?: Date }): Promise<boolean> {
   const now = args.now ?? new Date();
@@ -37,8 +40,11 @@ export async function tellPoolGuestRemoved(args: { userId: string; matchId: stri
     if (!match || now.getTime() >= match.date.getTime()) return false;
     // A member's friend (friend link, 2026-10-31) is told plainly, as Kemal
     // asked: the organisers took him out, he stays in the pool.
-    const place = await db.guestPlace.findUnique({ where: { matchId_userId: { matchId: args.matchId, userId: args.userId } }, select: { friendLinkId: true } });
+    const place = await db.guestPlace.findUnique({ where: { matchId_userId: { matchId: args.matchId, userId: args.userId } }, select: { friendLinkId: true, poolOfferId: true } });
     const friend = !!place?.friendLinkId;
+    // An organiser's own guest (his contact card, 2026-11-17: no offer, no
+    // friend link) is told in the organisers' words, never the pool's.
+    const organisersGuest = !!place && !place.friendLinkId && !place.poolOfferId;
     await db.guestPlace.updateMany({ where: { matchId: args.matchId, userId: args.userId, result: "booked" }, data: { result: "withdrawn", resultAt: now } });
     // Only the call that made him a past guest tells him (review 5).
     const left = await db.membership.updateMany({ where: { userId: args.userId, orgId: args.orgId, guestMatchId: args.matchId, leftAt: null }, data: { leftAt: now } });
@@ -55,9 +61,11 @@ export async function tellPoolGuestRemoved(args: { userId: string; matchId: stri
         phone,
         purpose: friend ? "friend-removed" : "pool-removed",
         refId: `removed:${args.matchId}:${args.userId}`,
-        text: friend
-          ? friendRemovedDm(lang, { club: club.name, kickoff: match.date })
-          : poolSafetyCopy(lang).dm_removed({ club: club.name, day: dayCommaTimeLabel(lang, match.date) }),
+        text: organisersGuest
+          ? guestRemovedDm(lang, { club: club.name, kickoff: match.date })
+          : friend
+            ? friendRemovedDm(lang, { club: club.name, kickoff: match.date })
+            : poolSafetyCopy(lang).dm_removed({ club: club.name, day: dayCommaTimeLabel(lang, match.date) }),
         sendAfter: null,
       });
     }

@@ -38,7 +38,7 @@ const EN_BODY =
   `Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.\n` +
   `If your friend can't make it, they can message me on WhatsApp or tap the button on their page to give the place back.`;
 const EN_FEE = `💷 Your friend pays the match fee like any guest, after the game (in a monthly club, as a pay as you go player).`;
-const EN_ADMIN = `When an organiser adds someone, they go straight on the list.`;
+const EN_ADMIN = `When an organiser adds someone, they go straight on the list. Bringing a guest? Share his WhatsApp contact with me and say he's playing, for example *add him for tonight* (here, in the organisers' group with a tag, or by DM). I add him as a guest and DM him the time, the venue with a map link and the fee, and he can message me any question about the game.`;
 
 const TR_BODY =
   `👥 *Arkadaş getirmek nasıl çalışır*\n` +
@@ -46,7 +46,7 @@ const TR_BODY =
   `Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.\n` +
   `Arkadaşınız gelemezse bana WhatsApp'tan yazarak ya da sayfasındaki düğmeye basarak yerini geri verebilir.`;
 const TR_FEE = `💷 Arkadaşınız maç ücretini her misafir gibi maçtan sonra öder (aylık kulüplerde maç başı ödeyen oyuncu olarak).`;
-const TR_ADMIN = `Bir organizatör birini eklediğinde doğrudan listeye girer.`;
+const TR_ADMIN = `Bir organizatör birini eklediğinde doğrudan listeye girer. Misafir mi getiriyorsunuz? Onun WhatsApp kişi kartını bana paylaşın ve oynayacağını yazın, örneğin *bu akşama ekle* (burada, organizatör grubunda beni etiketleyerek ya da özelden). Onu misafir olarak eklerim, saati, harita bağlantısıyla sahayı ve ücreti ona özelden gönderirim; maçla ilgili her sorusunu bana yazabilir.`;
 
 describe("the friend topic is one of the help topics", () => {
   it("the question extractor can name it", () => {

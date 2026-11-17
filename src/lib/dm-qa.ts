@@ -22,7 +22,7 @@
  */
 
 import { db } from "./db";
-import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
+import { GUEST_MEMBER_WHERE, ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { IN_LIVE_STAGE_CLUB_WHERE } from "./club-setup-rules";
 import { loadRecentHistory, formatRecentHistoryBlock, type RecentHistory } from "./match-history";
 import { loadPlayerSeasonStats } from "./player-stats";
@@ -135,7 +135,15 @@ export async function pickQaOrgAndQuote(
     where: { userId, leftAt: null, ...ORDINARY_MEMBER_WHERE, ...IN_LIVE_STAGE_CLUB_WHERE },
     select: { orgId: true },
   });
-  const orgIds = memberships.map((m) => m.orgId);
+  let orgIds = memberships.map((m) => m.orgId);
+  // A GUEST WITH NO CLUB OF HIS OWN (2026-11-17): he is not in the club's
+  // group, so he asks here, and the club he is booked with for a game still
+  // to come is the one he asks about (`guest-card/guest-dm.ts`). A partner
+  // guest, who has a club, keeps asking about his own club, as before.
+  if (orgIds.length === 0) {
+    const { liveGuestGames } = await import("./guest-card/guest-dm");
+    orgIds = [...new Set((await liveGuestGames(userId, new Date())).map((g) => g.orgId))];
+  }
   const quotedOrgId = quoted?.matchId
     ? ((await db.match.findUnique({ where: { id: quoted.matchId }, select: { activity: { select: { orgId: true } } } }))
         ?.activity.orgId ?? null)
@@ -415,8 +423,16 @@ export async function answerScopedQuestion(args: {
 
   // UNIFIED_ANSWERS (Kemal, 2026-11-10): the same answer step as the groups,
   // over the same context with the DM's audience (`unified-dm.ts`). Off:
-  // everything below, unchanged.
-  if (args.unified ?? isUnifiedAnswersEnabled()) {
+  // everything below, unchanged. A GUEST of this club (2026-11-17, review
+  // of #621) is always answered by the unified step, which cuts what he is
+  // shown to his own game (`guest-card/context.ts` `guestView`).
+  let guestHere = false;
+  try {
+    guestHere = !!(await db.membership.findFirst({ where: { userId: args.userId, orgId: args.orgId, leftAt: null, ...GUEST_MEMBER_WHERE }, select: { id: true } }));
+  } catch {
+    // A failed read is a member's answer, as before.
+  }
+  if (guestHere || (args.unified ?? isUnifiedAnswersEnabled())) {
     return answerScopedQuestionUnified({ ...args, orgName: org.name, lang, apiKey: apiKey ?? null, stubMode });
   }
 

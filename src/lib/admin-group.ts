@@ -61,6 +61,7 @@ import { understandAdminMessage } from "./admin-group-understand";
 import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
 import { HQ_CANCEL_NOTHING_DONE } from "./match-cancel";
 import { piMentionsBot } from "./interaction-contract";
+import { cardSafeText } from "./guest-card/vcard";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -180,7 +181,17 @@ function parseTimestamp(ts: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<AdminGroupMessageResult> {
+export async function handleAdminGroupMessage(input: AdminGroupMessage): Promise<AdminGroupMessageResult> {
+  // A SHARED CONTACT CARD IS TAKEN ASIDE FIRST (2026-11-17, review of #621):
+  // everything below (the log, the router, the reply contexts, the HQ
+  // readers) sees its label, never its name and number. The raw text goes
+  // to the guest card door only (step 1b').
+  const rawCard = { text: input.text, quoted: input.quoted?.text ?? null };
+  const msg: AdminGroupMessage = {
+    ...input,
+    text: cardSafeText(input.text),
+    quoted: input.quoted ? { ...input.quoted, text: input.quoted.text == null ? input.quoted.text : cardSafeText(input.quoted.text) } : input.quoted,
+  };
   const now = msg.now ?? new Date();
   const org = await db.organisation.findFirst({
     where: { adminGroupId: msg.groupId },
@@ -246,6 +257,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
 
   // Everything said in a live club's HQ, by anyone, for the safe-YES rule.
   if (live && msg.messageId) {
+    // A shared contact card is logged as its label (taken aside above).
     await recordHqMessage({ orgId: org.id, waMessageId: msg.messageId, senderUserId, text: msg.text, now });
     // And who it tagged (2026-11-09), so "@Match Time DM these people"
     // quoting it, or "the people above", finds them. Best-effort.
@@ -334,6 +346,33 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   }
   if (!live) return notRead();
 
+  // 1b'. BRINGING A GUEST (2026-11-17): an organiser's contact card is held
+  // untagged (it cannot carry the tag), and his tagged "add him for
+  // tonight" after it, or a tagged name and number, is read by the guest
+  // reader and the guest added in one go (`guest-card/door.ts`, the same
+  // path as the players' group and a DM). Anything else carries on.
+  // A card from anyone else is never read: it is the label, untagged.
+  // When the message also asks for something else ("I'm in, and add him"),
+  // the add is done first and the message carries on for the rest, its
+  // reply merged into the one reply (review of #621).
+  let guestReply: string | null = null;
+  if (admin) {
+    const { handleGuestCardHq } = await import("./guest-card/door");
+    const guest = await handleGuestCardHq({
+      orgId: org.id,
+      organiserUserId: admin.userId,
+      messageId,
+      text: rawCard.text,
+      quotedText: rawCard.quoted,
+      tagged: piMentionsBot({ botMentioned: msg.botMentioned }),
+      now,
+    });
+    // The card itself: held quietly, no tick (it is not a command yet).
+    if (guest.kind === "held") return { handled: true, orgId: org.id, outcome: "guest-card-held", replyText: null, react: null };
+    if (guest.kind === "answered" && !guest.also) return acted(org.id, "guest-card", guest.reply);
+    if (guest.kind === "answered") guestReply = guest.reply;
+  }
+
   // 1c. A pasted squad list is read in the shared pipeline now
   // (2026-10-30, `admin-group-understand.ts`): the router first, then the
   // HQ squad reader, HQ's one model door for who plays, for a list, a
@@ -348,6 +387,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   // that group should be able to ask questions") gets questions, help and
   // the graphics; what changes the club beyond who plays, they hear who can.
   const understood = await understand(!!admin);
+  if (guestReply) return acted(org.id, understood?.outcome ?? "guest-card", [guestReply, understood?.replyText?.trim()].filter(Boolean).join("\n\n"));
   if (understood) return acted(org.id, understood.outcome, understood.replyText);
   return notRead();
 }

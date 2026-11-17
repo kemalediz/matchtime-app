@@ -81,6 +81,10 @@ const MARKED: Record<string, number> = {
   // The friend link (2026-10-31): the member's link, the answer to his own
   // "my friend is in" in the group.
   "lib/friend-link/issue.ts": 1,
+  // The guest card by DM (2026-11-17): the organiser's one reply to his
+  // "add him for tonight", and the guest's ack to his own OUT. (The
+  // guest's welcome DM is unprompted, so it is unmarked.)
+  "lib/guest-card/guest-dm.ts": 2,
 };
 
 /** Bulk and scheduled senders: never marked. */

@@ -212,6 +212,21 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
     return NextResponse.json({ error: "body, waMessageId required" }, { status: 400 });
   }
 
+  // ── A SHARED CONTACT CARD, AT THE DOOR (2026-11-17, review of #621) ─────
+  //   Before any handler, reader or model sees the DM. A card itself goes
+  //   no further: an organiser's is held for his next words, anyone else's
+  //   is dropped (`guest-card/guest-dm.ts` `handleCardDmAtIntake`). A DM
+  //   that swipe-replies to a card carries its label as the quote from
+  //   here on; the raw card goes to the guest card door only (below).
+  const rawQuotedText = parseDmQuote(body)?.text ?? null;
+  {
+    const { handleCardDmAtIntake } = await import("@/lib/guest-card/guest-dm");
+    const card = await handleCardDmAtIntake({ text, phone, senderAltPhone, senderLid, authorName: authorName ?? null, waMessageId });
+    if (card) return NextResponse.json({ ok: true, ...card });
+    const { CONTACT_CARD_LABEL, isContactCard } = await import("@/lib/guest-card/vcard");
+    if (isContactCard(rawQuotedText)) body = { ...(body as object), quotedText: CONTACT_CARD_LABEL } as InboundDm;
+  }
+
   // ── Quoted-reply context (slices S1 and S2, 2026-10-20) ────────────────
   //   A swipe-reply carries the quoted message's id, text, and whether it
   //   was MatchTime's (`quotedMessageId`, `quotedText`, `quotedFromMatchTime`;
@@ -709,6 +724,32 @@ export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): P
       console.log(`[dm-reply] sender ${user.id} belongs only to clubs that are still setting up; ignoring`);
     }
     return NextResponse.json({ ok: true, ...out });
+  }
+
+  // ── Bringing a guest, and the guest's own DMs (2026-11-17) ─────────────
+  //   An organiser's contact card, or his "add him for tonight", by DM (the
+  //   guest card door, `lib/guest-card/door.ts`), and a guest an organiser
+  //   added giving his place back ("OUT", read by the DM availability
+  //   reader). Engages only for an organiser of a live club or such a guest;
+  //   for everybody else it is three indexed reads and the DM carries on.
+  {
+    const { handleGuestCardDms } = await import("@/lib/guest-card/guest-dm");
+    const guest = await handleGuestCardDms({
+      userId: user.id,
+      authorName: authorName ?? null,
+      text,
+      waMessageId,
+      replyPhone:
+        (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+        (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+        null,
+      quoted,
+      quotedText: rawQuotedText,
+    }).catch((err: unknown) => {
+      console.error("[dm-reply] guest card failed:", err instanceof Error ? err.message : "failed");
+      return null;
+    });
+    if (guest) return NextResponse.json({ ok: true, ...guest });
   }
 
   // ── The partner club's ask by DM (2026-10-21), found by its code above ──
