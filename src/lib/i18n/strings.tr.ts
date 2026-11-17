@@ -219,10 +219,11 @@ export const tr: Strings = {
   // ── row 1: composeSquadStatusPost ────────────────────────────────
 
   squad_status_lead: (p) => {
-    const count = `*${p.confirmed}/${p.maxPlayers}*`;
+    const count = p.openSquad ? `*${p.confirmed} kişi*` : `*${p.confirmed}/${p.maxPlayers}*`;
     const head = p.matchLabel
       ? `📋 *${p.matchLabel}* maçının kadrosu${p.withBench ? " ve yedekleri" : ""}: `
       : `📋 Aldığım mesajlara göre son kadro${p.withBench ? " ve yedekler" : ""}: `;
+    if (p.openSquad) return head + (p.need > 0 ? `${count}, oynamak için *${p.need} kişi daha* lazım 🙏` : `${count} ✅ İsteyen *VARIM* yazsın.`);
     return head + (p.need > 0 ? `${count}, *${p.need} kişi daha* lazım 🙏` : `${count} ✅ kadro tamam.`);
   },
   squad_status_cancelled: (p) => `❌ *${p.dayLabel}* maçı iptal edildi.`,
@@ -408,6 +409,10 @@ export const tr: Strings = {
   // ── rows 6 to 30: the batch answers ────────────────────────────────
 
   answer_count: (p) => {
+    if (p.openSquad) {
+      const head = p.stated ? `Tam değil, ${p.kickoffLabel} için ${p.confirmed} kişiyiz` : `${p.kickoffLabel} için ${p.confirmed} kişiyiz`;
+      return `${head}${p.need > 0 ? `, oynamak için ${p.need} kişi daha lazım 🙏` : ` ✅ İsteyen *VARIM* yazsın.`}`;
+    }
     const head = p.stated
       ? `Tam değil, ${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz${p.bench}`
       : `${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz${p.bench}`;
@@ -3509,6 +3514,13 @@ export const tr: Strings = {
   mwk_list_open_squad: (p) =>
     `${p.short > 0 ? `Oynamak için ${p.short} kişi daha lazım. ` : ""}Başka gelmek isteyen *VARIM* yazsın${p.price ? `, ${p.price}` : ""}.`,
   mwk_list_all_in_open: "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın.",
+  os_on: (p) =>
+    `✅ Tamam: artık kadro sınırı ve yedek yok. *VARIM* yazan herkes oynar, takımlar gelenler arasında eşit bölünür. Yalnızca ${p.min} kişinin altındayken oyuncu ararım.` +
+    (p.movedUp ? ` Yedekte bekleyen ${p.movedUp} artık kadroda.` : ""),
+  os_off: (p) =>
+    `✅ Tamam: kadronun yine bir sınırı var, *${p.activityName}* için ${p.places} kişi. Listede olan herkes kalır; kadro dolduktan sonra *VARIM* yazan yedeğe girer.`,
+  os_already_on: (p) => `Değişiklik yok: zaten kadro sınırı yok. *VARIM* yazan herkes oynar; en az ${p.min} kişi gerekir.`,
+  os_already_off: (p) => `Değişiklik yok: kadronun zaten ${p.places} kişilik bir sınırı var.`,
   mwk_pool_group: (p) => `🎟 *${p.when}* maçında ${p.open} yer açık${p.price ? `, maç başı ${p.price} (PAYG)` : ""}. İlk *VARIM* yazan alır.`,
   mwk_dm_sender_not_matched: (p) =>
     `📋 Yapıştırdığın listedeki ${p.names.join(", ")} adını bir oyuncuyla eşleştiremedim, bu yüzden kimseyi eklemedim. ` +

@@ -181,11 +181,15 @@ export const en = {
     maxPlayers: number;
     need: number;
     matchLabel?: string | null;
+    /** No squad limit (open-squad.ts): no "of N", never "full"; `need` is
+     *  then how many more the game needs to be played. */
+    openSquad?: boolean;
   }): string => {
-    const count = `*${p.confirmed}/${p.maxPlayers}*`;
+    const count = p.openSquad ? `*${p.confirmed} in*` : `*${p.confirmed}/${p.maxPlayers}*`;
     const head = p.matchLabel
       ? `📋 Here's the squad${p.withBench ? " and bench" : ""} for *${p.matchLabel}*: `
       : `📋 Based on all the messages I've picked up, here's the latest squad${p.withBench ? " and bench" : ""}: `;
+    if (p.openSquad) return head + (p.need > 0 ? `${count}, need *${p.need} more* to play 🙏` : `${count} ✅ Anyone else, say *IN*.`);
     return head + (p.need > 0 ? `${count}, need *${p.need} more* 🙏` : `${count} ✅ full squad.`);
   },
   /** The line above the squad post when this week's match is cancelled
@@ -438,7 +442,11 @@ export const en = {
   // ── rows 6 to 30: the batch answers (compose.ts) ───────────────────
 
   /** `bench` is `benchClause` (squad-count-line.ts), "" with nobody on it. */
-  answer_count: (p: { stated: boolean; confirmed: number; maxPlayers: number; kickoffLabel: string; need: number; bench: string }): string => {
+  answer_count: (p: { stated: boolean; confirmed: number; maxPlayers: number; kickoffLabel: string; need: number; bench: string; openSquad?: boolean }): string => {
+    if (p.openSquad) {
+      const head = p.stated ? `Not quite, we're ${p.confirmed} for ${p.kickoffLabel}` : `We're ${p.confirmed} for ${p.kickoffLabel}`;
+      return `${head}${p.need > 0 ? `, need ${p.need} more to play 🙏` : ` ✅ Anyone else, say *IN*.`}`;
+    }
     const head = p.stated
       ? `Not quite, we're ${p.confirmed}/${p.maxPlayers} for ${p.kickoffLabel}${p.bench}`
       : `We're ${p.confirmed}/${p.maxPlayers} for ${p.kickoffLabel}${p.bench}`;
@@ -4910,6 +4918,19 @@ export const en = {
     `${p.short > 0 ? `${p.short} more needed to play. ` : ""}Anyone else, say *IN* to play${p.price ? `, ${p.price}` : ""}.`,
   /** Under an open squad's regulars: nobody's place "opens up". */
   mwk_list_all_in_open: "You're all in, no need to say anything. Can't make it? Say *Out*.",
+
+  // ── Open squad on or off (2026-11-17, open-squad-save.ts) ────────────
+  // The reply to the organiser who switched it, by WhatsApp or the page.
+  /** Switched on. `min` is the game's minimum. `movedUp` names anyone who
+   *  was waiting on the bench and is in now, or is null. */
+  os_on: (p: { min: number; movedUp: string | null; movedCount: number }): string =>
+    `✅ Done: no squad limit and no bench from now on. Everyone who says *IN* plays, and the teams are split evenly between whoever is in. I'll only ask for players while you're below ${p.min}.` +
+    (p.movedUp ? ` ${p.movedUp} ${p.movedCount === 1 ? "was" : "were"} on the bench and ${p.movedCount === 1 ? "is" : "are"} in now.` : ""),
+  /** Switched off: the places are the game's own format again. */
+  os_off: (p: { activityName: string; places: number }): string =>
+    `✅ Done: the squad has a limit again, *${p.activityName}* with ${p.places} places. Everyone already in stays in; anyone who says *IN* after it is full goes on the bench.`,
+  os_already_on: (p: { min: number }): string => `No change: there is already no squad limit. Everyone who says *IN* plays; the minimum is ${p.min}.`,
+  os_already_off: (p: { places: number }): string => `No change: the squad already has a limit of ${p.places} places.`,
   /** A place opened and nobody is waiting: one line in the group. */
   mwk_pool_group: (p: { open: number; when: string; price: string | null }): string =>
     `🎟 ${p.open} ${p.open === 1 ? "place" : "places"} open for *${p.when}*${p.price ? `, ${p.price} PAYG` : ""}. ` +

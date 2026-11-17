@@ -233,6 +233,7 @@ export function compose(result: EngineResult): ComposedOutput {
         lang,
         matchLabel: state.matchLabel ?? null,
         cancelledDayLabel,
+        ...(state.features.openSquad ? { openSquad: true } : {}),
       });
     }
     return withCancelledLine(
@@ -386,6 +387,7 @@ export function compose(result: EngineResult): ComposedOutput {
         utterances.push({
           messageId: sp.messageId,
           text: s.answer_count({
+            ...(state.features.openSquad ? { openSquad: true } : {}),
             stated: sp.statedCount !== null && sp.statedCount !== confirmed.length,
             confirmed: confirmed.length,
             maxPlayers: state.maxPlayers,

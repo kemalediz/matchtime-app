@@ -93,6 +93,7 @@
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { openSquadMinimum } from "@/lib/open-squad";
 import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { uniqueByWaMessageId } from "@/lib/analyze-batch";
 import { billingQuietWhere } from "@/lib/club-billing-rules";
@@ -503,7 +504,7 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
     // `squadMode` (monthly squad, slice 5): read once here so a club on
     // "weekly" never runs a monthly query below.
     // `listAnnouncer` (2026-10-14): whether the squad may be posted here.
-    select: { id: true, name: true, language: true, squadMode: true, listAnnouncer: true },
+    select: { id: true, name: true, language: true, squadMode: true, listAnnouncer: true, openSquad: true },
   });
   if (!org) {
     // A silent group (a club waiting for approval, rejected or suspended,
@@ -1363,6 +1364,7 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
     db.match.findFirst({
       where: { id },
       include: {
+        activity: { select: { minPlayers: true, sport: { select: { playersPerTeam: true } } } },
         attendances: {
           where: { status: "CONFIRMED" },
           include: { user: { select: { name: true } } },
@@ -4041,7 +4043,14 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
           bench: benchAtt.map((a) => plainName(a.userId, a.user.name)),
           confirmedDisplay: confirmedAtt.map((a) => shownName(a.userId, a.user.name)),
           benchDisplay: benchAtt.map((a) => shownName(a.userId, a.user.name)),
-          maxPlayers: nextMatchForReply.maxPlayers,
+          // An open squad (open-squad.ts): its minimum or the count, no "of N".
+          maxPlayers: org.openSquad
+            ? Math.max(
+                openSquadMinimum({ minPlayers: nextMatchForReply.activity.minPlayers ?? null, playersPerTeam: nextMatchForReply.activity.sport.playersPerTeam }),
+                confirmedAtt.length,
+              )
+            : nextMatchForReply.maxPlayers,
+          openSquad: org.openSquad === true,
           matchLabel: dayCommaTimeLabel(org.language, nextMatchForReply.date),
           cancelledDayLabel: cancelledThisWeek ? dayLabel(org.language, cancelledThisWeek.date) : null,
           knownNames: memberships

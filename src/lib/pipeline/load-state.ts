@@ -34,6 +34,7 @@ import type { ClubSnapshot, PartnerAskView, SquadState } from "./types";
 import { gamesOverlap } from "../partner-ask-rules";
 import { bareWhatsAppId } from "../quoted-message";
 import { loadPlayerNames } from "../player-display-name";
+import { openSquadMinimum } from "../open-squad";
 
 /** Statuses `selectRegistrationMatch` considers, plus COMPLETED so the
  *  "previous match still in flight" guard can see the whole picture. */
@@ -63,6 +64,7 @@ export async function loadSquadState(
       activity: {
         select: {
           venue: true,
+          minPlayers: true,
           sport: { select: { name: true, playersPerTeam: true, teamLabels: true } },
         },
       },
@@ -243,7 +245,8 @@ export async function loadSquadState(
     select: { sport: { select: { name: true, playersPerTeam: true } } },
   });
   const currentTotal = match?.maxPlayers ?? 0;
-  const smallerFormats = activities
+  // An open squad (open-squad.ts) has no format: no other format either.
+  const smallerFormats = (features.openSquad ? [] : activities)
     .map((a) => ({
       sportName: a.sport.name,
       totalPlayers: totalPlayersFor(a.sport.playersPerTeam),
@@ -344,7 +347,19 @@ export async function loadSquadState(
 
   return {
     matchId: match?.id ?? null,
-    maxPlayers: match?.maxPlayers ?? 0,
+    // AN OPEN SQUAD (2026-11-17, open-squad.ts) has no places. What the
+    // composer and the answers count to is the game's minimum, or the
+    // count when it is above it, so "need N more" means "to play", nothing
+    // is ever "full", and no count reads as more than the game can hold.
+    // The engine never caps an open squad (`canTakeFreePlace`).
+    maxPlayers: match
+      ? features.openSquad
+        ? Math.max(
+            openSquadMinimum({ minPlayers: match.activity.minPlayers ?? null, playersPerTeam: match.activity.sport.playersPerTeam }),
+            rows.filter((r) => r.status === "CONFIRMED").length,
+          )
+        : match.maxPlayers
+      : 0,
     kickoffLabel: match ? kickoffLabel(lang, match.date) : t(lang).no_match_label,
     matchLabel: match ? dayCommaTimeLabel(lang, match.date) : null,
     matchDayName: match ? weekdayLabel(lang, match.date) : null,
