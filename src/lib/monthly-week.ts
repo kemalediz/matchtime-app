@@ -44,7 +44,7 @@ import { matchFormatTitle } from "./match-format-title";
 import { loadPlayerNames } from "./player-display-name";
 import { FORMAT_UP_KEY_PREFIX, formatUpOffered, oneMoreForNextSize, playerRange } from "./flex-format-rules";
 import { organisersAnnounce } from "./list-announcer";
-import { openSquadMinimum, shortOfMinimum } from "./open-squad";
+import { monthSeedCap, openSquadMinimum, shortOfMinimum } from "./open-squad";
 import { londonMonthStart, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
 import {
   SEED_NOTE_PRIORITY,
@@ -114,6 +114,10 @@ export interface RunningMonth {
    *  the games already played. `loadMonthlyWeek` answers null for it, so
    *  nothing in the weekly flow writes for a closed month. */
   closed?: boolean;
+  /** No squad limit switched off part-way through this month (review of
+   *  #623, `SquadMonth.regularCapFloor`): the regulars it had signed then.
+   *  The seed keeps room for them (`monthSeedCap`). Absent: none. */
+  capFloor?: number;
 }
 
 /** How long after a month is closed the scheduler still needs to know its
@@ -155,6 +159,7 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
       createdAt: true,
       startedMidMonthAt: true,
       gamesPlayedBeforeStart: true,
+      regularCapFloor: true,
       activity: { select: { orgId: true, venue: true, dayOfWeek: true } },
       members: {
         where: { leftAt: null },
@@ -214,6 +219,7 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
     startsAt: m.startedMidMonthAt ?? londonDateTimeToUtc(m.monthStart.toISOString().slice(0, 10), "00:00"),
     fixture: m.activity,
     ...(m.status === "closed" ? { closed: true } : {}),
+    ...(m.regularCapFloor != null ? { capFloor: m.regularCapFloor } : {}),
     members: m.members.map((r) => ({
       left: !here.has(r.userId),
       userId: r.userId,
@@ -292,6 +298,8 @@ export interface MonthlyWeek {
   openSquad?: boolean;
   /** The game's minimum (`openSquadMinimum`): an open squad's only number. */
   minimum?: number;
+  /** The month's `capFloor` (switched off part-way through it). */
+  capFloor?: number;
 }
 
 /**
@@ -351,6 +359,7 @@ export async function loadMonthlyWeek(
     activityName: matchFormatTitle(match.activity.name, match.maxPlayers, { openSquad }),
     openSquad,
     minimum: openSquadMinimum({ minPlayers: match.activity.minPlayers, playersPerTeam: match.activity.sport?.playersPerTeam ?? match.maxPlayers / 2 }),
+    ...(month.capFloor != null ? { capFloor: month.capFloor } : {}),
     creditRule: normaliseCreditRule(match.activity.org.monthCreditRule),
     paygPricePence: match.activity.org.paygPricePence,
     pickMode: match.activity.org.benchPickMode,
@@ -447,7 +456,12 @@ export async function seedMonthlySquad(args: {
       members,
       targetRows: targetRows.map((r) => ({ ...r, choseBench: choseBench.has(r.userId) })),
       // An open squad has no cap: every regular is put in, nobody is bumped.
-      maxPlayers: week.openSquad ? Number.POSITIVE_INFINITY : week.maxPlayers,
+      maxPlayers: monthSeedCap({
+        openSquad: week.openSquad,
+        places: week.maxPlayers,
+        capFloor: week.capFloor,
+        othersIn: targetRows.filter((r) => r.status === "CONFIRMED" && !week.members.some((m) => m.userId === r.userId && m.kind === "regular")).length,
+      }),
       protectedUserIds: organisers,
     });
     const event = (note: string) => ({

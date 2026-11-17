@@ -23,6 +23,7 @@ import { t } from "./i18n/t";
 import { joinList } from "./i18n/text";
 import { openSquadMinimum } from "./open-squad";
 import { matchFormatTitle } from "./match-format-title";
+import { recordAttendanceEvent } from "./attendance-events";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -83,51 +84,125 @@ export async function saveOpenSquadMinimum(p: {
   return { outcome: p.min === null ? "player-range-cleared" : "player-range-set", replyText: s.os_min_set({ activityName, min: after }) };
 }
 
-export async function setOpenSquad(p: { orgId: string; on: boolean; actorUserId: string | null; now: Date }): Promise<OpenSquadReply> {
-  const org = await db.organisation.findUnique({ where: { id: p.orgId }, select: { openSquad: true, language: true } });
-  const lang = org?.language ?? null;
-  const s = t(lang);
-  const game = await gameFacts(p.orgId, p.now);
-  if ((org?.openSquad === true) === p.on) {
-    return {
-      outcome: "open-squad-unchanged",
-      replyText: p.on ? s.os_already_on({ min: game.min }) : s.os_already_off({ places: game.places }),
-      movedUp: 0,
-    };
-  }
+/** The slice of a Prisma client (or transaction) the promotion uses. */
+type PromoteClient = Pick<typeof db, "attendance" | "attendanceEvent">;
 
-  // F3: the organiser's own choice; the learned setup never overrides it.
-  await db.organisation.update({ where: { id: p.orgId }, data: { openSquad: p.on, settingsSetByOrganiser: { push: ["openSquad"] } } });
-  console.log(`[open-squad] org=${p.orgId} switched ${p.on ? "on" : "off"} by ${p.actorUserId ?? "unknown"}`);
-
-  if (!p.on) {
-    return { outcome: "open-squad-off", replyText: s.os_off({ activityName: game.name, places: game.places }), movedUp: 0 };
-  }
-
-  // No bench any more: whoever is waiting on a game still to be played is
-  // in. Written AFTER the flag, so the writer's own rule takes them.
-  const waiting = await db.attendance.findMany({
-    where: { status: "BENCH", match: { activity: { orgId: p.orgId }, status: { in: [...LIVE] }, date: { gt: p.now } } },
+/**
+ * NO BENCH, MADE TRUE (review of #623). Every BENCH row on a game of this
+ * club still to be played goes straight to CONFIRMED, keeping its place in
+ * the list, each with its event. Directly, not through
+ * `registerAttendance`: that writer has guards for a single IN (a previous
+ * match still in flight, the squad lock's count) that must never leave a
+ * player on a bench that no longer exists. A row moved by someone else in
+ * between is left alone (`updateMany` on BENCH). Returns who moved.
+ */
+async function promoteBenchRows(
+  client: PromoteClient,
+  orgId: string,
+  now: Date,
+  actor: { kind: "admin" | "scheduler"; userId: string | null; sourceRef: string },
+): Promise<Array<{ matchId: string; userId: string; name: string | null }>> {
+  const waiting = await client.attendance.findMany({
+    where: { status: "BENCH", match: { activity: { orgId }, status: { in: [...LIVE] }, date: { gt: now } } },
     orderBy: [{ matchId: "asc" }, { position: "asc" }],
-    select: { matchId: true, userId: true, user: { select: { name: true } } },
+    select: { id: true, matchId: true, userId: true, position: true, user: { select: { name: true } } },
   });
-  const { registerAttendance } = await import("./attendance");
-  const moved: string[] = [];
+  const moved: Array<{ matchId: string; userId: string; name: string | null }> = [];
   for (const w of waiting) {
+    const { count } = await client.attendance.updateMany({
+      where: { id: w.id, status: "BENCH" },
+      data: { status: "CONFIRMED", benchByChoice: false, respondedAt: now },
+    });
+    if (count === 0) continue;
+    await recordAttendanceEvent(
+      client,
+      { matchId: w.matchId, userId: w.userId, orgId, fromStatus: "BENCH", toStatus: "CONFIRMED", fromPosition: w.position, toPosition: w.position },
+      { cause: "bench-moved-up", actorKind: actor.kind, actorUserId: actor.userId, sourceRef: actor.sourceRef, note: "no squad limit: there is no bench" },
+    );
+    moved.push({ matchId: w.matchId, userId: w.userId, name: w.user?.name ?? null });
+  }
+  return moved;
+}
+
+/** What follows a promotion, outside its transaction: the month's slot
+ *  numbers and credits, and a seat on teams already made. Never throws. */
+async function afterPromotion(moved: Array<{ matchId: string; userId: string }>): Promise<void> {
+  const byMatch = new Map<string, string[]>();
+  for (const m of moved) byMatch.set(m.matchId, [...(byMatch.get(m.matchId) ?? []), m.userId]);
+  for (const [matchId, users] of byMatch) {
     try {
-      const r = await registerAttendance(w.userId, w.matchId, {
-        promoteFromBench: true,
-        event: { cause: "bench-moved-up", actorKind: "admin", actorUserId: p.actorUserId, sourceRef: "open-squad:on", note: "open squad switched on: no bench" },
-      });
-      if (r.status === "CONFIRMED") moved.push(w.user?.name ?? s.unnamed);
+      const { afterMonthlyAttendanceChange } = await import("./monthly-week");
+      for (const u of users) await afterMonthlyAttendanceChange(matchId, u, true);
+      const { seatOpenSquadLateIns } = await import("./open-squad-seat");
+      await seatOpenSquadLateIns(matchId);
     } catch (err) {
-      console.error(`[open-squad] ${w.userId} on ${w.matchId} could not be brought in:`, err instanceof Error ? err.message : err);
+      console.error(`[open-squad] after promoting on ${matchId}:`, err instanceof Error ? err.message : err);
     }
   }
-  const names = [...new Set(moved)];
-  return {
-    outcome: "open-squad-on",
-    replyText: s.os_on({ min: game.min, movedUp: names.length > 0 ? joinList(lang, names) : null, movedCount: names.length }),
-    movedUp: moved.length,
-  };
+}
+
+/**
+ * THE SAFETY NET (review of #623): while the setting is on, any BENCH row
+ * on an upcoming game is promoted. Run from the scheduler's existing bench
+ * sweep (`sweepBenchFill`, every due-posts poll). One read for a club
+ * with the setting off; never throws.
+ */
+export async function promoteOpenSquadBench(orgId: string, now: Date = new Date()): Promise<number> {
+  try {
+    const org = await db.organisation.findUnique({ where: { id: orgId }, select: { openSquad: true } });
+    if (org?.openSquad !== true) return 0;
+    const moved = await db.$transaction((tx) => promoteBenchRows(tx, orgId, now, { kind: "scheduler", userId: null, sourceRef: "scheduler:open-squad" }));
+    if (moved.length > 0) {
+      console.log(`[open-squad] org=${orgId} safety net promoted ${moved.map((m) => m.userId).join(",")}`);
+      await afterPromotion(moved);
+    }
+    return moved.length;
+  } catch (err) {
+    console.error(`[open-squad] safety net for ${orgId} failed:`, err);
+    return 0;
+  }
+}
+
+export async function setOpenSquad(p: { orgId: string; on: boolean; actorUserId: string | null; now: Date }): Promise<OpenSquadReply> {
+  const game = await gameFacts(p.orgId, p.now);
+  // THE FLAG AND THE BENCH, ONE TRANSACTION (review of #623). Switching it
+  // on, or asking for it when it is already on, empties any bench left on
+  // a game to come: idempotent, so a bench the first switch missed is
+  // still emptied by the second.
+  const done = await db.$transaction(async (tx) => {
+    const org = await tx.organisation.findUnique({ where: { id: p.orgId }, select: { openSquad: true, language: true } });
+    const changed = (org?.openSquad === true) !== p.on;
+    // F3: the organiser's own choice; the learned setup never overrides it.
+    if (changed) await tx.organisation.update({ where: { id: p.orgId }, data: { openSquad: p.on, settingsSetByOrganiser: { push: ["openSquad"] } } });
+    const moved = p.on
+      ? await promoteBenchRows(tx, p.orgId, p.now, { kind: "admin", userId: p.actorUserId, sourceRef: "open-squad:on" })
+      : [];
+    return { changed, moved, lang: org?.language ?? null };
+  });
+  const s = t(done.lang);
+  if (done.changed) console.log(`[open-squad] org=${p.orgId} switched ${p.on ? "on" : "off"} by ${p.actorUserId ?? "unknown"}`);
+
+  // OFF BUMPS NOBODY, monthly clubs included: the running month keeps room
+  // for every regular already signed until it ends (`squad-month.ts`).
+  if (done.changed && !p.on) {
+    try {
+      const { liftMonthCapForOpenSquadOff } = await import("./squad-month");
+      await liftMonthCapForOpenSquadOff(p.orgId, p.now);
+    } catch (err) {
+      console.error(`[open-squad] keeping the month's regulars for ${p.orgId} failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+  if (done.moved.length > 0) await afterPromotion(done.moved);
+
+  const names = [...new Set(done.moved.map((m) => m.name ?? s.unnamed))];
+  const movedLine = names.length > 0 ? ` ${s.os_moved_up({ names: joinList(done.lang, names), many: names.length > 1 })}` : "";
+  if (!done.changed) {
+    return {
+      outcome: "open-squad-unchanged",
+      replyText: (p.on ? s.os_already_on({ min: game.min }) : s.os_already_off({ places: game.places })) + movedLine,
+      movedUp: done.moved.length,
+    };
+  }
+  if (!p.on) return { outcome: "open-squad-off", replyText: s.os_off({ activityName: game.name, places: game.places }), movedUp: 0 };
+  return { outcome: "open-squad-on", replyText: s.os_on({ min: game.min }) + movedLine, movedUp: done.moved.length };
 }

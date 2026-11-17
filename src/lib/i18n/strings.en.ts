@@ -4938,11 +4938,13 @@ export const en = {
 
   // ── Open squad on or off (2026-11-17, open-squad-save.ts) ────────────
   // The reply to the organiser who switched it, by WhatsApp or the page.
-  /** Switched on. `min` is the game's minimum. `movedUp` names anyone who
-   *  was waiting on the bench and is in now, or is null. */
-  os_on: (p: { min: number; movedUp: string | null; movedCount: number }): string =>
-    `✅ Done: no squad limit and no bench from now on. Everyone who says *IN* plays, and the teams are split evenly between whoever is in. I'll only ask for players while you're below ${p.min}.` +
-    (p.movedUp ? ` ${p.movedUp} ${p.movedCount === 1 ? "was" : "were"} on the bench and ${p.movedCount === 1 ? "is" : "are"} in now.` : ""),
+  /** Switched on. `min` is the game's minimum. */
+  os_on: (p: { min: number }): string =>
+    `✅ Done: no squad limit and no bench from now on. Everyone who says *IN* plays, and the teams are split evenly between whoever is in. I'll only ask for players while you're below ${p.min}.`,
+  /** After `os_on` or `os_already_on`: who was waiting on the bench and is
+   *  in now (`names` already joined). */
+  os_moved_up: (p: { names: string; many: boolean }): string =>
+    `${p.names} ${p.many ? "were" : "was"} on the bench and ${p.many ? "are" : "is"} in now.`,
   /** Switched off: the places are the game's own format again. */
   os_off: (p: { activityName: string; places: number }): string =>
     `✅ Done: the squad has a limit again, *${p.activityName}* with ${p.places} places. Everyone already in stays in; anyone who says *IN* after it is full goes on the bench.`,

@@ -3526,8 +3526,8 @@ export const tr: Strings = {
     `${p.short > 0 ? `Oynamak için ${p.short} kişi daha lazım. ` : ""}Başka gelmek isteyen *VARIM* yazsın${p.price ? `, ${p.price}` : ""}.`,
   mwk_list_all_in_open: "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın.",
   os_on: (p) =>
-    `✅ Tamam: artık kadro sınırı ve yedek yok. *VARIM* yazan herkes oynar, takımlar gelenler arasında eşit bölünür. Yalnızca ${p.min} kişinin altındayken oyuncu ararım.` +
-    (p.movedUp ? ` Yedekte bekleyen ${p.movedUp} artık kadroda.` : ""),
+    `✅ Tamam: artık kadro sınırı ve yedek yok. *VARIM* yazan herkes oynar, takımlar gelenler arasında eşit bölünür. Yalnızca ${p.min} kişinin altındayken oyuncu ararım.`,
+  os_moved_up: (p) => `Yedekte bekleyen ${p.names} artık kadroda.`,
   os_off: (p) =>
     `✅ Tamam: kadronun yine bir sınırı var, *${p.activityName}* için ${p.places} kişi. Listede olan herkes kalır; kadro dolduktan sonra *VARIM* yazan yedeğe girer.`,
   os_already_on: (p) => `Değişiklik yok: zaten kadro sınırı yok. *VARIM* yazan herkes oynar; en az ${p.min} kişi gerekir.`,

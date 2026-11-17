@@ -66,6 +66,29 @@ export function monthRegularCap(playersPerTeam: number, openSquad: boolean | nul
 }
 
 /**
+ * A month's sign-up cap (review of #623). No squad limit: none. Switched
+ * off part-way through the month (`SquadMonth.regularCapFloor`): the
+ * format's places or the regulars already signed, whichever is more, so
+ * nobody already on the list is put waiting. Otherwise the format's places.
+ */
+export function monthSignupCap(p: { playersPerTeam: number; openSquad: boolean | null | undefined; capFloor: number | null | undefined }): number {
+  if (p.openSquad === true) return Number.POSITIVE_INFINITY;
+  return Math.max(p.playersPerTeam * 2, p.capFloor ?? 0);
+}
+
+/**
+ * The week's seed cap for a monthly club (review of #623). No squad limit:
+ * none. Switched off part-way through the month: the match's places, or
+ * the regulars signed plus anyone else already in (a pay-as-you-go player),
+ * whichever is more, so the seed bumps nobody and benches no regular.
+ * Otherwise the match's places, as always.
+ */
+export function monthSeedCap(p: { openSquad: boolean | null | undefined; places: number; capFloor: number | null | undefined; othersIn: number }): number {
+  if (p.openSquad === true) return Number.POSITIVE_INFINITY;
+  return p.capFloor == null ? p.places : Math.max(p.places, p.capFloor + p.othersIn);
+}
+
+/**
  * The players a side for an open squad: whoever is in, split into two
  * even sides, the odd one on the first (15 is 8 v 7, 19 is 10 v 9).
  * Handed to the balancer as its `perTeam`, so it never leaves anyone out.

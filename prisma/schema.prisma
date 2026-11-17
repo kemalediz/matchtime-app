@@ -3223,6 +3223,15 @@ model SquadMonth {
   /// absence, and MatchTime may hold no Match row for them at all.
   gamesPlayedBeforeStart Int       @default(0)
 
+  /// ─── No squad limit switched off mid-month (review of #623) ───────
+  /// The regulars this month had signed when the club's `openSquad` was
+  /// switched off. For the rest of this month its cap is the larger of the
+  /// format's places and this, so the next week's seed puts no regular on
+  /// the bench and the sign-up waits nobody already on it. NULL for every
+  /// other month: the format's places, as always. The next month's
+  /// sign-up never carries it.
+  regularCapFloor        Int?
+
   members        SquadMonthMember[]
   creditsEarned  SquadCredit[]      @relation("SquadCreditEarnedMonth")
   creditsApplied SquadCredit[]      @relation("SquadCreditAppliedMonth")

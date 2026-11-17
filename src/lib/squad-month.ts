@@ -549,3 +549,23 @@ export async function setSeasonBreak(
   }
   return { ok: true, months: wanted, keptGames };
 }
+
+/**
+ * NO SQUAD LIMIT SWITCHED OFF PART-WAY THROUGH A MONTH (review of #623,
+ * open-squad-save.ts): this month and any earlier one still running keep
+ * room for every regular they had signed (`regularCapFloor`), so the next
+ * week's seed and the sign-up bump nobody. A month that starts later is
+ * not touched: the format's places apply from its sign-up. Returns how
+ * many months were marked.
+ */
+export async function liftMonthCapForOpenSquadOff(orgId: string, now: Date): Promise<number> {
+  const current = londonMonthStart(now);
+  const months = await db.squadMonth.findMany({
+    where: { orgId, status: { not: "closed" }, monthStart: { lte: new Date(`${current}T00:00:00.000Z`) } },
+    select: { id: true, _count: { select: { members: { where: { kind: "regular", leftAt: null } } } } },
+  });
+  for (const m of months) {
+    await db.squadMonth.update({ where: { id: m.id }, data: { regularCapFloor: m._count.members } });
+  }
+  return months.length;
+}

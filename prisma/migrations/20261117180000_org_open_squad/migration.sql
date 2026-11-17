@@ -10,3 +10,8 @@
 -- Additive and idempotent.
 
 ALTER TABLE "Organisation" ADD COLUMN IF NOT EXISTS "openSquad" BOOLEAN NOT NULL DEFAULT false;
+
+-- Switched off mid-month, nobody is bumped: the running month remembers
+-- how many regulars it had signed, and keeps room for them until it ends.
+-- NULL for every existing month.
+ALTER TABLE "SquadMonth" ADD COLUMN IF NOT EXISTS "regularCapFloor" INTEGER;

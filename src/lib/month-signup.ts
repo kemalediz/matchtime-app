@@ -82,7 +82,7 @@ import { carryFromMonthStart, isBreakMonth, londonMonthStart, monthStartToDate, 
 import { monthSetupCopy } from "./i18n/month-setup";
 import { dayLabel, monthNameLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
-import { monthRegularCap } from "./open-squad";
+import { monthRegularCap, monthSignupCap } from "./open-squad";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 const HOUR_MS = 60 * 60 * 1000;
@@ -189,6 +189,7 @@ const MONTH_SELECT = {
   payByAt: true,
   pricedAt: true,
   summarySentAt: true,
+  regularCapFloor: true,
   activity: {
     select: { name: true, venue: true, dayOfWeek: true, time: true, sport: { select: { playersPerTeam: true } } },
   },
@@ -277,8 +278,9 @@ async function toSignupMonth(row: MonthRow): Promise<SignupMonth | null> {
     kickoffs,
     firstKickoff: kickoffs[0],
     endsAt: row.listOpenedAt ? signupEndsAt(row.listOpenedAt, kickoffs[0]) : null,
-    // An open squad (open-squad.ts) has no cap on its regulars.
-    maxRegulars: monthRegularCap(row.activity.sport.playersPerTeam, row.org?.openSquad),
+    // An open squad (open-squad.ts) has no cap on its regulars; switched
+    // off part-way through this month, room for those already signed.
+    maxRegulars: monthSignupCap({ playersPerTeam: row.activity.sport.playersPerTeam, openSquad: row.org?.openSquad, capFloor: row.regularCapFloor }),
     fixture,
     matches,
     // Somebody who has left the group is not on the list. Their row stays
