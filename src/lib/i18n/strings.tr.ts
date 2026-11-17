@@ -770,6 +770,7 @@ export const tr: Strings = {
 
   recruit_no_match: "Oyuncu davet edilecek yaklaşan bir maç yok.",
   recruit_full_squad: (p) => `*${p.matchName}* kadrosu zaten dolu, davet edecek açık yer yok.`,
+  recruit_enough_players: (p) => `*${p.matchName}* için zaten yeterince oyuncu var, bu yüzden kimseyi davet etmedim. İsteyen yine de *VARIM* yazabilir.`,
 
   // ── row 63: buildBulkCancelAnnouncement ────────────────────────────
 

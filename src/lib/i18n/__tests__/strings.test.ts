@@ -227,6 +227,7 @@ const SAMPLES: SampleArgs = {
   rating_progress_no_mom_pick: { names: ["Faris Nasser"] },
   recruit_no_match: null,
   recruit_full_squad: { matchName: "Tuesday 7-a-side" },
+  recruit_enough_players: { matchName: "Football" },
   bulk_cancel: { activityName: "Tuesday 7-a-side", dateLabels: ["Tue 15 Sep", "Tue 22 Sep"] },
   format_switch_header: { sportName: "Football 5-a-side", maxPlayers: 10 },
   format_switch_playing_header: { confirmed: 10, maxPlayers: 10 },

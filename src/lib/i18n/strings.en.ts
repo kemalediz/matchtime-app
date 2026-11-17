@@ -891,6 +891,10 @@ export const en = {
   recruit_no_match: "There's no upcoming match to invite players to.",
   recruit_full_squad: (p: { matchName: string }): string =>
     `The squad for *${p.matchName}* is already full, so there are no open spots to recruit for.`,
+  /** An open squad (open-squad.ts) at or above its minimum: nobody is
+   *  invited, and nobody is turned away either. */
+  recruit_enough_players: (p: { matchName: string }): string =>
+    `*${p.matchName}* already has enough players to play, so I haven't invited anyone. Anyone else can still say *IN*.`,
 
   // ── row 63: buildBulkCancelAnnouncement (block-booking.ts) ─────────
 

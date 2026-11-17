@@ -20,6 +20,8 @@ import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import { getOrgFeatures } from "./org-features";
+import { openSquadMinimum, placesToFill } from "./open-squad";
+import { matchFormatTitle } from "./match-format-title";
 import { recruitDmLinkKey, RECRUIT_DM_LINK_KIND } from "./recruit-reaction";
 import { resolveLookbackMatches } from "./recruit-lookback";
 import { loadKnownLids } from "./known-lids";
@@ -370,8 +372,19 @@ export async function inviteRecentPlayers(
   // fills the squad, so open slots = maxPlayers − confirmed. `need` is kept
   // for DISPLAY copy (suppressed for ratings-only orgs) so the visible
   // "N spots left" behaviour is unchanged.
-  const openSlots = Math.max(0, next.maxPlayers - confirmedCount);
+  //
+  // OPEN SQUAD (2026-11-17, open-squad.ts): no places, so the slots to
+  // recruit for are the players short of the game's minimum, and at or
+  // above it nobody is invited.
+  const openSquad = features.openSquad === true;
+  const openSlots = placesToFill({
+    openSquad,
+    confirmed: confirmedCount,
+    maxPlayers: next.maxPlayers,
+    minimum: openSquadMinimum({ minPlayers: next.activity.minPlayers ?? null, playersPerTeam: next.activity.sport?.playersPerTeam ?? next.maxPlayers / 2 }),
+  });
   const need = attendanceOn ? openSlots : 0;
+  if (openSquad) next.activity.name = matchFormatTitle(next.activity.name, next.maxPlayers, { openSquad });
 
   // Needed both by the capacity-guard early return and the normal return
   // paths — compute it once, up front, in the org's language: it is
@@ -433,7 +446,7 @@ export async function inviteRecentPlayers(
   // things that can mass-DM. A group reply reaches the same people, in
   // the thread where they asked, at no risk. Both branches below return
   // `invited: 0` and queue nothing.
-  if (next.maxPlayers > 0 && openSlots <= 0) {
+  if ((openSquad || next.maxPlayers > 0) && openSlots <= 0) {
     return {
       ok: true,
       matchId: next.id,
@@ -442,7 +455,9 @@ export async function inviteRecentPlayers(
       need,
       invited: 0,
       invitedNames: [],
-      reason: features.bench
+      reason: openSquad
+        ? t(features.language).recruit_enough_players({ matchName: next.activity.name })
+        : features.bench
         ? buildFullSquadBenchInvite({
             matchName: next.activity.name,
             confirmedCount,
@@ -565,7 +580,7 @@ async function findNextRecruitMatch(orgId: string, opts: { after?: Date } = {}) 
       id: true,
       date: true,
       maxPlayers: true,
-      activity: { select: { name: true } },
+      activity: { select: { name: true, minPlayers: true, sport: { select: { playersPerTeam: true } } } },
       attendances: { select: { userId: true, status: true } },
     },
   });
@@ -731,9 +746,13 @@ export async function inviteNamedPeople(
   const next = await findNextRecruitMatch(orgId, { after: now });
   if (!next) return { kind: "no-match" };
   const confirmedCount = next.attendances.filter((a) => a.status === "CONFIRMED").length;
+  // An open squad (open-squad.ts) is never full: the people named are
+  // invited whatever the count, with no "N spots left".
+  const openSquad = features.openSquad === true;
+  if (openSquad) next.activity.name = matchFormatTitle(next.activity.name, next.maxPlayers, { openSquad });
   const openSlots = Math.max(0, next.maxPlayers - confirmedCount);
-  if (next.maxPlayers > 0 && openSlots <= 0) return { kind: "full", matchName: next.activity.name, matchId: next.id };
-  const need = features.attendance ? openSlots : 0;
+  if (!openSquad && next.maxPlayers > 0 && openSlots <= 0) return { kind: "full", matchName: next.activity.name, matchId: next.id };
+  const need = features.attendance && !openSquad ? openSlots : 0;
   const matchWhen = dayCommaTimeLabel(features.language, next.date);
   const mentions = people.mentions;
 
