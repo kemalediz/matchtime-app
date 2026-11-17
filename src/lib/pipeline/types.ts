@@ -276,6 +276,16 @@ export interface Claim {
    * heard of it keep meaning what they meant.
    */
   replaces?: string;
+  /**
+   * THE SENDER SAID THIS PERSON IS SOMEONE NEW (2026-11-17), in answer to
+   * MatchTime's "do you mean Yoobie, or is Abu Ayoub a new player?". Only
+   * ever true on a message that answers that question
+   * (`AttendanceFacts.answersClarification`), and honoured by the engine
+   * only when the batch confirmed the question was open for this sender
+   * (`EngineMessage.clarifiedBody`): the name is then a new person, not
+   * looked up again. Absent: false.
+   */
+  newPlayer?: boolean;
 }
 
 /** Something the message ALSO asks for, alongside its claims. A message
@@ -320,6 +330,15 @@ export interface AttendanceFacts {
    *  `affirmation: "yes"`, and lost their place in a live squad. */
   affirmation: "yes" | "no" | null;
   sideRequests: SideRequest[];
+  /**
+   * THE MESSAGE ANSWERS MATCHTIME'S OPEN "WHO IS THAT?" (2026-11-17). The
+   * sender was asked who a name in their earlier message is (the
+   * `attendance_clarification` row, `awaiting-answer.ts`), and this message
+   * says: the claims are that earlier message's, with the person named as
+   * the answer names them (or `newPlayer` when the answer says they are
+   * new). Absent: a message of its own.
+   */
+  answersClarification?: boolean;
 }
 
 /**
@@ -1796,6 +1815,16 @@ export type SpeechIntent =
    * the sender who they meant. At most one per batch.
    */
   | { kind: "ask_who_mentioned"; messageId: string }
+  /**
+   * A name in an attendance claim (in, out, bench or a replacement) could
+   * not be placed on one member (2026-11-17, Sutton): MatchTime asks the
+   * sender once, "Do you mean Yoobie, or is Abu Ayoub a new player?", and
+   * the answer is read by the open-question mechanism
+   * (`awaiting-answer.ts`, intent `attendance_clarification`). `ref` is the
+   * name as written; `candidates` the members it could be (empty: nobody
+   * could say). Nothing is written for the claim until the answer comes.
+   */
+  | { kind: "ask_attendance_person"; messageId: string; ref: string; candidates: string[] }
   | { kind: "answer_bench"; messageId: string }
   | { kind: "answer_count"; messageId: string; statedCount: number | null }
   /**
@@ -2067,6 +2096,12 @@ export interface MessageOutcome {
    */
   statsClarificationAsked?: boolean;
   /**
+   * The engine asked the sender who a name in an attendance claim is
+   * (`ask_attendance_person`). The batch records the message with the
+   * `attendance_clarification` intent, which opens the question.
+   */
+  attendanceClarificationAsked?: boolean;
+  /**
    * The message asks for players for THIS club's own match (the extractor's
    * `recruit` side request), and the engine decided it is about that match
    * (2026-10-22). False for a reply quoting a partner club's ask: that is
@@ -2170,6 +2205,15 @@ export interface EngineMessage {
    * no name in the message was looked up.
    */
   people?: ReadonlyMap<string, PersonPick>;
+  /**
+   * THIS MESSAGE ANSWERS MATCHTIME'S "WHO IS THAT?" (2026-11-17): the
+   * sender's earlier message the question was about, verbatim. Set by the
+   * batch only when the question was open for this sender AND the
+   * extractor read the message as its answer. A claim marked `newPlayer`
+   * is then a new person under the name as the EARLIER message wrote it.
+   * Absent: a message of its own, and `newPlayer` means nothing.
+   */
+  clarifiedBody?: string;
 }
 
 export interface EngineInput {

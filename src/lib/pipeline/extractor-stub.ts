@@ -69,6 +69,23 @@ export interface ExtractorStubConfig {
   /** What each stubbed extractor call reports it cost, in dollars.
    *  Default 0. Lets the stubbed suite drive the daily AI cap for real. */
   costUsd?: number;
+  /**
+   * WHAT WHO-IS-WHO ANSWERS, per trimmed message body and quoted name
+   * (2026-11-17): the stubbed suite's way to say "the model was not sure
+   * Abu Ayoub is not Yoobie" (`verdict: "ambiguous", names: ["Yoobie"]`).
+   * Names are roster names, mapped to ids by the stub picker. A name not
+   * listed here gets the plain stand-in (`stubPersonPicker`).
+   */
+  people?: StubPeople;
+}
+
+/** body → quoted name → the verdict, with roster names for its members. */
+export type StubPeople = Record<string, Record<string, { verdict: "member" | "none" | "ambiguous"; names?: string[] }>>;
+
+/** The `people` overrides of the extractor stub file, or null. */
+export function stubPeopleFromEnv(env: NodeJS.ProcessEnv = process.env): StubPeople | null {
+  if (!env[EXTRACTOR_STUB_FILE_ENV]) return null;
+  return config(env)?.people ?? null;
 }
 
 /**

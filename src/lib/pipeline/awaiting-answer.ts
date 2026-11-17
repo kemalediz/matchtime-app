@@ -216,6 +216,44 @@ export function describeQuestion(q: AwaitingQuestion): string {
 export const STATS_CLARIFICATION_INTENT = "stats_clarification";
 export const STATS_CLARIFIED_INTENT = "stats_clarified";
 
+// ═══════════════════════════════════════════════════════════════════════
+// …AND SO IS "WHO IS ABU AYOUB?" ABOUT WHO PLAYS (2026-11-17)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Sutton, 17 Nov: "@Match Time Abu Ayoub is IN as a guest", and who-is-who
+// could not tell Abu Ayoub from the member Yoobie. The attendance engine
+// now asks the sender ("Do you mean Yoobie, or is Abu Ayoub a new
+// player?", `ask_attendance_person`), and the answer comes back through
+// THIS mechanism, not a second one: the same row (`AnalyzedMessage`, the
+// asking message, its body the original claim), the same one-hour TTL,
+// the same "only the asker" narrowing, and the same MATCHTIME ASKED line
+// above the asker's next message for the router and the extractor. Only
+// the intents differ, so the answer goes to the attendance engine rather
+// than to the stats answer: `about` says which.
+
+export const ATTENDANCE_CLARIFICATION_INTENT = "attendance_clarification";
+export const ATTENDANCE_CLARIFIED_INTENT = "attendance_clarified";
+
+/** Every intent that opens or closes a clarification, for the loader. */
+export const CLARIFICATION_INTENTS: readonly string[] = [
+  STATS_CLARIFICATION_INTENT,
+  STATS_CLARIFIED_INTENT,
+  ATTENDANCE_CLARIFICATION_INTENT,
+  ATTENDANCE_CLARIFIED_INTENT,
+];
+
+/** What a clarification is about: a stats question or who plays. */
+export type ClarificationAbout = "stats" | "attendance";
+
+const OPENS: Record<string, ClarificationAbout> = {
+  [STATS_CLARIFICATION_INTENT]: "stats",
+  [ATTENDANCE_CLARIFICATION_INTENT]: "attendance",
+};
+const CLOSES: Record<string, ClarificationAbout> = {
+  [STATS_CLARIFIED_INTENT]: "stats",
+  [ATTENDANCE_CLARIFIED_INTENT]: "attendance",
+};
+
 /** The `AnalyzedMessage` columns a clarification is read from. */
 export interface StatsClarificationRow {
   id: string;
@@ -237,6 +275,9 @@ export interface StatsClarification {
   /** The original question, verbatim. Re-read when the answer arrives. */
   questionBody: string;
   askedAt: Date;
+  /** A stats question, or a claim about who plays (2026-11-17). Absent in
+   *  rows built before the attendance question existed: stats. */
+  about?: ClarificationAbout;
 }
 
 function askerKey(userId: string | null, name: string | null): string | null {
@@ -252,15 +293,21 @@ export function openStatsClarifications(
   orgId: string,
   now: Date,
 ): StatsClarification[] {
+  // Keyed by what it is about AND who was asked: a stats question and a
+  // question about who plays are opened and closed apart.
   const latest = new Map<string, StatsClarificationRow>();
   const answeredAt = new Map<string, number>();
   for (const r of rows) {
     if (r.orgId !== orgId) continue;
-    const key = askerKey(r.authorUserId, r.authorName);
-    if (!key) continue;
-    if (r.intent === STATS_CLARIFIED_INTENT) {
+    const asker = askerKey(r.authorUserId, r.authorName);
+    if (!asker) continue;
+    const closes = r.intent ? CLOSES[r.intent] : undefined;
+    const opens = r.intent ? OPENS[r.intent] : undefined;
+    if (closes) {
+      const key = `${closes}|${asker}`;
       answeredAt.set(key, Math.max(answeredAt.get(key) ?? 0, r.createdAt.getTime()));
-    } else if (r.intent === STATS_CLARIFICATION_INTENT) {
+    } else if (opens) {
+      const key = `${opens}|${asker}`;
       const cur = latest.get(key);
       if (!cur || r.createdAt.getTime() > cur.createdAt.getTime()) latest.set(key, r);
     }
@@ -270,6 +317,7 @@ export function openStatsClarifications(
     const q = { id: r.id, orgId, kind: "tentative-followup" as const, askedAt: r.createdAt, closesAt: null };
     if (!isAnswerWindowOpen(q, now)) continue;
     if ((answeredAt.get(key) ?? 0) > r.createdAt.getTime()) continue;
+    const about = OPENS[r.intent ?? ""];
     out.push({
       id: r.id,
       orgId,
@@ -277,6 +325,8 @@ export function openStatsClarifications(
       askerName: r.authorName,
       questionBody: r.body ?? "",
       askedAt: r.createdAt,
+      // Stats rows keep exactly the shape they always had.
+      ...(about === "attendance" ? { about } : {}),
     });
   }
   return out.sort((a, b) => a.askedAt.getTime() - b.askedAt.getTime());

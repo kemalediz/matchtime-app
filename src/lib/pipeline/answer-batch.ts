@@ -951,7 +951,8 @@ export async function runAnswerBatch(args: {
     // UNIFIED_ANSWERS: MatchTime asks no "who do you mean?" (the unified
     // answer reads the roster itself), so no reply is read as one.
     if (unified) continue;
-    const c = (args.clarifications ?? []).find((q) => isFromAsker(q, m));
+    // A "who is that?" about who plays is the attendance engine's to read.
+    const c = (args.clarifications ?? []).find((q) => (q.about ?? "stats") === "stats" && isFromAsker(q, m));
     if (c) clarificationFor.set(m.waMessageId, { c });
   }
 

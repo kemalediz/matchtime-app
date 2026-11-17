@@ -66,7 +66,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { TestDb } from "../helpers/test-db";
 import { E2E } from "../helpers/env";
-import { setExtractorStub, setRouterStub } from "../helpers/stub";
+import { setExtractorStub, setRouterStub, type ExtractorStub } from "../helpers/stub";
 import { londonAt } from "../helpers/constants";
 
 const HEADERS = { "x-api-key": E2E.WHATSAPP_API_KEY };
@@ -464,6 +464,10 @@ export interface BatchItem {
    *  `claim`, so `parseFacts` still runs for real. Omitted → the body
    *  extracts nothing, which cannot invent a write. */
   facts?: Record<string, unknown>;
+  /** What WHO-IS-WHO answers for the names this message's facts quote:
+   *  quoted name → verdict, with roster names (2026-11-17). Omitted: the
+   *  plain stand-in (`stubPersonPicker`). */
+  people?: Record<string, { verdict: "member" | "none" | "ambiguous"; names?: string[] }>;
   author?: { name: string | null; phone: string };
   /** Simulate the message @-mentioning the bot ("@Match Time …"). Sets
    *  the structured `botMentioned` signal the interaction-contract gate
@@ -607,6 +611,7 @@ export class SimGroup {
     // why two identical bodies necessarily extract the same facts.
     const routes: Record<string, string> = {};
     const factBodies: Record<string, Record<string, unknown>> = {};
+    const peopleBodies: NonNullable<ExtractorStub["people"]> = {};
     const ids: string[] = [];
     const quoteFields = (it: BatchItem): Record<string, unknown> => {
       const q = it.quote;
@@ -625,6 +630,7 @@ export class SimGroup {
       ids.push(id);
       if (it.route) routes[id] = it.route;
       if (it.facts) factBodies[it.body.trim()] = it.facts;
+      if (it.people) peopleBodies[it.body.trim()] = it.people;
       let authorPhone = "";
       let authorName: string | null = null;
       if (it.author) {
@@ -680,6 +686,7 @@ export class SimGroup {
       });
       setExtractorStub({
         bodies: factBodies,
+        ...(Object.keys(peopleBodies).length > 0 ? { people: peopleBodies } : {}),
         ...(opts.extractorFail ? { fail: opts.extractorFail } : {}),
         ...(opts.extractorFailAll ? { failAll: true } : {}),
       });
@@ -723,6 +730,8 @@ export class SimGroup {
       route?: string;
       /** The RAW JSON its extractor returned. See `BatchItem`. */
       facts?: Record<string, unknown>;
+      /** What who-is-who answers for its names. See `BatchItem`. */
+      people?: BatchItem["people"];
       author?: { name: string | null; phone: string };
       /** Simulate an @Match Time tag (structured botMentioned signal). */
       botMentioned?: boolean;
@@ -746,6 +755,7 @@ export class SimGroup {
           body,
           ...(opts.route ? { route: opts.route } : {}),
           ...(opts.facts ? { facts: opts.facts } : {}),
+          ...(opts.people ? { people: opts.people } : {}),
           author: opts.author,
           botMentioned: opts.botMentioned,
           tag: opts.tag,

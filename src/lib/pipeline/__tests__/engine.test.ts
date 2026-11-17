@@ -1772,7 +1772,7 @@ describe("identity resolution (SURVIVES §9 — never about the model)", () => {
     expect(r.outcomes[0].reasons.join(" | ")).toMatch(/"habibi" is not a member/);
   });
 
-  it("bails on an AMBIGUOUS first name rather than guessing", () => {
+  it("bails on an AMBIGUOUS first name rather than guessing, and asks who (2026-11-17)", () => {
     const state = world({
       players: ["kemal", "elvin", "sait"],
       confirmed: ["kemal", "elvin", "sait"],
@@ -1795,7 +1795,8 @@ describe("identity resolution (SURVIVES §9 — never about the model)", () => {
       ],
     });
     expect(r.writes).toHaveLength(0);
-    expect(r.degradations.some((d) => /ambiguous/i.test(d.detail))).toBe(true);
+    // Tagged: the sender is asked who they mean instead of a degradation.
+    expect(r.speech).toEqual([expect.objectContaining({ kind: "ask_attendance_person", ref: "Sait" })]);
   });
 
   it("never registers a raw @lid digit string as a person", () => {
@@ -3112,7 +3113,7 @@ describe("2026-09-07 · an admin's untagged third-party OUT (Shahrokh)", () => {
     expect(r.outcomes[0].reasons.join(" ")).toMatch(/not a member/);
   });
 
-  it("an AMBIGUOUS name from an admin bails loudly and drops nobody", () => {
+  it("an AMBIGUOUS name from an admin drops nobody and asks who is meant (2026-11-17)", () => {
     const state = squad();
     // Two Amirs on the roster. "Amir is out" identifies neither.
     state.roster.push({ userId: "u-amir2", name: "Amir Khan", isAdmin: false, hasPhone: true });
@@ -3131,8 +3132,11 @@ describe("2026-09-07 · an admin's untagged third-party OUT (Shahrokh)", () => {
       ],
     });
     expect(r.writes).toHaveLength(0);
-    expect(r.degradations).toHaveLength(1);
-    expect(r.degradations[0].detail).toMatch(/ambiguous/i);
+    // Loud as a question to the admin now, not a degradation nobody reads.
+    expect(r.degradations).toHaveLength(0);
+    expect(r.speech).toEqual([
+      expect.objectContaining({ kind: "ask_attendance_person", ref: "Amir", candidates: expect.arrayContaining(["Amir Khan"]) }),
+    ]);
   });
 
   it("a low-confidence claim from an admin is still below the floor", () => {

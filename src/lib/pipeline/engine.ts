@@ -1023,6 +1023,35 @@ export function decide(input: EngineInput): EngineResult {
       // tagged or not.
       const targets: Target[] = [];
       const guestAsks: Claim[] = [];
+      // ── A NAME NOBODY COULD PLACE IS ASKED ABOUT (2026-11-17) ────────
+      //
+      // Sutton, 17 Nov: "@Match Time Abu Ayoub is IN as a guest". Who-is-who
+      // was not sure: Abu Ayoub, or the member Yoobie? It answered
+      // "ambiguous" so the sender would be asked, and nothing asked: the
+      // engine degraded and the organiser got "I didn't catch what you'd
+      // like me to do". Now the sender is asked ONE question per message,
+      // "Do you mean Yoobie, or is Abu Ayoub a new player?", and the answer
+      // is read by the open-question mechanism (`awaiting-answer.ts`): the
+      // message is recorded with the `attendance_clarification` intent.
+      // Only for a message addressed to MatchTime or an organiser's, as
+      // every other ask: an untagged player's message stays silent.
+      let askedWhoHere = false;
+      const askWhoIs = (ref: string, candidates: ReadonlyArray<Member>): boolean => {
+        if (askedWhoHere || !msg.senderUserId || !(msg.tagged || senderIsAdmin)) return false;
+        askedWhoHere = true;
+        speech.push({
+          kind: "ask_attendance_person",
+          messageId: msg.id,
+          ref: ref.trim().replace(/^@/, "").trim(),
+          candidates: candidates.flatMap((m2) => (m2.name ? [m2.name] : [])),
+        });
+        out.attendanceClarificationAsked = true;
+        if (out.disposition !== "degraded") out.disposition = "acted";
+        out.reasons.push(
+          `who "${ref}" is is not clear (${candidates.length > 0 ? candidates.map((m2) => m2.name).join(", ") : "no candidate"}): asked the sender, nothing written for it`,
+        );
+        return true;
+      };
       for (const c of collapsed) {
         const floorExempt = isFloorExempt(c, msg.senderUserId, state.roster);
         if (c.confidence < CONFIDENCE_FLOOR) {
@@ -1055,6 +1084,7 @@ export function decide(input: EngineInput): EngineResult {
         const replaced = (c.replaces ?? "").trim();
         if (replaced && !isSelfRef(replaced)) {
           const ry = resolvePerson(replaced, w.roster, msg.people);
+          if (ry.kind === "ambiguous" && askWhoIs(replaced, ry.candidates)) continue;
           if (ry.kind === "ambiguous" || ry.kind === "unknown") {
             degrade(`"${c.personRef || "the sender"}" for "${replaced}": who "${replaced}" is is not clear; the whole replacement is held`);
             continue;
@@ -1107,9 +1137,21 @@ export function decide(input: EngineInput): EngineResult {
         // with only `personNamed` maps onto the same kind.
         const kind = c.personKind ?? (c.personNamed ? "named" : "placeholder");
         const personNamed = kind === "named";
-        const resolution: ReturnType<typeof resolvePerson> = personNamed
-          ? resolvePerson(c.personRef, w.roster, msg.people)
-          : { kind: "not-a-person", why: `the extractor read "${c.personRef}" as a ${kind}, not a named person` };
+        // THE ANSWER TO "IS ABU AYOUB A NEW PLAYER?" WAS YES (2026-11-17):
+        // the name is a new person, as the EARLIER message wrote it, and is
+        // not looked up again (who-is-who would only say "ambiguous" a
+        // second time). Honoured only when the batch confirmed the question
+        // was open for this sender (`clarifiedBody`).
+        const saidNew = personNamed && c.newPlayer === true && msg.clarifiedBody !== undefined;
+        const resolution: ReturnType<typeof resolvePerson> = saidNew
+          ? { kind: "unknown", name: c.personRef.trim().replace(/^@/, "").trim() }
+          : personNamed
+            ? resolvePerson(c.personRef, w.roster, msg.people)
+            : { kind: "not-a-person", why: `the extractor read "${c.personRef}" as a ${kind}, not a named person` };
+        // The provisioning guard reads the words the name came from: the
+        // earlier message, for an answer to MatchTime's question.
+        const writtenHere = (ref: string) =>
+          refWrittenIn(ref, msg.body) || (msg.clarifiedBody !== undefined && refWrittenIn(ref, msg.clarifiedBody));
 
         // ── A MENTION NOBODY COULD NAME (2026-09-30, MT Test) ──────────
         //
@@ -1139,7 +1181,7 @@ export function decide(input: EngineInput): EngineResult {
           personKind: kind,
           personRef: c.personRef ?? "",
           resolution: resolution.kind,
-          writtenInMessage: personNamed && refWrittenIn(c.personRef, msg.body),
+          writtenInMessage: personNamed && writtenHere(c.personRef),
           rawDigits: rawDigitsOnly,
           senderKnown: !!msg.senderUserId,
           senderIsAdmin,
@@ -1179,6 +1221,7 @@ export function decide(input: EngineInput): EngineResult {
           continue;
         }
         if (resolution.kind === "ambiguous") {
+          if (askWhoIs(c.personRef, resolution.candidates)) continue;
           degrade(
             `ambiguous name "${c.personRef}": ${resolution.candidates
               .map((m2) => m2.name)
@@ -1194,7 +1237,7 @@ export function decide(input: EngineInput): EngineResult {
           // A VERIFIER ON THE MODEL'S OUTPUT (2026-10-30): a new player is
           // provisioned only under a name the message actually wrote. A
           // name the model invented, or expanded, provisions nobody.
-          if (!refWrittenIn(c.personRef, msg.body)) {
+          if (!writtenHere(c.personRef)) {
             out.reasons.push(`"${c.personRef}" is not written in the message; nobody provisioned`);
             continue;
           }

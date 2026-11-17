@@ -2470,6 +2470,9 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
           // A pasted list keeps only its sender's own OUT: the router's
           // flag, with the squad reader's "squad" answer (both facts).
           pastedListIds: new Set([...listIds, ...pastedRosterIds]),
+          // MatchTime's open "who is that?" about a place (2026-11-17): the
+          // asker's answer is read against the message it asked about.
+          clarifications: statsClarifications,
           deps: {
             // At the daily AI cap a bare IN/OUT is decided from the
             // floor's facts, with no extractor call.

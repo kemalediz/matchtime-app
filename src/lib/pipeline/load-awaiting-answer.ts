@@ -28,8 +28,7 @@ import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { db } from "../db";
 import {
   GROUP_QUESTION_TTL_MS,
-  STATS_CLARIFICATION_INTENT,
-  STATS_CLARIFIED_INTENT,
+  CLARIFICATION_INTENTS,
   openQuestionAt,
   openStatsClarifications,
   type AwaitingQuestion,
@@ -129,7 +128,9 @@ export async function loadOpenStatsClarifications(
   const rows = await db.analyzedMessage.findMany({
     where: {
       orgId,
-      intent: { in: [STATS_CLARIFICATION_INTENT, STATS_CLARIFIED_INTENT] },
+      // Both kinds (2026-11-17): a stats "who do you mean?" and a "who is
+      // that?" about who plays. `about` on each says which.
+      intent: { in: [...CLARIFICATION_INTENTS] },
       createdAt: { gte: new Date(now.getTime() - GROUP_QUESTION_TTL_MS) },
     },
     select: { id: true, orgId: true, intent: true, authorUserId: true, authorName: true, body: true, createdAt: true },

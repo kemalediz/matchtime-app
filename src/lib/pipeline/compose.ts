@@ -63,7 +63,7 @@ import {
   renderStatsTable,
 } from "./stats-answer";
 import { t } from "../i18n/t";
-import { joinList } from "../i18n/text";
+import { joinChoice, joinList } from "../i18n/text";
 import { activityFeeText } from "../activity-fee";
 import { benchClause } from "../squad-count-line";
 import type { EngineResult, SquadState } from "./types";
@@ -114,6 +114,25 @@ export function safeName(name: string, fallback: string): string {
   if (!trimmed) return fallback;
   if (RAW_PHONE.test(trimmed) || !/\p{L}/u.test(trimmed)) return fallback;
   return trimmed;
+}
+
+/**
+ * MatchTime's one question about a name it could not place (2026-11-17):
+ * "Do you mean Yoobie, or is Abu Ayoub a new player?". A name that is a
+ * phone number or a paragraph is never echoed into the group: a candidate
+ * like that is left out, and an unprintable `ref` asks nothing (null).
+ */
+export function renderAttendanceAsk(
+  a: { ref: string; candidates: string[] },
+  lang: string | null | undefined,
+): string | null {
+  const s = t(lang);
+  const ref = safeName(a.ref, "");
+  if (!ref || ref.length > 40) return null;
+  const choices = [...new Set(a.candidates.map((c) => safeName(c, "")).filter((c) => !!c))];
+  if (choices.length === 1) return s.attendance_ask_one({ ref, choice: choices[0] });
+  if (choices.length > 1) return s.attendance_ask_several({ ref, choices: joinChoice(lang, choices) });
+  return s.attendance_ask_unknown({ ref });
 }
 
 function firstName(name: string, fallback: string): string {
@@ -776,6 +795,16 @@ export function compose(result: EngineResult): ComposedOutput {
       case "ask_who_mentioned":
         utterances.push({ messageId: sp.messageId, text: s.ask_who_mentioned });
         break;
+
+      case "ask_attendance_person": {
+        const text = renderAttendanceAsk({ ref: sp.ref, candidates: sp.candidates }, lang);
+        if (!text) {
+          operatorNotes.push(`compose: ask_attendance_person for ${sp.messageId} with an unprintable name; saying nothing`);
+          break;
+        }
+        utterances.push({ messageId: sp.messageId, text });
+        break;
+      }
 
       case "partner_ask_which":
         utterances.push({ messageId: sp.messageId, text: s.xask_which({ asker: sp.askerName }) });

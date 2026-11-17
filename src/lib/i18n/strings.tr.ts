@@ -610,6 +610,10 @@ export const tr: Strings = {
   },
 
   ask_who_mentioned: "Bunun kim olduğunu anlayamadım, adını yazar mısın?",
+  // Names sit where Turkish needs no suffix (the house rule).
+  attendance_ask_one: (p) => `${p.ref} kim: ${p.choice}, yoksa yeni bir oyuncu mu?`,
+  attendance_ask_several: (p) => `${p.ref} kim: ${p.choices}, yoksa yeni biri mi?`,
+  attendance_ask_unknown: (p) => `${p.ref} kim: gruptan biri mi, yoksa yeni bir oyuncu mu?`,
 
   // ── row 45: buildMomAnnouncement ───────────────────────────────────
 

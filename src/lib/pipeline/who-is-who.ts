@@ -455,8 +455,35 @@ export function modelPersonPicker(model: PipelineModel): PersonPicker {
  * Never reached in production: `personPickerFor` picks it only when the
  * extractor stub seam is set, and a test passes it explicitly.
  */
-export function stubPersonPicker(): PersonPicker {
-  return async (req) => ({ picks: stubPicks(req), usage: null, degradations: [] });
+export function stubPersonPicker(
+  /** A stubbed spec's own answers (`ExtractorStubConfig.people`): body →
+   *  quoted name → verdict with roster names. Read before the stand-in. */
+  overrides?: Record<string, Record<string, { verdict: "member" | "none" | "ambiguous"; names?: string[] }>> | null,
+): PersonPicker {
+  return async (req) => {
+    const picks = stubPicks(req);
+    if (overrides) {
+      const idsOf = (names: string[] = []) =>
+        names.flatMap((n) => req.roster.filter((m) => m.name === n).map((m) => m.userId));
+      for (const msg of req.messages) {
+        const o = overrides[msg.body.trim()];
+        if (!o) continue;
+        for (const [ref, v] of Object.entries(o)) {
+          const key = refKey(ref);
+          if (!picks.get(msg.id)?.has(key)) continue;
+          const ids = idsOf(v.names);
+          const pick: PersonPick =
+            v.verdict === "member" && ids.length === 1
+              ? { kind: "member", userId: ids[0] }
+              : v.verdict === "ambiguous"
+                ? { kind: "ambiguous", userIds: ids }
+                : { kind: "none" };
+          picks.get(msg.id)!.set(key, pick);
+        }
+      }
+    }
+    return { picks, usage: null, degradations: [] };
+  };
 }
 
 /** Synchronous core of `stubPersonPicker`, for the engine tests. */
@@ -503,7 +530,9 @@ export function personRefsIn(facts: Facts, isSelf: (ref: string) => boolean = ()
   switch (facts.kind) {
     case "attendance":
       for (const c of facts.claims) {
-        if (c.subject !== "sender") {
+        // A person the sender just told MatchTime is NEW (the answer to its
+        // "who is that?", 2026-11-17) is nobody to look up.
+        if (c.subject !== "sender" && !(facts.answersClarification && c.newPlayer)) {
           const kind = c.personKind ?? (c.personNamed ? "named" : "placeholder");
           if (kind === "named") add(c.personRef);
         }

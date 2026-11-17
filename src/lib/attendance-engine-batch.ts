@@ -176,6 +176,12 @@ import { membersNamedIn } from "./pipeline/identity";
 import { identifyFacts, personPickerFor } from "./pipeline/identify-batch";
 import { restoreFormerMember } from "./resolve-sender";
 import type { PersonPicker, PersonPicks } from "./pipeline/who-is-who";
+import {
+  ATTENDANCE_CLARIFICATION_INTENT,
+  ATTENDANCE_CLARIFIED_INTENT,
+  isFromAsker,
+  type StatsClarification,
+} from "./pipeline/awaiting-answer";
 
 export interface EngineBatchMessage {
   waMessageId: string;
@@ -578,6 +584,15 @@ export async function runAttendanceEngineBatch(args: {
   /** Where this batch reports the silences it chose (`tagged-silence.ts`),
    *  so the route does not call them "not understood". Absent: unreported. */
   silence?: SilenceFacts;
+  /**
+   * THE "WHO IS THAT?" QUESTIONS MATCHTIME HAS OPEN (2026-11-17), from
+   * `loadOpenStatsClarifications`: only those `about` a place in the squad
+   * are read here. A message from the person asked is shown the earlier
+   * message (the MATCHTIME ASKED line), and when the extractor reads it as
+   * the answer its claims are that earlier message's, with the person
+   * named or said to be new. Absent or empty: nothing changes.
+   */
+  clarifications?: StatsClarification[];
 }): Promise<EngineBatchResult> {
   const { orgId, now, messages, history, expectedMatchId, deps } = args;
   if (!args.enabled) return empty();
@@ -804,6 +819,15 @@ export async function runAttendanceEngineBatch(args: {
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   let capSkipped = 0;
+  // The open "who is that?" each owned message's sender was asked, if any
+  // (only the person asked; `awaiting-answer.ts`).
+  const askedFor = new Map<string, StatsClarification>();
+  for (const m of owned) {
+    const c = (args.clarifications ?? [])
+      .filter((q) => q.about === "attendance" && isFromAsker(q, m))
+      .at(-1);
+    if (c) askedFor.set(m.waMessageId, c);
+  }
   const factsById = new Map<string, { facts: Facts; degraded: string | null }>();
   await fanOutWarmFirst(
     owned,
@@ -834,6 +858,9 @@ export async function runAttendanceEngineBatch(args: {
         // The club's members the words name, from the roster (2026-10-24,
         // FNF HQ "Glazers OUT"): the extractor is told they are people.
         members: membersNamedIn(m.body, state.roster),
+        // MatchTime asked this sender who someone in their earlier message
+        // is: that message, so the extractor can read an answer to it.
+        ...(askedFor.has(m.waMessageId) ? { clarifying: askedFor.get(m.waMessageId)!.questionBody } : {}),
         now,
       };
       const read = (overflow: boolean) =>
@@ -947,6 +974,25 @@ export async function runAttendanceEngineBatch(args: {
   }
   for (const id of failedIds) ownedIds.delete(id);
   for (const id of failedIds) args.silence?.readFailed.add(id);
+
+  // ── AN ANSWER ONLY WHEN THE QUESTION WAS OPEN (2026-11-17) ─────────
+  // `answersClarification` (and with it `newPlayer`) counts only for a
+  // message whose sender MatchTime asked; anywhere else it is model drift
+  // and is dropped, so nobody becomes "new" without having been asked.
+  const answeredIds = new Set<string>();
+  for (const [id, f] of factsById) {
+    if (f.facts.kind !== "attendance" || !f.facts.answersClarification) continue;
+    if (askedFor.has(id)) {
+      answeredIds.add(id);
+      continue;
+    }
+    const { answersClarification: _drop, ...rest } = f.facts;
+    void _drop;
+    factsById.set(id, {
+      ...f,
+      facts: { ...rest, claims: rest.claims.map(({ newPlayer: _n, ...c }) => (void _n, c)) },
+    });
+  }
 
   // ── Stage 2b: THE PASTED-LIST CLAMP ─────────────────────────────────
   //
@@ -1150,6 +1196,7 @@ export async function runAttendanceEngineBatch(args: {
       ...(m.quoted ? { quoted: m.quoted } : {}),
       ...(teamsReadingById.has(m.waMessageId) ? { teamsReading: teamsReadingById.get(m.waMessageId) } : {}),
       ...(peopleById.has(m.waMessageId) ? { people: peopleById.get(m.waMessageId) } : {}),
+      ...(answeredIds.has(m.waMessageId) ? { clarifiedBody: askedFor.get(m.waMessageId)!.questionBody } : {}),
     };
   });
 
@@ -1522,11 +1569,17 @@ export async function runAttendanceEngineBatch(args: {
       route: m.route as Route,
       reply,
       react: reactByMessageId.get(m.waMessageId) ?? partnerReact ?? friendReact,
+      // The asking message opens the "who is that?" and its answer closes
+      // it (`awaiting-answer.ts`); an answer that asks again opens a new one.
       intent: partner
         ? "partner_volunteer"
-        : friend && landed.length === 0
-          ? "friend_link"
-          : intentFor(landed, m.senderUserId, attendanceFacts, reply, !!engineOutcome?.recruitRequested),
+        : engineOutcome?.attendanceClarificationAsked && reply
+          ? ATTENDANCE_CLARIFICATION_INTENT
+          : answeredIds.has(m.waMessageId)
+            ? ATTENDANCE_CLARIFIED_INTENT
+            : friend && landed.length === 0
+              ? "friend_link"
+              : intentFor(landed, m.senderUserId, attendanceFacts, reply, !!engineOutcome?.recruitRequested),
       action: partner ? `partner-volunteer:${partner.outcome}` : analyzedActionFor(landed, m.senderUserId),
       reasoning,
       failures,
