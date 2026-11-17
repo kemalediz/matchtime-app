@@ -366,7 +366,7 @@ export const tr: Strings = {
 
   // ── row 71: buildSquadRosterBlock ────────────────────────────────
 
-  roster_confirmed_header: (p) => `*Onaylananlar (${p.confirmed}/${p.maxPlayers}):*`,
+  roster_confirmed_header: (p) => (p.openSquad ? `*Onaylananlar (${p.confirmed}):*` : `*Onaylananlar (${p.confirmed}/${p.maxPlayers}):*`),
   roster_nobody_yet: "_henüz kimse yok_",
 
   // ── row 71b: buildSquadFullEveningPost ───────────────────────────
@@ -2554,7 +2554,7 @@ export const tr: Strings = {
 
   // ── Haftalık saatler (2026-09-30) ──
   list_published_head: (p) => `📋 *${p.activityName}* listesi, *${p.dateLabel}*, ${p.venue}`,
-  list_published_playing_header: (p) => `*Oynayanlar (${p.confirmed}/${p.maxPlayers}):*`,
+  list_published_playing_header: (p) => (p.openSquad ? `*Oynayanlar (${p.confirmed}):*` : `*Oynayanlar (${p.confirmed}/${p.maxPlayers}):*`),
   list_published_open: (p) => `${p.open} yer hâlâ boş.`,
   list_published_footer: "Artık gelemiyorsanız yerinize birinin alınabilmesi için hemen *YOKUM* yazın.",
   wd_dropout_label: "Son çıkış saati",

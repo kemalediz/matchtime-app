@@ -392,8 +392,9 @@ export const en = {
 
   // ── row 71: buildSquadRosterBlock (scheduler-copy.ts) ────────────
 
-  roster_confirmed_header: (p: { confirmed: number; maxPlayers: number }): string =>
-    `*Confirmed (${p.confirmed}/${p.maxPlayers}):*`,
+  /** `openSquad` (open-squad.ts): no places, so the count alone. */
+  roster_confirmed_header: (p: { confirmed: number; maxPlayers: number; openSquad?: boolean }): string =>
+    p.openSquad ? `*Confirmed (${p.confirmed}):*` : `*Confirmed (${p.confirmed}/${p.maxPlayers}):*`,
   roster_nobody_yet: "_nobody yet_",
 
   // ── row 71b: buildSquadFullEveningPost (scheduler-copy.ts) ───────
@@ -3531,8 +3532,8 @@ export const en = {
   /** WDL3 (D3): the final list at publish time. */
   list_published_head: (p: { activityName: string; dateLabel: string; venue: string }): string =>
     `📋 *${p.activityName}* list, *${p.dateLabel}*, ${p.venue}`,
-  list_published_playing_header: (p: { confirmed: number; maxPlayers: number }): string =>
-    `*Playing (${p.confirmed}/${p.maxPlayers}):*`,
+  list_published_playing_header: (p: { confirmed: number; maxPlayers: number; openSquad?: boolean }): string =>
+    p.openSquad ? `*Playing (${p.confirmed}):*` : `*Playing (${p.confirmed}/${p.maxPlayers}):*`,
   list_published_open: (p: { open: number }): string =>
     p.open === 1 ? "1 place still open." : `${p.open} places still open.`,
   list_published_footer: "Can't make it now? Say *OUT* as soon as you can so a replacement can be brought in.",

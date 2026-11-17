@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { composeSquadStatusPost } from "../group-copy";
-import { buildAnnounceMatchPost } from "../scheduler-copy";
+import { buildAnnounceMatchPost, buildListPublishedPost, buildSquadRosterBlock } from "../scheduler-copy";
 
 const names = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
 const DASH = /[–—]/;
@@ -33,6 +33,24 @@ describe("composeSquadStatusPost, open squad", () => {
   it("off: today's words", () => {
     const text = composeSquadStatusPost({ confirmed: names(14), bench: [], maxPlayers: 14, lang: "en" });
     expect(text).toContain("*14/14* ✅ full squad.");
+  });
+});
+
+describe("the 17:00 roster and the published list, open squad", () => {
+  const rows = (n: number) => names(n).map((name, i) => ({ id: `u${i}`, name }));
+  it("the roster counts alone, no \"of N\"", () => {
+    expect(buildSquadRosterBlock({ confirmed: rows(10), bench: [], maxPlayers: 12, openSquad: true, lang: "en" }).split("\n")[0]).toBe("*Confirmed (10):*");
+    expect(buildSquadRosterBlock({ confirmed: rows(10), bench: [], maxPlayers: 12, openSquad: true, lang: "tr" }).split("\n")[0]).toBe("*Onaylananlar (10):*");
+    expect(buildSquadRosterBlock({ confirmed: rows(10), bench: [], maxPlayers: 12, lang: "en" }).split("\n")[0]).toBe("*Confirmed (10/12):*");
+  });
+  it("the published list: the count, how many more below the minimum, the invitation; never places open", () => {
+    const base = { activityName: "Football", dateLabel: "Mon 23 Nov at 20:15", venue: "Goals", bench: [], maxPlayers: 12, openSquad: true };
+    const short = buildListPublishedPost({ ...base, confirmed: rows(10), lang: "en" });
+    expect(short).toContain("*Playing (10):*");
+    expect(short).toContain("2 more needed to play. Anyone else, say *IN* to play.");
+    const enough = buildListPublishedPost({ ...base, confirmed: rows(15), lang: "en" });
+    expect(enough).toContain("Anyone else, say *IN* to play.");
+    expect(enough).not.toMatch(/still open|needed|\/12/);
   });
 });
 

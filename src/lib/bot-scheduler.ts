@@ -2014,7 +2014,8 @@ async function computeForMatch(
       const rosterBlock = buildSquadRosterBlock({
         confirmed: confirmed.map((a) => a.user),
         bench: bench.map((a) => a.user),
-        maxPlayers: m.maxPlayers,
+        maxPlayers,
+        openSquad,
         lang,
       });
 
@@ -2129,7 +2130,8 @@ async function computeForMatch(
             rosterBlock: buildSquadRosterBlock({
               confirmed: confirmed.map((a) => a.user),
               bench: bench.map((a) => a.user),
-              maxPlayers: m.maxPlayers,
+              maxPlayers,
+              openSquad,
               lang,
             }),
             lang,
@@ -2315,6 +2317,7 @@ async function computeForMatch(
             confirmed: confirmed.map((a) => a.user),
             bench: bench.map((a) => a.user),
             maxPlayers,
+            openSquad,
             lang,
           }),
           // The final list is the whole post, so it always goes out in

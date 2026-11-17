@@ -78,12 +78,14 @@ export function buildSquadRosterBlock(
     confirmed: NamedRow[];
     bench: NamedRow[];
     maxPlayers: number;
+    /** No squad limit (open-squad.ts): the count alone, no "of N". */
+    openSquad?: boolean;
   } & WithLang,
 ): string {
   const { confirmed, bench, maxPlayers } = args;
   const s = t(args.lang);
   const lines: string[] = [];
-  lines.push(s.roster_confirmed_header({ confirmed: confirmed.length, maxPlayers }));
+  lines.push(s.roster_confirmed_header({ confirmed: confirmed.length, maxPlayers, ...(args.openSquad ? { openSquad: true } : {}) }));
   if (confirmed.length === 0) {
     lines.push(s.roster_nobody_yet);
   } else {
@@ -514,9 +516,25 @@ export function buildListPublishedPost(
     confirmed: NamedRow[];
     bench: NamedRow[];
     maxPlayers: number;
+    /** No squad limit (open-squad.ts): `maxPlayers` is the minimum, the
+     *  count is said alone, and below the minimum it says how many more
+     *  are needed to play, never "places open". */
+    openSquad?: boolean;
   } & WithLang,
 ): string {
   const s = t(args.lang);
+  if (args.openSquad) {
+    const short = Math.max(0, args.maxPlayers - args.confirmed.length);
+    return [
+      s.list_published_head(args),
+      ``,
+      s.list_published_playing_header({ confirmed: args.confirmed.length, maxPlayers: args.maxPlayers, openSquad: true }),
+      ...numbered(args.confirmed, s.unnamed),
+      ``,
+      s.mwk_list_open_squad({ price: null, short }),
+      s.list_published_footer,
+    ].join("\n");
+  }
   const lines: string[] = [
     s.list_published_head(args),
     ``,
