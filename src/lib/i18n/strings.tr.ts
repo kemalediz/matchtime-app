@@ -3532,6 +3532,8 @@ export const tr: Strings = {
     `✅ Tamam: kadronun yine bir sınırı var, *${p.activityName}* için ${p.places} kişi. Listede olan herkes kalır; kadro dolduktan sonra *VARIM* yazan yedeğe girer.`,
   os_already_on: (p) => `Değişiklik yok: zaten kadro sınırı yok. *VARIM* yazan herkes oynar; en az ${p.min} kişi gerekir.`,
   os_already_off: (p) => `Değişiklik yok: kadronun zaten ${p.places} kişilik bir sınırı var.`,
+  os_join_lead: (p) => `➕ ${p.joins.map((j) => `*${j.name}* *${j.teamLabel}* takıma katıldı`).join(", ")}.`,
+  os_join_note: "(yeni)",
   os_setting_label: "Kadro sınırı yok",
   os_setting_blurb: "VARIM yazan herkes oynar: yedek yok, takım başına sayı yok. MatchTime yalnızca maçın en az oyuncu sayısının altında oyuncu arar.",
   os_no_format:

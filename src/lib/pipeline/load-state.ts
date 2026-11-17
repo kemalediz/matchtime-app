@@ -198,6 +198,18 @@ export async function loadSquadState(
         })
       ).map((t) => ({ userId: t.userId, team: t.team as "RED" | "YELLOW" }))
     : [];
+  // AN OPEN SQUAD WITH A SHEET OUT (review of #623): the club ratings of
+  // the squad, so a late IN joins the right side (`decideOpenSquadJoins`).
+  // One read, only for such a club; the same ratings the balancer uses.
+  const teamRatings =
+    features.openSquad && teams.length > 0
+      ? Object.fromEntries(
+          await (await import("../team-generation")).clubRatingsFor(
+            orgId,
+            rows.filter((r) => r.status === "CONFIRMED").map((r) => r.userId),
+          ),
+        )
+      : null;
 
   // THE LAST MATCH ACTUALLY PLAYED — see `SquadState.completedMatch`.
   //
@@ -377,6 +389,7 @@ export async function loadSquadState(
       offeredToUserIds: benchIds,
     })),
     teams,
+    ...(teamRatings ? { teamRatings } : {}),
     teamLabels: [redLabel, yellowLabel],
     completedMatch: completed
       ? {

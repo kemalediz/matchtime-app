@@ -115,6 +115,13 @@ export async function registerAttendance(
     /** See `cancelAttendance`'s option of the same name: a CONFIRMED
      *  player moved to the bench hands the bench fill back to the caller. */
     deferBenchFill?: boolean;
+    /**
+     * An OPEN SQUAD's late IN after the teams are made (review of #623):
+     * by default he is seated (a vacated slot, else the smaller side) and
+     * the group sees the redrawn sheet (`open-squad-seat.ts`). False: the
+     * caller seats and announces him itself (the engine's apply layer).
+     */
+    seatOnTeams?: boolean;
   },
 ) {
   // TypeScript makes `options.event` mandatory for everything under
@@ -495,6 +502,17 @@ export async function registerAttendance(
     await announceSquadFullIfJustFilled(matchId).catch((err) =>
       console.error("[attendance] squad-full announce failed:", err),
     );
+    // AN OPEN SQUAD'S LATE IN (review of #623): with teams already made
+    // he joins them, and the group sees the redrawn sheet. Never fails
+    // the write; the organiser can remake the teams.
+    if (openSquad && options?.seatOnTeams !== false) {
+      try {
+        const { seatOpenSquadLateIns } = await import("./open-squad-seat");
+        await seatOpenSquadLateIns(matchId);
+      } catch (err) {
+        console.error(`[attendance] seating ${userId} on the teams failed:`, err instanceof Error ? err.message : err);
+      }
+    }
   }
 
   return {

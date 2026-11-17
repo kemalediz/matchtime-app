@@ -1392,6 +1392,8 @@ const SAMPLES: SampleArgs = {
   os_off: { activityName: "Football 7-a-side", places: 14 },
   os_already_on: { min: 12 },
   os_already_off: { places: 14 },
+  os_join_lead: { joins: [{ name: "Ali", teamLabel: "Red" }] },
+  os_join_note: null,
   os_setting_label: null,
   os_setting_blurb: null,
   os_no_format: null,

@@ -67,7 +67,10 @@ import { swapGuardFor, type SwapCandidate, type SwapGuardClaim } from "../team-s
 // The 2026-09-15 replacement rule, pure and beside the pure core it is
 // built out of (§13) rather than inlined here — its header carries the
 // incident, the state-check argument and the pairing order.
-import { decideSlotInherits } from "../team-slot-inherit";
+import { decideOpenSquadJoins, decideSlotInherits } from "../team-slot-inherit";
+/** A player with no club rating yet, when a late IN picks a side: the
+ *  default seed (`DEFAULT_SEED_RATING`). */
+const DEFAULT_JOIN_RATING = 6;
 import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { isRawDigitName, resolvePerson } from "./identity";
 import { refKey } from "../person-ref-key";
@@ -3563,10 +3566,39 @@ export function decide(input: EngineInput): EngineResult {
     }
   }
 
-  if (rideOn && inherits.length > 0) {
+  // ── AN OPEN SQUAD'S LATE INS (review of #623, open-squad.ts) ─────────
+  // No squad limit: an IN after the teams are made has no vacated slot to
+  // take. He joins the smaller side (level: the lower total rating) on
+  // the sheet the inherits above left, with a seat write, and rides the
+  // same one post that redraws the sheet. A drop changes nothing here:
+  // the sides stay as they are until an organiser remakes the teams.
+  const joins =
+    rideOn && state.features.openSquad === true && w.teams.length > 0
+      ? decideOpenSquadJoins({
+          rows: [...w.rows.values()].map((r) => ({ userId: r.userId, status: r.status, position: r.position })),
+          teams: w.teams,
+          ratingOf: (id) => state.teamRatings?.[id] ?? DEFAULT_JOIN_RATING,
+        })
+      : [];
+  if (rideOn) {
+    for (const j of joins) {
+      w.teams = [...w.teams, { userId: j.userId, team: j.team }];
+      writes.push({
+        kind: "team_slot_join",
+        userId: j.userId,
+        name: nameOf(w, j.userId),
+        team: j.team,
+        sourceMessageId: rideOn,
+        reason: `${nameOf(w, j.userId)} joins ${j.team}: no squad limit, the smaller side`,
+      });
+    }
+  }
+
+  if (rideOn && (inherits.length > 0 || joins.length > 0)) {
     speech.push({
       kind: "replacement_teams_post",
       messageId: rideOn,
+      ...(joins.length > 0 ? { joins: joins.map((j) => ({ inName: nameOf(w, j.userId), team: j.team })) } : {}),
       swaps: inherits.map((m) => ({
         outName: nameOf(w, m.fromUserId),
         inName: nameOf(w, m.toUserId),

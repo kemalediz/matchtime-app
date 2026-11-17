@@ -349,21 +349,33 @@ export function compose(result: EngineResult): ComposedOutput {
           );
           break;
         }
-        const noteFor = new Map(
-          sp.swaps.map((x) => [name(x.inName), s.replacement_note({ from: first(x.outName) })]),
-        );
+        const joins = sp.joins ?? [];
+        const noteFor = new Map([
+          ...sp.swaps.map((x) => [name(x.inName), s.replacement_note({ from: first(x.outName) })] as const),
+          // An open squad's late IN, on a new seat (review of #623).
+          ...joins.map((j) => [name(j.inName), s.os_join_note] as const),
+        ]);
         const withNotes = (names: string[]) =>
           names.map((n) => ({ name: n, note: noteFor.get(n) }));
         const label = (team: "RED" | "YELLOW") =>
           team === "RED" ? state.teamLabels[0] : state.teamLabels[1];
-        const lead = s.replacement_lead({
-          outNames: sp.swaps.filter((x) => x.outWentOut).map((x) => first(x.outName)),
-          swaps: sp.swaps.map((x) => ({
-            inName: first(x.inName),
-            outName: first(x.outName),
-            teamLabel: label(x.team),
-          })),
-        });
+        const leads: string[] = [];
+        if (sp.swaps.length > 0) {
+          leads.push(
+            s.replacement_lead({
+              outNames: sp.swaps.filter((x) => x.outWentOut).map((x) => first(x.outName)),
+              swaps: sp.swaps.map((x) => ({
+                inName: first(x.inName),
+                outName: first(x.outName),
+                teamLabel: label(x.team),
+              })),
+            }),
+          );
+        }
+        if (joins.length > 0) {
+          leads.push(s.os_join_lead({ joins: joins.map((j) => ({ name: first(j.inName), teamLabel: label(j.team) })) }));
+        }
+        const lead = leads.join("\n");
         utterances.push({
           messageId: sp.messageId,
           text:

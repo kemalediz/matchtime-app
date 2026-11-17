@@ -4948,6 +4948,11 @@ export const en = {
     `✅ Done: the squad has a limit again, *${p.activityName}* with ${p.places} places. Everyone already in stays in; anyone who says *IN* after it is full goes on the bench.`,
   os_already_on: (p: { min: number }): string => `No change: there is already no squad limit. Everyone who says *IN* plays; the minimum is ${p.min}.`,
   os_already_off: (p: { places: number }): string => `No change: the squad already has a limit of ${p.places} places.`,
+  /** An open squad's late IN after the teams are made (review of #623):
+   *  the line over the redrawn sheet, and the mark beside his name. */
+  os_join_lead: (p: { joins: Array<{ name: string; teamLabel: string }> }): string =>
+    `➕ ${p.joins.map((j) => `*${j.name}* joins *${j.teamLabel}*`).join(", ")}.`,
+  os_join_note: "(new)",
   /** /admin/settings, the Bench card. */
   os_setting_label: "No squad limit",
   os_setting_blurb: "Everyone who says IN plays: no bench, no number a side. MatchTime only asks for players below the game's minimum.",

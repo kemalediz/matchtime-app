@@ -219,10 +219,18 @@ export interface EngineApplyDeps {
    * `analyze/route.ts`.
    */
   moveTeamSlot: (matchId: string, fromUserId: string, toUserId: string) => Promise<void>;
+  /**
+   * A NEW seat for an open squad's late IN (`team_slot_join`, review of
+   * #623), written under the slot lock only while he is confirmed and has
+   * no seat (`team-slot-fill.ts` `joinTeamSlot`). Optional: a caller that
+   * never runs for an open squad need not supply it, and a join reaching
+   * one without it is reported.
+   */
+  joinTeamSlot?: (matchId: string, userId: string, team: "RED" | "YELLOW") => Promise<void>;
 }
 
 /** A team-slot move, once the apply layer has resolved its ids. */
-export type EngineTeamSlotWrite = ProposedWrite & { kind: "team_slot_inherit" };
+export type EngineTeamSlotWrite = ProposedWrite & { kind: "team_slot_inherit" | "team_slot_join" };
 
 export interface EngineWriteResult {
   write: EngineAttendanceWrite | EngineTeamSlotWrite;
@@ -272,7 +280,7 @@ export async function applyEngineWrites(args: {
     // provisioned yet has no user row for an assignment to point at, and
     // a slot handed to a register that threw would seat a player who is
     // not in the squad.
-    if (w.kind === "team_slot_inherit") continue;
+    if (w.kind === "team_slot_inherit" || w.kind === "team_slot_join") continue;
 
     if (w.kind !== "attendance") {
       // Unreachable: the engine only produces these from `question`,
@@ -353,6 +361,10 @@ export async function applyEngineWrites(args: {
           // the write decides with the same one.
           actorIsAdmin: actor.isAdmin,
           deferBenchFill: true,
+          // The engine seats an open squad's late IN itself (its own
+          // `team_slot_join` and `team_slot_inherit` writes, and its own
+          // post), so the write does not seat or announce a second time.
+          seatOnTeams: false,
         });
         if (res.benchFill) benchFills.push(res.benchFill);
         out.push({ write: w, userId, ok: true, status: res.status as AttStatus });
@@ -385,6 +397,26 @@ export async function applyEngineWrites(args: {
   // would put somebody on the line-up who is not in the squad, which is
   // the failure this whole change exists to stop.
   for (const w of writes) {
+    if (w.kind === "team_slot_join") {
+      // An open squad's late IN: a new seat on the side the engine chose.
+      const userId = realIdFor.get(w.userId) ?? w.userId;
+      if (isProvisionalUserId(userId) || failedUserIds.has(userId) || !deps.joinTeamSlot) {
+        out.push({
+          write: w,
+          userId: null,
+          ok: false,
+          error: !deps.joinTeamSlot ? `no seat writer for "${w.name}"` : `cannot seat "${w.name}": their attendance write did not land`,
+        });
+        continue;
+      }
+      try {
+        await deps.joinTeamSlot(matchId, userId, w.team);
+        out.push({ write: w, userId, ok: true });
+      } catch (err) {
+        out.push({ write: w, userId, ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
+      continue;
+    }
     if (w.kind !== "team_slot_inherit") continue;
     const toUserId = realIdFor.get(w.toUserId) ?? w.toUserId;
     if (isProvisionalUserId(toUserId) || failedUserIds.has(toUserId)) {

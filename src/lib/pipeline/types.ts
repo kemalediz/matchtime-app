@@ -1105,6 +1105,10 @@ export interface SquadState {
   /** An open squad's minimum to play (`openSquadMinimum`), for the answer
    *  context. Absent for every other club. */
   openSquadMinimum?: number;
+  /** An open squad with a team sheet out: each confirmed player's club
+   *  rating (`clubRatingsFor`), so a late IN joins the right side
+   *  (`decideOpenSquadJoins`). Absent for every other club. */
+  teamRatings?: Record<string, number>;
   /** Pre-formatted for the composer, so it needs no clock and no
    *  timezone library: "Tue 21:30". */
   kickoffLabel: string;
@@ -1634,6 +1638,21 @@ export type ProposedWrite =
     }
   | {
       /**
+       * A NEW SEAT ON A SIDE for an OPEN SQUAD's late IN (review of #623,
+       * open-squad.ts): no vacated slot to inherit, so he joins the
+       * smaller side (`decideOpenSquadJoins`). The apply layer creates the
+       * `TeamAssignment` row under the slot lock, only if he is still
+       * confirmed and has no seat.
+       */
+      kind: "team_slot_join";
+      userId: string;
+      name: string;
+      team: "RED" | "YELLOW";
+      sourceMessageId: string;
+      reason: string;
+    }
+  | {
+      /**
        * RUN THE BALANCER AND POST THE LINE-UPS — §10 step 8's carve-out
        * for the club's most-used command. 23 occurrences in 120 days on
        * Sutton FC, more than every question shape combined, so deleting
@@ -2085,6 +2104,9 @@ export type SpeechIntent =
         /** DROPPED, as opposed to demoted to the bench. */
         outWentOut: boolean;
       }>;
+      /** An OPEN SQUAD's late INs given a new seat (review of #623,
+       *  `decideOpenSquadJoins`): who, and which side. Absent: none. */
+      joins?: Array<{ inName: string; team: "RED" | "YELLOW" }>;
     }
   /** A resolved "Confirmed" whose writes were all idempotent. Saying
    *  nothing there is the silent-no-op failure in miniature. */

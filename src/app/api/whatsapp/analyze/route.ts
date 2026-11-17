@@ -173,7 +173,7 @@ import {
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { closeAttendanceAsk, recordAttendanceAsk } from "@/lib/attendance-ask-store";
-import { moveNamedSlot } from "@/lib/team-slot-fill";
+import { joinTeamSlot, moveNamedSlot } from "@/lib/team-slot-fill";
 import { getOrgFeatures } from "@/lib/org-features";
 import { organisersAnnounce } from "@/lib/list-announcer";
 import { appendAfterComposition, joinAlsoAnswered } from "@/lib/also-asks-reply";
@@ -2570,6 +2570,11 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
                   `slot move refused (${res.reason}); sheet healed with [${healed || "nothing"}]`,
                 );
               }
+            },
+            // An open squad's late IN (review of #623): a new seat, under
+            // the slot lock, only if he is still confirmed and unseated.
+            joinTeamSlot: async (matchId, userId, team) => {
+              await db.$transaction((tx) => joinTeamSlot(tx, matchId, userId, team));
             },
             openBenchPromptUserIds: async (matchId) =>
               (
