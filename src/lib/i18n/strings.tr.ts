@@ -3667,7 +3667,8 @@ export const tr: Strings = {
   mth_signup_open: (p) =>
     `Kayıt ${p.when} tarihine kadar açık. Liste grubunuza gönderildi; isimler yapıştırılan listeyle, mesajla ya da kayıt sayfasından gelir.`,
   mth_signup_ended: "Kayıt bitti. Bu ay artık haftalık liste yürüyor. Listede kimin olduğunu buradan yine değiştirebilirsiniz.",
-  mth_signup_counts: (p) => `Daimi: ${p.regulars} / ${p.max}. PAYG: ${p.payg}. Daimi yer bekleyen: ${p.waiting}.`,
+  mth_signup_counts: (p) =>
+    p.max === null ? `Daimi: ${p.regulars} (sınır yok). PAYG: ${p.payg}.` : `Daimi: ${p.regulars} / ${p.max}. PAYG: ${p.payg}. Daimi yer bekleyen: ${p.waiting}.`,
   mth_kind_waiting: "Daimi yer bekliyor",
   mth_payg_days: (p) => `PAYG günleri: ${p.days}`,
   mth_act_regular: "Daimi yap",

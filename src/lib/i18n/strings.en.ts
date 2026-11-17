@@ -5161,7 +5161,9 @@ export const en = {
   mth_signup_open: (p: { when: string }): string =>
     `Sign-up is open until ${p.when}. The list is posted in your group, and names come in by pasted list, by message or on the sign-up page.`,
   mth_signup_ended: "Sign-up has ended. The weekly list runs this month now. You can still change who is on it here.",
-  mth_signup_counts: (p: { regulars: number; max: number; payg: number; waiting: number }): string =>
+  /** `max` null: no squad limit (open-squad.ts), so no cap and no waiting. */
+  mth_signup_counts: (p: { regulars: number; max: number | null; payg: number; waiting: number }): string =>
+    p.max === null ? `Regulars: ${p.regulars} (no limit). PAYG: ${p.payg}.` :
     `Regulars: ${p.regulars} of ${p.max}. PAYG: ${p.payg}. Waiting for a regular place: ${p.waiting}.`,
   mth_kind_waiting: "Waiting for a regular place",
   mth_payg_days: (p: { days: string }): string => `PAYG on ${p.days}`,
