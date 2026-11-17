@@ -37,7 +37,11 @@ describe("a stated replacement whose replaced player is unclear", () => {
     const r = run({ kind: "ambiguous", userIds: ["u-najib"] });
     expect(statusOf(r.nextState, "mojib")).toBe("ABSENT");
     expect(statusOf(r.nextState, "najib")).toBe("CONFIRMED");
-    expect(r.degradations.map((d) => d.detail).join(" | ")).toMatch(/the whole replacement is held/);
+    // Tagged by an organiser: held whole, and he is asked who Najib is
+    // (2026-11-17), once.
+    expect(r.speech.filter((s) => s.kind === "ask_attendance_person")).toEqual([
+      expect.objectContaining({ ref: "Najib" }),
+    ]);
   });
 
   it("no answer about Najib (a failed call): held the same way", () => {

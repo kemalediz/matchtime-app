@@ -137,6 +137,9 @@ export interface ExtractorStub {
   /** What each stubbed extractor call reports it cost, in dollars
    *  (default 0). Drives the daily AI cap for real. */
   costUsd?: number;
+  /** What who-is-who answers: body → quoted name → verdict, with roster
+   *  names (`ExtractorStubConfig.people`, 2026-11-17). */
+  people?: Record<string, Record<string, { verdict: "member" | "none" | "ambiguous"; names?: string[] }>>;
 }
 
 export function setExtractorStub(stub: ExtractorStub): void {

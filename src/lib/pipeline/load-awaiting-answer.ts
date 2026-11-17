@@ -30,6 +30,9 @@ import {
   GROUP_QUESTION_TTL_MS,
   STATS_CLARIFICATION_INTENT,
   STATS_CLARIFIED_INTENT,
+  ATTENDANCE_ASK_KIND,
+  attendanceAskKeyPrefix,
+  openAttendanceAsks,
   openQuestionAt,
   openStatsClarifications,
   type AwaitingQuestion,
@@ -134,7 +137,19 @@ export async function loadOpenStatsClarifications(
     },
     select: { id: true, orgId: true, intent: true, authorUserId: true, authorName: true, body: true, createdAt: true },
   });
-  return openStatsClarifications(rows, orgId, now);
+  // …and the "who is that?" questions about a place (2026-11-17), kept as
+  // `SentNotification` rows (`awaiting-answer.ts`). Same hour, one read.
+  const asks = await db.sentNotification.findMany({
+    where: {
+      kind: ATTENDANCE_ASK_KIND,
+      key: { startsWith: attendanceAskKeyPrefix(orgId) },
+      createdAt: { gte: new Date(now.getTime() - GROUP_QUESTION_TTL_MS) },
+    },
+    select: { id: true, key: true, targetUser: true, text: true, createdAt: true },
+  });
+  return [...openStatsClarifications(rows, orgId, now), ...openAttendanceAsks(asks, orgId, now)].sort(
+    (a, b) => a.askedAt.getTime() - b.askedAt.getTime(),
+  );
 }
 
 /**

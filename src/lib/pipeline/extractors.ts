@@ -332,6 +332,7 @@ THE MESSAGE is the one message you report on, with the name of the person who ty
   NOW                    the time at the club
   THEY ARE REPLYING TO   when THE MESSAGE is a WhatsApp reply: the message it quotes, whose it is (MatchTime's or a member's), when, and its words
   CLUB MEMBERS NAMED     members of this club whose names appear in THE MESSAGE, from the club's records. A member the message calls by a nickname the club has on record is shown as that nickname with their name in brackets: "AH (Abdul-Hafeez)"
+  MATCHTIME ASKED        MatchTime could not tell who someone in the sender's earlier message was and asked them: that earlier message, quoted. See answersClarification
 Use the context to work out what THE MESSAGE refers to: who "he" is, which line a "same" or "ben de" answers (the quoted message, when there is one), what a bare "yes" agrees to. A claim made in the context is never reported again: "same" under Ali's "IN" is one claim, the sender's.
 A name on the CLUB MEMBERS NAMED line is a person in this club, even when it is also an ordinary word, a short nickname, a team or a well-known phrase: with Glazers listed, "Glazers out" says Glazers is out, and with "AH (Abdul-Hafeez)" listed, "AH IN" says AH is in. Such a claim is about that member, not the sender, and its personRef is the words the message used ("AH"). Read the sentence as you always would: a listed Will in "will you play?" is still the word "will".
 The context often shows the squad: a count such as "13/14" or "14/14", a list of names, a bench, the teams. The squad shown is never a reason for any field. Code holds the real squad and places every player, so a plain "in" is "in" when the list looks full and when the sender is already on it.
@@ -352,6 +353,7 @@ Return one claim for each person the message speaks about as a player in the clu
   reported     true when relaying what someone else SAID ("Najib said he's in", "Ali geliyorum dedi"). A plain statement about someone ("Kai can't make it tonight") is not reported
   replaces     ONLY on an "in" claim, and only when the message says this person takes somebody else's place: the words used for that other person, VERBATIM ("Najib", "@Najib", "me"). "" everywhere else
   confidence   0 to 1, how sure you are that the message says this
+  newPlayer    true only on a claim that answers MATCHTIME ASKED by saying the person is someone new; false everywhere else
 
 THE WHOLE MESSAGE
   affirmation  "yes" or "no" when the message is a bare answer to MatchTime ("Confirmed", "yes", "no"): to the MatchTime message it replies to, else to MATCHTIME'S LAST POST. Otherwise "none". Words that state the sender's own place ("in", "varım", "out") are a claim, whatever they answer
@@ -360,6 +362,7 @@ THE WHOLE MESSAGE
                  "chase"     it nudges for more players with no number and no name ("@all we need more players pls")
                  "question"  it also asks MatchTime for something it holds, such as the list, who is in or how many ("@Match Time what's the list?", "how many are we now?"), never a question put to another member ("@Ali can you play?")
                  "teams"     it also asks MatchTime to change the two teams as they stand: swap two players between the teams, move someone to the other team, swap the colours or clear the teams ("@Match Time swap me with Tom"). A swap between the teams is never a claim: both players stay in the squad
+  answersClarification  true when there is a MATCHTIME ASKED line and THE MESSAGE only answers it: it says who the person is (a name, "I mean Yoobie", "the first one") or that they are someone new ("new", "a new player", "yeni biri"). The claims are then the EARLIER message's, read as you would have read it, with the person MatchTime asked about written as the answer names them; when the answer says they are new, keep the name as the earlier message wrote it and set newPlayer true. false when there is no such line or THE MESSAGE says something else, and then the claims are THE MESSAGE's own, as always
 
 EXAMPLES
 Messages come in English or Turkish, often mixed or misspelt, and carry the same facts either way. Each group teaches one thing, English | Turkish.
@@ -424,6 +427,11 @@ A replacement: one person arrives and one leaves, and which way round it runs is
   "Mojib will play in my place" | "benim yerime Mojib oynayacak" -> Mojib in (replaces "me"), the sender out
   "Ali is coming, Mehmet can't make it" -> two ordinary claims, replaces "" on both: nobody said one takes the other's place
 IF YOU CANNOT TELL WHICH OF THE TWO IS ARRIVING AND WHICH IS LEAVING, REPORT NO CLAIMS AT ALL. A wrong guess takes a real player out of a real squad; saying nothing costs one message somebody can retype.
+
+Answering MatchTime's question. The MATCHTIME ASKED line quotes the earlier message "@Match Time Abu Ayoub is IN as a guest":
+  "Yoobie", "I mean Yoobie" | "Yoobie'yi kastettim" -> answersClarification true, Yoobie in, newPlayer false
+  "new", "he's a new player" | "yeni", "yeni biri" -> answersClarification true, Abu Ayoub in, newPlayer true
+  "I'm out tonight" | "bu akşam yokum" -> answersClarification false, the sender out: a message of its own
 
 Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out: report the claim, and let its confidence say whether it is meant. A claim made as a joke, a tease or a wind-up at somebody's expense gets a confidence of 0.3 or less; the same words said plainly keep their usual confidence.`,
 
@@ -915,6 +923,9 @@ export const ATTENDANCE_SCHEMA = {
           // rejects a nullable type outright, at request time.
           replaces: { type: "string" },
           confidence: { type: "number" },
+          // The answer to MatchTime's "who is that?" said this person is
+          // new (2026-11-17). false on every other claim.
+          newPlayer: { type: "boolean" },
         },
         required: [
           "subject",
@@ -928,6 +939,7 @@ export const ATTENDANCE_SCHEMA = {
           "reported",
           "replaces",
           "confidence",
+          "newPlayer",
         ],
         additionalProperties: false,
       },
@@ -940,8 +952,10 @@ export const ATTENDANCE_SCHEMA = {
     // back to null so the fact type stays honest.
     affirmation: { type: "string", enum: ["yes", "no", "none"] },
     sideRequests: { type: "array", items: { type: "string", enum: ["recruit", "chase", "question", "teams"] } },
+    // The message answers MatchTime's open "who is that?" (2026-11-17).
+    answersClarification: { type: "boolean" },
   },
-  required: ["claims", "affirmation", "sideRequests"],
+  required: ["claims", "affirmation", "sideRequests", "answersClarification"],
   additionalProperties: false,
 } as const;
 
@@ -1330,8 +1344,15 @@ export function parseFacts(
           // shadow, the dry run, the operator log).
           replaces: polarity === "in" ? str(r.replaces).trim() : "",
           confidence: clamp01(r.confidence),
+          // Only a named other person can be new; kept below only on an
+          // answer to MatchTime's question.
+          ...(bool(r.newPlayer) && subject === "other" && kind === "named" ? { newPlayer: true } : {}),
         });
       }
+      // newPlayer means something only on an answer to MatchTime's "who
+      // is that?" (2026-11-17): anywhere else it is model drift, dropped.
+      const answersClarification = raw.answersClarification === true;
+      if (!answersClarification) for (const c of claims) delete c.newPlayer;
       // "none" is the schema's stand-in for null (see ATTENDANCE_SCHEMA).
       const affRaw = str(raw.affirmation).toLowerCase();
       const affirmation = affRaw === "yes" ? "yes" : affRaw === "no" ? "no" : null;
@@ -1340,7 +1361,13 @@ export function parseFacts(
       )
         .map((s) => str(s).toLowerCase())
         .filter((s): s is SideRequest => s === "recruit" || s === "chase" || s === "question" || s === "teams");
-      const facts: AttendanceFacts = { kind: "attendance", claims, affirmation, sideRequests };
+      const facts: AttendanceFacts = {
+        kind: "attendance",
+        claims,
+        affirmation,
+        sideRequests,
+        ...(answersClarification ? { answersClarification: true } : {}),
+      };
       return { facts, degradations };
     }
 
@@ -1649,6 +1676,11 @@ export interface ExtractorMessage {
    * (2026-10-30, review of #476). The extractor says whether THE MESSAGE
    * answers it (`answersClarification`) and, if so, returns the earlier
    * question's fields with the person named. Absent otherwise.
+   *
+   * For the attendance extractor (2026-11-17) it is the sender's earlier
+   * message about who plays, whose person MatchTime asked them about
+   * ("Do you mean Yoobie, or is Abu Ayoub a new player?"); the extractor
+   * then says `answersClarification` and returns that message's claims.
    */
   clarifying?: string;
   /**
@@ -1738,7 +1770,11 @@ export async function extractForRoute(
     context.push(`CLUB MEMBERS NAMED: ${msg.members.join(", ")}`);
   }
   if (msg.clarifying) {
-    context.push(`MATCHTIME ASKED them whom they meant in their earlier question: "${msg.clarifying}"`);
+    context.push(
+      kind === "attendance"
+        ? `MATCHTIME ASKED them who someone in their earlier message is: "${msg.clarifying}"`
+        : `MATCHTIME ASKED them whom they meant in their earlier question: "${msg.clarifying}"`,
+    );
   }
   // The admin extractor only (2026-11-10, move_game): the club's games to
   // come, numbered, so the model names a game by its number and code checks

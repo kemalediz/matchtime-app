@@ -237,6 +237,13 @@ export interface StatsClarification {
   /** The original question, verbatim. Re-read when the answer arrives. */
   questionBody: string;
   askedAt: Date;
+  /** A stats question (absent, as always) or a place in the squad
+   *  (2026-11-17, `AttendanceAsk`). */
+  about?: "attendance";
+  /** For `about: "attendance"`: the name asked about, as written. */
+  ref?: string;
+  /** For `about: "attendance"`: the members MatchTime offered. */
+  candidateIds?: string[];
 }
 
 function askerKey(userId: string | null, name: string | null): string | null {
@@ -289,4 +296,105 @@ export function isFromAsker(
 ): boolean {
   if (c.askerUserId && m.senderUserId !== undefined) return m.senderUserId === c.askerUserId;
   return !!c.askerName && m.authorName === c.askerName;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// …AND SO IS "WHO IS ABU AYOUB?" ABOUT A PLACE IN THE SQUAD (2026-11-17)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Sutton, 17 Nov: "@Match Time Abu Ayoub is IN as a guest", and who-is-who
+// could not tell Abu Ayoub from the member Yoobie. The attendance engine
+// now asks ("Do you mean Yoobie, or is Abu Ayoub a new player?") and the
+// answer rides THIS mechanism: the asker only, the same one-hour TTL, the
+// same MATCHTIME ASKED line for the router and the extractor (`about`
+// picks its wording and its reader).
+//
+// ── THE ROW IS NOT THE MESSAGE'S OWN (review of #618). The asking
+// message keeps its real `AnalyzedMessage.intent` ("in" when the sender's
+// own claim landed beside the question), so the question is recorded
+// apart, as a `SentNotification` (what MatchTime sent, no migration):
+// kind `attendance-ask`, key `attendance-ask:<org>:<waMessageId>`, the
+// asker as `targetUser`, and in `text` (JSON) the earlier message, the
+// name asked about and the members offered. The answer is bound to those:
+// `engine.ts` acts only on the asked name. It is closed by `answeredAt`.
+
+export const ATTENDANCE_ASK_KIND = "attendance-ask";
+
+/** The key prefix of one club's attendance questions. */
+export function attendanceAskKeyPrefix(orgId: string): string {
+  return `${ATTENDANCE_ASK_KIND}:${orgId}:`;
+}
+
+/** What an attendance question's row carries in `text`. */
+export interface AttendanceAskPayload {
+  v: 1;
+  askerName: string | null;
+  /** The earlier message the question is about, verbatim. */
+  body: string;
+  /** The name asked about, as that message wrote it. */
+  ref: string;
+  candidateIds: string[];
+  /** Set when the asker's answer was read. */
+  answeredAt?: string | null;
+}
+
+/** The `SentNotification` columns an attendance question is read from. */
+export interface AttendanceAskRow {
+  id: string;
+  key: string;
+  targetUser: string | null;
+  text: string | null;
+  createdAt: Date;
+}
+
+/** PURE. The `text` of a row, or null when it is not one we can read. */
+export function parseAttendanceAsk(text: string | null): AttendanceAskPayload | null {
+  try {
+    const p = JSON.parse(text ?? "") as Partial<AttendanceAskPayload>;
+    if (p?.v !== 1 || typeof p.body !== "string" || typeof p.ref !== "string" || !Array.isArray(p.candidateIds)) return null;
+    return {
+      v: 1,
+      askerName: typeof p.askerName === "string" ? p.askerName : null,
+      body: p.body,
+      ref: p.ref,
+      candidateIds: p.candidateIds.filter((x): x is string => typeof x === "string"),
+      answeredAt: typeof p.answeredAt === "string" ? p.answeredAt : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** PURE. The attendance questions still open at `now`, at most one per
+ *  asker (the newest), in the shape every reader of a clarification uses. */
+export function openAttendanceAsks(rows: AttendanceAskRow[], orgId: string, now: Date): StatsClarification[] {
+  const prefix = attendanceAskKeyPrefix(orgId);
+  const latest = new Map<string, { r: AttendanceAskRow; p: AttendanceAskPayload }>();
+  for (const r of rows) {
+    if (!r.key.startsWith(prefix)) continue;
+    const p = parseAttendanceAsk(r.text);
+    const asker = p ? askerKey(r.targetUser, p.askerName) : null;
+    if (!p || !asker) continue;
+    const cur = latest.get(asker);
+    if (!cur || r.createdAt.getTime() > cur.r.createdAt.getTime()) latest.set(asker, { r, p });
+  }
+  const out: StatsClarification[] = [];
+  for (const { r, p } of latest.values()) {
+    if (p.answeredAt) continue;
+    const q = { id: r.id, orgId, kind: "tentative-followup" as const, askedAt: r.createdAt, closesAt: null };
+    if (!isAnswerWindowOpen(q, now)) continue;
+    out.push({
+      id: r.id,
+      orgId,
+      askerUserId: r.targetUser,
+      askerName: p.askerName,
+      questionBody: p.body,
+      askedAt: r.createdAt,
+      about: "attendance",
+      ref: p.ref,
+      candidateIds: p.candidateIds,
+    });
+  }
+  return out.sort((a, b) => a.askedAt.getTime() - b.askedAt.getTime());
 }

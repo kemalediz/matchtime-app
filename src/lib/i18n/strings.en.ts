@@ -708,6 +708,14 @@ export const en = {
   /** A third-party claim named only a WhatsApp mention nobody could put
    *  a name to (2026-09-30). Once per batch. */
   ask_who_mentioned: "I couldn't tell who that is, can you say their name?",
+  // A name in an attendance claim MatchTime could not place (2026-11-17):
+  // one question, read back by the open-question mechanism.
+  attendance_ask_one: (p: { ref: string; choice: string }): string =>
+    `Do you mean ${p.choice}, or is ${p.ref} a new player?`,
+  attendance_ask_several: (p: { ref: string; choices: string }): string =>
+    `Do you mean ${p.choices}, or is ${p.ref} someone new?`,
+  attendance_ask_unknown: (p: { ref: string }): string =>
+    `Who is ${p.ref}: someone already in the group, or a new player?`,
 
   // ── row 45: buildMomAnnouncement (mom-announcement.ts) ─────────────
 

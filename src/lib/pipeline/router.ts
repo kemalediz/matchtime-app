@@ -429,7 +429,7 @@ WHAT YOU ARE SHOWN. Code knows these facts; rely on them rather than guessing.
 - An "ORGANISERS' GROUP" header above a message: it was sent in the club's organisers' group, and the header says whether the sender is an organiser, what MatchTime is WAITING to hear and what was said there EARLIER. Without that header a message is from the PLAYERS' GROUP. Everything below applies to both groups; "IN THE ORGANISERS' GROUP" adds what differs there.
 - A "PARTNER CLUBS" line above an organiser's message: the names of the club's partner clubs, so a message naming one of them is about that club, not this group.
 - A "MATCHTIME IS WAITING to hear ... which team won" or "MATCHTIME HAS RECORDED" line above a message: this sender may answer which team won the scoreline MatchTime asked about, or may correct the result it recorded. The line says what the sender MAY do; route on what the message does.
-- A "MATCHTIME ASKED" line above a message: MatchTime could not tell whom the sender's earlier stats question meant and asked them. A reply that names the person, in any words, answers it: question. Anything else they say is routed as usual ("I'm in" is still self_att).
+- A "MATCHTIME ASKED" line above a message: MatchTime could not tell who a person in the sender's earlier message was and asked them; the line quotes that earlier message. A reply that only answers it, in any words (a name, "the first one", "he's new", "yeni biri"), goes where the earlier message went: question for a stats question, other_att for a place in the squad. Anything else they say is routed as usual ("I'm in" is still self_att).
 
 REPLIES. A message that is a WhatsApp reply comes under a "THEY ARE REPLYING TO" line: whose message it quotes (MatchTime's or a member's), when (against NOW), and its words. Read the reply in the light of what it quotes, then route the reply itself. "same", "me too", "ben de", "he", "that" and a bare "no" take their meaning from it.
 
@@ -754,6 +754,9 @@ export interface RouterMessage {
    * from `RouteBatchOptions.clarifications`; absent otherwise.
    */
   clarifying?: string;
+  /** What `clarifying` asked about: a stats question (the default) or a
+   *  place in the squad (2026-11-17, `ask_attendance_person`). */
+  clarifyingAbout?: "stats" | "attendance";
   /**
    * A score fact about this sender, shown as `scoreContextLine` above the
    * message (2026-10-30): MatchTime is waiting for them to say which team
@@ -773,8 +776,10 @@ export function scoreContextLine(kind: "which_team" | "recorded"): string {
 
 /** The line above a message from somebody MatchTime asked "who do you
  *  mean?" (see `RouterMessage.clarifying`). */
-export function clarificationLine(question: string): string {
-  return `MATCHTIME ASKED this sender whom they meant in their earlier question: "${question}"`;
+export function clarificationLine(question: string, about: "stats" | "attendance" = "stats"): string {
+  return about === "attendance"
+    ? `MATCHTIME ASKED this sender who someone in their earlier message is: "${question}"`
+    : `MATCHTIME ASKED this sender whom they meant in their earlier question: "${question}"`;
 }
 
 /**
@@ -851,7 +856,7 @@ export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date
       return [organisersHeader(m.organisers.senderIsOrganiser), ...m.organisers.context, ...score, ...reply, line].join("\n");
     }
     const partners = m.partnerClubs && m.partnerClubs.length > 0 ? [partnerClubsLine(m.partnerClubs)] : [];
-    const asked = m.clarifying ? [clarificationLine(m.clarifying)] : [];
+    const asked = m.clarifying ? [clarificationLine(m.clarifying, m.clarifyingAbout)] : [];
     const score = m.score ? [scoreContextLine(m.score)] : [];
     return [...partners, ...asked, ...score, ...reply, line].join("\n");
   });
@@ -1111,15 +1116,22 @@ async function routeBatchInner(
   // The sender MatchTime asked "who do you mean?" sees that question above
   // their message (`clarificationLine`); the model decides whether the
   // message answers it. Matched on the sender, a fact.
+  // The newest one when the sender has two open (a stats question and a
+  // place): it is the one they are most likely answering.
   const clarifyingFor = (m: RouterMessage) =>
-    (opts.clarifications ?? []).find((q) => !!q.askerName && q.askerName === m.authorName)?.questionBody;
+    (opts.clarifications ?? []).filter((q) => !!q.askerName && q.askerName === m.authorName).at(-1);
   const scoreFact = (m: RouterMessage): RouterMessage["score"] =>
     opts.scoreAnswerIds?.has(m.id) ? "which_team" : opts.scoreCorrectionIds?.has(m.id) ? "recorded" : undefined;
   const user = renderRouterTurn(
     messages.map((m, i) => {
       const q = clarifyingFor(m);
       const score = scoreFact(m);
-      return { ...m, id: shortIds[i], ...(q ? { clarifying: q } : {}), ...(score ? { score } : {}) };
+      return {
+        ...m,
+        id: shortIds[i],
+        ...(q ? { clarifying: q.questionBody, ...(q.about === "attendance" ? { clarifyingAbout: q.about } : {}) } : {}),
+        ...(score ? { score } : {}),
+      };
     }),
     opts.now ?? new Date(),
   );

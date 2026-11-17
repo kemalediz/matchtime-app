@@ -171,6 +171,7 @@ import {
 } from "@/lib/pipeline/load-awaiting-answer";
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
+import { closeAttendanceAsk, recordAttendanceAsk } from "@/lib/attendance-ask-store";
 import { moveNamedSlot } from "@/lib/team-slot-fill";
 import { getOrgFeatures } from "@/lib/org-features";
 import { organisersAnnounce } from "@/lib/list-announcer";
@@ -2470,7 +2471,15 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
           // A pasted list keeps only its sender's own OUT: the router's
           // flag, with the squad reader's "squad" answer (both facts).
           pastedListIds: new Set([...listIds, ...pastedRosterIds]),
+          // MatchTime's open "who is that?" about a place (2026-11-17): the
+          // asker's answer is read against the message it asked about.
+          clarifications: statsClarifications,
           deps: {
+            // Its row (`attendance-ask-store.ts`), under the WhatsApp name
+            // the router matches the asker's next message on.
+            recordAttendanceAsk: (a) =>
+              recordAttendanceAsk(org.id, fresh.find((x) => x.waMessageId === a.waMessageId)?.authorName ?? null, a),
+            closeAttendanceAsk: (id) => closeAttendanceAsk(id),
             // At the daily AI cap a bare IN/OUT is decided from the
             // floor's facts, with no extractor call.
             aiCapped,

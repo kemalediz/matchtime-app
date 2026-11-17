@@ -6,7 +6,7 @@
  * name makes no call. Shared by every batch that runs the engine, so the
  * players' group, HQ and the dry run look names up the same way.
  */
-import { extractorStubFromEnv } from "./extractor-stub";
+import { extractorStubFromEnv, stubPeopleFromEnv } from "./extractor-stub";
 import { anthropicModel, type PipelineModel } from "./llm";
 import { isSelfRef, parsePendingSet } from "./engine";
 import type { EngineMessage, Facts, Member, TeamFacts } from "./types";
@@ -30,7 +30,7 @@ import {
  */
 export function personPickerFor(deps: { identify?: PersonPicker; model?: PipelineModel } = {}): PersonPicker {
   if (deps.identify) return deps.identify;
-  if (stubSeamAllowed() && (process.env[PERSON_PICKER_STUB_ENV] === "1" || extractorStubFromEnv())) return stubPersonPicker();
+  if (stubSeamAllowed() && (process.env[PERSON_PICKER_STUB_ENV] === "1" || extractorStubFromEnv())) return stubPersonPicker(stubPeopleFromEnv());
   return modelPersonPicker(deps.model ?? anthropicModel());
 }
 

@@ -176,6 +176,8 @@ import { membersNamedIn } from "./pipeline/identity";
 import { identifyFacts, personPickerFor } from "./pipeline/identify-batch";
 import { restoreFormerMember } from "./resolve-sender";
 import type { PersonPicker, PersonPicks } from "./pipeline/who-is-who";
+import { isFromAsker, type StatsClarification } from "./pipeline/awaiting-answer";
+import { renderAttendanceAsk } from "./pipeline/compose";
 
 export interface EngineBatchMessage {
   waMessageId: string;
@@ -389,7 +391,30 @@ function empty(degradations: string[] = []): EngineBatchResult {
   };
 }
 
+/** One "who is that?" MatchTime has just asked (2026-11-17), as the
+ *  question's own row records it (`awaiting-answer.ts`, `AttendanceAsk`). */
+export interface AttendanceAskRecord {
+  waMessageId: string;
+  matchId: string | null;
+  askerUserId: string;
+  /** The earlier message the question is about (for a re-ask from an
+   *  answer, still the ORIGINAL message). */
+  body: string;
+  /** The name asked about (for a re-ask, still the original name). */
+  ref: string;
+  candidateIds: string[];
+}
+
 export interface EngineBatchDeps extends EngineApplyDeps {
+  /**
+   * Record a "who is that?" MatchTime has asked, which opens it for the
+   * asker's answer (2026-11-17). Called only when the question was
+   * actually composed into this message's reply. Absent (the admin group,
+   * whose engine replies are never posted, and tests): nothing recorded.
+   */
+  recordAttendanceAsk?: (a: AttendanceAskRecord) => Promise<void>;
+  /** Close a question whose answer this batch read (its row id). */
+  closeAttendanceAsk?: (id: string) => Promise<void>;
   /** Users with an unresolved bench prompt open on the active match.
    *  See the carve-out below. */
   openBenchPromptUserIds: (matchId: string) => Promise<string[]>;
@@ -578,6 +603,15 @@ export async function runAttendanceEngineBatch(args: {
   /** Where this batch reports the silences it chose (`tagged-silence.ts`),
    *  so the route does not call them "not understood". Absent: unreported. */
   silence?: SilenceFacts;
+  /**
+   * THE "WHO IS THAT?" QUESTIONS MATCHTIME HAS OPEN (2026-11-17), from
+   * `loadOpenStatsClarifications`: only those `about` a place in the squad
+   * are read here. A message from the person asked is shown the earlier
+   * message (the MATCHTIME ASKED line), and when the extractor reads it as
+   * the answer its claims are that earlier message's, with the person
+   * named or said to be new. Absent or empty: nothing changes.
+   */
+  clarifications?: StatsClarification[];
 }): Promise<EngineBatchResult> {
   const { orgId, now, messages, history, expectedMatchId, deps } = args;
   if (!args.enabled) return empty();
@@ -804,6 +838,15 @@ export async function runAttendanceEngineBatch(args: {
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   let capSkipped = 0;
+  // The open "who is that?" each owned message's sender was asked, if any
+  // (only the person asked; `awaiting-answer.ts`).
+  const askedFor = new Map<string, StatsClarification>();
+  for (const m of owned) {
+    const c = (args.clarifications ?? [])
+      .filter((q) => q.about === "attendance" && isFromAsker(q, m))
+      .at(-1);
+    if (c) askedFor.set(m.waMessageId, c);
+  }
   const factsById = new Map<string, { facts: Facts; degraded: string | null }>();
   await fanOutWarmFirst(
     owned,
@@ -834,6 +877,9 @@ export async function runAttendanceEngineBatch(args: {
         // The club's members the words name, from the roster (2026-10-24,
         // FNF HQ "Glazers OUT"): the extractor is told they are people.
         members: membersNamedIn(m.body, state.roster),
+        // MatchTime asked this sender who someone in their earlier message
+        // is: that message, so the extractor can read an answer to it.
+        ...(askedFor.has(m.waMessageId) ? { clarifying: askedFor.get(m.waMessageId)!.questionBody } : {}),
         now,
       };
       const read = (overflow: boolean) =>
@@ -947,6 +993,25 @@ export async function runAttendanceEngineBatch(args: {
   }
   for (const id of failedIds) ownedIds.delete(id);
   for (const id of failedIds) args.silence?.readFailed.add(id);
+
+  // ── AN ANSWER ONLY WHEN THE QUESTION WAS OPEN (2026-11-17) ─────────
+  // `answersClarification` (and with it `newPlayer`) counts only for a
+  // message whose sender MatchTime asked; anywhere else it is model drift
+  // and is dropped, so nobody becomes "new" without having been asked.
+  const answeredIds = new Set<string>();
+  for (const [id, f] of factsById) {
+    if (f.facts.kind !== "attendance" || !f.facts.answersClarification) continue;
+    if (askedFor.has(id)) {
+      answeredIds.add(id);
+      continue;
+    }
+    const { answersClarification: _drop, ...rest } = f.facts;
+    void _drop;
+    factsById.set(id, {
+      ...f,
+      facts: { ...rest, claims: rest.claims.map(({ newPlayer: _n, ...c }) => (void _n, c)) },
+    });
+  }
 
   // ── Stage 2b: THE PASTED-LIST CLAMP ─────────────────────────────────
   //
@@ -1150,6 +1215,12 @@ export async function runAttendanceEngineBatch(args: {
       ...(m.quoted ? { quoted: m.quoted } : {}),
       ...(teamsReadingById.has(m.waMessageId) ? { teamsReading: teamsReadingById.get(m.waMessageId) } : {}),
       ...(peopleById.has(m.waMessageId) ? { people: peopleById.get(m.waMessageId) } : {}),
+      ...(answeredIds.has(m.waMessageId)
+        ? (() => {
+            const q = askedFor.get(m.waMessageId)!;
+            return { clarification: { body: q.questionBody, ref: q.ref ?? "", candidateIds: q.candidateIds ?? [] } };
+          })()
+        : {}),
     };
   });
 
@@ -1515,6 +1586,37 @@ export async function runAttendanceEngineBatch(args: {
         m.waMessageId,
         engineOutcome.alreadyThere.map((a) => ({ name: a.name, status: a.status })),
       );
+    }
+
+    // ── THE "WHO IS THAT?" ROW (2026-11-17, `awaiting-answer.ts`) ──────
+    // Opened only when the question was really said in this reply (a
+    // question that could not be composed opens nothing), apart from this
+    // message's own row, so its intent stays what happened. An answer
+    // closes the question it answered; one that asks again opens a new
+    // one about the ORIGINAL message and name.
+    const answered = answeredIds.has(m.waMessageId) ? askedFor.get(m.waMessageId) : undefined;
+    if (answered && deps.closeAttendanceAsk) {
+      await deps.closeAttendanceAsk(answered.id).catch((err) =>
+        degradations.push(`attendance-ask ${m.waMessageId}: could not close ${answered.id} (${err instanceof Error ? err.message : "failed"})`),
+      );
+    }
+    const asked = result.speech.find(
+      (sp): sp is Extract<typeof sp, { kind: "ask_attendance_person" }> => sp.kind === "ask_attendance_person" && sp.messageId === m.waMessageId,
+    );
+    const askText = asked ? renderAttendanceAsk({ ref: asked.ref, candidates: asked.candidates }, state.features.language) : null;
+    if (asked && askText && !degraded && utterances.includes(askText) && m.senderUserId && deps.recordAttendanceAsk) {
+      await deps
+        .recordAttendanceAsk({
+          waMessageId: m.waMessageId,
+          matchId,
+          askerUserId: m.senderUserId,
+          body: answered ? answered.questionBody : m.body,
+          ref: answered?.ref ? answered.ref : asked.ref,
+          candidateIds: asked.candidateIds,
+        })
+        .catch((err) =>
+          degradations.push(`attendance-ask ${m.waMessageId}: question asked but not recorded (${err instanceof Error ? err.message : "failed"})`),
+        );
     }
 
     outcomes.set(m.waMessageId, {
