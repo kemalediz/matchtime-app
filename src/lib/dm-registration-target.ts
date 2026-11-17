@@ -17,6 +17,7 @@ import { IN_LIVE_STAGE_CLUB_WHERE } from "./club-setup-rules";
 import { getOrgFeatures } from "./org-features";
 import { eligibleRegistrationMatch, selectRegistrationMatch } from "./registration-match-select";
 import { dayCommaTimeLabel } from "./i18n/dates";
+import { gameNameFor } from "./match-format-title";
 import type { Lang } from "./i18n/lang";
 
 export interface DmRegistrationTarget {
@@ -84,7 +85,7 @@ export async function findDmRegistrationTarget(
         matchId: quotedPick.id,
         orgId: mem.orgId,
         clubName: mem.org.name,
-        matchName: quotedPick.activity.name,
+        matchName: gameNameFor(quotedPick.activity.name, quotedPick.maxPlayers, features.openSquad),
         matchWhen: dayCommaTimeLabel(features.language, quotedPick.date),
         maxPlayers: quotedPick.maxPlayers,
         lang: features.language,
@@ -99,7 +100,7 @@ export async function findDmRegistrationTarget(
         matchId: picked.id,
         orgId: mem.orgId,
         clubName: mem.org.name,
-        matchName: picked.activity.name,
+        matchName: gameNameFor(picked.activity.name, picked.maxPlayers, features.openSquad),
         matchWhen: dayCommaTimeLabel(features.language, picked.date),
         maxPlayers: picked.maxPlayers,
         lang: features.language,

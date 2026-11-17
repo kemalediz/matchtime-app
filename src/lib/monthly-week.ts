@@ -328,7 +328,7 @@ export async function loadMonthlyWeek(
           venue: true,
           dayOfWeek: true,
           minPlayers: true,
-          sport: { select: { playersPerTeam: true } },
+          sport: { select: { playersPerTeam: true, name: true } },
           org: {
             select: { squadMode: true, monthCreditRule: true, paygPricePence: true, benchPickMode: true, language: true, openSquad: true },
           },
@@ -356,7 +356,7 @@ export async function loadMonthlyWeek(
     // The size this game is played at, not the activity's usual one
     // (`match-format-title.ts`): the list after "switch to 8side". An open
     // squad has no size at all ("Football").
-    activityName: matchFormatTitle(match.activity.name, match.maxPlayers, { openSquad }),
+    activityName: matchFormatTitle(match.activity.name, match.maxPlayers, { openSquad, lang: match.activity.org.language, sportName: match.activity.sport?.name ?? null }),
     openSquad,
     minimum: openSquadMinimum({ minPlayers: match.activity.minPlayers, playersPerTeam: match.activity.sport?.playersPerTeam ?? match.maxPlayers / 2 }),
     ...(month.capFloor != null ? { capFloor: month.capFloor } : {}),

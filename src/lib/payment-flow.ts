@@ -13,6 +13,7 @@
  */
 
 import { db } from "./db";
+import { gameNameFor } from "./match-format-title";
 import { buildPayLinkUrl } from "./pay-link";
 import { PAY_METHOD_SELECT, availablePayMethods, directPayInstructions, gbp, type PayMethod } from "./payments";
 import { payCollectorName } from "./direct-payment";
@@ -64,6 +65,7 @@ export async function releaseMatchPayments(matchId: string, opts: { now?: Date }
           org: {
             select: {
               paymentHolderId: true,
+              openSquad: true,
               language: true,
               paymentInstructions: true,
               squadMode: true,
@@ -116,7 +118,7 @@ export async function releaseMatchPayments(matchId: string, opts: { now?: Date }
         phone: a.user.phoneNumber.replace(/^\+/, ""),
         text: buildPayLinkDm({
           playerName: a.user.name,
-          activityName: match.activity.name,
+          activityName: gameNameFor(match.activity.name, match.maxPlayers, match.activity.org.openSquad),
           fee: match.feePerPlayer,
           url: await buildPayLinkUrl(a.user.id, matchId),
           methods,
@@ -321,7 +323,7 @@ async function findCollectorPendingMatch(
   };
   const include = {
     activity: {
-      select: { name: true, orgId: true, org: { select: { language: true, ...PAY_METHOD_SELECT, ...QUIET_HOURS_SELECT } } },
+      select: { name: true, orgId: true, org: { select: { language: true, openSquad: true, ...PAY_METHOD_SELECT, ...QUIET_HOURS_SELECT } } },
     },
   };
   // A swipe-reply to a message about one match acts on THAT match, when it
@@ -594,7 +596,7 @@ export async function handleCollectorFeeReply(
       if (!m) return null;
       return {
         id: m.id,
-        name: m.activity.name,
+        name: gameNameFor(m.activity.name, m.maxPlayers, m.activity.org.openSquad),
         feePendingConfirm: m.feePendingConfirm,
         orgId: m.activity.orgId,
         date: m.date,
@@ -767,7 +769,7 @@ export async function confirmCollectorFeeByReaction(
     reply: buildFeeReleasedAck({
       released,
       fee: amount,
-      matchName: m.activity.name,
+      matchName: gameNameFor(m.activity.name, m.maxPlayers, m.activity.org.openSquad),
       matchWhen: dayLabel(lang, m.date),
       methods: availablePayMethods(m.activity.org),
       // Held by the club's quiet hours: the ack says until when, as the

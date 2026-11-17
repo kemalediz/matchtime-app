@@ -73,7 +73,7 @@ export async function loadCampaignGame(
         activityId: true,
         isHistorical: true,
         maxPlayers: true,
-        activity: { select: { orgId: true, venue: true, dayOfWeek: true, org: { select: { featurePlayerPool: true } } } },
+        activity: { select: { orgId: true, venue: true, dayOfWeek: true, org: { select: { featurePlayerPool: true, openSquad: true } } } },
       },
     }),
   ]);
@@ -85,5 +85,5 @@ export async function loadCampaignGame(
   if (!isNextUpcomingForPosting(candidates, match, now)) return null;
   const [cutoff, placesOpen] = await Promise.all([poolAskCutoffOf(club.orgId, match.date), askPlacesOpen(match.id)]);
   if (now.getTime() >= cutoff.getTime()) return null;
-  return campaignGameForClub({ club, match: { date: match.date, maxPlayers: match.maxPlayers, venue: match.activity.venue, placesOpen }, now, lang });
+  return campaignGameForClub({ club, match: { date: match.date, maxPlayers: match.maxPlayers, venue: match.activity.venue, placesOpen, openSquad: match.activity.org?.openSquad === true }, now, lang });
 }

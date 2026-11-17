@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { canTakeFreePlace } from "../squad-capacity";
-import { matchFormatTitle } from "../match-format-title";
+import { gameNameFor, matchFormatTitle } from "../match-format-title";
 import { openSquadMinimum, openSquadPerTeam, placesToFill, shortOfMinimum } from "../open-squad";
 import { balanceTeams } from "../team-balancer";
 
@@ -96,17 +96,24 @@ describe("a game's name with no size in it (open squad)", () => {
     expect(matchFormatTitle("Football 7-a-side", 14, { openSquad: true })).toBe("Football");
     expect(matchFormatTitle("Football 7-a-side", 16, { openSquad: true })).toBe("Football");
   });
-  it("Turkish: \"7'ye 7 futbol\" is \"futbol\"", () => {
-    expect(matchFormatTitle("7'ye 7 futbol", 14, { openSquad: true })).toBe("futbol");
+  it("Turkish: \"7'ye 7 futbol\" is \"Futbol\", capitalised the Turkish way (review of #623)", () => {
+    expect(matchFormatTitle("7'ye 7 futbol", 14, { openSquad: true })).toBe("Futbol");
+    expect(matchFormatTitle("7'ye 7 iç saha", 14, { openSquad: true })).toBe("İç saha");
+    expect(matchFormatTitle("7-a-side indoor", 14, { openSquad: true, lang: "en" })).toBe("Indoor");
   });
   it("other spellings and a size in the middle", () => {
     expect(matchFormatTitle("Monday 7 aside", 14, { openSquad: true })).toBe("Monday");
     expect(matchFormatTitle("Monday 7-a-side football", 14, { openSquad: true })).toBe("Monday football");
     expect(matchFormatTitle("Vets (7-a-side)", 14, { openSquad: true })).toBe("Vets");
   });
-  it("a name with no size is kept; a name that is only a size is kept rather than emptied", () => {
+  it("a name with no size is kept; a name that is only a size falls back to the sport's name, else stays", () => {
     expect(matchFormatTitle("Monday night vets", 14, { openSquad: true })).toBe("Monday night vets");
+    expect(matchFormatTitle("7-a-side", 14, { openSquad: true, sportName: "Football 7-a-side" })).toBe("Football");
     expect(matchFormatTitle("7-a-side", 14, { openSquad: true })).toBe("7-a-side");
+  });
+  it("gameNameFor: the raw name when off, the size-free name when on", () => {
+    expect(gameNameFor("Football 7-a-side", 14, false)).toBe("Football 7-a-side");
+    expect(gameNameFor("Football 7-a-side", 14, true)).toBe("Football");
   });
   it("off: today's behaviour (the size the game is played at)", () => {
     expect(matchFormatTitle("Football 7-a-side", 16)).toBe("Football 8-a-side");

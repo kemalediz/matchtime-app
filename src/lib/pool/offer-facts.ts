@@ -59,7 +59,7 @@ const GAME_SELECT = {
       feeSplitTotal: true,
       sport: { select: { preset: true, name: true, playersPerTeam: true } },
       venueRef: { select: { name: true, formattedAddress: true, lat: true, lng: true, placeId: true } },
-      org: { select: { name: true, language: true, playStyle: true, paymentCollectionEnabled: true, paymentTrackingEnabled: true } },
+      org: { select: { name: true, language: true, playStyle: true, paymentCollectionEnabled: true, paymentTrackingEnabled: true, openSquad: true } },
     },
   },
 } as const;
@@ -119,6 +119,8 @@ export async function loadMatchOfferFacts(matchId: string, now: Date = new Date(
     club: a.org.name,
     sport: sport.sport,
     format: sport.format,
+    // No squad limit (open-squad.ts): told with no number a side.
+    ...(a.org.openSquad === true ? { noFormat: true } : {}),
     kickoff: match.date,
     durationMins: a.matchDurationMins,
     venueName,

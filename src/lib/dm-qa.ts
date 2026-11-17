@@ -22,6 +22,7 @@
  */
 
 import { db } from "./db";
+import { gameNameFor } from "./match-format-title";
 import { GUEST_MEMBER_WHERE, ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { IN_LIVE_STAGE_CLUB_WHERE } from "./club-setup-rules";
 import { loadRecentHistory, formatRecentHistoryBlock, type RecentHistory } from "./match-history";
@@ -191,7 +192,7 @@ export async function buildScopedContext(
     },
     orderBy: { date: "asc" },
     include: {
-      activity: { select: { name: true, venue: true, feePerPlayer: true } },
+      activity: { select: { name: true, venue: true, feePerPlayer: true, org: { select: { openSquad: true } } } },
       attendances: {
         // phoneNumber selected ONLY to derive a boolean flag when the
         // asker is an admin (includePhoneFlags). The raw value never
@@ -214,7 +215,8 @@ export async function buildScopedContext(
         ? " 📵 no number on record"
         : "";
     matchInput = {
-      activityName: match.activity.name,
+      activityName: gameNameFor(match.activity.name, match.maxPlayers, match.activity.org?.openSquad),
+      openSquad: match.activity.org?.openSquad === true,
       date: match.date,
       venue: match.activity.venue,
       maxPlayers: match.maxPlayers,
@@ -275,6 +277,8 @@ export interface ScopedContextInput {
     date: Date;
     venue: string | null;
     maxPlayers: number;
+    /** No squad limit (open-squad.ts): the count alone, no places. */
+    openSquad?: boolean;
     confirmed: string[];
     bench: string[];
     /** The asker's own attendance status, or null when not signed up. */
@@ -330,7 +334,11 @@ export function formatScopedContext(input: ScopedContextInput, lang: Lang = "en"
       lines.push(`- Write this match as: "${dayTimeLabel(lang, match.date)}"`);
     }
     if (match.venue) lines.push(`- Venue: ${match.venue}`);
-    lines.push(`- Squad: ${match.confirmed.length}/${match.maxPlayers} confirmed, ${match.bench.length} on the bench`);
+    lines.push(
+      match.openSquad
+        ? `- Squad: ${match.confirmed.length} in (no squad limit, no bench)`
+        : `- Squad: ${match.confirmed.length}/${match.maxPlayers} confirmed, ${match.bench.length} on the bench`,
+    );
     lines.push(`- You are currently: ${match.myStatus ?? "not signed up"}`);
     lines.push(`- Confirmed players: ${match.confirmed.join(", ") || "(none yet)"}`);
     if (match.bench.length > 0) lines.push(`- Bench: ${match.bench.join(", ")}`);

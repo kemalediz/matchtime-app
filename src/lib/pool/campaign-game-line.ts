@@ -31,6 +31,7 @@ import { dayLabel, weekdayLabel } from "../i18n/dates";
 import { flexFormatCopy } from "../i18n/flex-format";
 import type { Lang } from "../i18n/lang";
 import { poolPageCopy } from "./page-copy";
+import { sportLabel } from "./sports";
 
 /** The club a campaign code sells a game of. */
 export interface CampaignGameClub {
@@ -77,6 +78,8 @@ export interface CampaignGameMatch {
   venue: string;
   /** Places not yet taken (`askPlacesOpen`). */
   placesOpen: number;
+  /** The club has no squad limit (open-squad.ts): no number a side. */
+  openSquad?: boolean;
 }
 
 /** What /play shows for the game: the line, and under it the club's offer
@@ -105,7 +108,7 @@ export function campaignGameForClub(a: GameArgs & { club: CampaignGameClub | nul
   const copy = poolPageCopy(a.lang).signup;
   const line = copy.gameLine({
     weekday: weekdayLabel(a.lang, m.date),
-    format: flexFormatCopy(a.lang).side(perSide),
+    format: m.openSquad ? sportLabel("football", a.lang).toLocaleLowerCase(a.lang === "tr" ? "tr" : "en") : flexFormatCopy(a.lang).side(perSide),
     area: club.area,
     day: dayLabel(a.lang, m.date),
     time: templateTimeLabel(a.lang, m.date),

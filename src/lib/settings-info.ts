@@ -931,7 +931,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Takım başına bir sayı da yoktur: mesajlar maçı sayısız anar, takımlar gelenler arasında iki eşit tarafa bölünür (15 oyuncu 8'e 7).",
         "Tek sayı maçın en az oyuncu sayısıdır (Aktiviteler sayfasında). Bunun altında MatchTime 17:00 mesajında ve partner kulüplere sorarak oyuncu arar, bir gün önceden sizi uyarır. Bu sayıda ya da üstünde kimseye sormaz.",
       ],
-      example: "📋 *futbol, 23 Kasım Pazartesi 20:15*\n\n*Kasım kadrosu:*\n1. Ali\n2. Ben\n...\n\n*Maç başı ödeyenler:*\n13. Zeeshan\nBaşka gelmek isteyen *VARIM* yazsın, £8.",
+      example: "📋 *Futbol, 23 Kasım Pazartesi 20:15*\n\n*Kasım kadrosu:*\n1. Ali\n2. Ben\n...\n\n*Maç başı ödeyenler:*\n13. Zeeshan\nBaşka gelmek isteyen *VARIM* yazsın, £8.",
       choices: [
         { name: ON.tr, text: "Sınır ve yedek yok. MatchTime'ı etiketleyerek de değiştirebilirsiniz, örneğin *@Match Time kadro sınırı yok*." },
         { name: OFF.tr, text: "Kadronun maçın kendi yer sayısı ve yedekleri vardır. Kapatmak kimseyi çıkarmaz: listede olan herkes kalır." },

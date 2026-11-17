@@ -38,12 +38,19 @@ export function matchFormatTitle(
   maxPlayers: number | null | undefined,
   /** An OPEN SQUAD (2026-11-17, open-squad.ts) has no format at all: the
    *  size is taken out of the name ("Football 7-a-side" is "Football",
-   *  "7'ye 7 futbol" is "futbol"). A name that is nothing but a size is
-   *  kept rather than emptied. */
-  opts: { openSquad?: boolean } = {},
+   *  "7'ye 7 futbol" is "Futbol"), its first letter capitalised the
+   *  language's way (`lang`, else Turkish when the size was Turkish). A
+   *  name that is nothing but a size becomes the sport's name, without its
+   *  own size (`sportName`), else stays as it is. */
+  opts: { openSquad?: boolean; lang?: string | null; sportName?: string | null } = {},
 ): string {
   const name = typeof activityName === "string" ? activityName : "";
-  if (opts.openSquad === true) return nameWithoutSize(name);
+  if (opts.openSquad === true) {
+    const own = nameWithoutSize(name, opts.lang);
+    if (own) return own;
+    const sport = opts.sportName ? nameWithoutSize(opts.sportName, opts.lang) : null;
+    return sport || name;
+  }
   const perSide = perSideOf(maxPlayers);
   if (perSide === null) return name;
 
@@ -70,7 +77,8 @@ const TR_SIZE_ALL = new RegExp(TR_SIZE.source, "giu");
  * This reads MatchTime's own data (the activity's name), never a
  * player's words.
  */
-function nameWithoutSize(name: string): string {
+function nameWithoutSize(name: string, lang?: string | null): string {
+  const turkish = lang ? lang === "tr" : new RegExp(TR_SIZE.source, "iu").test(name);
   const stripped = name
     .replace(TR_SIZE_ALL, (m: string, a: string, b: string) => (a === b ? " " : m))
     .replace(EN_SIZE_ALL, " ")
@@ -78,5 +86,21 @@ function nameWithoutSize(name: string): string {
     .replace(/\s+/g, " ")
     .replace(/^[\s,;:.\-|/]+|[\s,;:.\-|/]+$/g, "")
     .trim();
-  return stripped.length > 0 ? stripped : name;
+  if (stripped === name.trim()) return stripped;
+  // Capitalised the language's way ("futbol" is "Futbol", "iç saha" is
+  // "İç saha"). A name with no size in it is the club's own, left as is.
+  return stripped.length > 0 ? stripped.charAt(0).toLocaleUpperCase(turkish ? "tr" : "en") + stripped.slice(1) : "";
+}
+
+/**
+ * The game's name as a post or a DM says it: the club's own name, or for
+ * an OPEN SQUAD the same name with no size in it (`matchFormatTitle`).
+ */
+export function gameNameFor(
+  activityName: string,
+  maxPlayers: number | null | undefined,
+  openSquad: boolean | null | undefined,
+  opts: { lang?: string | null; sportName?: string | null } = {},
+): string {
+  return openSquad === true ? matchFormatTitle(activityName, maxPlayers, { openSquad: true, ...opts }) : activityName;
 }

@@ -1402,7 +1402,7 @@ async function computeForMatch(
   // players asks only while the game cannot be played, and every "full"
   // branch is a squad at or above its minimum, which says nothing.
   const openSquad = features.openSquad === true;
-  const activity = { ...m.activity, name: matchFormatTitle(m.activity.name, m.maxPlayers, { openSquad }) };
+  const activity = { ...m.activity, name: matchFormatTitle(m.activity.name, m.maxPlayers, { openSquad, lang: m.activity.org?.language ?? null, sportName: m.activity.sport?.name ?? null }) };
   const sport = activity.sport;
   const minimum = openSquadMinimum({ minPlayers: activity.minPlayers ?? null, playersPerTeam: sport.playersPerTeam });
   /**

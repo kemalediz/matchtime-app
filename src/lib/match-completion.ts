@@ -29,6 +29,7 @@ import { sendRatingEmails } from "./email";
 import { reconcileMatchElo } from "./match-elo";
 import { formatLondon } from "./london-time";
 import { servingClubWhere } from "./club-approval";
+import { gameNameFor } from "./match-format-title";
 
 export async function completeFinishedMatches(now: Date = new Date()): Promise<{ completed: number }> {
   const candidates = await db.match.findMany({
@@ -42,7 +43,7 @@ export async function completeFinishedMatches(now: Date = new Date()): Promise<{
       activity: { org: servingClubWhere() },
     },
     include: {
-      activity: true,
+      activity: { include: { org: { select: { openSquad: true, language: true } } } },
       attendances: {
         where: { status: "CONFIRMED" },
         include: { user: { select: { email: true, name: true } } },
@@ -97,7 +98,7 @@ export async function completeFinishedMatches(now: Date = new Date()): Promise<{
 
     sendRatingEmails(
       match.id,
-      match.activity.name,
+      gameNameFor(match.activity.name, match.maxPlayers, match.activity.org?.openSquad, { lang: match.activity.org?.language ?? null }),
       formatLondon(match.date, "EEEE, d MMMM yyyy"),
       players,
     ).catch((err) => console.error("[match-completion] sendRatingEmails failed:", err));
