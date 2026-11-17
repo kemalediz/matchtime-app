@@ -78,6 +78,30 @@ describe("planConstraintChange", () => {
     expect(plan.swaps).toEqual([]);
   });
 
+  it("a player the message placed or moved (fixed) is never moved: the other one goes (review of #619)", () => {
+    // Craig (8) for Finn (8.4) would be the closest swap, but Craig is fixed.
+    const plan = planConstraintChange({ slots: SHEET, apart: [["Dan", "Craig"]], fixed: ["Craig"], rating });
+    expect(plan.team.get("Craig")).toBe("RED");
+    expect(plan.team.get("Dan")).toBe("YELLOW");
+    expect(plan.swaps.flat()).not.toContain("Craig");
+  });
+
+  it("both fixed on one side and asked apart: nothing moves, and the reason is the clash", () => {
+    const plan = planConstraintChange({ slots: SHEET, apart: [["Dan", "Craig"]], fixed: ["Dan", "Craig"], rating });
+    expect(plan.swaps).toEqual([]);
+    expect(Object.values(plan.unmet.why ?? {})).toEqual([{ reason: "clash" }]);
+  });
+
+  it("possible but past the bounded search: the reason is 'no way in a few swaps', never a clash", () => {
+    // Ten a side, a together group of ten split five and five: five swaps needed.
+    const ids = Array.from({ length: 20 }, (_, i) => `p${i}`);
+    const slots = ids.map((id, i) => slot(id, i < 10 ? "RED" : "YELLOW"));
+    const group = [...ids.slice(0, 5), ...ids.slice(10, 15)];
+    const plan = planConstraintChange({ slots, together: [group], rating: () => 5 });
+    expect(plan.unmet.together).toHaveLength(1);
+    expect(Object.values(plan.unmet.why ?? {})).toEqual([{ reason: "no-swaps" }]);
+  });
+
   it("a slot holder who is no longer playing is never swapped in", () => {
     const sheet = SHEET.map((s) => (s.userId === "Finn" ? { ...s, playing: false } : s));
     const plan = planConstraintChange({ slots: sheet, apart: [["Dan", "Craig"]], rating });

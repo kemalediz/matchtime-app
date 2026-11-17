@@ -1,5 +1,13 @@
 import { PlayerWithRating, TeamResult } from "@/types";
-import { cleanGroups, constraintPins, unmetConstraints, type UnmetConstraints } from "./team-constraints";
+import {
+  cleanGroups,
+  constraintPins,
+  explainUnmet,
+  noneUnmet,
+  unmetConstraints,
+  type UnmetConstraints,
+  type UnmetReason,
+} from "./team-constraints";
 
 /**
  * Team balancing.
@@ -75,6 +83,7 @@ export function balanceTeams(opts: BalanceOptions): BalancedTeams {
   const apart = cleanGroups(opts.apart);
   const constrained = together.length > 0 || apart.length > 0;
   const ratingOf = new Map(selected.map((p) => [p.id, p.rating]));
+  const report = new Map<string, UnmetReason>();
   const pinnedToTeam = constrained
     ? constraintPins({
         ids: selected.map((p) => p.id),
@@ -83,6 +92,7 @@ export function balanceTeams(opts: BalanceOptions): BalancedTeams {
         apart,
         sides,
         rating: (id) => ratingOf.get(id) ?? 0,
+        report,
       })
     : (opts.pinnedToTeam ?? {});
 
@@ -95,7 +105,9 @@ export function balanceTeams(opts: BalanceOptions): BalancedTeams {
     ...result.red.map((p) => [p.id, "RED"] as [string, "RED"]),
     ...result.yellow.map((p) => [p.id, "YELLOW"] as [string, "YELLOW"]),
   ]);
-  return { ...result, unmet: unmetConstraints((id) => side.get(id), { together, apart }) };
+  // Each group not kept says why: a member not in the squad, a clash, or the sizes.
+  const unmet = unmetConstraints((id) => side.get(id), { together, apart });
+  return { ...result, unmet: noneUnmet(unmet) ? unmet : explainUnmet(unmet, (id) => side.get(id), report) };
 }
 
 /** How many players each side takes. */

@@ -503,10 +503,15 @@ describe("named players are force-confirmed, pinned and paired", () => {
 
   it("APART that the balancer could not meet: the teams are posted and the reply SAYS so in one line", async () => {
     const { model } = stubModel({ [APART]: teamsFacts({ apart: [["Elvin", "Sait"]] }) });
-    const r = recorder(model, squadWorld(), {}, { ok: true, groupPost: POST, unmet: { together: [], apart: [["u-elvin", "u-sait"]] } });
+    const r = recorder(model, squadWorld(), {}, {
+      ok: true,
+      groupPost: POST,
+      unmet: { together: [], apart: [["u-elvin", "u-sait"]], why: { "apart:u-elvin\u0000u-sait": { reason: "sizes" } } },
+    });
     const res = await run({ messages: [msg({ body: APART })], deps: r.deps });
+    // The balancer's own reason, said as it is (review of #619).
     expect([...res.outcomes.values()][0].reply).toBe(
-      `I couldn't split ${fullName("elvin")} and ${fullName("sait")} between the teams, it clashes with another request or the team sizes, so this is as close as I could get.\n\n${POST}`,
+      `I couldn't split ${fullName("elvin")} and ${fullName("sait")} between the teams. It doesn't fit the team sizes.\n\n${POST}`,
     );
   });
 

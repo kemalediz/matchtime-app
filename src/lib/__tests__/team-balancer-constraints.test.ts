@@ -67,7 +67,17 @@ for (const strategy of ["rating-only", "position-aware"] as const) {
     it("a conflict: together and apart about the same two people. The first holds, the clash is reported", () => {
       const r = run({ together: [["Dan", "Craig"]], apart: [["Dan", "Craig"]] });
       expect(sideOf(r, "Dan")).toBe(sideOf(r, "Craig"));
-      expect(r.unmet).toEqual({ together: [], apart: [["Dan", "Craig"]] });
+      expect(r.unmet).toMatchObject({ together: [], apart: [["Dan", "Craig"]] });
+      // The TRUE reason (review of #619): a clash, because there is one.
+      expect(Object.values(r.unmet.why ?? {})).toEqual([{ reason: "clash" }]);
+    });
+
+    it("the reasons are true: a member not in the squad, and a group too big for a side", () => {
+      const missing = run({ apart: [["Dan", "Zed"]] });
+      expect(Object.values(missing.unmet.why ?? {})).toEqual([{ reason: "not-on-teams", missing: ["Zed"] }]);
+      const six = ["Dan", "Craig", "Eli", "Finn", "Gus", "Hal"];
+      const big = run({ together: [six] });
+      expect(Object.values(big.unmet.why ?? {})).toEqual([{ reason: "sizes" }]);
     });
 
     it("a conflict with a pin: both pinned to Red and asked apart. The pins hold, apart is reported", () => {
@@ -111,6 +121,49 @@ for (const strategy of ["rating-only", "position-aware"] as const) {
     });
   });
 }
+
+describe("odd squads try BOTH ways round (review of #619): 7 against 6 is no mirror image", () => {
+  // Thirteen players, Red takes 7 and Yellow 6.
+  const T = (ids: string[], r: (i: number) => number) => ids.map((id, i) => P(id, r(i)));
+  const ids = ["X", "Y", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"];
+
+  /** The best gap any 7/6 split meeting the groups can have, by brute force. */
+  const bestGap = (players: PlayerWithRating[], ok: (red: Set<string>) => boolean) => {
+    let best = Infinity;
+    const n = players.length;
+    for (let mask = 0; mask < 1 << n; mask++) {
+      let bits = 0;
+      for (let i = 0; i < n; i++) if (mask & (1 << i)) bits++;
+      if (bits !== 7) continue;
+      const red = new Set(players.filter((_, i) => mask & (1 << i)).map((p) => p.id));
+      if (!ok(red)) continue;
+      const r = players.filter((p) => red.has(p.id)).reduce((s, p) => s + p.rating, 0);
+      const y = players.filter((p) => !red.has(p.id)).reduce((s, p) => s + p.rating, 0);
+      best = Math.min(best, Math.abs(r - y));
+    }
+    return best;
+  };
+
+  it("a together group of seven that only fits Red, joined to an apart pair: met, not dropped", () => {
+    // X with k, Y with six others, X apart from Y: Y's seven only fit the
+    // side of seven, so only one of the two ways round works.
+    const players = T(ids, (i) => 5 + (i % 3));
+    const together = [["X", "k"], ["Y", "a", "b", "c", "d", "e", "f"]];
+    const apart = [["X", "Y"]];
+    const r = balanceTeams({ players, perTeam: 7, minPlayers: 12, strategy: "rating-only", together, apart });
+    expect(r.unmet).toEqual({ together: [], apart: [] });
+    expect(r.red.map((p) => p.id).sort()).toEqual(["Y", "a", "b", "c", "d", "e", "f"].sort());
+  });
+
+  it("an apart pair of a strong and a weak player: the balance is as close as the groups allow", () => {
+    const ratings: Record<string, number> = { X: 9.5, Y: 2, a: 7, b: 6.5, c: 6, d: 6, e: 5.5, f: 5, g: 5, h: 4.5, i: 4, j: 3.5, k: 3 };
+    const players = ids.map((id) => P(id, ratings[id]));
+    const r = balanceTeams({ players, perTeam: 7, minPlayers: 12, strategy: "rating-only", apart: [["X", "Y"]] });
+    expect(r.unmet.apart).toEqual([]);
+    const optimum = bestGap(players, (red) => red.has("X") !== red.has("Y"));
+    expect(r.ratingDiff).toBeLessThanOrEqual(optimum + 0.5);
+  });
+});
 
 describe("balanceTeams constraints with uneven sides (7 against 6)", () => {
   const thirteen = [...TEN, P("Kit", 5), P("Lou", 4.5), P("Max", 4.2)];

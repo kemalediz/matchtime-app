@@ -506,24 +506,18 @@ function resolveAll(
 }
 
 /**
- * The generator's pins for new teams: each person put on a side, then each
- * group put together on the side one of them was put on, else Red (the
- * colour means nothing; the players' group pins a pairing the same way,
- * `pipeline/engine.ts`). First instruction about a person wins.
+ * The generator's pins for new teams: each person put on a side. First
+ * instruction about a person wins. People put together are NOT pinned
+ * (review of #619): they go to the balancer as a group, as in the players'
+ * group, so no colour is invented for them.
  */
-function pinsFor(
-  sides: Array<{ ids: string[]; to: SheetTeam }>,
-  together: string[][],
-): Record<string, SheetTeam> {
+function pinsFor(sides: Array<{ ids: string[]; to: SheetTeam }>): Record<string, SheetTeam> {
   const pins: Record<string, SheetTeam> = {};
   for (const s of sides) for (const id of s.ids) pins[id] ??= s.to;
-  for (const group of together) {
-    if (new Set(group).size < 2) continue;
-    const side = group.map((id) => pins[id]).find((t): t is SheetTeam => !!t) ?? "RED";
-    for (const id of group) pins[id] ??= side;
-  }
   return pins;
 }
+
+type NamedGroups = Array<Array<{ userId: string; name: string }>>;
 
 /**
  * One team change asked for in the admin group by a proven owner or
@@ -554,9 +548,14 @@ export async function handleTeamCommand(args: {
   const match = await commandMatch(orgId, now, command);
   if (!match) return { outcome: "teams-no-match", replyText: s.tp_no_match };
 
-  /** `apart`: people the new teams must split (2026-11-16); each group is
-   *  said met or not above the proposal, from what the balancer made. */
-  const build = async (pins: Record<string, SheetTeam> = {}, apart: Array<Array<{ userId: string; name: string }>> = []): Promise<TeamReply> => {
+  /** `groups`: people the new teams must keep together or split
+   *  (2026-11-16); each group is said met or not above the proposal, from
+   *  what the balancer made. */
+  const build = async (
+    pins: Record<string, SheetTeam> = {},
+    groups: { together: NamedGroups; apart: NamedGroups } = { together: [], apart: [] },
+  ): Promise<TeamReply> => {
+    const { together, apart } = groups;
     if (!args.addressed) {
       // Untagged, and not a reply to MatchTime: the organisers' own talk
       // about the teams. Nothing built, nothing said.
@@ -565,6 +564,7 @@ export async function handleTeamCommand(args: {
     }
     const res = await gen(deps)(match.id, {
       ...(Object.keys(pins).length ? { pinnedToTeam: pins } : {}),
+      ...(together.length ? { together: together.map((g) => g.map((m) => m.userId)) } : {}),
       ...(apart.length ? { apart: apart.map((g) => g.map((m) => m.userId)) } : {}),
     });
     if (!res.ok) {
@@ -582,7 +582,7 @@ export async function handleTeamCommand(args: {
       `[team-proposal] ${args.messageId}: teams built on match ${match.id}, ${sheet.slots.length} on the teams, ${Object.keys(pins).length} pinned`,
     );
     const proposal = await propose(sheet, lang, now, announce);
-    const lines = constraintLines({ together: [], apart, unmet: res.unmet ?? { together: [], apart: [] }, lang });
+    const lines = constraintLines({ together, apart, unmet: res.unmet ?? { together: [], apart: [] }, lang });
     return { outcome: "teams-built", replyText: lines.length ? `${lines.join("\n")}\n\n${proposal}` : proposal };
   };
 
@@ -620,10 +620,11 @@ export async function handleTeamCommand(args: {
     if (!res.ok) return unclear(res.problems);
     const one = (raw: string) => (resolveName(raw, sheet.squad, args.senderUserId, people) as { userId: string }).userId;
     const squadName = new Map(sheet.squad.map((p) => [p.userId, p.name]));
-    const apartGroups = apart
-      .map((g) => [...new Set(g.map(one))].map((userId) => ({ userId, name: squadName.get(userId) ?? nameOf(userId) })))
-      .filter((g) => g.length >= 2);
-    return build(pinsFor(sides.map((x) => ({ ids: [one(x.name)], to: x.to })), together.map((g) => g.map(one))), apartGroups);
+    const named = (gs: string[][]): NamedGroups =>
+      gs
+        .map((g) => [...new Set(g.map(one))].map((userId) => ({ userId, name: squadName.get(userId) ?? nameOf(userId) })))
+        .filter((g) => g.length >= 2);
+    return build(pinsFor(sides.map((x) => ({ ids: [one(x.name)], to: x.to }))), { together: named(together), apart: named(apart) });
   };
 
   if (command.kind === "reshuffle") return buildWith(command.sides, command.together, command.apart);
@@ -729,6 +730,9 @@ export async function handleTeamCommand(args: {
         together: togetherIds,
         apart: apartIds,
         rating: await rating(),
+        // Whoever this same message put on a side or moved stays where it
+        // put them (review of #619): the apart step never undoes them.
+        fixed: [...sideIds.map((x) => x.userId), ...(wholeSide ? [] : moveIds)],
       });
       plan = { ...plan, team: keep.team };
       const named = (gs: string[][]) => gs.filter((g) => g.length >= 2).map((g) => g.map((userId) => ({ userId, name: nameOf(userId) })));

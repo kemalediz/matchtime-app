@@ -88,8 +88,14 @@ describe("decideKeepChange", () => {
     if (d.kind !== "unchanged") return;
     expect(d.allMet).toBe(false);
     expect(d.reply).toBe(
-      "Dan and Craig are on the same team.\nI couldn't split Dan and Craig between the teams, it clashes with another request or the team sizes, so this is as close as I could get.",
+      "Dan and Craig are on the same team.\nI couldn't split Dan and Craig between the teams. It clashes with another request in the same message.",
     );
+  });
+
+  it("the same clash in Turkish", () => {
+    const d = decide({ together: [["Dan", "Craig"]], apart: [["Dan", "Craig"]], lang: "tr" });
+    if (d.kind !== "unchanged") throw new Error(d.kind);
+    expect(d.reply).toBe("Dan ve Craig aynı takımda.\nDan ve Craig farklı takımlara konamadı. Aynı mesajdaki başka bir istekle çakışıyor.");
   });
 
   it("a name nobody can place: refused with the reason, never silently ignored", () => {
@@ -101,11 +107,27 @@ describe("decideKeepChange", () => {
     );
   });
 
-  it("somebody on the bench, not on the teams: said in one line, nothing written for him", () => {
+  it("somebody on the bench, not on the teams: the TRUE reason, never a clash (review of #619)", () => {
     const d = decide({ apart: [["Dan", "Ivo"]], people: people("Dan", "Ivo") });
     expect(d.kind).toBe("unchanged");
     if (d.kind !== "unchanged") return;
-    expect(d.reply).toContain("I couldn't split Dan and Ivo between the teams");
+    expect(d.reply).toBe("I couldn't split Dan and Ivo between the teams. Ivo isn't on the teams.");
+    const tr = decide({ apart: [["Dan", "Ivo"]], people: people("Dan", "Ivo"), lang: "tr" });
+    if (tr.kind !== "unchanged") throw new Error(tr.kind);
+    expect(tr.reply).toBe("Dan ve Ivo farklı takımlara konamadı. Ivo takımlarda değil.");
+  });
+
+  it("a slot holder who dropped out is not on the teams either", () => {
+    const roster = ROSTER.map((r) => (r.userId === "u-craig" ? { ...r, status: "DROPPED" as const } : r));
+    const d = decide({ apart: [["Dan", "Craig"]], roster });
+    if (d.kind !== "unchanged") throw new Error(d.kind);
+    expect(d.reply).toBe("I couldn't split Dan and Craig between the teams. Craig isn't on the teams.");
+  });
+
+  it("'me' with no place on the teams: the sender is named as not on the teams", () => {
+    const d = decide({ apart: [["me", "Craig"]], sender: { userId: "u-ivo", name: "Ivo" } });
+    if (d.kind !== "unchanged") throw new Error(d.kind);
+    expect(d.reply).toBe("I couldn't split Ivo and Craig between the teams. Ivo isn't on the teams.");
   });
 
   it("'me' is the sender", () => {

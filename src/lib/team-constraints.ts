@@ -43,14 +43,63 @@ export interface TeamConstraints {
   apart?: string[][];
 }
 
+/**
+ * Why a group could not be kept, so what MatchTime says is TRUE (review of
+ * #619: never blame a clash that does not exist):
+ *
+ *   not-on-teams  a member has no place on the teams (bench, dropped, not
+ *                 in the squad); `missing` names them;
+ *   clash         it contradicts a pin, a player the message placed or
+ *                 moved, or another group in the same message;
+ *   sizes         the groups cannot fit the two side sizes;
+ *   no-swaps      teams as they stand: no change of a few swaps does it.
+ */
+export type UnmetReason = "not-on-teams" | "clash" | "sizes" | "no-swaps";
+export interface UnmetWhy {
+  reason: UnmetReason;
+  /** For not-on-teams: the members with no place. */
+  missing?: string[];
+}
+
 export interface UnmetConstraints {
   together: string[][];
   apart: string[][];
+  /** Why each unmet group failed, by `groupKey`. Absent: not known. */
+  why?: Record<string, UnmetWhy>;
+}
+
+/** One key per group, whatever order its members were named in. */
+export function groupKey(kind: "together" | "apart", ids: string[]): string {
+  return `${kind}:${[...ids].sort().join("\u0000")}`;
 }
 
 /** Each group with its ids once each; a group of fewer than two dropped. */
 export function cleanGroups(groups: string[][] | undefined): string[][] {
   return (groups ?? []).map((g) => [...new Set(g.filter(Boolean))]).filter((g) => g.length >= 2);
+}
+
+/**
+ * Why each unmet group failed: a member with no side first (that is the
+ * truest answer), then what `known` says, else nothing.
+ */
+export function explainUnmet(
+  unmet: UnmetConstraints,
+  sideOf: (id: string) => SlotSide | undefined | null,
+  known: ReadonlyMap<string, UnmetReason>,
+): UnmetConstraints {
+  const why: Record<string, UnmetWhy> = {};
+  for (const [kind, groups] of [
+    ["together", unmet.together],
+    ["apart", unmet.apart],
+  ] as const) {
+    for (const g of groups) {
+      const key = groupKey(kind, g);
+      const missing = g.filter((id) => !sideOf(id));
+      if (missing.length > 0) why[key] = { reason: "not-on-teams", missing };
+      else if (known.has(key)) why[key] = { reason: known.get(key)! };
+    }
+  }
+  return { ...unmet, why };
 }
 
 /**
@@ -145,6 +194,8 @@ export function constraintPins(args: {
   apart?: string[][];
   sides: { red: number; yellow: number };
   rating: (id: string) => number;
+  /** Filled with why a group was not kept: a clash, or the sizes. */
+  report?: Map<string, UnmetReason>;
 }): Record<string, SlotSide> {
   const inSquad = new Set(args.ids);
   // 1. Pins, capped, exactly as the balancer's own first step.
@@ -158,37 +209,52 @@ export function constraintPins(args: {
     count[t]++;
   }
 
-  type Group = { ids: string[]; apart: boolean };
+  type Group = { ids: string[]; apart: boolean; key: string };
   const groups: Group[] = [
-    ...cleanGroups(args.together).map((g) => ({ ids: g.filter((id) => inSquad.has(id)), apart: false })),
-    ...cleanGroups(args.apart).map((g) => ({ ids: g.filter((id) => inSquad.has(id)), apart: true })),
+    ...cleanGroups(args.together).map((g) => ({ ids: g.filter((id) => inSquad.has(id)), apart: false, key: groupKey("together", g) })),
+    ...cleanGroups(args.apart).map((g) => ({ ids: g.filter((id) => inSquad.has(id)), apart: true, key: groupKey("apart", g) })),
   ].filter((g) => g.ids.length >= 2);
   if (groups.length === 0) return { ...pins };
 
   for (let active = groups.length; active >= 0; active--) {
-    const placed = tryPlace(pins, groups.slice(0, active), args);
-    if (placed) return placed;
+    const clashed = new Set<string>();
+    const placed = tryPlace(pins, groups.slice(0, active), args, clashed);
+    if (placed) {
+      for (const key of clashed) args.report?.set(key, "clash");
+      // Dropped because the groups could not fit the two sides together.
+      for (const g of groups.slice(active)) if (!args.report?.has(g.key)) args.report?.set(g.key, "sizes");
+      return placed;
+    }
   }
   return { ...pins };
 }
 
+/** Join the groups in order; a group whose edge contradicts what is
+ *  already joined goes into `clashed`. */
+function joinGroups(uf: ParityUnion, groups: Array<{ ids: string[]; apart: boolean; key: string }>, clashed: Set<string>) {
+  for (const g of groups) {
+    let ok = true;
+    if (g.apart) {
+      // Pairs in order (1st with 2nd, 3rd with 4th, ...): each pair split,
+      // so the group is as even as two sides allow.
+      for (let i = 0; i + 1 < g.ids.length; i += 2) ok = uf.union(g.ids[i], g.ids[i + 1], 1) && ok;
+    } else {
+      for (let i = 1; i < g.ids.length; i++) ok = uf.union(g.ids[0], g.ids[i], 0) && ok;
+    }
+    if (!ok) clashed.add(g.key);
+  }
+}
+
 function tryPlace(
   pins: Record<string, SlotSide>,
-  groups: Array<{ ids: string[]; apart: boolean }>,
+  groups: Array<{ ids: string[]; apart: boolean; key: string }>,
   args: { ids: string[]; sides: { red: number; yellow: number }; rating: (id: string) => number },
+  clashed: Set<string>,
 ): Record<string, SlotSide> | null {
   const uf = new ParityUnion();
   uf.find(ANCHOR);
   for (const [id, t] of Object.entries(pins)) uf.union(ANCHOR, id, t === "RED" ? 0 : 1);
-  for (const g of groups) {
-    if (g.apart) {
-      // Pairs in order (1st with 2nd, 3rd with 4th, ...): each pair split,
-      // so the group is as even as two sides allow.
-      for (let i = 0; i + 1 < g.ids.length; i += 2) uf.union(g.ids[i], g.ids[i + 1], 1);
-    } else {
-      for (let i = 1; i < g.ids.length; i++) uf.union(g.ids[0], g.ids[i], 0);
-    }
-  }
+  joinGroups(uf, groups, clashed);
 
   // The sets: the anchored one (fixed sides) and the free ones (two ways each).
   const constrained = new Set<string>([...Object.keys(pins), ...groups.flatMap((g) => g.ids)]);
@@ -239,8 +305,11 @@ function tryPlace(
   };
 
   if (sets.length <= MAX_ENUMERATED) {
-    // With nothing anchored the mirror image is the same teams: fix the first set.
-    const fixFirst = anchoredRed.length === 0 && anchoredYellow.length === 0 && sets.length > 0;
+    // With nothing anchored AND sides of one size, the mirror image is the
+    // same teams: fix the first set. With 7 against 6 it is not (review of
+    // #619): both ways round are tried.
+    const fixFirst =
+      anchoredRed.length === 0 && anchoredYellow.length === 0 && sets.length > 0 && args.sides.red === args.sides.yellow;
     const combos = 1 << sets.length;
     for (let mask = 0; mask < combos; mask++) {
       if (fixFirst && mask & 1) continue;
@@ -289,27 +358,82 @@ export interface ConstraintChangePlan {
 }
 
 /** The most swaps tried to meet the groups. */
-const MAX_SWAPS = 3;
+const MAX_SWAPS = 4;
 /** The most placements one search level may try (about 50 ms). */
 const SEARCH_BUDGET = 400_000;
 
 /**
+ * Why each group of a change to the teams as they stand cannot be met, when
+ * it cannot: a contradiction with a fixed player or an earlier group
+ * ("clash"), a component too big for the sides ("sizes"), and otherwise
+ * the search simply found no way in a few swaps ("no-swaps").
+ */
+function diagnoseExisting(
+  c: { together: string[][]; apart: string[][] },
+  fixed: ReadonlyMap<string, SlotSide>,
+  sides: { red: number; yellow: number },
+): Map<string, UnmetReason> {
+  const groups = [
+    ...c.together.map((g) => ({ ids: g, apart: false, key: groupKey("together", g) })),
+    ...c.apart.map((g) => ({ ids: g, apart: true, key: groupKey("apart", g) })),
+  ];
+  const uf = new ParityUnion();
+  uf.find(ANCHOR);
+  for (const [id, side] of fixed) uf.union(ANCHOR, id, side === "RED" ? 0 : 1);
+  const clashed = new Set<string>();
+  joinGroups(uf, groups, clashed);
+
+  // Each joined set's two halves, the anchored one with fixed sides.
+  const anchorRoot = uf.find(ANCHOR).root;
+  const anchorParity = uf.find(ANCHOR).parity;
+  const halves = new Map<string, [number, number]>();
+  for (const id of new Set(groups.flatMap((g) => g.ids))) {
+    const { root, parity } = uf.find(id);
+    const h = halves.get(root) ?? [0, 0];
+    h[root === anchorRoot ? parity ^ anchorParity : parity]++;
+    halves.set(root, h);
+  }
+  const fits = (root: string) => {
+    const [a, b] = halves.get(root) ?? [0, 0];
+    if (root === anchorRoot) return a <= sides.red && b <= sides.yellow;
+    return (a <= sides.red && b <= sides.yellow) || (b <= sides.red && a <= sides.yellow);
+  };
+
+  // A clash is the whole joined set's: whichever of the clashing groups the
+  // search gave up, the reason is the clash.
+  const clashRoots = new Set(groups.filter((g) => clashed.has(g.key)).map((g) => uf.find(g.ids[0]).root));
+  const out = new Map<string, UnmetReason>();
+  for (const g of groups) {
+    if (clashed.has(g.key) || clashRoots.has(uf.find(g.ids[0]).root)) out.set(g.key, "clash");
+    else if (!fits(uf.find(g.ids[0]).root)) out.set(g.key, "sizes");
+    else out.set(g.key, "no-swaps");
+  }
+  return out;
+}
+
+/**
  * The fewest one-for-one swaps between the sides that meet the groups, and
  * of those the one that keeps the ratings closest. Sides keep their sizes;
- * a slot holder who is no longer playing is never swapped. When no change
- * of up to three swaps meets every group, the change that breaks the
- * fewest (then the fewest swaps, then the closest ratings) is taken, and
- * when nothing helps nothing moves.
+ * a slot holder who is no longer playing is never swapped, and nor is a
+ * player in `fixed` (one the same message placed or moved: review of #619,
+ * the change must never undo what it was told). When no change of up to
+ * four swaps (bounded by SEARCH_BUDGET) meets every group, the change that
+ * breaks the fewest (then the fewest swaps, then the closest ratings) is
+ * taken, and when nothing helps nothing moves. Each group still broken
+ * carries its true reason (`unmet.why`).
  */
 export function planConstraintChange(p: {
   slots: Array<{ userId: string; team: SlotSide; playing: boolean }>;
   together?: string[][];
   apart?: string[][];
   rating: (userId: string) => number;
+  /** Players who must not change side. */
+  fixed?: Iterable<string>;
 }): ConstraintChangePlan {
-  const c: TeamConstraints = { together: cleanGroups(p.together), apart: cleanGroups(p.apart) };
+  const c = { together: cleanGroups(p.together), apart: cleanGroups(p.apart) };
   const team = new Map(p.slots.map((s) => [s.userId, s.team] as [string, SlotSide]));
   const playing = new Set(p.slots.filter((s) => s.playing).map((s) => s.userId));
+  const fixed = new Set([...(p.fixed ?? [])].filter((id) => team.has(id)));
   // A slot holder who is no longer playing is not on the teams for this:
   // keeping him apart from anyone means nothing.
   const sideIn = (m: Map<string, SlotSide>) => (id: string) => (playing.has(id) ? m.get(id) : undefined);
@@ -323,8 +447,8 @@ export function planConstraintChange(p: {
     return Math.abs(d);
   };
 
-  const constrained = new Set([...(c.together ?? []), ...(c.apart ?? [])].flat().filter((id) => playing.has(id)));
-  const movable = [...playing];
+  const constrained = new Set([...c.together, ...c.apart].flat().filter((id) => playing.has(id) && !fixed.has(id)));
+  const movable = [...playing].filter((id) => !fixed.has(id));
 
   let best = { swaps: [] as Array<[string, string]>, v: violations(team), g: gap(team) };
   if (best.v > 0 && constrained.size > 0) {
@@ -373,7 +497,14 @@ export function planConstraintChange(p: {
     after.set(x, after.get(y)!);
     after.set(y, tx);
   }
-  return { team: after, swaps: best.swaps, unmet: unmetConstraints(sideIn(after), c) };
+  const unmet = unmetConstraints(sideIn(after), c);
+  if (unmet.together.length + unmet.apart.length === 0) return { team: after, swaps: best.swaps, unmet };
+  const count = (side: SlotSide) => [...playing].filter((id) => team.get(id) === side).length;
+  const known = diagnoseExisting(c, new Map([...fixed].filter((id) => playing.has(id)).map((id) => [id, team.get(id)!])), {
+    red: count("RED"),
+    yellow: count("YELLOW"),
+  });
+  return { team: after, swaps: best.swaps, unmet: explainUnmet(unmet, sideIn(after), known) };
 }
 
 // ── What MatchTime says about them ────────────────────────────────────
@@ -396,15 +527,32 @@ export function constraintLines(args: {
   const lines: string[] = [];
   const ids = (g: Array<{ userId: string }>) => g.map((m) => m.userId);
   const names = (g: Array<{ name: string }>) => joinList(args.lang, g.map((m) => m.name));
+  /** The true reason, said after the line; nothing when it is not known. */
+  const because = (kind: "together" | "apart", g: Array<{ userId: string; name: string }>): string => {
+    const why = args.unmet.why?.[groupKey(kind, ids(g))];
+    if (!why) return "";
+    switch (why.reason) {
+      case "not-on-teams": {
+        const missing = g.filter((m) => (why.missing ?? []).includes(m.userId));
+        return ` ${s.teams_unmet_missing({ names: names(missing), many: missing.length > 1 })}`;
+      }
+      case "clash":
+        return ` ${s.teams_unmet_clash}`;
+      case "sizes":
+        return ` ${s.teams_unmet_sizes}`;
+      case "no-swaps":
+        return ` ${s.teams_unmet_no_swaps}`;
+    }
+  };
   for (const g of args.together) {
     if (g.length < 2) continue;
     const broken = args.unmet.together.some((u) => sameGroup(u, ids(g)));
-    lines.push(broken ? s.teams_together_unmet({ names: names(g) }) : s.teams_together_met({ names: names(g) }));
+    lines.push(broken ? `${s.teams_together_unmet({ names: names(g) })}${because("together", g)}` : s.teams_together_met({ names: names(g) }));
   }
   for (const g of args.apart) {
     if (g.length < 2) continue;
     const broken = args.unmet.apart.some((u) => sameGroup(u, ids(g)));
-    lines.push(broken ? s.teams_apart_unmet({ names: names(g) }) : s.teams_apart_met({ names: names(g), many: g.length > 2 }));
+    lines.push(broken ? `${s.teams_apart_unmet({ names: names(g) })}${because("apart", g)}` : s.teams_apart_met({ names: names(g), many: g.length > 2 }));
   }
   return lines;
 }

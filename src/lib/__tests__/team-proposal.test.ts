@@ -810,10 +810,10 @@ describe("put together, or on a side, on teams that exist: a targeted change", (
     expect(r.replyText).toContain("Takımlar dengeli kalsın diye Bilal Ahmed oyuncusunu da Sarı takımına aldım.");
   });
 
-  it("with no teams yet: they are built with the pair on one side", async () => {
+  it("with no teams yet: they are built with the pair as a group the balancer keeps together (no colour invented)", async () => {
     const r = await run(change({ together: [["Ali", "Tom"]] }));
     expect(r.outcome).toBe("teams-built");
-    expect(generate).toHaveBeenCalledWith(MATCH, { pinnedToTeam: { "u-ali": "RED", "u-tom": "RED" } });
+    expect(generate).toHaveBeenCalledWith(MATCH, { together: [["u-ali", "u-tom"]] });
   });
 
   it("a name that is not in the squad stops a build too", async () => {
@@ -825,7 +825,7 @@ describe("put together, or on a side, on teams that exist: a targeted change", (
   it("new teams asked for with a pair and a side: the generator keeps both", async () => {
     seedSheet();
     await run({ kind: "reshuffle", sides: [{ name: "Shehryar", to: "YELLOW" }], together: [["Ali", "Tom"]] });
-    expect(generate).toHaveBeenCalledWith(MATCH, { pinnedToTeam: { "u-sheh": "YELLOW", "u-ali": "RED", "u-tom": "RED" } });
+    expect(generate).toHaveBeenCalledWith(MATCH, { pinnedToTeam: { "u-sheh": "YELLOW" }, together: [["u-ali", "u-tom"]] });
   });
 
   it("a plain reshuffle passes no pins", async () => {
@@ -850,6 +850,23 @@ describe("kept apart (2026-11-16, the Vets: 'put Dan and Craig in separate teams
     expect(teamOf("u-ali")).not.toBe(teamOf("u-bilal"));
     expect(store.tables.teamAssignment.filter((x) => x.team === "RED").length).toBe(2);
     expect(r.replyText).toMatch(/Bilal Ahmed are on different teams\./);
+  });
+
+  it("'put Ali in Red, keep Ali and Bilal apart' with both on Red: Ali stays where he was put, Bilal moves (review of #619)", async () => {
+    seedSheet();
+    const r = await run(change({ sides: [{ name: "Ali", to: "RED" }], apart: [["Ali", "Bilal"]] }));
+    expect(teamOf("u-ali")).toBe("RED");
+    expect(teamOf("u-bilal")).toBe("YELLOW");
+    expect(store.tables.teamAssignment.filter((x) => x.team === "RED").length).toBe(2);
+    expect(r.replyText).toMatch(/Bilal Ahmed are on different teams\./);
+  });
+
+  it("a player the message moved is never moved back by the apart step", async () => {
+    seedSheet();
+    // Tom (Yellow) moved across to Red, and kept apart from Ali (Red): Tom stays on Red, Ali goes.
+    await run(change({ moves: ["Tom"], apart: [["Tom", "Ali"]] }));
+    expect(teamOf("u-tom")).toBe("RED");
+    expect(teamOf("u-ali")).toBe("YELLOW");
   });
 
   it("already apart: nothing written, and it says they are", async () => {

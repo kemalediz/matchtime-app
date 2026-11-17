@@ -794,10 +794,12 @@ export const tr: Strings = {
   // ── kim kiminle oynar (2026-11-16) ─────────────────────────────────
   teams_apart_met: (p) => (p.many ? `${p.names} takımlara dağıtıldı.` : `${p.names} farklı takımlarda.`),
   teams_together_met: (p) => `${p.names} aynı takımda.`,
-  teams_apart_unmet: (p) =>
-    `${p.names} farklı takımlara konamadı, başka bir istekle ya da takım sayılarıyla çakışıyor; yapabildiğimin en yakını bu.`,
-  teams_together_unmet: (p) =>
-    `${p.names} aynı takıma konamadı, başka bir istekle ya da takım sayılarıyla çakışıyor; yapabildiğimin en yakını bu.`,
+  teams_apart_unmet: (p) => `${p.names} farklı takımlara konamadı.`,
+  teams_together_unmet: (p) => `${p.names} aynı takıma konamadı.`,
+  teams_unmet_missing: (p) => (p.many ? `${p.names} takımlarda değiller.` : `${p.names} takımlarda değil.`),
+  teams_unmet_clash: "Aynı mesajdaki başka bir istekle çakışıyor.",
+  teams_unmet_sizes: "Takım sayılarına uymuyor.",
+  teams_unmet_no_swaps: "Birkaç değişiklikle bunu yapmanın bir yolunu bulamadım.",
   teams_keep_swapped: (p) => `🔁 ${p.pairs} yer değiştirdi, kimse çıkarılmadı.`,
   teams_keep_pair: (p) => `*${p.a}* ile *${p.b}*`,
   teams_keep_nothing_to_change: "Değiştirmem gereken bir şey yoktu.",
@@ -1379,7 +1381,8 @@ export const tr: Strings = {
     if (p.topic === "teams" && p.squad) {
       lines.push(`🟥🟦 *"@Match Time takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`);
       lines.push(`↩️ Önceki takım listelerimden birine *"@Match Time bunları kullan"* diye yanıt verin ya da beni etiketleyip iki takımı yapıştırın: o takımları *@Match Time EVET* yazmanız için geri getiririm.`);
-      lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik. Maç günü başlama saatinden sonra bunlar ve *"@Match Time Sam yerine Ben'i koy"* oynanan maçı düzeltir; oyuncu grubuna bir şey gönderilmez.`);      lines.push(`✅ *@Match Time EVET*: önerilen takımları kesinleştiririm.`);
+      lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik. Maç günü başlama saatinden sonra bunlar ve *"@Match Time Sam yerine Ben'i koy"* oynanan maçı düzeltir; oyuncu grubuna bir şey gönderilmez.`);
+      lines.push(`✅ *@Match Time EVET*: önerilen takımları kesinleştiririm.`);
     }
     if (p.topic === "players") {
       if (p.squad) {
