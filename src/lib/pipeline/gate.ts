@@ -89,7 +89,7 @@
  *     an IN?" is a query rather than a shrug.
  */
 import type { ContextMessage } from "../reply-context";
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 // ── THE TYPE-ONLY IMPORT OF `AnalysisVerdict` IS DELETED (§10 step 8) ─
 //   It existed so `gatedVerdict` could return the mega-call's exact
 //   shape, and it was type-only because `message-analyzer.ts` pulls in
@@ -448,6 +448,9 @@ export interface GateOptions {
   /** Tagged corrections of a recorded result, recognised by their words.
    *  See `RouteBatchOptions.scoreCorrectionIds`. */
   scoreCorrectionIds?: ReadonlySet<string>;
+  /** The club's last game has finished with no score yet: the router's
+   *  line saying so (2026-11-17). See `RouteBatchOptions.awaitedScoreLine`. */
+  awaitedScoreLine?: string | null;
   /** Injected by tests and by the recall harness. */
   model?: PipelineModel;
   /**
@@ -557,6 +560,7 @@ export async function gateBatch(
       clarifications: opts.clarifications ?? [],
       scoreAnswerIds: opts.scoreAnswerIds,
       scoreCorrectionIds: opts.scoreCorrectionIds,
+      ...(opts.awaitedScoreLine ? { awaitedScoreLine: opts.awaitedScoreLine } : {}),
       ...(opts.capped ? { capped: true } : {}),
       ...(opts.now ? { now: opts.now } : {}),
     });
@@ -669,6 +673,14 @@ function routerStubFromEnv(): PipelineModel | null {
     name: "router-stub",
     async complete(req) {
       const cfg = routerStubConfig() ?? {};
+      // Every user turn, one JSON line, to `<file>.calls`, as the extractor
+      // stub does: a spec reads what the router WOULD have been shown (the
+      // awaited score line, 2026-11-17). Never fails the call.
+      try {
+        appendFileSync(`${process.env[ROUTER_STUB_FILE_ENV]}.calls`, `${JSON.stringify({ user: req.user })}\n`);
+      } catch {
+        /* recording is for the spec */
+      }
       if (cfg.fail) throw new Error("router stub: the call failed (529 Overloaded)");
       const byId = cfg.routes ?? {};
       const byBody = cfg.bodies ?? {};

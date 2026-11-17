@@ -102,6 +102,7 @@ export function setRouterStub(stub: RouterStub): void {
 
 export function clearRouterStub(): void {
   setRouterStub({});
+  rmSync(`${E2E.ROUTER_STUB_FILE}.calls`, { force: true });
 }
 
 /**

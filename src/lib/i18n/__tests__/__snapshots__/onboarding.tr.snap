@@ -93,6 +93,7 @@ Kadroları doğrudan gruba yazarım. Bir eşleşmeyi beğenmediniz mi? Beni etik
 İki oyuncu ayrı takımlarda ya da aynı takımda mı olsun? Takımları isterken söyleyin (örn. _"@Match Time takımları kur, Sam ile Alex ayrı takımlarda olsun"_) ya da takımlar çıktıktan sonra (örn. _"@Match Time Sam ile Alex'i ayır"_), en az değişiklikle ayarlarım. Yapamazsam nedenini söylerim.
 Yorgun, hasta, sakat ya da formda mısınız? Beni etiketleyip söyleyin (örn. _"@Match Time yorgunum, bu maç için puanımı düşür"_). Sadece o maç için yapacağım puan ayarını size söylerim, isterseniz değiştirebilirsiniz (örn. _"@Match Time -1 yap"_).
 İki tam takıma bir kişi mi eksik? Kulüp oynadığı en az kişi sayısını ayarladıysa takımları o sayıdan itibaren kurarım, örneğin 7'ye karşı 6, bir kişi eksik takıma daha güçlü oyuncular düşecek şekilde dengelerim.
+Maçtan sonra skoru, takımlara ne derseniz deyin, kendi cümlelerinizle yazıp beni etiketleyin (örn. _"@Match Time yelekliler 9, yeleksizler 4"_ ya da _"@Match Time Can'ın takımı 5-3 kazandı"_). Hangi takımı kastettiğinizi anlayamazsam o maç için bir kez sorarım ve geçen sefer hangisi olduğunu söylerim. Bu soruyu atlamak için bir yönetici ayarlardan takımlara ad verebilir (örneğin Yelekliler ve Yeleksizler).
 Hazır olunca beni etiketleyip istemeniz yeter.
 
 ✅ Bu kulüpte açık.

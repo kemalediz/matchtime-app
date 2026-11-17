@@ -420,6 +420,27 @@ import { isAiBudgetExceeded, withAttendanceOverflow } from "../ai-budget-context
  * 13/13 with an empty also (25 calls, $0.011). Old and new:
  * MDs/prompt-router-multi-instruction-2026-11-16.md; the paid check:
  * scripts/live-check-multi-instruction.ts.
+ *
+ * ── 2026-11-17: A SCORE IS DUE, WHATEVER THE SIDES ARE CALLED ──────────
+ *
+ * Monday night vets, 22:14 UTC: "@Match Time bibs 9, no bibs 4" after the
+ * game routed admin_ops (the stored trace), the admin extractor read
+ * "other", and MatchTime said "can't do that", twice. Nothing in the turn
+ * said the game had finished with no score, and the sides were "Red" and
+ * "Yellow" in MatchTime's data. The turn now carries that fact as a line
+ * under NOW while it is true (a day from the end of the game,
+ * `loadAwaitedScoreLine`), naming the sides and what this club also calls
+ * them; no route is forced. The prompt says what the line means where it
+ * defines what the model is shown (the two score lines rewritten as one
+ * bullet each and a closing sentence); score's definition names the ways
+ * people call the sides, says a scoreline after the game is a result and
+ * never an instruction, adds the name question to what MatchTime may be
+ * waiting for, and says chat about the game is none; the results examples
+ * are regrouped with the club's own names, a player's team, the answer to
+ * the name question and post-game praise as none, EN and TR side by side.
+ * The incident's words are held out of the examples. 24,563 to 25,643
+ * characters. Old and new: MDs/prompt-score-sides-2026-11-17.md; the paid
+ * check: scripts/live-check-score-sides.ts.
  */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, finding players when the club is short, results, payments, reminders and the players' stats. For EVERY message id you are given, return its route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot. When one message gives MatchTime more than one instruction, also name the parts that handle the others, so that none is dropped.
 
@@ -428,7 +449,9 @@ WHAT YOU ARE SHOWN. Code knows these facts; rely on them rather than guessing.
 - One line per message, "[m1] Name: text". Route every id; every other line is context.
 - An "ORGANISERS' GROUP" header above a message: it was sent in the club's organisers' group, and the header says whether the sender is an organiser, what MatchTime is WAITING to hear and what was said there EARLIER. Without that header a message is from the PLAYERS' GROUP. Everything below applies to both groups; "IN THE ORGANISERS' GROUP" adds what differs there.
 - A "PARTNER CLUBS" line above an organiser's message: the names of the club's partner clubs, so a message naming one of them is about that club, not this group.
-- A "MATCHTIME IS WAITING to hear ... which team won" or "MATCHTIME HAS RECORDED" line above a message: this sender may answer which team won the scoreline MatchTime asked about, or may correct the result it recorded. The line says what the sender MAY do; route on what the message does.
+- A "MATCHTIME IS WAITING for the score" line under NOW: the club's last game has finished and its result is not in yet. It names the game's two sides as MatchTime calls them and what this club also calls them; people name the sides in many other ways too (a colour, "bibs" and "no bibs", a player's team, "we").
+- A "MATCHTIME IS WAITING to hear ... which team won" or "MATCHTIME HAS RECORDED" line above a message: this sender may answer what MatchTime asked about the score, or may correct the result it recorded.
+Each of these lines says what MatchTime is waiting for or may accept; route on what the message does.
 - A "MATCHTIME ASKED" line above a message: MatchTime could not tell who a person in the sender's earlier message was and asked them; the line quotes that earlier message. A reply that only answers it, in any words (a name, "the first one", "he's new", "yeni biri"), goes where the earlier message went: question for a stats question, other_att for a place in the squad. Anything else they say is routed as usual ("I'm in" is still self_att).
 
 REPLIES. A message that is a WhatsApp reply comes under a "THEY ARE REPLYING TO" line: whose message it quotes (MatchTime's or a member's), when (against NOW), and its words. Read the reply in the light of what it quotes, then route the reply itself. "same", "me too", "ben de", "he", "that" and a bare "no" take their meaning from it.
@@ -453,7 +476,7 @@ unsure      about a place, but you cannot tell who or what it does. A bare "conf
 question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), and how the club is run (who the organisers are, who collects the money, the fee, when the teams come out).
 help        asks MatchTime for help with itself: what it can do here, a bare "help" or "yardım", how to get it to do something, or how one part of it works, what that part is and how to use it or switch it on. "help X" and "yardım X" ask how X works, whatever X names (the teams, the squad, players, the bench, the game, payments, the pool, the settings), as "how does X work?" and "what is X?" do: help never asks for X to be done, shown or changed, and it settles nobody's place. Telling the others what MatchTime does or will do asks it nothing, tagged or not: none.
 balancer    the TWO team line-ups (red and yellow): asks to see them, make them, shuffle or rename them, change them as they stand (swap two players between the teams, move a player to the other team, swap the two teams' colours) or clear them; or tells MatchTime how a player will play in this match, so the teams are made with it in mind (tired, ill, injured, hungover, in top form, or "rate me down for this match"), or changes or cancels the amount MatchTime said it will use for a player in this match ("make it -1", "just -0.25 for me", "cancel my adjustment"). A player's strength for one match is not a setting. Swapping between the teams changes nobody's place in the squad, so it is balancer, never attendance, in both groups.
-score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), answers which team won or who was its Man of the Match while MatchTime is WAITING for that (a team named alone, "Yellow", "sarılar kazandı"; praise alone answers nothing), or says a recorded result is wrong ("you've got it the wrong way round", "no, 5-7 to Red", "yanlış, sarılar kazandı"). A professional scoreline somebody is watching is none.
+score       reports the final result of this group's own match, however it names the two sides (MatchTime's names, colours, bibs and no bibs, a player's team, "we") or as a bare scoreline: a scoreline for the two sides after the game is a result, tagged or not, never an instruction to the bot; answers what MatchTime asked about the result while it is WAITING (which team won, which team a name was, or who was Man of the Match: a team named alone, "Yellow", "sarılar kazandı"; praise alone answers nothing); or says a recorded result is wrong ("you've got it the wrong way round", "no, 5-7 to Red", "yanlış, sarılar kazandı"). A professional scoreline somebody is watching is none, and so is chat about the game that gives no result ("great game lads").
 admin_ops   tells the bot to do something now: find new players (from the MatchTime player pool, from one partner club or all of them, from several places, or with no place named), credit a payment, set a reminder, send a link, change a setting (any of them, for example the club's pitch, its quiet hours, or the fewest and most players it plays a game with: "we can play with 12", "we play 12 to 16", "back to full teams"), switch one game to a different number a side ("make it 8 aside"), call a match off (one still to come, or one that never took place) or put it back on. A bare yes replying to MatchTime's own offer to switch a game's size is admin_ops, whoever sends it: code checks who may. A reply to that offer that says somebody plays or not ("yes, I'm in") settles a place: attendance, as question 1 says. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
 none        everything else, as in question 3. A member asking another member something that settles nothing is none ("are you injured?", "which two of you can play tomorrow?"); as soon as a message STATES that somebody plays or does not, it is attendance.
 approve, poster, team_sheet and ask_group exist ONLY in the organisers' group; see that section.
@@ -606,9 +629,13 @@ The two teams: seeing or making them, how a player will play in them, or the amo
   "@Match Time what is Kemal's strength?" -> question
   "@Match Time Ali'nin puanı kaç?" -> question
 
-Results:
+Results, whatever the sides are called; chat about the game is not one:
   "5-3 to Yellows" -> score
   "10-10" -> score
+  "@Match Time bibs won 7-5" / "@Match Time yelekliler 7-5 kazandı" -> score
+  "Sam's team 6, Leo's team 3" / "Sam'in takımı 6, Leo'nun takımı 3" -> score
+  "Red" replying to MatchTime's "Which team was bibs: Red or Yellow?" / "kırmızı" replying to its Turkish twin -> score
+  "what a game, well played all" / "harika maçtı, eline sağlık herkesin" (MatchTime waiting for the score) -> none
   "Arsenal 2 Spurs 1" -> none
 
 Instructions to the bot:
@@ -847,7 +874,7 @@ export const ROUTER_QUOTE_WORDS_MAX = 300;
  *  line; an organisers' group message under its header and context lines;
  *  a reply under the lines naming the message it quotes (`quotedLines`,
  *  the one wording the DM classifiers and the extractors read too). */
-export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date()): string {
+export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date(), facts: readonly string[] = []): string {
   const body = messages.map((m) => {
     const line = `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`;
     const reply = m.reply ? quotedLines(m.reply, ROUTER_QUOTE_WORDS_MAX) : [];
@@ -860,7 +887,9 @@ export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date
     const score = m.score ? [scoreContextLine(m.score)] : [];
     return [...partners, ...asked, ...score, ...reply, line].join("\n");
   });
-  return [nowLine(now), ...body].join("\n");
+  // Facts about the whole group, under NOW (2026-11-17): the score
+  // MatchTime is waiting for (`awaitedScoreLine`). None on most batches.
+  return [nowLine(now), ...facts, ...body].join("\n");
 }
 
 export interface RouterResult {
@@ -1045,6 +1074,13 @@ export interface RouteBatchOptions {
    */
   scoreCorrectionIds?: ReadonlySet<string>;
   /**
+   * The club's last game has finished and has no score yet (2026-11-17,
+   * Vets): the line under NOW that says so, with its two sides and what
+   * this club also calls them (`loadAwaitedScoreLine`). Null or absent,
+   * the default, and the turn is byte for byte what it was.
+   */
+  awaitedScoreLine?: string | null;
+  /**
    * The club is at its daily AI cap (`ai-budget.ts`). The router is still
    * asked, inside `withAttendanceOverflow` (a ceiling of twice the cap),
    * and only its attendance routes are kept: everything else becomes
@@ -1134,6 +1170,7 @@ async function routeBatchInner(
       };
     }),
     opts.now ?? new Date(),
+    opts.awaitedScoreLine ? [opts.awaitedScoreLine] : [],
   );
 
   const req: ModelRequest = {

@@ -251,7 +251,18 @@ export default function PlayerGuidePage() {
       <ul>
         <li><code>7-3</code></li>
         <li><code>we won 5-4</code></li>
+        <li><code>bibs 9, no bibs 4</code></li>
+        <li><code>Dan&apos;s team won 5-3</code></li>
       </ul>
+      <p>
+        Call the teams whatever your club calls them: their colours, bibs and
+        no bibs, or a player&apos;s team. If MatchTime can&apos;t tell which
+        team you mean, it asks once (for example{" "}
+        <em>Which team was &quot;bibs&quot;: Red or Yellow?</em>) and records
+        the score from the answer. The side wearing the bibs can change from
+        week to week, so next time it asks again and says what it was last
+        time, unless an admin has named the teams in the settings.
+      </p>
 
       <h3>Ratings and Man of the Match</h3>
       <p>

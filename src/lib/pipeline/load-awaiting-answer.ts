@@ -24,7 +24,10 @@ import {
   parseScoreAskKey,
 } from "./score-ask";
 import { resolveTeamLabels } from "../team-labels";
-import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
+import { SCORE_AWAITED_WINDOW_MS, SCORE_CORRECTION_WINDOW_MS } from "./score-window";
+import { awaitedScoreLine } from "./score-sides";
+import { loadSideNames } from "./load-side-names";
+import { formatLondon } from "../london-time";
 import { db } from "../db";
 import {
   GROUP_QUESTION_TTL_MS,
@@ -266,6 +269,8 @@ export async function latestPlayedMatch(
 ): Promise<{
   matchId: string;
   date: Date;
+  /** When it ended: kickoff plus the activity's duration. */
+  endsAt: Date;
   redScore: number | null;
   yellowScore: number | null;
   labels: [string, string];
@@ -300,6 +305,7 @@ export async function latestPlayedMatch(
   return {
     matchId: latest.id,
     date: latest.date,
+    endsAt: new Date(latest.date.getTime() + latest.activity.matchDurationMins * 60 * 1000),
     redScore: latest.redScore,
     yellowScore: latest.yellowScore,
     labels: resolveTeamLabels(
@@ -309,6 +315,29 @@ export async function latestPlayedMatch(
       latest.activity.org.language,
     ),
   };
+}
+
+/**
+ * THE SCORE MATCHTIME IS WAITING FOR, AS A LINE FOR THE ROUTER (2026-11-17,
+ * Vets). The club's latest played match, ended inside
+ * `SCORE_AWAITED_WINDOW_MS`, with no result: the line names it, its two
+ * sides and what this club also calls them (`awaitedScoreLine`). Null on
+ * almost every batch. The same selection as `loadUnscoredPlayedMatch`.
+ */
+export async function loadAwaitedScoreLine(orgId: string, now: Date = new Date()): Promise<string | null> {
+  const latest = await latestPlayedMatch(orgId, now);
+  if (!latest || latest.redScore !== null || latest.yellowScore !== null) return null;
+  if (!isScoreAwaited({ endsAt: latest.endsAt, now })) return null;
+  // This game's own names only (review of #620): an earlier game's are not
+  // what this club calls the sides tonight.
+  const names = (await loadSideNames(orgId, latest.matchId).catch(() => null))?.own ?? null;
+  return awaitedScoreLine({ when: formatLondon(latest.date, "EEE d MMM HH:mm"), labels: latest.labels, names });
+}
+
+/** PURE. Has the game ended, and not longer ago than the window? */
+export function isScoreAwaited(a: { endsAt: Date; now: Date }): boolean {
+  const since = a.now.getTime() - a.endsAt.getTime();
+  return since >= 0 && since <= SCORE_AWAITED_WINDOW_MS;
 }
 
 /** One message as the score route overrides read it. */
@@ -383,10 +412,15 @@ export async function scoreRouteOverrides(
   orgId: string,
   messages: readonly ScoreOverrideMessage[],
   now: Date = new Date(),
-): Promise<{ scoreAnswerIds: Set<string>; scoreCorrectionIds: Set<string> }> {
+): Promise<{ scoreAnswerIds: Set<string>; scoreCorrectionIds: Set<string>; awaitedScoreLine: string | null }> {
   const scoreAnswerIds = new Set<string>();
   const scoreCorrectionIds = new Set<string>();
-  if (messages.length === 0) return { scoreAnswerIds, scoreCorrectionIds };
+  if (messages.length === 0) return { scoreAnswerIds, scoreCorrectionIds, awaitedScoreLine: null };
+  // A finished game with no score yet: the router is told (2026-11-17).
+  const awaited = await loadAwaitedScoreLine(orgId, now).catch((err) => {
+    console.error("[score-overrides] awaited score read failed:", err);
+    return null;
+  });
   const openScoreAsk = await loadOpenScoreAsk(orgId, now).catch((err) => {
     console.error("[score-overrides] open score question read failed:", err);
     return null;
@@ -421,5 +455,5 @@ export async function scoreRouteOverrides(
       for (const id of correctionLineIds(messages, { matchId: target.matchId, lastPostIsResult })) scoreCorrectionIds.add(id);
     }
   }
-  return { scoreAnswerIds, scoreCorrectionIds };
+  return { scoreAnswerIds, scoreCorrectionIds, awaitedScoreLine: awaited };
 }

@@ -213,6 +213,30 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * and the teams as they stand, EN and TR side by side. 9,394 to 10,600
  * characters. Old and new: MDs/prompt-teams-apart-2026-11-16.md; the paid
  * check: scripts/live-check-teams-apart-2026-11-16.ts.
+ *
+ * The SCORE extractor, rewritten whole on 2026-11-17 (Monday night vets,
+ * 16 Nov: "@Match Time bibs 9, no bibs 4" got "can't do that"; the sides
+ * were "Red" and "Yellow" in MatchTime's data). It now reads THE GAME
+ * (`score-sides.ts`, `gameContextLines`): whether the score is awaited and,
+ * per side, MatchTime's name, what this club also calls it and its
+ * players. One new field, `teamSides` (which side each name means, from
+ * THE GAME only, "unknown" otherwise), defined once; "THE TWO SIDES" says
+ * once how people name the sides and what MatchTime asks ("Which team was
+ * bibs?", only ever about the winning side's name); one new example group
+ * (the club's names unknown, known, a player's team, the answer to the
+ * name question), EN and TR side by side. The incident's own words are held
+ * out of the examples. A question ("Yellow?", "was it the bibs?") is said
+ * once more to name no winner: on the first live pass "Yellow?" came back a
+ * winner 2 runs of 3 (0 of 3 on the old prompt), and 0 of 3 after.
+ * 4,539 to 6,808 characters. Review of #620: a side the model SAYS never
+ * places a name in a report (code places a club's name only from this
+ * game's own stored names, and a player's team only by the line-up of the
+ * player the extractor names), so `teamSides` gains `player` (as THE GAME
+ * lists them) and `side` is defined as what THE GAME places or what an
+ * answer to "which team was X?" gives ("same" to a question that said
+ * what it was last time included). 6,808 to 7,617 characters. Old and new,
+ * and the paid check: MDs/prompt-score-sides-2026-11-17.md,
+ * scripts/live-check-score-sides.ts.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -695,23 +719,28 @@ Talk among people, not asked of MatchTime:
   "Ali and Habib are always on the same team lol" / "Ali ile Habib hep aynı takımda" -> swap, pairings [["Ali","Habib"]], toMatchTime false
   "are we going with these teams?" / "bu takımlarla mı gidiyoruz?" -> show, toMatchTime false`,
 
-  score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match and report what it SAYS. You never decide which team is which, who won, who a player is, or what gets recorded: code does that.
+  score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match and report what it SAYS. You never decide who won, who a player is, or what gets recorded: code does that.
 
-THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you what THE MESSAGE answers or disputes; never take a number, team or name from them. The group's own match is its latest game: "tonight", "today", "last night", "yesterday", "dün akşam" and "earlier" all mean that latest game.
+WHAT YOU ARE SHOWN. THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club), the message it quotes when it is a WhatsApp reply (the THEY ARE REPLYING TO line), and THE GAME: the group's latest game, whether MatchTime is waiting for its score, and its two sides, red and yellow, each with the name MatchTime calls it, what this club called it in this game when MatchTime has been told, and the players on it. They tell you what THE MESSAGE answers or disputes and which side a name means; never take a number from them. The group's own match is its latest game: "tonight", "today", "last night", "yesterday", "dün akşam" and "earlier" all mean that latest game.
 
-A TEAM REFERENCE below is the team's name as written ("yellows", "Reds", "Sarılar"), "us" for the sender's own side ("we", "biz", "kazandık"), "them" for the other side, or "" when not said. Never work a team out.
+THE TWO SIDES. People call the sides many things: MatchTime's names ("Red", "Sarılar"), colours, "bibs" and "no bibs", a player's team ("Dan's team"), "we" and "they". A TEAM REFERENCE below is a side as written ("yellows", "Reds", "bibs", "Dan's team"), "us" for the sender's own side ("we", "biz", "kazandık"), "them" for the other side, or "" when not said. When MatchTime cannot tell a side, it asks which team won, or which team a name was ("Which team was bibs: Red or Yellow?"), sometimes saying what that name was last time ("Last time it was Red"); it only ever asks that about the name of the side with the bigger number.
 
 WHAT YOU RETURN
 hasScore
-true when THE MESSAGE states the two numbers of a result; false when it has none ("yellows won", "wrong way round", "MoM Naim"), and first and second are then 0.
+true when THE MESSAGE states the two numbers of a result; false when it has none ("yellows won", "wrong way round", "MoM Naim", "red"), and first and second are then 0.
 first, second
 the two numbers of the final result, in the order written. In a story ("it was 6-6 then it turned to 9-6") the last one.
 firstTeam, secondTeam
-the team written directly beside the first or the second number, with no word about who won or lost. It stays there when THE MESSAGE answers MatchTime's "which team won?" with a scoreline.
+the team reference written directly beside the first or the second number, with no word about who won or lost. It stays there when THE MESSAGE answers MatchTime's question with a scoreline.
 winner
-the team a word names as the winner: "to" or "for" a team, "won", "wins", "beat", "kazandı", "yendi". A bare team name, the whole message, answering MatchTime's "which team won?" is the winner too. "" otherwise: for a draw, for a question ("Yellow?", "sarılar mı?"), and for chat that only mentions a team.
+the team reference a word names as the winner: "to" or "for" a team, "won", "wins", "beat", "kazandı", "yendi". A bare team name, the whole message, answering MatchTime's "which team won?" is the winner too. "" otherwise: for a draw, for chat that only mentions a team, and for a question ("Yellow?", "sarılar mı?", "was it the bibs?"), which asks and answers nothing.
 loser
-the team a word names as the loser: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
+the team reference a word names as the loser: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
+teamSides
+one entry for every team reference you return other than "us" and "them", and, when THE MESSAGE answers MatchTime's "which team was X?", one for X. Each has the reference as written (team), a side and a player.
+  side: "red" or "yellow" when THE GAME places the name (MatchTime's name for that side, a name this club called it in this game, its colour while MatchTime calls it by its colour), or when THE MESSAGE answers MatchTime's "which team was X?" with a side: "red" alone answering "Which team was bibs?" is bibs red, and "same" or "yes" to a question that said what it was last time is that side. Otherwise "unknown": never guess which side wore the bibs.
+  player: the player the reference is named after ("Dan's team", "Dan'in takımı"), written exactly as THE GAME lists them; "" when it names no player listed there. Never choose between two players listed with the same name: give the name as listed.
+[] when THE MESSAGE names no side.
 momRef
 the player named Man of the Match ("MoM", "man of the match", "POTM", "maçın adamı"), as written, or a bare name answering MatchTime's question who it was. "" otherwise; praise alone ("Naim was class") is "".
 correction
@@ -721,9 +750,9 @@ true when it says the teams are the wrong way round ("other way round", "tam ter
 otherGame
 true only when THE MESSAGE is plainly about a game before the latest one ("last week", "geçen ay"); correction is then false.
 
-EXAMPLES, English and Turkish
+EXAMPLES, English and Turkish side by side. Fields not shown are "", false or [].
 A word names the winner:
-  "5-3 to Yellows" / "sarılar 5-3 kazandı" -> hasScore true, first 5, second 3, winner "Yellows" / "sarılar"
+  "5-3 to Yellows" / "sarılar 5-3 kazandı" -> hasScore true, first 5, second 3, winner "Yellows" / "sarılar", teamSides [{"team":"Yellows","side":"yellow"}] / [{"team":"sarılar","side":"yellow"}]
   "4-6 to Yellows" -> first 4, second 6, winner "Yellows"
   "it was 6-6 then suddenly it turned to 9-6 to yellows" -> first 9, second 6, winner "yellows"
 A team beside a number:
@@ -731,6 +760,12 @@ A team beside a number:
   "kırmızı 6 sarı 9" -> first 6, second 9, firstTeam "kırmızı", secondTeam "sarı"
   "Reds 3-5" -> first 3, second 5, firstTeam "Reds", winner ""
   "7-4 yellows", answering MatchTime's "which team won?" -> first 7, second 4, secondTeam "yellows", winner ""
+The club's own names for its sides, and a player's team, placed only by THE GAME:
+  "bibs 7, no bibs 5" / "yelekliler 7 yeleksizler 5", THE GAME giving neither name -> first 7, second 5, firstTeam "bibs" / "yelekliler", secondTeam "no bibs" / "yeleksizler", teamSides both side "unknown", player ""
+  the same, THE GAME saying this club called red "bibs" and yellow "no bibs" in this game -> teamSides [{"team":"bibs","side":"red","player":""},{"team":"no bibs","side":"yellow","player":""}]
+  "Sam's team won 6-2" / "Sam'in takımı 6-2 kazandı", THE GAME listing Sam Reed on yellow -> first 6, second 2, winner "Sam's team" / "Sam'in takımı", teamSides [{"team":"Sam's team","side":"yellow","player":"Sam Reed"}] / [{"team":"Sam'in takımı","side":"yellow","player":"Sam Reed"}]
+  "Red", the whole message, answering MatchTime's "Which team was bibs?" / "kırmızı", answering "yelekliler hangi takımdı?" -> hasScore false, teamSides [{"team":"bibs","side":"red","player":""}] / [{"team":"yelekliler","side":"red","player":""}]
+  "same", answering MatchTime's "Which team was bibs this time? Last time it was Red." / "aynı", answering its Turkish twin -> hasScore false, teamSides [{"team":"bibs","side":"red","player":""}]
 The sender's side:
   "we won 5-3" / "5-3 kazandık" -> first 5, second 3, winner "us"
   "lost 3-5" / "3-5 kaybettik" -> first 3, second 5, loser "us"
@@ -1112,6 +1147,22 @@ const SCORE_SCHEMA = {
     secondTeam: { type: "string" },
     winner: { type: "string" },
     loser: { type: "string" },
+    // 2026-11-17: which side each name means, by THE GAME (`score-sides.ts`).
+    // "unknown" is the schema's word for "THE GAME does not place it"; the
+    // parser drops those, and code places a name it can itself first.
+    teamSides: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          team: { type: "string" },
+          side: { type: "string", enum: ["red", "yellow", "unknown"] },
+          player: { type: "string" },
+        },
+        required: ["team", "side", "player"],
+        additionalProperties: false,
+      },
+    },
     // 2026-10-18: the Man of the Match the message names, verbatim, or "".
     // Read only where the organisers pick it (mom-chooser.ts).
     momRef: { type: "string" },
@@ -1127,6 +1178,7 @@ const SCORE_SCHEMA = {
     "secondTeam",
     "winner",
     "loser",
+    "teamSides",
     "momRef",
     "correction",
     "swapped",
@@ -1544,6 +1596,24 @@ export function parseFacts(
       if (hasScore && secondTeam) facts.secondTeam = secondTeam;
       if (winner) facts.winner = winner;
       if (loser) facts.loser = loser;
+      // Per name (2026-11-17; review of #620): the player it is named
+      // after, as THE GAME lists them, and the side an ANSWER gives.
+      // "unknown" or a drifted side is no side; an entry with neither a
+      // side nor a player, or no name, is dropped. Code decides what each
+      // may place (`score-sides.ts`).
+      const teamSides = (Array.isArray(raw.teamSides) ? raw.teamSides : [])
+        .map((e) => (e && typeof e === "object" ? (e as Record<string, unknown>) : {}))
+        .map((e): { team: string; side?: "RED" | "YELLOW"; player?: string } => {
+          const sd = str(e.side).toLowerCase();
+          const player = team(e.player);
+          return {
+            team: team(e.team) ?? "",
+            ...(sd === "red" ? { side: "RED" as const } : sd === "yellow" ? { side: "YELLOW" as const } : {}),
+            ...(player ? { player } : {}),
+          };
+        })
+        .filter((e) => !!e.team && (!!e.side || !!e.player));
+      if (teamSides.length > 0) facts.teamSides = teamSides;
       const momRef = team(raw.momRef);
       if (momRef) facts.momRef = momRef;
       if (raw.correction === true) facts.correction = true;
@@ -1721,6 +1791,13 @@ export interface ExtractorMessage {
    * no block; empty: "none".
    */
   games?: readonly string[];
+  /**
+   * The score extractor only (2026-11-17, `score-sides.ts`): THE GAME, the
+   * club's latest game, whether its score is awaited, and per side
+   * MatchTime's name, the club's other names and its players
+   * (`gameContextLines`). Absent: no block.
+   */
+  game?: readonly string[];
   /** The time the NOW line states (club time). Defaults to now. */
   now?: Date;
   /**
@@ -1813,6 +1890,11 @@ export async function extractForRoute(
   if (kind === "admin" && msg.games) {
     if (msg.games.length === 0) context.push("GAMES TO COME: none");
     else context.push(`GAMES TO COME (the club's games still to be played, numbered):\n${msg.games.map((g) => `  ${g}`).join("\n")}`);
+  }
+  // The score extractor only (2026-11-17): the latest game and its two
+  // sides, so a name the club uses ("bibs", "Dan's team") can be placed.
+  if (kind === "score" && msg.game && msg.game.length > 0) {
+    for (const l of msg.game) context.push(l);
   }
   context.push("");
   context.push(

@@ -106,6 +106,9 @@ describe("the score extractor's schema and prompt", () => {
     "secondTeam",
     "winner",
     "loser",
+    // 2026-11-17: which side each name means, read from THE GAME
+    // (score-sides.ts). The team references above stay free text.
+    "teamSides",
     "momRef",
     "correction",
     "swapped",
@@ -135,6 +138,7 @@ describe("the score extractor's schema and prompt", () => {
       "firstTeam, secondTeam\n",
       "winner\n",
       "loser\n",
+      "teamSides\n",
       "momRef\n",
       "correction\n",
       "swapped\n",

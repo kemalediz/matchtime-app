@@ -9,6 +9,7 @@ import { formatLondon } from "./london-time";
 import type { HqLogRow } from "./admin-group-log";
 import type { PendingItem, QuotedMessage } from "./admin-group-confirm-rules";
 import { piMentionsBot } from "./interaction-contract";
+import { alsoCalled } from "./pipeline/score-sides";
 
 export interface PendingWithLabel extends PendingItem {
   /** The game's day, in the club's language, for teams and a partner ask. */
@@ -37,7 +38,14 @@ const oneLine = (s: string, n: number) => s.replace(/\s+/g, " ").trim().slice(0,
 export type ScoreWaiting =
   /** `mom`: the organisers pick Man of the Match (mom-chooser.ts) and it is
    *  not recorded yet, so it is asked for with the score. */
-  | { kind: "result"; day: string; labels: readonly [string, string]; mom?: boolean }
+  | {
+      kind: "result";
+      day: string;
+      labels: readonly [string, string];
+      mom?: boolean;
+      /** What this club also calls each side (2026-11-17, `score-sides.ts`). */
+      names?: { red: string[]; yellow: string[] } | null;
+    }
   /** The score is saved; the organisers' Man of the Match is not yet. */
   | { kind: "mom"; day: string }
   | { kind: "which-team"; first: number; second: number; labels: readonly [string, string]; askedAt: Date };
@@ -62,7 +70,7 @@ export function organisersContext(p: {
       w.kind === "mom"
         ? `WAITING: the rest of ${w.day}'s result: who was Man of the Match.`
         : w.kind === "result"
-          ? `WAITING: the final score of ${w.day}'s match, ${w.labels[0]} against ${w.labels[1]}${w.mom ? ", and its Man of the Match" : ""}.`
+          ? `WAITING: the final score of ${w.day}'s match, ${w.labels[0]} against ${w.labels[1]}${w.mom ? ", and its Man of the Match" : ""}.${alsoLine(w.labels, w.names)}`
           : `WAITING: which team won ${w.first}-${w.second}, ${w.labels[0]} or ${w.labels[1]}, asked at ${formatLondon(w.askedAt, "HH:mm")}.`,
     );
   }
@@ -72,6 +80,12 @@ export function organisersContext(p: {
     for (const r of p.recent) lines.push(`- ${r.fromMatchTime ? "MatchTime" : "a member"}: ${oneLine(r.text, 200)}`);
   }
   return lines;
+}
+
+/** " This club also calls Red "bibs" and Yellow "no bibs"." or "". */
+function alsoLine(labels: readonly [string, string], names: { red: string[]; yellow: string[] } | null | undefined): string {
+  const also = alsoCalled(labels, names);
+  return also ? ` ${also.charAt(0).toUpperCase()}${also.slice(1)}.` : "";
 }
 
 /** One item waiting for the organisers, as the router reads it. */

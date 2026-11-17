@@ -620,7 +620,11 @@ export default async function AdminGuidePage() {
         <li>
           About an hour after the end, MatchTime asks for the score. Anyone who
           played, or an admin, can post it (<code>7-3</code>,{" "}
-          <code>we won 5-4</code>).
+          <code>we won 5-4</code>, <code>bibs 9, no bibs 4</code>). They can
+          call the teams whatever the club calls them; when a name like
+          &quot;bibs&quot; is used, MatchTime asks once per game which team it
+          was, and says what it was last time. Name the teams in the settings
+          (for example Bibs and No bibs) and it never needs to ask.
         </li>
         <li>
           From <strong>08:00 the next morning</strong>, everyone who played

@@ -51,6 +51,7 @@ import { runScoreBatch } from "./score-engine-batch";
 import type { ScoreApplyDeps } from "./score-engine";
 import { enabledStepSevenRoutes } from "./pipeline/route-flags";
 import { latestPlayedMatch, loadOpenScoreAsk, loadUnscoredPlayedMatch } from "./pipeline/load-awaiting-answer";
+import { loadSideNames } from "./pipeline/load-side-names";
 import { SCORE_CORRECTION_WINDOW_MS } from "./pipeline/score-window";
 import { db } from "./db";
 import type { PipelineModel } from "./pipeline/llm";
@@ -288,6 +289,9 @@ export async function hqScoreRouting(args: {
     loadUnscoredPlayedMatch(orgId, now).catch(() => null),
     args.momByOrganisers ? loadMomMissing(orgId, now).catch(() => null) : Promise.resolve(null),
   ]);
+  // What this club also calls the sides (2026-11-17, `score-sides.ts`).
+  // This game's own names only: an earlier game's are a hint, never a fact.
+  const names = !ask && unscored ? ((await loadSideNames(orgId, unscored.matchId).catch(() => null))?.own ?? null) : null;
   const waiting: ScoreWaiting | null = ask
     ? { kind: "which-team", first: ask.first, second: ask.second, labels: ask.labels, askedAt: ask.askedAt }
     : unscored
@@ -296,6 +300,7 @@ export async function hqScoreRouting(args: {
           day: dayLabel(args.lang, unscored.date),
           labels: unscored.labels,
           ...(momMissing?.matchId === unscored.matchId ? { mom: true } : {}),
+          ...(names ? { names } : {}),
         }
       : momMissing
         ? { kind: "mom", day: dayLabel(args.lang, momMissing.date) }
