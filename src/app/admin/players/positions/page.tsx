@@ -29,7 +29,6 @@ interface Player {
   /** Admin-only, null for any guest (/api/players). Labels a nameless player. */
   phoneNumber?: string | null;
   guestFrom?: string | null;
-  isActive: boolean;
   positions: string[]; // for the currently-selected activity
   _count: { attendances: number };
 }
@@ -48,7 +47,6 @@ export default function BulkPositionsPage() {
   const [activities, setActivities] = useState<ActivityWithSport[]>([]);
   const [activityId, setActivityId] = useState<string>("");
   const [loadingPlayers, setLoadingPlayers] = useState(true);
-  const [filter, setFilter] = useState<"active" | "all">("active");
   const [search, setSearch] = useState("");
 
   // Per-row save state
@@ -123,11 +121,10 @@ export default function BulkPositionsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return players.filter((p) => {
-      if (filter === "active" && !p.isActive) return false;
       if (!q) return true;
       return adminPlayerMatches(p, q);
     });
-  }, [players, filter, search]);
+  }, [players, search]);
 
   return (
     <div className="space-y-6">
@@ -174,21 +171,6 @@ export default function BulkPositionsPage() {
           )}
         </div>
 
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit self-start">
-          {(["active", "all"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
-                filter === f
-                  ? "bg-white text-slate-800 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {f === "active" ? "Active" : "All"}
-            </button>
-          ))}
-        </div>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -217,11 +199,6 @@ export default function BulkPositionsPage() {
                   <div className="min-w-0">
                     <p className="font-medium text-slate-800 truncate">
                       {adminPlayerLabel(p)}
-                      {!p.isActive && (
-                        <span className="ml-2 inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider">
-                          Inactive
-                        </span>
-                      )}
                     </p>
                     <p className="text-xs text-slate-500">
                       {p._count.attendances} matches · {p.positions.length} position{p.positions.length === 1 ? "" : "s"}

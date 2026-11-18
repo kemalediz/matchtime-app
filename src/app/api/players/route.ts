@@ -8,7 +8,6 @@ import { NextResponse } from "next/server";
 import { type GuestMarks, guestSourceOf, isGuestMembership, partnerHomeClubOf } from "@/lib/guest-membership";
 import { t } from "@/lib/i18n/t";
 import { NOT_CANCELLED } from "@/lib/played-match";
-import { isActiveInClub, loadRecentlyPlayedUserIds } from "@/lib/club-member-activity";
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -74,19 +73,6 @@ export async function GET(request: Request) {
     orderBy: { user: { name: "asc" } },
   });
 
-  // A member who plays for THIS club is never "Inactive" on the player
-  // pages, whatever the stale global `User.isActive` says (a flag a
-  // rebuild script wrote once in April 2026; Sutton, 2026-11-17). Anyone
-  // else keeps that flag. One grouped query for the roster. Rule:
-  // src/lib/club-member-activity.ts.
-  const playedRecently = await loadRecentlyPlayedUserIds(
-    db,
-    membership.orgId,
-    memberships.map((m) => m.user.id),
-  );
-  const activeHere = (m: { user: { id: string; isActive: boolean } }) =>
-    isActiveInClub({ globalIsActive: m.user.isActive, playedInWindow: playedRecently.has(m.user.id) });
-
   // Guests (cross-club ask, S4; local player pool, L5a): a partner guest
   // is labelled with his home club's name, a pool guest (no home club)
   // with "MatchTime pool" in this club's language. No guest's phone or
@@ -114,7 +100,6 @@ export async function GET(request: Request) {
         image: m.user.image,
         role: m.role,
         positions: m.user.activityPositions?.[0]?.positions ?? [],
-        isActive: activeHere(m),
         leftAt: m.leftAt ? m.leftAt.toISOString() : null,
         guestFrom: guestFromOf(m),
       })),
@@ -172,7 +157,6 @@ export async function GET(request: Request) {
     // correct state for a new member and must not borrow one.
     seedRating: m.seedRating,
     clubRating: clubRatings[m.user.id] ?? { rating: null, ratedGames: 0 },
-    isActive: activeHere(m),
     leftAt: m.leftAt ? m.leftAt.toISOString() : null,
     provisionallyAddedAt: m.provisionallyAddedAt ? m.provisionallyAddedAt.toISOString() : null,
     aliases: aliasesByUser.get(m.user.id) ?? [],
