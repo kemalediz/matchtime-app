@@ -105,7 +105,11 @@ const owing = { status: "CONFIRMED", paidAt: null, feeWaivedAt: null, directPend
 let table: Job[] = [];
 const deleted: unknown[] = [];
 
-function setWorld(attendances: Array<Record<string, unknown>>, matchOver: Record<string, unknown> = {}) {
+function setWorld(
+  attendances: Array<Record<string, unknown>>,
+  matchOver: Record<string, unknown> = {},
+  claimed: string[] = [],
+) {
   for (const k of Object.keys(overrides)) delete overrides[k];
   deleted.length = 0;
   table = [
@@ -135,6 +139,15 @@ function setWorld(attendances: Array<Record<string, unknown>>, matchOver: Record
       return { count: 1 };
     },
   };
+  // The claim rows due-posts writes at hand-off (`botjob-<id>`, matchId
+  // null): the scheduler's own sent-key read never loads them.
+  overrides.sentNotification = {
+    findMany: async (args: unknown) => {
+      const a = args as { where: { key?: { in?: string[] } } };
+      const keys = a.where?.key?.in;
+      return keys ? claimed.filter((k) => keys.includes(k)).map((key) => ({ key })) : [];
+    },
+  };
   overrides.match = {
     findMany: async (args: unknown) => {
       const a = args as { where: { id?: { in?: string[] } } };
@@ -145,7 +158,7 @@ function setWorld(attendances: Array<Record<string, unknown>>, matchOver: Record
           status: "TEAMS_PUBLISHED",
           feePerPlayer: 10.15,
           paymentLinksReleasedAt: RELEASED,
-          activity: { org: { paymentHolderId: "collector" } },
+          activity: { org: { paymentHolderId: "collector", paymentCollectionEnabled: true } },
           ...matchOver,
         },
       ];
@@ -175,6 +188,41 @@ describe("pay links released in quiet hours, players marked paid before 09:00", 
     expect(keys).toContain("botjob-pay-ali");
     expect(keys).toContain("botjob-plain");
     expect(deleted).toEqual([{ where: { id: "pay-wasim", sentAt: null } }]);
+  });
+
+  it("a link handed to the Pi but not yet acked is never deleted once the player pays, and not handed out again", async () => {
+    setWorld(
+      [
+        { matchId: MATCH, userId: "wasim", ...owing, paidAt: new Date("2026-11-18T09:00:10Z") },
+        { matchId: MATCH, userId: "ali", ...owing },
+      ],
+      {},
+      ["botjob-pay-wasim"],
+    );
+    const keys = dmKeys(await computeDuePosts(GROUP, NOW));
+    expect(keys).not.toContain("botjob-pay-wasim");
+    expect(keys).toContain("botjob-pay-ali");
+    expect(deleted).toEqual([]);
+  });
+
+  it("payment collection switched off before 09:00: no pay link goes out", async () => {
+    setWorld([{ matchId: MATCH, userId: "ali", ...owing }], {
+      activity: { org: { paymentHolderId: "collector", paymentCollectionEnabled: false } },
+    });
+    const keys = dmKeys(await computeDuePosts(GROUP, NOW));
+    expect(keys).not.toContain("botjob-pay-ali");
+    expect(keys).toContain("botjob-plain");
+  });
+
+  it("preview mode (x-no-claim, tests only) holds a link no longer owed and deletes nothing", async () => {
+    setWorld([
+      { matchId: MATCH, userId: "wasim", ...owing, paidAt: new Date("2026-11-17T23:13:13Z") },
+      { matchId: MATCH, userId: "ali", ...owing },
+    ]);
+    const keys = dmKeys(await computeDuePosts(GROUP, NOW, undefined, null, null, { preview: true }));
+    expect(keys).not.toContain("botjob-pay-wasim");
+    expect(keys).toContain("botjob-pay-ali");
+    expect(deleted).toEqual([]);
   });
 
   it("a free place, a direct payment, or a drop since release: no link", async () => {

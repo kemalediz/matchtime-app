@@ -569,7 +569,9 @@ export async function computeDuePosts(
   /** `replyPriority`: DM_REPLY_PRIORITY_ENABLED as the due-posts route
    *  read it (src/lib/dm-reply-priority.ts). Off or omitted: today's
    *  BotJob query and today's order, exactly. */
-  opts: { replyPriority?: boolean; poolEnv?: Record<string, string | undefined> } = {},
+  /** `preview`: the route's test-only `x-no-claim` poll (MT_TEST_MODE=1).
+   *  Nothing is claimed, so nothing is deleted either (pay-link-job.ts). */
+  opts: { replyPriority?: boolean; poolEnv?: Record<string, string | undefined>; preview?: boolean } = {},
 ): Promise<DuePostsResult | null> {
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
@@ -773,11 +775,14 @@ export async function computeDuePosts(
     const teamSheetsEmitted = new Set<string>();
     // A queued pay link goes only to someone who still owes NOW (Sutton,
     // 2026-11-17: released in quiet hours, 8 players marked paid before
-    // the 09:00 send all got the link). One check for the unclaimed pay
-    // links in this batch; a moot one is deleted, a failed check holds
-    // (pay-link-job.ts). No pay link in the batch: no reads.
+    // the 09:00 send all got the link). One check for the pay links in this
+    // batch: a moot unclaimed one is deleted; a claimed one (its
+    // `botjob-<id>` row, which `sentKeys` never loads), a preview poll or a
+    // failed check holds (pay-link-job.ts). No pay link in the batch: no
+    // reads.
     const payLinkVerdicts = await (await import("./pay-link-job")).payLinkJobVerdicts(
-      jobs.filter((j) => j.kind === "dm" && !sentKeys.has(`botjob-${j.id}`)),
+      jobs.filter((j) => j.kind === "dm"),
+      { preview: opts.preview === true },
     );
     for (const job of jobs) {
       const key = `botjob-${job.id}`;

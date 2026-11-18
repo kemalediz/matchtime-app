@@ -17,7 +17,7 @@
  *
  * The exclusions are the release's own (collector, monthly regular, paid,
  * free place) plus what can only change after it: a direct payment chosen,
- * a drop, a fee withdrawn, a cancelled match. The daily chase reads the
+ * a drop, a fee withdrawn, collection switched off, a cancelled match. The daily chase reads the
  * same columns live at 18:00, so it needs no such check.
  */
 import { MONTHLY_PAYMENT_METHOD, isFeeWaived } from "./fee-waiver-rules";
@@ -61,6 +61,9 @@ export interface PayLinkMatch {
   feePerPlayer: number | null;
   paymentLinksReleasedAt: Date | null;
   collectorId: string | null;
+  /** The club's `paymentCollectionEnabled` now. Off: no link, as the
+   *  daily chase (which never runs with it off). */
+  collectionEnabled: boolean;
 }
 
 /** Why the player no longer owes for this match, or null when they still
@@ -73,7 +76,7 @@ export function payLinkNotOwedReason(input: {
 }): PayLinkNotOwedReason | null {
   const { userId, attendance: a, match: m } = input;
   if (a?.paidAt) return "paid";
-  if (!m || m.feePerPlayer == null || m.paymentLinksReleasedAt == null) return "no-fee";
+  if (!m || !m.collectionEnabled || m.feePerPlayer == null || m.paymentLinksReleasedAt == null) return "no-fee";
   if (m.status === "CANCELLED") return "match-cancelled";
   if (m.collectorId && m.collectorId === userId) return "collector";
   if (!a || a.status !== "CONFIRMED") return "not-confirmed";

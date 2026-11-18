@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
     attendance: { findMany: vi.fn() },
     match: { findMany: vi.fn() },
     botJob: { deleteMany: vi.fn() },
+    sentNotification: { findMany: vi.fn() },
   },
 }));
 vi.mock("../db", () => ({ db: h.db }));
@@ -34,7 +35,13 @@ const owing = {
   directPendingAt: null as Date | null,
   paymentMethod: null as string | null,
 };
-const liveMatch = { status: "TEAMS_PUBLISHED", feePerPlayer: 10.15, paymentLinksReleasedAt: RELEASED, collectorId: "col" };
+const liveMatch = {
+  status: "TEAMS_PUBLISHED",
+  feePerPlayer: 10.15,
+  paymentLinksReleasedAt: RELEASED,
+  collectorId: "col",
+  collectionEnabled: true,
+};
 
 describe("the about key a pay link is queued with", () => {
   it("names the match and the player, and reads back", () => {
@@ -83,6 +90,9 @@ describe("payLinkNotOwedReason: does this player still owe for this match, now",
     expect(payLinkNotOwedReason({ userId, attendance: owing, match: { ...liveMatch, paymentLinksReleasedAt: null } })).toBe("no-fee");
     expect(payLinkNotOwedReason({ userId, attendance: owing, match: null })).toBe("no-fee");
   });
+  it("the club switched payment collection off: no link, as the daily chase", () => {
+    expect(payLinkNotOwedReason({ userId, attendance: owing, match: { ...liveMatch, collectionEnabled: false } })).toBe("no-fee");
+  });
   it("the match was cancelled", () => {
     expect(payLinkNotOwedReason({ userId, attendance: owing, match: { ...liveMatch, status: "CANCELLED" } })).toBe("match-cancelled");
   });
@@ -106,7 +116,7 @@ describe("payLinkJobVerdicts: the send-time check on queued jobs", () => {
         status: "TEAMS_PUBLISHED",
         feePerPlayer: 10.15,
         paymentLinksReleasedAt: RELEASED,
-        activity: { org: { paymentHolderId: "col" } },
+        activity: { org: { paymentHolderId: "col", paymentCollectionEnabled: true } },
       },
     ]);
     h.db.attendance.findMany.mockResolvedValue([
@@ -114,6 +124,7 @@ describe("payLinkJobVerdicts: the send-time check on queued jobs", () => {
       { matchId: "m1", userId: "ali", ...owing },
     ]);
     h.db.botJob.deleteMany.mockResolvedValue({ count: 1 });
+    h.db.sentNotification.findMany.mockResolvedValue([]);
   });
 
   const jobs = [
@@ -134,10 +145,44 @@ describe("payLinkJobVerdicts: the send-time check on queued jobs", () => {
     expect(h.db.botJob.deleteMany).toHaveBeenCalledWith({ where: { id: "j-wasim", sentAt: null } });
   });
 
-  it("one read for the matches and one for the attendances, whatever the number of jobs", async () => {
+  it("one read each for matches, attendances and claims, whatever the number of jobs", async () => {
     await payLinkJobVerdicts(jobs);
     expect(h.db.match.findMany).toHaveBeenCalledTimes(1);
     expect(h.db.attendance.findMany).toHaveBeenCalledTimes(1);
+    expect(h.db.sentNotification.findMany).toHaveBeenCalledTimes(1);
+    expect(h.db.sentNotification.findMany).toHaveBeenCalledWith({
+      where: { key: { in: ["botjob-j-wasim", "botjob-j-ali"] } },
+      select: { key: true },
+    });
+  });
+
+  it("a link already handed to the Pi (claimed, not yet acked) is never deleted, even once the player has paid", async () => {
+    h.db.sentNotification.findMany.mockResolvedValue([{ key: "botjob-j-wasim" }]);
+    const v = await payLinkJobVerdicts(jobs);
+    expect(v.get("j-wasim")).toBe("hold");
+    expect(h.db.botJob.deleteMany).not.toHaveBeenCalled();
+    expect(v.get("j-ali")).toBe("send");
+  });
+
+  it("collection switched off at send time: the link is dropped", async () => {
+    h.db.match.findMany.mockResolvedValue([
+      {
+        id: "m1",
+        status: "TEAMS_PUBLISHED",
+        feePerPlayer: 10.15,
+        paymentLinksReleasedAt: RELEASED,
+        activity: { org: { paymentHolderId: "col", paymentCollectionEnabled: false } },
+      },
+    ]);
+    const v = await payLinkJobVerdicts(jobs);
+    expect(v.get("j-ali")).toBe("drop");
+  });
+
+  it("preview (x-no-claim, tests only): a link no longer owed is held, never deleted", async () => {
+    const v = await payLinkJobVerdicts(jobs, { preview: true });
+    expect(v.get("j-wasim")).toBe("hold");
+    expect(v.get("j-ali")).toBe("send");
+    expect(h.db.botJob.deleteMany).not.toHaveBeenCalled();
   });
 
   it("a player with no attendance row any more is not sent the link", async () => {
@@ -150,6 +195,7 @@ describe("payLinkJobVerdicts: the send-time check on queued jobs", () => {
     expect(v.size).toBe(0);
     expect(h.db.match.findMany).not.toHaveBeenCalled();
     expect(h.db.attendance.findMany).not.toHaveBeenCalled();
+    expect(h.db.sentNotification.findMany).not.toHaveBeenCalled();
   });
 
   it("a failed read holds every pay link for this poll: it stays queued, nothing is sent, nothing deleted", async () => {

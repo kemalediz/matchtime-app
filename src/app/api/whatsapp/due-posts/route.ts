@@ -413,6 +413,8 @@ export async function GET(request: Request) {
   const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths, liveMonths, {
     replyPriority,
     poolEnv: await poolEnvForApiRequest(request),
+    // Test-only preview: a pay link no longer owed is held, not deleted.
+    ...(previewOnly ? { preview: true } : {}),
   });
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });
