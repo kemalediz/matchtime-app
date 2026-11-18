@@ -34,7 +34,7 @@ vi.mock("@/lib/db", () => ({
     teamAssignment: { findMany: (...a: unknown[]) => teamAssignmentFindMany(...a) },
   },
 }));
-vi.mock("@/lib/mom", () => ({ getMomSummaries: async () => new Map() }));
+vi.mock("@/lib/mom-records", () => ({ loadMomDecisions: async () => new Map() }));
 vi.mock("@/lib/team-labels", () => ({ resolveTeamLabels: () => ["Reds", "Yellows"] }));
 
 import { ELO_TOP_MIN_MATCHES, loadRecentHistory } from "@/lib/match-history";

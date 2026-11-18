@@ -426,10 +426,10 @@ export interface AnswerBatchDeps {
   /** The stats tables, when the club has stats answers on. */
   loadStats?: (orgId: string, now: Date) => Promise<Omit<StatsSnapshot, "chemistry" | "generic" | "periods">>;
   /** One player's chemistry: the one the question names, else the asker. */
-  loadChemistry?: (orgId: string, userId: string) => Promise<StatsChemistry | null>;
+  loadChemistry?: (orgId: string, userId: string, now?: Date) => Promise<StatsChemistry | null>;
   /** The tables the data can cut (appearances, ratings, Man of the
    *  Match), cut to the matches since `since`: the shorter spans. */
-  loadStatsPeriod?: (orgId: string, since: Date) => Promise<Omit<StatsPeriodTables, "since">>;
+  loadStatsPeriod?: (orgId: string, since: Date, now?: Date) => Promise<Omit<StatsPeriodTables, "since">>;
   /** The club's recent scored results (`since` null is the whole record). */
   loadResults?: (orgId: string, since: Date | null, now: Date, lang: string) => Promise<RecentResults>;
   /** Injected so a test can prove the write assertion and the
@@ -1096,9 +1096,9 @@ export async function runAnswerBatch(args: {
         if (r.kind === "resolved") person = { userId: r.member.userId, self: r.member.userId === m?.senderUserId };
       }
       if (person && u.stats && !u.stats.chemistry[person.userId]) {
-        const load = deps.loadChemistry ?? (async (o: string, uid: string) => (await import("./load-stats")).loadStatsChemistry(o, uid));
+        const load = deps.loadChemistry ?? (async (o: string, uid: string, at?: Date) => (await import("./load-stats")).loadStatsChemistry(o, uid, at));
         try {
-          const c = await load(orgId, person.userId);
+          const c = await load(orgId, person.userId, now);
           if (c) u.stats.chemistry[person.userId] = c;
         } catch (err) {
           console.error("[answer-engine] unified chemistry read failed:", err);
@@ -1199,7 +1199,7 @@ export async function runAnswerBatch(args: {
       }
     };
     const loadStats = deps.loadStats ?? (async (o: string, at: Date) => (await import("./load-stats")).loadStatsTables(o, at));
-    const loadPeriod = deps.loadStatsPeriod ?? (async (o: string, since: Date) => (await import("./load-stats")).loadStatsPeriod(o, since));
+    const loadPeriod = deps.loadStatsPeriod ?? (async (o: string, since: Date, at?: Date) => (await import("./load-stats")).loadStatsPeriod(o, since, at));
     let stats: StatsSnapshot | null = null;
     const periods: UnifiedPeriod[] = [];
     if (state.features.statsQa) {
@@ -1208,7 +1208,7 @@ export async function runAnswerBatch(args: {
       for (const [label, p] of UNIFIED_PERIODS) {
         const since = periodSince(p, now);
         if (!since || !stats) continue;
-        const t = await soft(`stats (${label})`, () => loadPeriod(orgId, since));
+        const t = await soft(`stats (${label})`, () => loadPeriod(orgId, since, now));
         if (t) periods.push({ label, tables: { since, ...t } });
       }
     }

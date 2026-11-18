@@ -23,6 +23,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Tx = any;
 
+import { momAnnouncementTableExists, storeMomRecordsFromPostText } from "./mom-result-merge";
 import { recordAttendanceEvent, type AttendanceActorKind } from "./attendance-events";
 import { recordRoleChange } from "./role-change";
 import { loadPoolMergeRows } from "./pool/user-merge";
@@ -242,7 +243,11 @@ export async function loadMergeSnapshot(tx: Tx, S: string, T: string): Promise<M
     : [];
 
   const refs: RefRow[] = [];
+  // Before its migration the table is missing, and a failed statement here
+  // would abort the merge's transaction: look it up first (review of #608).
+  const momTable = await momAnnouncementTableExists(tx);
   for (const c of USER_REF_COLUMNS) {
+    if (c.model === "MoMAnnouncement" && !momTable) continue;
     const table = delegateOf(c.model);
     const pk = pkOf(table);
     if (c.kind === "json") {
@@ -345,10 +350,16 @@ export async function applyUserMerge(db: Tx, S: string, T: string, opts: ApplyUs
   return db.$transaction(
     async (tx: Tx) => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id IN (${S}, ${T}) FOR UPDATE`;
-      const snapshot = await loadMergeSnapshot(tx, S, T);
-      const plan = planUserMerge(snapshot, { now: opts.now ?? new Date() });
+      const now = opts.now ?? new Date();
+      let plan = planUserMerge(await loadMergeSnapshot(tx, S, T), { now });
       if (plan.blockers.length > 0) return { ok: false as const, plan };
       if (plan.noop) return { ok: true as const, noop: true, plan };
+      // Posted Man of the Match results with no stored record are read back
+      // from the post's words BY NAME, and the source's name is about to
+      // leave its matches: store their records first (only once the merge is
+      // clear to run), then plan again so the plan remaps them too and the
+      // announced winner never changes (review of #608, round 5).
+      if ((await storeMomRecordsFromPostText(tx, S)) > 0) plan = planUserMerge(await loadMergeSnapshot(tx, S, T), { now });
       await applyMergePlan(tx, plan, opts);
       return { ok: true as const, noop: false, plan };
     },

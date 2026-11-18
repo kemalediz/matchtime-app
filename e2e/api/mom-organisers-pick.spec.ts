@@ -96,3 +96,28 @@ test("a club whose players vote: the rating DM still asks for the vote", async (
   expect(dm?.text).toContain("Rate your teammates and pick Man of the Match.");
   await db.run(`UPDATE "Organisation" SET "momChosenBy" = 'organisers' WHERE id = $1`, [ORG_ID]);
 });
+
+// Kemal, 2026-11-16: the claim stores the one name the post gave, and
+// restating or correcting the pick afterwards (setMatchMom deletes and
+// recreates the row) never changes that record of what was posted. (In an
+// organisers' club the ANSWER tells the latest pick, the correction winning:
+// pinned in src/lib/pipeline/__tests__/last-mom.test.ts.)
+test("claiming the pick's announcement stores the pick; a pick restated afterwards leaves the record as announced", async ({ request, db }) => {
+  const stored = () => db.all<{ result: unknown }>(`SELECT result FROM "MoMAnnouncement" WHERE "matchId" = $1`, [MATCH.rate]);
+  expect(await stored()).toEqual([]);
+  const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`, {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-test-now": londonAt(0, 10, 0).toISOString() },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  const post = ((await res.json()).instructions as Array<Record<string, unknown>>).find((i) => i.key === MOM_KEY);
+  expect(post?.text).toBe(`🏆 *Man of the Match: E2E 5-a-side*\n\nCongrats *${NAME.player}* 🎉`);
+  expect(post && "momResult" in post).toBe(false);
+  const PICK = { v: 1, kind: "pick", winner: { userId: U.player, name: NAME.player } };
+  expect((await stored()).map((r) => r.result)).toEqual([PICK]);
+
+  // The organiser corrects the pick after the post, as setMatchMom does it.
+  await db.run(`DELETE FROM "MoMVote" WHERE "matchId" = $1`, [MATCH.rate]);
+  await db.run(`INSERT INTO "MoMVote" (id, "matchId", "voterId", "playerId") VALUES ('e2e-pick-2', $1, $2, $3)`, [MATCH.rate, U.admin, U.rater]);
+  expect((await due(request, londonAt(0, 11, 0))).find((i) => i.key === MOM_KEY)).toBeUndefined();
+  expect((await stored()).map((r) => r.result)).toEqual([PICK]);
+});

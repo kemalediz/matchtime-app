@@ -20,13 +20,13 @@ import {
 import { LandingPage } from "@/components/landing/landing-page";
 import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { signupGoesOnEarlyListForPage } from "@/lib/pool/flags-page";
-import { getMomSummaries } from "@/lib/mom";
+import { loadMomDecisions, momWinsByUser } from "@/lib/mom-records";
+import { momWebLine, momWebView } from "@/lib/mom-web";
 import { loadClubRating } from "@/lib/player-stats";
 import { t } from "@/lib/i18n/t";
 import { ResultScore } from "@/components/match/result-score";
 import { connectFocusFor } from "@/lib/connect-focus-server";
 import { CONNECT_FOCUS_HOME } from "@/lib/connect-focus";
-import { NOT_CANCELLED } from "@/lib/played-match";
 import { ownPageUrlMetadata } from "@/lib/page-canonical";
 
 // The home page's own canonical and og:url (they used to sit in the root
@@ -119,7 +119,9 @@ export default async function DashboardPage() {
     take: 5,
     include: { activity: true },
   });
-  const recentMomByMatch = await getMomSummaries(recentMatches.map((m) => m.id));
+  // Man of the Match by the same decision as the group (review of #608):
+  // an open vote shows no leader and no counts (`mom-web.ts`).
+  const recentMomByMatch = await loadMomDecisions(orgId, new Date());
   // An admin sees "Add score" on a played match with no result (FNF,
   // 2026-10-18), so a missing score is obvious from the dashboard.
   const isAdmin = await isOrgAdmin(session.user.id, orgId);
@@ -155,32 +157,12 @@ export default async function DashboardPage() {
   // so the tile was actively degrading for new players. Site G4 of
   // MDs/club-scoped-ratings-design-2026-09-18.md.
   const myRating = await loadClubRating(orgId, session.user.id);
-  // "MoM wins" = matches where this user had the highest vote count
-  // (ties count as a shared win for everyone tied at the top). Plain
-  // count-of-matches-with-any-vote was misleading — a single sympathy
-  // vote shouldn't show up as a "win".
-  const myVotedMatches = await db.moMVote.groupBy({
-    by: ["matchId"],
-    where: { playerId: session.user.id, match: NOT_CANCELLED },
-    _count: { playerId: true },
-  });
-  const myVotedMatchIds = myVotedMatches.map((v) => v.matchId);
-  const allTallies = myVotedMatchIds.length
-    ? await db.moMVote.groupBy({
-        by: ["matchId", "playerId"],
-        where: { matchId: { in: myVotedMatchIds } },
-        _count: { playerId: true },
-      })
-    : [];
-  const topByMatch = new Map<string, number>();
-  for (const t of allTallies) {
-    const cur = topByMatch.get(t.matchId) ?? 0;
-    if (t._count.playerId > cur) topByMatch.set(t.matchId, t._count.playerId);
-  }
-  let momWinsCount = 0;
-  for (const v of myVotedMatches) {
-    if (v._count.playerId === topByMatch.get(v.matchId)) momWinsCount += 1;
-  }
+  // "MoM wins": this club's matches crediting this user, by the same
+  // decision as the group and the player's stats page (review of #608): the
+  // announced winner when posted, the final winner when final, nobody while
+  // a vote is open. It used to count every open vote the user led, at every
+  // club (Burak, 2026-11-16: the tile said 2 where his stats said 1).
+  const momWinsCount = momWinsByUser(recentMomByMatch).get(session.user.id) ?? 0;
 
   const confirmedCount = nextMatch?.attendances.filter((a) => a.status === "CONFIRMED").length ?? 0;
   const benchCount = nextMatch?.attendances.filter((a) => a.status === "BENCH").length ?? 0;
@@ -255,7 +237,7 @@ export default async function DashboardPage() {
             <Trophy className="w-4 h-4" />
             <p className="text-xs font-medium uppercase tracking-wider">MoM</p>
           </div>
-          <p className="text-3xl font-bold mt-2">{momWinsCount}</p>
+          <p data-testid="dashboard-mom-wins" className="text-3xl font-bold mt-2">{momWinsCount}</p>
         </div>
         <div className={`p-5 rounded-xl border ${TILE.purple} transition-colors`}>
           <div className="flex items-center gap-2 opacity-75">
@@ -375,12 +357,7 @@ export default async function DashboardPage() {
           </div>
           <div className="divide-y divide-slate-100">
             {recentMatches.map((m) => {
-              const mom = recentMomByMatch.get(m.id);
-              const momLabel = mom
-                ? mom.topPlayers.length > 1
-                  ? `${mom.topPlayers.map((p) => p.name).join(" & ")} (${mom.topCount} each, ${mom.totalVotes} votes)`
-                  : `${mom.topPlayers[0].name} (${mom.topCount}/${mom.totalVotes} votes)`
-                : null;
+              const momLabel = momWebLine(momWebView(recentMomByMatch.get(m.id)), membership.org.language);
               return (
                 <div
                   key={m.id}

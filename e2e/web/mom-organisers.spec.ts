@@ -38,9 +38,20 @@ test("the organisers' pick gives the player the Man of the Match crown on their 
   await db.run(`INSERT INTO "MoMVote" (id, "matchId", "voterId", "playerId") VALUES ('e2e-web-pick', $1, $2, $3)`, [MATCH.rate, U.admin, U.rater]);
   await signInAs(page, U.rater, "/profile/stats");
   await page.waitForURL("**/profile/stats", { timeout: 30_000 });
-  // The season tile: the count of MoM wins and the crown, as for a vote.
   const tile = page.locator("div.rounded-2xl").filter({ has: page.getByText("Man of the Match", { exact: true }) }).first();
   await expect(tile).toBeVisible();
+  // Not before its post (review of #608, round 4): the pick is still to be
+  // posted in the group, so it is credited to nobody yet.
+  await expect(tile.locator("div").first()).toHaveText("0");
+
+  // The scheduler posts it: the claim row and the record it stores.
+  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId", "waMessageId") VALUES ('e2e-web-pick-sn', $1, 'group-message', $2, 'wa-e2e-web-pick')`, [`${MATCH.rate}:mom-announcement`, MATCH.rate]);
+  await db.run(`INSERT INTO "MoMAnnouncement" ("matchId", result) VALUES ($1, $2::jsonb)`, [
+    MATCH.rate,
+    JSON.stringify({ v: 1, kind: "pick", winner: { userId: U.rater, name: "Riley Rater" } }),
+  ]);
+  await page.reload();
+  // The season tile: the count of MoM wins and the crown, as for a vote.
   await expect(tile.locator("div").first()).toHaveText("1");
   await expect(tile).toContainText("👑");
 });

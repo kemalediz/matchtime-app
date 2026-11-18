@@ -32,10 +32,16 @@ import {
   MASTERCLASS_MIN_GAME_AVG,
   MOM_MACHINE_MIN_WINS,
   REGULAR_MIN_GAMES,
-  momWinners,
 } from "./badge-rules";
+import { loadMomDecisions } from "./mom-records";
 import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./pipeline/stats-limits";
 import { NOT_CANCELLED } from "@/lib/played-match";
+
+/** Match id to the user ids it credits as Man of the Match (`mom-records.ts`). */
+async function loadMomCreditIds(orgId: string, now: Date = new Date()): Promise<Map<string, Set<string>>> {
+  const decisions = await loadMomDecisions(orgId, now);
+  return new Map([...decisions].map(([id, d]) => [id, new Set(d.credit.map((w) => w.userId))]));
+}
 
 export {
   MR_RELIABLE_MAX_SPREAD,
@@ -140,6 +146,8 @@ function mean(xs: number[]): number | null {
 export async function loadPlayerSeasonStats(
   orgId: string,
   userId: string,
+  /** The clock Man of the Match decisions are read at (a batch's own). */
+  now: Date = new Date(),
 ): Promise<PlayerSeasonStats | null> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
@@ -176,7 +184,6 @@ export async function loadPlayerSeasonStats(
       redScore: true,
       yellowScore: true,
       ratings: { select: { playerId: true, score: true } },
-      momVotes: { select: { playerId: true } },
       teamAssignments: { select: { userId: true, team: true } },
       attendances: {
         where: { userId },
@@ -186,6 +193,12 @@ export async function loadPlayerSeasonStats(
   });
 
   const totalOrgMatches = matches.length;
+
+  // Who each match credits as Man of the Match (review of #608,
+  // `mom-records.ts`): the announced winner(s) when posted, the final winner
+  // when final, nobody while the vote is open or still to be posted. The
+  // same decision as the group's answers and tables.
+  const momCredits = await loadMomCreditIds(orgId, now);
 
   // Names for chemistry + rivalry labelling — gather all teammate AND
   // opponent userIds first (one names lookup for both).
@@ -237,8 +250,7 @@ export async function loadPlayerSeasonStats(
     if (myAvg !== null) myScoresAll.push(...myRatings);
     fieldScoresAll.push(...fieldRatings);
 
-    const winners = momWinners(m.momVotes);
-    const isMoM = winners.has(userId);
+    const isMoM = momCredits.get(m.id)?.has(userId) ?? false;
     if (isMoM) momCount++;
 
     // Result from the player's team perspective.
@@ -1126,7 +1138,7 @@ export async function loadAllClubsOverview(args: {
       ? Promise.resolve([])
       : db.match.findMany({
           where: matchScope,
-          select: { activity: { select: { orgId: true } }, momVotes: { select: { playerId: true } } },
+          select: { id: true, activity: { select: { orgId: true } } },
         }),
   ]);
 
@@ -1138,8 +1150,9 @@ export async function loadAllClubsOverview(args: {
   // overall above; see the header.
   for (const r of allRatings) byOrg.get(r.match.activity.orgId)?.scores.push(r.score);
   let totalMom = 0;
+  const creditsByOrg = new Map(await Promise.all(orgIds.map(async (o) => [o, await loadMomCreditIds(o)] as const)));
   for (const m of matchesWithVotes) {
-    if (momWinners(m.momVotes).has(userId)) {
+    if (creditsByOrg.get(m.activity.orgId)?.get(m.id)?.has(userId)) {
       byOrg.get(m.activity.orgId)!.mom++;
       totalMom++;
     }

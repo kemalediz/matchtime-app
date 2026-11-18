@@ -13,8 +13,9 @@
  * COST: nothing at all outside a due window (18:00 to 20:59 London on the
  * evenings `badgesPostDue` allows) for a match whose post has not gone
  * out. Inside one, four reads per poll: the club's completed matches
- * with their ratings, votes, team sheets and confirmed players; its
- * members; its ledger; its lifecycle. A club with the player pool on
+ * with their ratings, votes, team sheets and confirmed players, and who
+ * each credits as Man of the Match (`loadMomDecisions`); its members; its
+ * ledger; its lifecycle. A club with the player pool on
  * adds one more (its members' friends who have played, slice G4), and a
  * few only when one has.
  */
@@ -24,6 +25,7 @@ import { isClubOperational } from "./club-approval-state";
 import { claimTextOf, type Claimable } from "./dispatch-claim";
 import type { Lang } from "./i18n/lang";
 import { loadClubReferralAwards } from "./pool/referrals";
+import { loadMomDecisions } from "./mom-records";
 import {
   announcedKey,
   badgeMatchFinalised,
@@ -64,8 +66,11 @@ export interface SchedulerMatchLike {
   postMatchEndFlow: boolean | null;
 }
 
-/** Load a club's completed matches in the shape the replay reads. */
-export async function loadRawBadgeMatches(orgId: string): Promise<(RawBadgeMatch & { date: Date })[]> {
+/** Load a club's completed matches in the shape the replay reads, each
+ *  with whom it credits as Man of the Match by the shared decision
+ *  (`loadMomDecisions`, review of #608). */
+export async function loadRawBadgeMatches(orgId: string, now: Date = new Date()): Promise<(RawBadgeMatch & { date: Date })[]> {
+  const decisions = await loadMomDecisions(orgId, now);
   const rows = await db.match.findMany({
     where: { activity: { orgId }, status: "COMPLETED", isHistorical: false },
     orderBy: { date: "asc" },
@@ -85,6 +90,7 @@ export async function loadRawBadgeMatches(orgId: string): Promise<(RawBadgeMatch
     teamUserIds: m.teamAssignments.map((t) => t.userId),
     ratings: m.ratings,
     momVotes: m.momVotes,
+    momCredit: (decisions.get(m.id)?.credit ?? []).map((w) => w.userId),
   }));
 }
 
@@ -117,7 +123,7 @@ export async function computeBadgeAnnouncements(args: {
   if (!org || !isClubOperational(org)) return [];
 
   const [raw, members, ledger] = await Promise.all([
-    loadRawBadgeMatches(orgId),
+    loadRawBadgeMatches(orgId, now),
     db.membership.findMany({
       // Not a partner club's guest (cross-club ask, S4).
       where: { orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE },
@@ -176,18 +182,20 @@ export function badgeLedgerOf(instr: unknown): BadgeLedgerRow[] | null {
 }
 
 /**
- * Server-side bookkeeping never reaches the Pi: the badges ledger and the
- * roster-shown marker, whatever the instruction's kind. (From 2026-10-14
+ * Server-side bookkeeping never reaches the Pi: the badges ledger, the
+ * roster-shown and week-list markers, and a Man of the Match post's stored
+ * result (`momResult`, 2026-11-16), whatever the instruction's kind. (From 2026-10-14
  * to 2026-10-16 a club whose organisers announce got its badges post in
  * the admin group or by DM, carrying the ledger; since then every club's
  * badges post goes in the players' group, but any kind is still handled.)
  */
 export function withoutServerBookkeeping<T extends object>(instr: T): T {
-  if (!("badgeLedger" in instr || "rosterShown" in instr || "weekListShown" in instr)) return instr;
-  const rest = { ...instr } as T & { badgeLedger?: unknown; rosterShown?: unknown; weekListShown?: unknown };
+  if (!("badgeLedger" in instr || "rosterShown" in instr || "weekListShown" in instr || "momResult" in instr)) return instr;
+  const rest = { ...instr } as T & { badgeLedger?: unknown; rosterShown?: unknown; weekListShown?: unknown; momResult?: unknown };
   delete rest.badgeLedger;
   delete rest.rosterShown;
   delete rest.weekListShown;
+  delete rest.momResult;
   return rest;
 }
 

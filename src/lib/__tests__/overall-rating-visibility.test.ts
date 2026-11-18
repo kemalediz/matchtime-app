@@ -51,6 +51,8 @@ let ratingRows: RatingRow[] = [];
 let membershipRows: { userId: string; orgId: string; orgName: string; leftAt: Date | null }[] = [];
 let attendanceRows: { userId: string; orgId: string }[] = [];
 
+// Man of the Match wins are read by `mom-records.ts` (review of #608); none here.
+vi.mock("@/lib/mom-records", () => ({ loadMomDecisions: async () => new Map() }));
 vi.mock("@/lib/db", () => ({
   db: {
     membership: {

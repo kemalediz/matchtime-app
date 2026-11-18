@@ -24,6 +24,10 @@
  *
  *   node --env-file=.env ./node_modules/.bin/tsx scripts/live-check-last-mom.ts
  *
+ * Cases 11 to 14 (2026-11-18, #608): the winner only (EN and TR), a vote
+ * still open (its status alone, nobody ahead), and a result posted before
+ * results were stored, its vote still open (nobody named, the post has it).
+ *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). WHAT ONE PASS
  * CANNOT PROVE: an occasional miss can pass once and fail live.
  */
@@ -35,7 +39,7 @@ import type { LastMomFacts } from "../src/lib/pipeline/last-mom.ts";
 import type { OrgFeatures } from "../src/lib/org-features.ts";
 import type { Member, Route, SquadState, StatsSnapshot } from "../src/lib/pipeline/types.ts";
 
-const MAX_USD = 0.4;
+const MAX_USD = 0.6;
 spendDevApiKeyOrExit("the last Man of the Match live check");
 
 let calls = 0;
@@ -65,31 +69,73 @@ const NAMES = ["Kemal Ediz", "Mojib", "Habib", "Burak Yildiz", "Ozgur", "Sait", 
 const id = (n: string) => `u-${n.toLowerCase().replace(/\W+/g, "-")}`;
 const roster: Member[] = NAMES.map((n, i) => ({ userId: id(n), name: n, isAdmin: i === 0, hasPhone: true }));
 const v = (n: string, votes: number) => ({ userId: id(n), name: n, votes });
+const w = (n: string) => ({ userId: id(n), name: n });
 
 const SUTTON_LAST: LastMomFacts = {
   last: {
     date: new Date("2026-10-20T19:30:00.000Z"),
     teamLabels: ["Red", "Yellow"],
     score: { red: 7, yellow: 9 },
-    winners: [v("Habib", 2), v("Mojib", 2)],
+    winners: [w("Habib"), w("Mojib")],
+    told: "announced",
+    postedAt: null,
     tally: [v("Habib", 2), v("Mojib", 2), v("Burak Yildiz", 1), v("Ozgur", 1), v("Sait", 1)],
-    totalVotes: 7,
+    votes: { top: 2, total: 7 },
     pickedByOrganisers: false,
   },
-  openVoteDate: null,
+  pending: [],
+  recent: [],
 };
+SUTTON_LAST.recent = [SUTTON_LAST.last!];
 const PICKED: LastMomFacts = {
   last: {
     date: new Date("2026-11-03T21:30:00.000Z"),
     teamLabels: ["Kırmızı", "Sarı"],
     score: { red: 5, yellow: 4 },
-    winners: [v("Mojib", 1)],
-    tally: [v("Mojib", 1)],
-    totalVotes: 1,
+    winners: [w("Mojib")],
+    told: "announced",
+    postedAt: null,
+    tally: [],
+    votes: null,
     pickedByOrganisers: true,
   },
-  openVoteDate: null,
+  pending: [],
+  recent: [],
 };
+PICKED.recent = [PICKED.last!];
+
+// THE RULES OF 2026-11-16 (#608): a final result never posted is told by its
+// winner only; a vote still open is told by its status alone; a result
+// posted before results were stored, its vote still open, names nobody.
+const SAIT_ONLY = {
+  date: new Date("2026-11-03T21:30:00.000Z"),
+  teamLabels: ["Red", "Yellow"] as [string, string],
+  score: { red: 5, yellow: 4 },
+  winners: [w("Sait")],
+  told: "winner-only" as const,
+  postedAt: null,
+  tally: [],
+  votes: null,
+  pickedByOrganisers: false,
+};
+const WINNER_ONLY: LastMomFacts = { last: SAIT_ONLY, pending: [], recent: [SAIT_ONLY, SUTTON_LAST.last!] };
+const OPEN_VOTE: LastMomFacts = {
+  last: SUTTON_LAST.last,
+  pending: [{ date: new Date("2026-11-10T21:30:00.000Z"), state: "voting", toBePosted: true }],
+  recent: [SUTTON_LAST.last!],
+};
+const UNRECORDED = {
+  date: new Date("2026-11-03T21:30:00.000Z"),
+  teamLabels: ["Red", "Yellow"] as [string, string],
+  score: { red: 5, yellow: 4 },
+  winners: [],
+  told: "posted-unrecorded" as const,
+  postedAt: new Date("2026-11-04T17:00:00.000Z"),
+  tally: [],
+  votes: null,
+  pickedByOrganisers: false,
+};
+const POSTED_UNRECORDED: LastMomFacts = { last: UNRECORDED, pending: [], recent: [UNRECORDED, SUTTON_LAST.last!] };
 
 function tables(lastMom: LastMomFacts): Omit<StatsSnapshot, "chemistry" | "generic" | "periods"> {
   return {
@@ -177,7 +223,11 @@ const CASES: Case[] = [
   { text: "@Match Time who has the most MoM?", lang: "en", lastMom: SUTTON_LAST, good: "Mojib first with 6, from the Man of the Match table in the records; nothing invented" },
   { text: "@Match Time top 5 MoM", lang: "en", lastMom: SUTTON_LAST, good: "the top 5 from the Man of the Match table, as printed; no more than 5 names" },
   { text: "@Match Time son maçın adamı kimdi?", lang: "tr", lastMom: PICKED, good: "Turkish: Mojib, picked by the organisers, no vote count" },
-  { text: "@Match Time who was the last man of the match?", lang: "en", lastMom: { last: null, openVoteDate: null }, good: "none decided yet; no name invented" },
+  { text: "@Match Time who was the last man of the match?", lang: "en", lastMom: { last: null, pending: [], recent: [] }, good: "none can be told yet; no name invented" },
+  { text: "@Match Time who was the last MoM and how many votes did he get?", lang: "en", lastMom: WINNER_ONLY, good: "Sait, Tue 3 Nov; no vote count (none to give), nothing invented" },
+  { text: "@Match Time son maçın adamı kim, kaç oy aldı?", lang: "tr", lastMom: WINNER_ONLY, good: "Turkish: Sait (3 Kasım); no vote count, nothing invented" },
+  { text: "@Match Time who's winning man of the match for tonight's game?", lang: "en", lastMom: OPEN_VOTE, good: "voting is still open, the result will be posted in the group; NO leader or name for tonight; may add the last one told (20 Oct)" },
+  { text: "@Match Time who was the last man of the match?", lang: "en", lastMom: POSTED_UNRECORDED, good: "the result of Tue 3 Nov was posted in the group on Wed 4 Nov, see that post; no name or votes for it" },
 ];
 
 async function main() {

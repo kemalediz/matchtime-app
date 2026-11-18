@@ -41,7 +41,7 @@
  *     player's MoM award still belongs in the match he won it in.
  */
 import { db } from "./db";
-import { getMomSummaries } from "./mom";
+import { loadMomDecisions, type MomMatchDecision } from "./mom-records";
 import { MEMBERSHIP_ELO_DEFAULT } from "./membership-elo";
 import { resolveTeamLabels } from "./team-labels";
 import { historyDateLabel } from "./i18n/dates";
@@ -54,7 +54,6 @@ import {
   type RankedRoster,
 } from "./ranked-table-activity";
 import { countAppearances, countMomWins, earliestDate, type DatedMomWin } from "./club-record-tables";
-import { NOT_CANCELLED } from "@/lib/played-match";
 
 export interface RecentMatchRow {
   id: string;
@@ -139,7 +138,7 @@ const ELO_BOTTOM_MIN_MATCHES = 3;
  */
 export const ELO_TOP_MIN_MATCHES = 3;
 
-export async function loadRecentHistory(orgId: string): Promise<RecentHistory | null> {
+export async function loadRecentHistory(orgId: string, now: Date = new Date()): Promise<RecentHistory | null> {
   const completedWhere = {
     activity: { orgId },
     status: "COMPLETED" as const,
@@ -191,8 +190,6 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
 
   /** Every completed match — the aggregates' scope. */
   const allCompletedIds = allCompleted.map((m) => m.id);
-  /** Only the matches that get a detail row — the display's scope. */
-  const detailMatchIds = matches.map((m) => m.id);
 
   // 1c. CONFIRMED appearances across every completed match. This one
   //     query feeds three things: the attendance leaderboard's
@@ -224,11 +221,11 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     await loadGuestUserIds(db, orgId),
   );
 
-  // 2. MoM votes for the matches we actually render — uses the shared
-  //    helper so tie-handling matches the dashboard's display. The
-  //    all-time MoM leaderboard is computed separately, in step 3, over
-  //    every match the org has.
-  const momSummaries = await getMomSummaries(detailMatchIds);
+  // 2. Every match's Man of the Match as the rules decide it (review of
+  //    #608, `mom-records.ts`): the label of each rendered match and the
+  //    all-time leaderboard in step 3 both read it, so neither can show an
+  //    open vote's leader or a re-count of a posted result.
+  const momDecisions = await loadMomDecisions(orgId, now);
 
   const recentMatches: RecentMatchRow[] = matches.map((m) => {
     const [redLabel, yellowLabel] = resolveTeamLabels(m, org, m.activity.sport, org?.language);
@@ -237,17 +234,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
       ? `${redLabel} ${m.redScore} - ${m.yellowScore} ${yellowLabel}`
       : "no score recorded";
 
-    const summary = momSummaries.get(m.id);
-    let momLabel = "no votes yet";
-    if (summary && summary.topPlayers.length > 0) {
-      if (summary.topPlayers.length === 1) {
-        const p = summary.topPlayers[0];
-        momLabel = `${p.name} (${p.votes} of ${summary.totalVotes} votes)`;
-      } else {
-        const names = summary.topPlayers.map((p) => p.name).join(" & ");
-        momLabel = `shared between ${names} (${summary.topCount} votes each, ${summary.totalVotes} total)`;
-      }
-    }
+    const momLabel = momLabelOf(momDecisions.get(m.id));
 
     return {
       id: m.id,
@@ -262,21 +249,15 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   });
 
   // 3. MoM leaderboard — count wins per player across ALL matches
-  //    (including historical anchors). A "win" is being among the
-  //    topPlayers for any match (ties co-win).
-  const allMatchIds = (
-    await db.match.findMany({
-      where: { activity: { orgId }, ...NOT_CANCELLED },
-      select: { id: true },
-    })
-  ).map((m) => m.id);
-  const allMomSummaries = await getMomSummaries(allMatchIds);
+  //    (including historical anchors). A "win" is being credited by the
+  //    match's decision (ties co-win): the announced winner(s) when posted,
+  //    the final winner when final, nobody while open or still to be posted.
   const momWinsByPlayer = new Map<string, { name: string; wins: number }>();
-  for (const summary of allMomSummaries.values()) {
-    for (const winner of summary.topPlayers) {
-      const cur = momWinsByPlayer.get(winner.playerId) ?? { name: winner.name, wins: 0 };
+  for (const d of momDecisions.values()) {
+    for (const winner of d.credit) {
+      const cur = momWinsByPlayer.get(winner.userId) ?? { name: winner.name, wins: 0 };
       cur.wins += 1;
-      momWinsByPlayer.set(winner.playerId, cur);
+      momWinsByPlayer.set(winner.userId, cur);
     }
   }
   const momLeaderboard: LeaderboardRow[] = [...momWinsByPlayer.entries()]
@@ -446,7 +427,7 @@ export interface ClubRecordTables {
  */
 export async function loadClubRecordTables(
   orgId: string,
-  opts: { since?: Date | null } = {},
+  opts: { since?: Date | null; now?: Date } = {},
 ): Promise<ClubRecordTables> {
   const since = opts.since ?? null;
   const completed = await db.match.findMany({
@@ -477,14 +458,11 @@ export async function loadClubRecordTables(
     nameOf: (id) => nameById.get(id) ?? "(unnamed)",
   });
 
-  const allMatches = await db.match.findMany({ where: { activity: { orgId }, ...NOT_CANCELLED }, select: { id: true, date: true } });
-  const momDateById = new Map(allMatches.map((m) => [m.id, m.date]));
-  const summaries = await getMomSummaries(allMatches.map((m) => m.id));
+  // Credited by each match's decision (review of #608, `mom-records.ts`).
+  const decisions = await loadMomDecisions(orgId, opts.now ?? new Date());
   const wins: DatedMomWin[] = [];
-  for (const [matchId, summary] of summaries) {
-    const date = momDateById.get(matchId);
-    if (!date) continue;
-    for (const w of summary.topPlayers) wins.push({ userId: w.playerId, name: w.name, date });
+  for (const d of decisions.values()) {
+    for (const w of d.credit) wins.push({ userId: w.userId, name: w.name, date: d.date });
   }
   const mom = countMomWins(wins, { since, isRanked: (id) => roster.isRanked(id) });
 
@@ -494,6 +472,31 @@ export async function loadClubRecordTables(
     recordsStart: { matches: completed[0]?.date ?? null, mom: earliestDate(wins.map((w) => w.date)) },
     completedMatches: completed.length,
   };
+}
+
+/**
+ * PURE. One rendered match's Man of the Match, by its decision (review of
+ * #608): as announced, the winner only, the post's date when no copy of it
+ * is held, or its status with no name while it cannot be told.
+ */
+export function momLabelOf(d: MomMatchDecision | undefined): string {
+  if (!d) return "no votes yet";
+  const v = d.decision;
+  if (v.kind === "none") return "no votes yet";
+  // Never a leader or a count; and "to be posted" only when one is coming.
+  if (v.kind === "pending") {
+    if (v.state === "picked") return "picked by the organisers, to be posted in the group";
+    if (v.state !== "closed") return "vote still open";
+    return v.toBePosted ? "vote closed, result to be posted in the group" : "vote closed";
+  }
+  const m = v.mom;
+  const names = d.credit.length ? d.credit.map((w) => w.name) : m.winners.map((w) => w.name);
+  if (m.told === "posted-unrecorded") return "result posted in the group (no copy held here)";
+  if (m.pickedByOrganisers) return `${names[0]} (picked by the organisers)`;
+  if (!m.votes) return names.length > 1 ? `shared between ${names.join(" & ")}` : names[0];
+  return names.length > 1
+    ? `shared between ${names.join(" & ")} (${m.votes.top} votes each, ${m.votes.total} total)`
+    : `${names[0]} (${m.votes.top} of ${m.votes.total} votes)`;
 }
 
 /** Format a RecentHistory as the "## Recent History" prompt section.

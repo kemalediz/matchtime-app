@@ -17,6 +17,7 @@ import { db } from "@/lib/db";
 import { isMatchClubBillingPaused } from "@/lib/club-billing";
 import { normalisePhone } from "@/lib/phone";
 import { organisersPickMom } from "@/lib/mom-chooser";
+import { momVoteOpen } from "@/lib/mom-vote-window";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -144,10 +145,16 @@ export async function POST(request: Request) {
   // vote on an old MoM poll must neither add to nor clear their pick.
   const org = await db.match.findUnique({
     where: { id: matchId },
-    select: { activity: { select: { org: { select: { momChosenBy: true } } } } },
+    select: { date: true, activity: { select: { ratingWindowHours: true, org: { select: { momChosenBy: true } } } } },
   });
   if (org && organisersPickMom({ momChosenBy: org.activity.org.momChosenBy })) {
     return NextResponse.json({ ok: true, ignored: "organisers-pick-mom" });
+  }
+  // The same window as the web vote (review of #608, `mom-vote-window.ts`):
+  // after it a poll vote is neither added, changed nor cleared, so a result
+  // is final once the window is over on every path.
+  if (org && !momVoteOpen(org.date, org.activity.ratingWindowHours, new Date())) {
+    return NextResponse.json({ ok: true, ignored: "vote-window-closed" });
   }
 
   // No option means the user un-voted — delete the MoMVote.

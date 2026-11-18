@@ -87,6 +87,7 @@
  *
  * If no active survey applies, the DM is silently ignored.
  */
+import { withMomRecordsScope } from "./mom-records-scope";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { onboardingUserKey, withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
@@ -196,6 +197,11 @@ export interface InboundDmContext {
  *  /api/whatsapp/dm-reply. Answers what the Pi is handed (always 200 once
  *  the DM has a text and an id, so the bot never retries). */
 export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): Promise<Response> {
+  // One read of the club's Man of the Match records per DM (`mom-records.ts`).
+  return withMomRecordsScope(() => handleInboundDmInScope(body, ctx));
+}
+
+async function handleInboundDmInScope(body: InboundDm, ctx: InboundDmContext): Promise<Response> {
   const { request } = ctx;
   const { phone, body: text, waMessageId, authorName, senderLid, senderAltPhone } = body as {
     phone?: string;

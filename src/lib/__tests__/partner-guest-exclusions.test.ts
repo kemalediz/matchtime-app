@@ -21,6 +21,8 @@ const dbMock = vi.hoisted(() => ({
   match: { findMany: vi.fn() },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
+// Man of the Match wins are read by `mom-records.ts` (review of #608); none here.
+vi.mock("../mom-records", () => ({ loadMomDecisions: async () => new Map() }));
 
 import { loadAllClubsOverview } from "../player-stats";
 

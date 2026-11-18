@@ -21,6 +21,9 @@ import { format } from "date-fns";
 import { formatLondon } from "@/lib/london-time";
 import { Calendar, MapPin, Clock, Star, ChevronRight } from "lucide-react";
 import { t } from "@/lib/i18n/t";
+import { loadMomDecisions } from "@/lib/mom-records";
+import { joinNames, momWebStatus, momWebView } from "@/lib/mom-web";
+import { momWebCopy } from "@/lib/i18n/mom-web";
 import { canEnterScore, hasScore, scoreEntryAction, shouldOpenScorePanel, SCORE_PANEL_PARAM } from "@/lib/score-entry";
 import { ScoreEntryPanel } from "@/components/match/score-entry-panel";
 import { buildWeekList } from "@/lib/monthly-week-rules";
@@ -77,7 +80,6 @@ export default async function MatchDetailPage({
           },
         },
       },
-      momVotes: true,
     },
   });
   if (!match) redirect("/matches");
@@ -285,40 +287,18 @@ export default async function MatchDetailPage({
     where: { matchId, raterId: session.user.id },
   });
 
-  // MoM tally — handle ties at the top explicitly. The DB's `orderBy
-  // _count desc` is not deterministic when two players have the same
-  // count, so we sort by name as a tiebreaker for stable display.
-  const momRows =
-    match.status === "COMPLETED"
-      ? await db.moMVote.groupBy({
-          by: ["playerId"],
-          where: { matchId },
-          _count: { playerId: true },
-        })
-      : [];
-  const momPlayerIds = momRows.map((r) => r.playerId);
-  const momUsers = momPlayerIds.length
-    ? await db.user.findMany({
-        where: { id: { in: momPlayerIds } },
-        select: { id: true, name: true },
-      })
-    : [];
-  const momUserById = new Map(momUsers.map((u) => [u.id, u.name ?? "Unknown"]));
-  const momTally = momRows
-    .map((r) => ({
-      playerId: r.playerId,
-      name: momUserById.get(r.playerId) ?? "Unknown",
-      votes: r._count.playerId,
-    }))
-    .sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name));
-  const momTotalVotes = momTally.reduce((s, r) => s + r.votes, 0);
-  const momTopCount = momTally[0]?.votes ?? 0;
-  const momTopPlayers = momTally.filter((r) => r.votes === momTopCount);
-  const momOthers = momTally.filter((r) => r.votes < momTopCount);
+  // Man of the Match by the same decision as the group (review of #608,
+  // `mom-web.ts`): a decided match shows its credited winner, with the
+  // announced votes only when the post's tally is stored; an open or
+  // still-to-be-posted vote shows no leader and no counts.
+  const momView =
+    match.status === "COMPLETED" ? momWebView((await loadMomDecisions(match.activity.orgId, new Date())).get(matchId)) : null;
+  const momLang = match.activity.org.language;
+  const momCopy = momWebCopy(momLang);
   // Each voter casts at most one MoMVote, so vote count == voter count.
   const momConfirmedCount = match.attendances.filter((a) => a.status === "CONFIRMED").length;
-  // The organisers pick Man of the Match in this club (mom-chooser.ts): a
-  // name, never a vote count.
+  // The organisers pick Man of the Match in this club (mom-chooser.ts): the
+  // rate button offers no vote.
   const momPicked = organisersPickMom({ momChosenBy: match.activity.org.momChosenBy });
 
   const statusLabel = match.status.replace(/_/g, " ").toLowerCase();
@@ -404,54 +384,36 @@ export default async function MatchDetailPage({
           ) : (
             scoreAction && <p className="text-sm text-slate-500">{ms.score_entry_no_score_yet}</p>
           )}
-          {scored && momTopCount > 0 && (
-            <div className="mt-4 space-y-1">
+          {scored && momView && (
+            <div data-testid="match-mom" className="mt-4 space-y-1">
               <p className="text-sm text-slate-500 flex items-center justify-center gap-1.5 flex-wrap">
                 <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
                 {sport.mvpLabel}:{" "}
-                {momTopPlayers.length > 1 ? (
+                {momView.kind === "decided" ? (
                   <>
                     <span className="font-semibold text-slate-800">
-                      shared between{" "}
-                      {momTopPlayers
-                        .map((p) => p.name)
-                        .reduce<React.ReactNode[]>((acc, n, i, arr) => {
-                          if (i === 0) return [n];
-                          if (i === arr.length - 1) return [...acc, " and ", n];
-                          return [...acc, ", ", n];
-                        }, [])}
-                    </span>
-                    <span className="text-slate-400">
-                      ({momTopCount} vote{momTopCount === 1 ? "" : "s"} each)
-                    </span>
+                      {momView.winners.length > 1 ? momCopy.shared({ names: joinNames(momView.winners, momLang) }) : momView.winners[0]}
+                    </span>{" "}
+                    {momView.picked ? (
+                      <span className="text-slate-400">{momCopy.picked}</span>
+                    ) : momView.votes ? (
+                      <span className="text-slate-400">
+                        {momView.winners.length > 1 ? momCopy.votesEach({ top: momView.votes.top }) : momCopy.votesOf(momView.votes)}
+                      </span>
+                    ) : null}
                   </>
                 ) : (
-                  <>
-                    <span className="font-semibold text-slate-800">{momTopPlayers[0].name}</span>
-                    {momPicked ? (
-                      <span className="text-slate-400">(picked by the organisers)</span>
-                    ) : (
-                      <span className="text-slate-400">
-                        ({momTopCount} of {momTotalVotes} vote{momTotalVotes === 1 ? "" : "s"})
-                      </span>
-                    )}
-                  </>
+                  <span className="font-semibold text-slate-800">{momWebStatus(momView, momLang)}</span>
                 )}
               </p>
-              {momOthers.length > 0 && (
+              {momView.kind === "decided" && momView.others.length > 0 && (
                 <p className="text-xs text-slate-400">
-                  Also received votes:{" "}
-                  {momOthers.map((p, i) => (
-                    <span key={p.playerId}>
-                      {i > 0 && ", "}
-                      {p.name} ({p.votes})
-                    </span>
-                  ))}
+                  {momCopy.alsoReceived} {momView.others.map((p) => `${p.name} (${p.votes})`).join(", ")}
                 </p>
               )}
-              {!momPicked && momConfirmedCount > 0 && (
+              {momView.kind === "decided" && momView.votes && !momView.picked && momConfirmedCount > 0 && (
                 <p className="text-xs text-slate-400">
-                  {momTotalVotes} of {momConfirmedCount} player{momConfirmedCount === 1 ? "" : "s"} voted
+                  {momView.votes.total} of {momConfirmedCount} player{momConfirmedCount === 1 ? "" : "s"} voted
                 </p>
               )}
             </div>
