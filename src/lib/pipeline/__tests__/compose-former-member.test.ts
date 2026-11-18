@@ -24,7 +24,7 @@ const rosterAsk = () =>
     body: "@Match Time who's playing?",
     route: "question",
     tagged: true,
-    facts: { kind: "question", topic: "squad", personRef: null, statedCount: null },
+    facts: { kind: "question", topic: "squad", personRef: null },
   });
 
 function withFormerOnBench(rowNames: SquadState["rowNames"]): SquadState {

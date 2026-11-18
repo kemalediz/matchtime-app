@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { en } from "@/lib/i18n/strings.en";
 import { tr } from "@/lib/i18n/strings.tr";
-import { GROUP_RATINGS_MIN_GAMES } from "@/lib/pipeline/stats-answer";
+import { GROUP_RATINGS_MIN_GAMES } from "@/lib/pipeline/stats-limits";
 
 const page = readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
 

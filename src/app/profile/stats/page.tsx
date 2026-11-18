@@ -15,7 +15,7 @@ import { InfoButton } from "@/components/stats/info-button";
 import { ShareImageButton } from "@/components/stats/share-image-button";
 import { t } from "@/lib/i18n/t";
 import { lastPlayedLabel } from "@/lib/i18n/dates";
-import { GROUP_RATINGS_MIN_GAMES } from "@/lib/pipeline/stats-answer";
+import { GROUP_RATINGS_MIN_GAMES } from "@/lib/pipeline/stats-limits";
 import { loadReferralSummary } from "@/lib/pool/referrals";
 import { poolReferralCopy } from "@/lib/i18n/pool-referral";
 

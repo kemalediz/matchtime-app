@@ -1,5 +1,6 @@
 /**
- * THE UNIFIED_ANSWERS A/B (Kemal, 2026-11-10). PAID: dev key only.
+ * THE UNIFIED ANSWERS REGRESSION RUN (Kemal, 2026-11-10; NEW only since
+ * 2026-11-18). PAID: dev key only.
  *
  * ⚠️  THIS READS PRODUCTION (read only) AND CALLS THE REAL MODEL.
  *     Spends ANTHROPIC_API_KEY_DEV only (refuses without it), hard stop at
@@ -7,12 +8,12 @@
  *     database client refuses every write (`ab-readonly-db.ts`), and the
  *     answers are only returned and saved to a local file.
  *
- * Every case is answered TWICE against today's data:
- *   OLD  the pipeline as live (UNIFIED_ANSWERS off): the question extractor,
- *        who-is-who, the set answers, the generic stats and open answers;
- *   NEW  the unified path (on): the small extractor, then one unified answer.
- * Players' group cases go through `runAnswerBatch`, HQ through
- * `answerHqQuestion`, DMs through the DM answer (old) and the unified DM.
+ * It was an A/B: every case answered by the old question categories (OLD)
+ * and by the unified answer (NEW). The old categories and the
+ * UNIFIED_ANSWERS flag were deleted on 2026-11-18, so every case is now
+ * answered once, on the only path: the question extractor, then one unified
+ * answer. Players' group cases go through `runAnswerBatch`, HQ through
+ * `answerHqQuestion`, DMs through the unified DM.
  *
  * The data each loader returns is read once per club and handed to both
  * paths as a copy, so OLD and NEW see the same snapshot.
@@ -20,9 +21,7 @@
  *   node --env-file=../../../.env ./node_modules/.bin/tsx scripts/ab-unified-answers.ts <questions.json> <out.json>
  *
  * LIMIT=n runs the first n cases (LIMIT=1: the one-call measurement).
- * KEYS=a,b runs only those case keys ("7-fnf-group,52-fnf-hq"), and
- * PATHS=new answers them on the new path only: round 2's cheap pass over
- * the cases round 1 found worse (2026-11-11).
+ * KEYS=a,b runs only those case keys ("7-fnf-group,52-fnf-hq").
  * Prints calls, tokens and dollars, per path.
  */
 import "./ab-readonly-db.ts";
@@ -45,7 +44,6 @@ import { poolPlatformOpenNow } from "../src/lib/pool/platform-switch.ts";
 import { asChatLines, loadWeekChat, WEEK_CHAT_MS } from "../src/lib/week-chat.ts";
 import { monthNotStartedFor } from "../src/lib/month-not-started.ts";
 import { organisersGroupReply, passesOrganisersNet } from "../src/lib/organisers-list-copy.ts";
-import { buildScopedContext, composeScopedAnswer, DM_QA_CALL, DM_QA_MAX_TOKENS } from "../src/lib/dm-qa.ts";
 import { loadUnifiedDmInput } from "../src/lib/unified-dm.ts";
 import { answerUnified } from "../src/lib/pipeline/unified-answer.ts";
 import { noReplyContext } from "../src/lib/reply-context.ts";
@@ -59,7 +57,6 @@ const MAX_USD = Number(process.env.MAX_USD ?? 2);
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 5);
 const LIMIT = process.env.LIMIT ? Number(process.env.LIMIT) : Infinity;
 const KEYS = process.env.KEYS ? new Set(process.env.KEYS.split(",").map((k) => k.trim()).filter(Boolean)) : null;
-const NEW_ONLY = process.env.PATHS === "new";
 const [, , QUESTIONS = "questions.json", OUT = "ab-results.json"] = process.argv;
 
 spendDevApiKeyOrExit("the unified answers A/B");
@@ -214,14 +211,14 @@ function topicOf(calls: CallRec[]): string | null {
   }
 }
 
-async function askGroup(c: Case, unified: boolean): Promise<PathResult> {
+async function askGroup(c: Case): Promise<PathResult> {
   const calls: CallRec[] = [];
   const model = metered(calls);
   const s = snap(c.orgId);
   const state = await s.state();
   const week = await s.week();
   const t0 = Date.now();
-  const id = `ab-${c.key}-${unified ? "new" : "old"}`;
+  const id = `ab-${c.key}`;
   const res = await runAnswerBatch({
     orgId: c.orgId,
     now: NOW,
@@ -245,7 +242,6 @@ async function askGroup(c: Case, unified: boolean): Promise<PathResult> {
     enabled: enabledStepSevenRoutes({}),
     monthNotStarted: await s.monthNotStarted(),
     poolEnv: async () => ({}),
-    unified,
     deps: deps(c.orgId, model),
   });
   const o = res.outcomes.get(id);
@@ -270,14 +266,14 @@ async function askGroup(c: Case, unified: boolean): Promise<PathResult> {
   return { answer, kind, intent: o?.intent ?? null, topic: topicOf(calls), calls, usd: sum(calls, "usd"), ms: Date.now() - t0, rejected, notes };
 }
 
-async function askHq(c: Case, unified: boolean): Promise<PathResult> {
+async function askHq(c: Case): Promise<PathResult> {
   const calls: CallRec[] = [];
   const model = metered(calls);
   const s = snap(c.orgId);
   const org = await s.org();
   const week = await s.hqWeek();
   const t0 = Date.now();
-  const id = `ab-${c.key}-${unified ? "new" : "old"}`;
+  const id = `ab-${c.key}`;
   const st = await s.state();
   const d = deps(c.orgId, model);
   const r = await answerHqQuestion({
@@ -293,7 +289,6 @@ async function askHq(c: Case, unified: boolean): Promise<PathResult> {
     lastBotPost: [...week].reverse().find((l) => l.author === "MatchTime")?.body ?? null,
     gates: hqHelpGates(org, {}),
     poolEnv: {},
-    unified,
     deps: { ...d, loadState: async () => st },
   });
   return {
@@ -309,7 +304,7 @@ async function askHq(c: Case, unified: boolean): Promise<PathResult> {
   };
 }
 
-async function askDm(c: Case, unified: boolean): Promise<PathResult> {
+async function askDm(c: Case): Promise<PathResult> {
   const calls: CallRec[] = [];
   const model = metered(calls);
   const s = snap(c.orgId);
@@ -318,22 +313,6 @@ async function askDm(c: Case, unified: boolean): Promise<PathResult> {
   const t0 = Date.now();
   const st = await s.state();
   const isAdmin = st.roster.some((m) => m.userId === c.askerUserId && m.isAdmin);
-  if (!unified) {
-    const context = await buildScopedContext(c.orgId, c.askerUserId!, isAdmin, lang);
-    const out = await composeScopedAnswer({
-      context,
-      question: c.body,
-      askerName: c.askerName,
-      orgName: org.name,
-      lang,
-      replyContext: noReplyContext(),
-      call: async (system, user) => {
-        const r = await model.complete({ ...DM_QA_CALL, system, user, maxTokens: DM_QA_MAX_TOKENS, label: "dm-qa" });
-        return { text: r.text || null, truncated: false };
-      },
-    });
-    return { answer: out.answer, kind: "answer", intent: "dm-qa", topic: null, calls, usd: sum(calls, "usd"), ms: Date.now() - t0, rejected: null, notes: [] };
-  }
   const input = await loadUnifiedDmInput({
     orgId: c.orgId,
     userId: c.askerUserId!,
@@ -427,7 +406,7 @@ async function main() {
   const picked = KEYS ? all.filter((c) => KEYS.has(c.key)) : all;
   const cases = picked.slice(0, Number.isFinite(LIMIT) ? LIMIT : picked.length);
   console.log(`${qs.length} questions, ${all.length} cases, running ${cases.length}`);
-  const results: Array<Case & { old?: PathResult; new?: PathResult; error?: string }> = [];
+  const results: Array<Case & { new?: PathResult; error?: string }> = [];
   if (KEYS && cases.length < KEYS.size) console.log(`KEYS: ${KEYS.size - cases.length} key(s) matched no case`);
   let next = 0;
   const worker = async () => {
@@ -435,9 +414,8 @@ async function main() {
       const c = cases[next++];
       const run = c.place === "group" ? askGroup : c.place === "hq" ? askHq : askDm;
       try {
-        const old = NEW_ONLY ? undefined : await run(c, false);
-        const neu = await run(c, true);
-        results.push({ ...c, old, new: neu });
+        const neu = await run(c);
+        results.push({ ...c, new: neu });
         const done = results.length;
         if (done % 10 === 0 || cases.length <= 3) {
           console.log(`  ${done}/${cases.length}  $${totalUsd.toFixed(3)}  ${totalCalls} calls`);
@@ -453,7 +431,7 @@ async function main() {
   results.sort((a, b) => a.qIndex - b.qIndex || a.key.localeCompare(b.key));
   writeFileSync(OUT, JSON.stringify({ at: NOW.toISOString(), totalUsd, totalCalls, refusedWrites, results }, null, 1));
 
-  const per = (p: "old" | "new") => {
+  const per = (p: "new") => {
     const rs = results.filter((r) => r[p]);
     const calls = rs.flatMap((r) => r[p]!.calls);
     return {
@@ -472,7 +450,6 @@ async function main() {
       ).map(([l, x]) => `${l}: ${x.n} calls, ${Math.round(x.inTok / x.n)} input tokens each, $${x.usd.toFixed(4)}`),
     };
   };
-  console.log("OLD", JSON.stringify(per("old"), null, 1));
   console.log("NEW", JSON.stringify(per("new"), null, 1));
   console.log(`TOTAL: ${totalCalls} model calls, $${totalUsd.toFixed(4)} (dev key). Writes refused: ${refusedWrites.length} (${[...new Set(refusedWrites)].join(", ") || "none"})`);
   if (cases.length < all.length) {

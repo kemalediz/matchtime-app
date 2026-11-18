@@ -51,7 +51,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 
   test("MatchTime's in-group reply is claimed, keyed for the Pi, and the ack stamps its stanza id", async ({ request, db }) => {
     const grp = (await createGroup(request, db, { maxPlayers: 14, attendance: [{ key: "owner", status: "CONFIRMED" }] })).attach(request);
-    const COUNT = { topic: "count", personRef: "", statedCount: -1, feature: "none", table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none" };
+    const COUNT = { kind: "list", personRef: "", feature: "none", badge: "none" };
     const r = await grp.postBatch([{ player: "dan", body: "@Match Time how many are in?", tag: true, route: "question", facts: COUNT }]);
     const res = (r.raw as { results: Array<{ waMessageId: string; reply: string | null; replyKey?: string }> }).results[0];
     expect(res.reply, "the question was answered").toBeTruthy();

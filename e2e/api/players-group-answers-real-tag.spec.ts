@@ -27,7 +27,9 @@ import type { APIRequestContext } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
 
-const COUNT = { topic: "count", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none" };
+// "How many are we?" is the unified answer's (2026-11-18): the question
+// extractor's "other", and the answer the stubbed model gives.
+const COUNT = { kind: "other", personRef: "", feature: "none", badge: "none", answer: "There's 1 place left." };
 const MT_POST = "Football 5-a-side: 4 of 5. Say *IN* to play. 🙏";
 
 const PAT = { authorPhone: "447700900003", authorName: "Pat Player" };

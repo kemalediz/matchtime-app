@@ -151,6 +151,8 @@ interface Case {
   asker: string;
   body: string;
   scored?: boolean;
+  /** Why the path stopped, as the path says it (2026-11-18). */
+  why?: string;
   good: string;
 }
 const ADMIN = "Ava Stone";
@@ -187,8 +189,7 @@ async function main() {
       history: c.lang === "tr" ? HISTORY_TR : HISTORY_EN,
       expectedMatchId: st.matchId,
       enabled: new Set<Route>(["question"]),
-      unified: true,
-      deadEnds: new Set([`wa-${i + 1}`]),
+      deadEnds: new Map([[`wa-${i + 1}`, { why: c.why ?? null }]]),
       ...(organisers ? { audience: "organisers" as const } : {}),
       deps: {
         model,

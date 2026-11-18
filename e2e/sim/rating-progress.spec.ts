@@ -12,18 +12,20 @@
  * 2026-09-01 and that queued 69 mass DMs on 2026-09-10, sitting in front
  * of a group post rather than a DM blast.
  *
- * It is deleted (2026-09-11). The ask is now `QuestionFacts.topic =
- * "rating_progress"` on the `question` route — where the live router
- * puts these phrasings 60 of 60 — gated in the engine on admin plus the
- * route's ordinary @Match Time tag, and answered from a targeted
- * database read.
+ * It is deleted (2026-09-11). The ask is on the `question` route — where
+ * the live router puts these phrasings 60 of 60 — behind the route's
+ * ordinary @Match Time tag. Since 2026-11-18 it is the unified answer's
+ * (the question extractor's "other"): who has rated the last match is in
+ * the context of an admin asking, read from the database, and never in
+ * anybody else's.
  *
  * ═══════════════════════════════════════════════════════════════════════
  * WHAT EACH TEST PINS
  * ═══════════════════════════════════════════════════════════════════════
  *
  *   the ask            "@Match Time who hasn't rated yet?" is answered,
- *                      with real numbers off the last completed match.
+ *                      and the answer is shown real numbers off the last
+ *                      completed match.
  *   the incident       the 2026-09-10 sentence, verbatim, says nothing
  *                      when it is classified as it really is. Asserted
  *                      twice, and the SECOND assertion is the honest
@@ -34,10 +36,12 @@
  *                      overlooked; read that test's comment.
  *   untagged           refused. A real behaviour change from the fast
  *                      path, which was not tag-gated at all.
- *   non-admin          refused, silently. The answer NAMES the players
- *                      who have not rated.
+ *   non-admin          answered, but its context never holds who has
+ *                      rated: the names are the organisers'.
  */
+import { readFileSync } from "node:fs";
 import type { APIRequestContext } from "@playwright/test";
+import { E2E } from "../helpers/env";
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { createGroup, SimGroup } from "./group";
@@ -51,17 +55,32 @@ const INCIDENT =
 /** The real ask, which must keep working. */
 const ASK = "@Match Time who hasn't rated yet?";
 
-/** What the question extractor returns for the genuine ask. */
+const ANSWER = "Nobody has rated the last game yet.";
+
+/** What the question extractor returns for the genuine ask, and the
+ *  unified answer the stubbed model gives (it reads the same body). */
 const RATING_Q = {
   route: "question",
-  facts: { topic: "rating_progress", personRef: "", statedCount: -1 },
+  facts: { kind: "other", personRef: "", feature: "none", badge: "none", answer: ANSWER },
 };
 
 /** What it returns for a message that instructs the PLAYERS. */
 const NOT_A_QUESTION = {
   route: "question",
-  facts: { topic: "other", personRef: "", statedCount: -1 },
+  facts: { kind: "other", personRef: "", feature: "none", badge: "none" },
 };
+
+/** The unified answer's turn for this body, as the stub was shown it. */
+function unifiedTurn(body: string): string {
+  return (
+    readFileSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { label: string; user: string })
+      .filter((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(body))
+      .pop()?.user ?? ""
+  );
+}
 
 /** The rating-progress ANSWER inside one request's outbound batch.
  *
@@ -91,13 +110,13 @@ const group = async (request: APIRequestContext, db: TestDb) =>
     completedMatch: { daysAgo: 2, confirmedKeys: ["owner", "alice", "pete"] },
   })).attach(request);
 
-test("the genuine ask is answered, with real numbers", async ({ request, db }) => {
+test("the genuine ask is answered, from real numbers", async ({ request, db }) => {
   const grp = await group(request, db);
   const r = await grp.post("owner", ASK, { ...RATING_Q, tag: true });
-  expect(r.reply ?? "", JSON.stringify(r)).toContain("rating progress");
-  // Nobody has rated in this world, so all three confirmed players are
-  // still to rate. The numbers come from the DATABASE, never the body.
-  expect(r.reply ?? "").toContain("Rated: 0/3");
+  expect(r.reply ?? "", JSON.stringify(r)).toBe(ANSWER);
+  // Nobody has rated in this world, so all three who played are still to
+  // rate. The numbers come from the DATABASE, never the body.
+  expect(unifiedTurn(ASK)).toMatch(/WHO HAS RATED THE LAST MATCH[^\n]*: 0 of 3 who played have rated/);
   expect(answerDmsIn(r.dms), JSON.stringify(r.dms)).toHaveLength(0);
 });
 
@@ -132,14 +151,15 @@ test("the same ask UNTAGGED is refused", async ({ request, db }) => {
   // record: the deleted fast path was not tag-gated at all.
   const grp = await group(request, db);
   const r = await grp.post("owner", "who hasn't rated yet?", RATING_Q);
-  expect(r.reply ?? "").not.toContain("rating progress");
+  expect(r.reply ?? null).toBeNull();
 });
 
-test("a non-admin's tagged ask is refused, and silently", async ({ request, db }) => {
-  // The answer names the players who have not rated, which is exactly
-  // the case `payment-answer.ts` predicted would need an admin gate.
+test("a non-admin's tagged ask: its context never holds who has rated", async ({ request, db }) => {
+  // The names of who has not rated are the organisers'. What the model is
+  // not told it cannot leak.
   const grp = await group(request, db);
-  const r = await grp.post("pete", `${ASK} please`, { ...RATING_Q, tag: true });
-  expect(r.reply ?? "").not.toContain("rating progress");
-  expect(answerDmsIn(r.dms), JSON.stringify(r.dms)).toHaveLength(0);
+  await grp.post("pete", `${ASK} please`, { ...RATING_Q, tag: true });
+  const turn = unifiedTurn(`${ASK} please`);
+  expect(turn).toContain("THE MESSAGE");
+  expect(turn).not.toMatch(/WHO HAS RATED THE LAST MATCH|Not rated yet:/);
 });

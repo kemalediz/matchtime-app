@@ -428,11 +428,13 @@ test("dm-qa: a question swipe-replied to his OTHER club's invite is answered fro
   const json = await postDm(request, PHONE.player, "what time is it?", { quotedMessageId: stanza, quotedText: "QC3...", quotedFromMatchTime: true });
   expect(json.handled).toBe("dm-qa");
   const answer = await db.one<{ text: string }>(
-    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[scoped-qa-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
+    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[unified-dm-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
     [digits(PHONE.player)],
   );
-  expect(answer?.text).toContain("GROUP: Other FC");
-  expect(answer?.text).toContain("[chat-context]");
+  // The DM answer is the unified one (2026-11-18): the other club's game,
+  // and what MatchTime said to him, under the chat's own heading.
+  expect(answer?.text).toContain("Other Arena");
+  expect(answer?.text).toContain("THE CHAT: what MatchTime said to them in private");
   expect(answer?.text).toContain("THEY ARE REPLYING TO MatchTime's message of");
   expect(answer?.text).toContain("QC3 Other FC needs 2 for Thursday");
 });
@@ -450,10 +452,10 @@ test("dm-qa: a quote about a club he is not in is dropped; his own club, the rec
   const json = await postDm(request, PHONE.player, "what time is it?", { quotedMessageId: stanza, quotedText: "QC3...", quotedFromMatchTime: true });
   expect(json.handled).toBe("dm-qa");
   const answer = await db.one<{ text: string }>(
-    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[scoped-qa-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
+    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[unified-dm-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
     [digits(PHONE.player)],
   );
-  expect(answer?.text).toContain("GROUP: E2E Test FC");
+  expect(answer?.text).not.toContain("Other Arena");
   expect(answer?.text).not.toContain("THEY ARE REPLYING TO");
   expect(answer?.text).toContain("MATCHTIME'S RECENT MESSAGES TO THEM");
   // M1: the other club's DM is not in the recent list either.

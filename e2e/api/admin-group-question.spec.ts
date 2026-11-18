@@ -3,15 +3,19 @@
  * the real route. FNF, 14:29 London: "MatchTime who are the admins?" was
  * routed `help` and answered with the generic HQ menu. The shared router
  * and the question extractor are STUBBED (what the models would have
- * said); everything after is the shipped code: the players' group's own
- * answering path (`runAnswerBatch`, the engine, the composer), with the
- * organisers as the audience, reading the real club.
+ * said), and so is the unified answer (2026-11-18: the composed club, bench
+ * and count answers were deleted with the other question categories):
+ * everything after is the shipped code, the players' group's own answering
+ * path (`runAnswerBatch`, the engine, the composer), with the organisers as
+ * the audience, reading the real club. What the answer is SHOWN is checked
+ * against the stub's record of its turn.
  *
  * The fixture club (E2E Test FC, weekly) has its upcoming match at 4 of 5:
  * Alex Admin (OWNER), Colin Collector (the money collector), Pat Player,
  * Tom Third, and Ben Bench on the bench. Its game's fee is £8. Set up like
  * FNF here: the organisers announce the list, so "Teams ready" is 10:00.
  */
+import { readFileSync } from "node:fs";
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { ORG_ID, PHONE } from "../helpers/constants";
 import { E2E } from "../helpers/env";
@@ -36,11 +40,30 @@ const REFRESH = "FNF refresh needed 👀";
 const MENU_UNTAGGED = "what can you do?";
 const FRIEND = "@Match Time how do I bring a friend?";
 
-/** The question extractor's raw answer. */
-const q = (topic: string) => ({
+/** The question extractor's raw answer (an old `topic` is mapped to its
+ *  `kind` by the stub), and, for "other", the unified answer's. */
+const q = (topic: string, answer?: string) => ({
   route: "question",
-  facts: { topic, personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none" },
+  facts: { topic, personRef: "", feature: "none", badge: "none", ...(answer ? { answer } : {}) },
 });
+
+const ADMINS_ANSWER = "The admins are Alex Admin. Colin Collector collects the money.";
+const ADMINS_TR_ANSWER = "Yöneticiler: Alex Admin. Parayı Colin Collector topluyor.";
+const BENCH_ANSWER = "On the bench: Ben Bench.";
+const COUNT_ANSWER = "4 are in for the next game.";
+const MOTM_ANSWER = "I'll have Man of the Match once the votes are in.";
+
+/** The unified answer's turn for this body, as the stub was shown it. */
+function turnFor(body: string): string {
+  return (
+    readFileSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { label: string; user: string })
+      .filter((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(body))
+      .pop()?.user ?? ""
+  );
+}
 
 let seq = 0;
 async function say(request: APIRequestContext, text: string, extra: Record<string, unknown> = {}) {
@@ -57,13 +80,13 @@ test.beforeAll(async ({ db }) => {
   await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group', "listAnnouncer" = 'organisers' WHERE id = $1`, [ORG_ID, HQ]);
   engineOn({
     // The incident: the router said `help`.
-    [ADMINS]: { ...q("club"), route: "help" },
-    [ADMINS_TR]: q("club"),
-    [BENCH]: q("bench"),
-    [COUNT]: q("count"),
+    [ADMINS]: { ...q("club", ADMINS_ANSWER), route: "help" },
+    [ADMINS_TR]: q("club", ADMINS_TR_ANSWER),
+    [BENCH]: q("bench", BENCH_ANSWER),
+    [COUNT]: q("count", COUNT_ANSWER),
     [MENU]: { ...q("how_it_works"), route: "help" },
     [WEATHER]: q("other"),
-    [MOTM]: q("club"),
+    [MOTM]: q("club", MOTM_ANSWER),
     [MENU_UNTAGGED]: { ...q("how_it_works"), route: "help" },
     // The friend link's own help topic (2026-10-31).
     [FRIEND]: { route: "help", facts: { ...q("how_it_works").facts, feature: "friend", badge: "none" } },
@@ -78,34 +101,34 @@ test.afterAll(() => {
 });
 
 test("the incident: who are the admins, routed help, is answered from the club", async ({ request }) => {
-  expect(await say(request, ADMINS)).toMatchObject({
-    handled: true,
-    outcome: "hq-answered",
-    replyText: "👥 Admins: Alex Admin\n💷 Money collector: Colin Collector\n💷 Match fee: £8 a player\n⚽ Teams ready: 10:00 on match day",
-  });
+  expect(await say(request, ADMINS)).toMatchObject({ handled: true, outcome: "hq-answered", replyText: ADMINS_ANSWER });
+  // The club's setup, as the organisers see it, is in what the answer is shown.
+  const turn = turnFor(ADMINS);
+  expect(turn).toContain("ADMINS: Alex Admin");
+  expect(turn).toContain("- Money collector: Colin Collector");
+  expect(turn).toContain("- Match fee: £8 a player");
+  expect(turn).toContain("- Teams are made: at 10:00 on match day");
 });
 
 test("in Turkish", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   const out = await say(request, ADMINS_TR);
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
-  expect(out).toMatchObject({
-    handled: true,
-    outcome: "hq-answered",
-    replyText: "👥 Yöneticiler: Alex Admin\n💷 Parayı toplayan: Colin Collector\n💷 Maç ücreti: kişi başı £8\n⚽ Takımlar hazır: maç günü 10:00",
-  });
+  expect(out).toMatchObject({ handled: true, outcome: "hq-answered", replyText: ADMINS_TR_ANSWER });
+  expect(turnFor(ADMINS_TR)).toContain("THE CLUB SPEAKS: Turkish");
 });
 
 test("who's on the bench: the bench itself, though the organisers announce the list to the players", async ({ request }) => {
   const out = await say(request, BENCH);
-  expect(out).toMatchObject({ handled: true, outcome: "hq-answered" });
-  expect(out.replyText).toContain("Ben Bench");
+  expect(out).toMatchObject({ handled: true, outcome: "hq-answered", replyText: BENCH_ANSWER });
+  // The organisers are shown the bench by name, though the players are not.
+  expect(turnFor(BENCH)).toMatch(/BENCH \(1\)[^\n]*\n {2}1\. Ben Bench/);
 });
 
 test("how many are in: the count", async ({ request }) => {
   const out = await say(request, COUNT);
-  expect(out).toMatchObject({ handled: true, outcome: "hq-answered" });
-  expect(out.replyText).toMatch(/4/);
+  expect(out).toMatchObject({ handled: true, outcome: "hq-answered", replyText: COUNT_ANSWER });
+  expect(turnFor(COUNT)).toMatch(/In the squad: 4 of 5\./);
 });
 
 test("what can you do: the HQ topic list (2026-11-10)", async ({ request }) => {
@@ -228,16 +251,22 @@ test.describe("the players' group asks the same club questions", () => {
     return (res.results as Result[]).find((x) => x.waMessageId === id)!;
   };
 
+  const FEE_ANSWER = "The match fee is £8 a player, and Colin Collector collects it.";
+  const TEAMS_ANSWER = "The teams are made at 10:00 on match day.";
+  const FEE_TR_ANSWER = "Maç ücreti kişi başı £8, Colin Collector topluyor.";
+
   test.beforeAll(() => {
-    engineOn({ [FEE_Q]: q("club"), [TEAMS_Q]: q("club"), [FEE_TR]: q("club") });
+    engineOn({ [FEE_Q]: q("club", FEE_ANSWER), [TEAMS_Q]: q("club", TEAMS_ANSWER), [FEE_TR]: q("club", FEE_TR_ANSWER) });
   });
 
-  test("how much do we pay each, and when do the teams come out: answered, in plain words", async ({ request }) => {
-    const expected = "👥 Admins: Alex Admin\n💷 Money collector: Colin Collector\n💷 Match fee: £8 a player\n⚽ Teams: worked out at 10:00 on match day";
-    for (const body of [FEE_Q, TEAMS_Q]) {
+  test("how much do we pay each, and when do the teams come out: answered from the club's setup", async ({ request }) => {
+    for (const [body, answer] of [[FEE_Q, FEE_ANSWER], [TEAMS_Q, TEAMS_ANSWER]] as const) {
       const r = await ask(request, body);
-      expect(r.reply).toBe(expected);
-      expect(r.reply).not.toMatch(/\d{9,}/);
+      expect(r.reply).toBe(answer);
+      const turn = turnFor(body);
+      expect(turn).toContain("- Match fee: £8 a player");
+      expect(turn).toContain("- Teams are made: at 10:00 on match day");
+      expect(turn).not.toMatch(/\d{9,}/);
     }
   });
 
@@ -245,6 +274,7 @@ test.describe("the players' group asks the same club questions", () => {
     await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
     const r = await ask(request, FEE_TR);
     await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
-    expect(r.reply).toBe("👥 Yöneticiler: Alex Admin\n💷 Parayı toplayan: Colin Collector\n💷 Maç ücreti: kişi başı £8\n⚽ Takımların kurulduğu saat: maç günü 10:00");
+    expect(r.reply).toBe(FEE_TR_ANSWER);
+    expect(turnFor(FEE_TR)).toContain("THE CLUB SPEAKS: Turkish");
   });
 });

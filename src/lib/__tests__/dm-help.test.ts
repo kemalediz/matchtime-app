@@ -85,6 +85,8 @@ beforeEach(() => {
 });
 
 /** A model that answers the question extractor with these fields. */
+const KIND_OF: Record<string, string> = { how_it_works: "help", squad: "list", my_stats: "my_stats" };
+
 function questionModel(fields: Record<string, unknown> | Error): PipelineModel & { calls: number } {
   const m = {
     name: "fake",
@@ -92,7 +94,10 @@ function questionModel(fields: Record<string, unknown> | Error): PipelineModel &
     async complete() {
       m.calls++;
       if (fields instanceof Error) throw fields;
-      const raw = { topic: "other", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none", badge: "none", ...fields };
+      // The question extractor's reply (`unified-question.ts`): the old
+      // `topic` named here is mapped to its `kind`.
+      const f = fields as Record<string, unknown>;
+      const raw = { kind: KIND_OF[String(f.topic ?? "")] ?? "other", personRef: "", feature: "none", badge: "none", ...f };
       return { text: JSON.stringify(raw), stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
     },
   };

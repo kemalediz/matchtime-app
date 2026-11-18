@@ -1145,9 +1145,10 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
       bodies: {
         in: IN(),
         "me too": IN(),
-        // Real question facts, so the answer engine's decline is its
-        // OWN mixed-batch rule and not a parse failure.
-        "@Match Time how many are we now?": { topic: "count", personRef: null, statedCount: null },
+        // The question extractor reads the list asked for (2026-11-18:
+        // the counted answer it used to read was deleted), so the answer is
+        // the squad post, composed after the two INs landed.
+        "@Match Time how many are we now?": { kind: "list", personRef: "", feature: "none", badge: "none" },
       },
     });
 

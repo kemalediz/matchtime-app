@@ -463,7 +463,7 @@ describe("(d) a topic request reaches its detail", () => {
       name: "stub",
       async complete(_req: ModelRequest): Promise<ModelResponse> {
         return {
-          text: JSON.stringify({ topic: "how_it_works", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature, badge: "none" }),
+          text: JSON.stringify({ kind: "help", personRef: "", feature, badge: "none" }),
           stopReason: "end_turn",
           usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
           costUsd: 0,

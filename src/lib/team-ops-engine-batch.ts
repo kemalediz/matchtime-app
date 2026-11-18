@@ -345,6 +345,10 @@ export interface TeamOpsMessageOutcome {
   /** The reply is a team sheet a swap wrote (two numbered lists): the
    *  route must not recompose it as the squad post. */
   teamSheetPost?: boolean;
+  /** A dead end (`team_request_unsupported`): why this path made no
+   *  change, in plain words, for the unified answer that replaces the one
+   *  line (`dead-end-answer.ts`, 2026-11-18). */
+  deadEndWhy?: string;
 }
 
 export interface TeamOpsBatchResult {
@@ -1092,6 +1096,7 @@ export async function runTeamOpsBatch(args: {
         matchId: null,
         teamsGenerated: false,
         writeFailed: false,
+        deadEndWhy: `it reads as a team change MatchTime cannot make from a message (${(factsById.get(m.waMessageId) as { action?: string } | undefined)?.action ?? "unknown"})`,
       });
       continue;
     }
@@ -1120,6 +1125,7 @@ export async function runTeamOpsBatch(args: {
         teamsGenerated: false,
         writeFailed: failedIds.has(m.waMessageId),
         teamSheetPost: applied,
+        ...(r?.kind === "unsupported" && r.why ? { deadEndWhy: r.why } : {}),
       });
       continue;
     }

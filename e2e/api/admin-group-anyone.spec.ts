@@ -40,7 +40,9 @@ const CHAT = "who is bringing the bibs?";
 /** The question extractor's raw answer. */
 const q = (topic: string) => ({
   route: "question",
-  facts: { topic, personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none" },
+  // The unified answer's reply rides the same stub (2026-11-18): the
+  // composed club answer was deleted with the other question categories.
+  facts: { topic, personRef: "", feature: "none", badge: "none", answer: topic === "club" ? "The admins are Alex Admin." : "On the bench: Ben Bench." },
 });
 
 let seq = 0;
@@ -98,7 +100,7 @@ test.afterAll(() => {
 test("the incident: a player of the club asks who the admins are, answered with a tick, and recorded as who sent it", async ({ request, db }) => {
   const out = await say(request, ADMINS_Q, PLAYER);
   expect(out).toMatchObject({ handled: true, outcome: "hq-answered", react: "✅" });
-  expect(out.replyText).toContain("👥 Admins: Alex Admin");
+  expect(out.replyText).toContain("Alex Admin");
   const row = await db.one<{ s: string | null }>(`SELECT "senderUserId" AS s FROM "AdminGroupMessage" WHERE "waMessageId" = $1`, [out.messageId]);
   expect(row?.s).toBe(U.player);
 });

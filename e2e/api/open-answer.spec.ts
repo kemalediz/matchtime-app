@@ -1,15 +1,17 @@
 /**
- * THE OPEN ANSWER, END TO END (Kemal, 2026-11-10): a tagged question that
- * fits no set answer (question topic `other`) is answered by one grounded
- * model call (`src/lib/pipeline/open-answer.ts`), in the players' group and
- * in the admin group (HQ), through the one answering path.
+ * ANYTHING ELSE, END TO END (Kemal, 2026-11-10): a tagged question that fits
+ * none of the three fixed posts (the question extractor's "other") is
+ * answered by ONE grounded model call, in the players' group and in the
+ * admin group (HQ), through the one answering path. It was the open answer
+ * (`open-answer.ts`); since 2026-11-18 it is the unified answer
+ * (`unified-answer.ts`), the only one.
  *
- * The router, the question extractor and the open answer are STUBBED: the
- * extractor stub answers by message body, so a body's canned JSON carries the
- * extractor's fields and the open answer's `answer` together. Everything else
- * is the shipped code against a real Postgres: ownership, the context built
- * from the real club, the grounding check, the composer and both nets in the
- * analyze route. No model call, $0.
+ * The router, the question extractor and the answer are STUBBED: the stub
+ * answers by message body, so a body's canned JSON carries the extractor's
+ * fields and the answer's `answer` together. Everything else is the shipped
+ * code against a real Postgres: ownership, the context built from the real
+ * club, the grounding check, the composer and both nets in the analyze
+ * route. No model call, $0.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { ORG_ID, PHONE } from "../helpers/constants";
@@ -26,16 +28,10 @@ const PLAYER = PHONE.player.replace(/^\+/, "");
 const other = (answer?: string) => ({
   route: "question",
   facts: {
-    topic: "other",
+    kind: "other",
     personRef: "",
-    statedCount: -1,
-    table: "none",
-    listSize: -1,
-    listEnd: "top",
-    period: "none",
-    periodCount: -1,
-    periodUnit: "none",
     feature: "none",
+    badge: "none",
     ...(answer !== undefined ? { answer } : {}),
   },
 });
@@ -62,7 +58,7 @@ test.beforeAll(async ({ db }) => {
   await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [ORG_ID, HQ]);
   engineOn({
     [COLD]: other(COLD_ANSWER),
-    // No `answer`: the open answer is refused, as a failed call is.
+    // No `answer`: the answer is refused, as a failed call is.
     [FAILS]: other(),
     // A number the club's context does not hold: refused by the grounding check.
     [INVENTS]: other("Pat Player has scored 41 goals."),
@@ -79,7 +75,7 @@ test("players' group: an open question is answered, and nothing is written", asy
   const before = await db.count(`SELECT count(*)::int AS c FROM "Attendance"`);
   const r = await ask(request, COLD);
   expect(r.reply).toBe(COLD_ANSWER);
-  expect(r.intent).toBe("open_answer");
+  expect(r.intent).toBe("unified_answer");
   const after = await db.count(`SELECT count(*)::int AS c FROM "Attendance"`);
   expect(after).toEqual(before);
 });
@@ -98,7 +94,7 @@ test("players' group: untagged chatter is never answered", async ({ request }) =
   expect(r?.reply ?? null).toBeNull();
 });
 
-test("HQ: the same open answer, for the organisers", async ({ request }) => {
+test("HQ: the same answer, for the organisers", async ({ request }) => {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
     data: { channel: "admin-group", botMentioned: true, groupId: HQ, messageId: `e2e-open-hq-${Date.now()}`, text: HQ_Q, senderPhone: ADMIN, timestamp: String(Math.floor(Date.now() / 1000)) },

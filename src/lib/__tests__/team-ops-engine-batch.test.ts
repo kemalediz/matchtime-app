@@ -667,6 +667,8 @@ describe("actions this module does not own are handed on, with a reason", () => 
     expect([...res.outcomes.values()][0].reply).toBe("Sorry, I can't do that one yet.");
     // A dead end the analyze route hands to the unified answer (2026-11-17).
     expect([...res.outcomes.values()][0].intent).toBe("team_request_unsupported");
+    // Why, for the unified answer that replaces the line (2026-11-18).
+    expect([...res.outcomes.values()][0].deadEndWhy).toMatch(/team change MatchTime cannot make from a message \(rename\)/);
     expect(r.generated).toEqual([]);
   });
 
@@ -1068,12 +1070,14 @@ describe("a swap the teams extractor read is applied from its facts, never by th
 
   it("a swap naming nobody it can place gets the one line", async () => {
     const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["it", "seven"] }) });
-    const applySwap = vi.fn(async () => ({ kind: "unsupported" as const, logReason: "nobody" }));
+    const applySwap = vi.fn(async () => ({ kind: "unsupported" as const, logReason: "nobody", why: 'neither "it" nor "seven" is a name MatchTime can find' }));
     const r = recorder(model, squadWorld(), { applySwap });
     const res = await run({ messages: [msg({ body: TWO })], deps: r.deps });
     expect([...res.outcomes.values()][0].reply).toBe("Sorry, I can't do that one yet.");
     // The same dead end as any team change this path cannot make (2026-11-17).
     expect([...res.outcomes.values()][0].intent).toBe("team_request_unsupported");
+    // ...and why, as the swap said it (2026-11-18, Sutton "swap Sam with Alex").
+    expect([...res.outcomes.values()][0].deadEndWhy).toBe('neither "it" nor "seven" is a name MatchTime can find');
   });
 
   it("'keep Elvin and Sait apart' on the teams as they stand: applied from the facts, never the balancer (2026-11-16)", async () => {

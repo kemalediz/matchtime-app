@@ -29,7 +29,6 @@ import {
   ATTENDANCE_ASK_KIND,
   attendanceAskKeyPrefix,
   openAttendanceAsks,
-  openStatsClarifications,
   type AttendanceAskRow,
   type StatsClarification,
 } from "../pipeline/awaiting-answer";
@@ -80,14 +79,6 @@ describe("the open question (its own row)", () => {
   it("another club's row and an unreadable row are nobody's question", () => {
     expect(openAttendanceAsks([askRow({ key: `${attendanceAskKeyPrefix("org-2")}wa-0` })], "org-1", NOW)).toEqual([]);
     expect(openAttendanceAsks([askRow({ text: "not json" })], "org-1", NOW)).toEqual([]);
-  });
-  it("stats clarifications keep their old shape", () => {
-    const open = openStatsClarifications(
-      [{ id: "am-1", orgId: "org-1", intent: "stats_clarification", authorUserId: "u-olly", authorName: "Olly Organiser", body: "@Match Time Zork's stats", createdAt: ago(3) }],
-      "org-1",
-      NOW,
-    );
-    expect(open[0]).not.toHaveProperty("about");
   });
 });
 
@@ -363,11 +354,11 @@ describe("the attendance batch", () => {
   });
 
   it("a stats question open for the sender is not shown to the attendance extractor", async () => {
-    const stats = openStatsClarifications(
-      [{ id: "am-1", orgId: "org-1", intent: "stats_clarification", authorUserId: "u-olly", authorName: "Olly Organiser", body: "@Match Time Zork's stats", createdAt: ago(3) }],
-      "org-1",
-      NOW,
-    );
+    // A clarification not about a place in the squad (the shape the deleted
+    // stats "who do you mean?" had): never the attendance extractor's.
+    const stats: StatsClarification[] = [
+      { id: "am-1", orgId: "org-1", askerUserId: "u-olly", askerName: "Olly Organiser", questionBody: "@Match Time Zork's stats", askedAt: ago(3) },
+    ];
     const x = extractor(facts([]));
     const { d } = deps(x.model, picker({}));
     await run(msg("Idris"), d, stats);

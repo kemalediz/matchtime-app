@@ -408,147 +408,9 @@ export const tr: Strings = {
 
   // ── rows 6 to 30: the batch answers ────────────────────────────────
 
-  answer_count: (p) => {
-    if (p.openSquad) {
-      const head = p.stated ? `Tam değil, ${p.kickoffLabel} için ${p.confirmed} kişiyiz` : `${p.kickoffLabel} için ${p.confirmed} kişiyiz`;
-      return `${head}${p.need > 0 ? `, oynamak için ${p.need} kişi daha lazım 🙏` : ` ✅ İsteyen *VARIM* yazsın.`}`;
-    }
-    const head = p.stated
-      ? `Tam değil, ${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz${p.bench}`
-      : `${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz${p.bench}`;
-    const tail = p.need > 0 ? `, ${p.need} kişi daha lazım 🙏` : " ✅ kadro tamam.";
-    return `${head}${tail}`;
-  },
-  answer_fixture: (p) => (p.venue ? `⚽ ${p.kickoffLabel}, ${p.venue}.` : `⚽ ${p.kickoffLabel}.`),
-  answer_club: (p) =>
-    [
-      `👥 Yöneticiler: ${p.admins || "yok"}`,
-      `💷 Parayı toplayan: ${p.collector ?? "ayarlanmadı"}`,
-      `💷 Maç ücreti: ${p.fee !== null ? `kişi başı £${p.fee}` : p.feeSplit ? "saha ücreti oynayanlar arasında bölünür" : "ayarlanmadı"}`,
-      p.forOrganisers
-        ? `⚽ Takımlar hazır: ${p.teamsReady === "off" ? "kapalı" : `maç günü ${p.teamsReady}`}`
-        : p.teamsReady === "off" ? "⚽ Takımlar: maçtan önce organizatörler ayarlıyor" : `⚽ Takımların kurulduğu saat: maç günü ${p.teamsReady}`,
-    ].join("\n"),
-  answer_score_no_match: "Bu grup için kayıtlı oynanmış bir maç bulamadım.",
-  answer_score_no_score: (p) => `${p.kickoffLabel} için henüz skor bildirilmedi, sonucu yazın, kaydedeyim.`,
-  answer_score_result: (p) =>
-    `⚽ ${p.kickoffLabel}: ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}. ${p.winnerLabel === null ? "Berabere." : `${p.winnerLabel} kazandı.`}`,
-  results_head: (p) => {
-    const when = p.period ? resultsWhenTr(p.period) : "";
-    if (!p.byCount) return `⚽ ${capTr(when)} oynanan maçların sonuçları:`;
-    const what = p.n === 1 ? "son sonuç" : `son ${p.n} sonuç`;
-    return `⚽ ${capTr(when ? `${when} ${what}` : what)}:`;
-  },
-  results_row: (p) =>
-    `• ${p.dayLabel}: ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}. ${p.winnerLabel === null ? "Berabere." : `${p.winnerLabel} kazandı.`}`,
-  results_all_i_have: "Skoru kayıtlı maçların hepsi bu.",
-  results_capped: (p) => `Grupta en fazla ${p.max} sonuç paylaşıyorum.`,
-  results_latest: (p) => `Bunlar en son ${p.n} tanesi.`,
-  results_none: "Bu grup için skoru kayıtlı bir maç henüz yok.",
-  results_none_when: (p) => `${capTr(resultsWhenTr(p.period))} skoru kayıtlı maç yok.`,
-  answer_payments_not_tracked: "Bu grup için ödemeleri takip etmiyorum, o yüzden kimin ödediğini söyleyemem.",
-  answer_payments_no_settled: "Ödemeleri kontrol edebileceğim tamamlanmış bir maç henüz yok.",
-  answer_payments_no_signal: (p) =>
-    `${p.kickoffLabel} için bana ulaşan ödeme yok; kimse ödememiş de olabilir, ben görmüyor da olabilirim, o yüzden bir sayı vermek istemiyorum.`,
-  answer_payments_all_settled: (p) => `💳 ${p.kickoffLabel} için herkes ödedi 🙌`,
-  answer_payments_unpaid: (p) =>
-    `💳 ${p.kickoffLabel} için ${p.chargeable} kişiden ${p.unpaid} kişinin ödemesi bekleniyor. Grupta isim vermiyorum.`,
   answer_bench_empty: "Şu an yedekte kimse yok.",
   answer_bench_list: (p) => `Yedekler: ${joinList("tr", p.names)}.`,
-  answer_person_not_down: (p) => `${p.who} ${p.kickoffLabel} için henüz kadroda değil.`,
-  answer_person_bench: (p) => `${p.who} ${p.kickoffLabel} için yedekte.`,
-  answer_person_confirmed: (p) => `Evet, ${p.who} ${p.kickoffLabel} için kadroda.`,
-  answer_phones_none: "Kadrodaki herkesin kayıtlı numarası var.",
-  answer_phones_missing: (p) => `Kayıtlı numarası olmayanlar: ${joinList("tr", p.names)}.`,
-  answer_options_lead: (p) =>
-    p.need > 0
-      ? `${p.maxPlayers} kişilik kadroda ${p.confirmed} kişiyiz, ${p.need} kişi daha lazım 🙏`
-      : `${p.maxPlayers} kişilik kadroda ${p.confirmed} kişiyiz ✅ kadro tamam.`,
-  answer_options_no_formats: "Bu grup için daha küçük bir format tanımlı değil, o yüzden ya oyuncu bulacağız ya da hiç.",
-  answer_options_none_viable: "Elimizdeki kadroyla daha küçük bir format da dolmuyor, o yüzden oyuncu bulmamız lazım.",
 
-  // ── istatistik tabloları (2026-09-23), `pipeline/stats-answer.ts` ──
-  // Her satırda `isLeaderboardLine` işaretlerinden biri var ("maç", "kez",
-  // "%"), bu yüzden hiçbiri kadro listesi sanılmaz.
-  // ── dönem (2026-09-23) ──
-  // Dönem ve kayıtların başladığı ay hep parantez içinde ya da "için"
-  // önünde, yalın halde: hiçbir ada ya da sayıya ek gelmiyor. "Nisan
-  // 2026 itibarıyla" ekten kaçınmanın yolu ("2026'dan" yazmak yerine).
-  stats_when: (p) => {
-    const q = p.period;
-    if (q === null) return p.since ? `${p.since} itibarıyla` : "";
-    if (q.kind === "last" || q.kind === "this") return spanTr(q);
-    if (q.kind === "season") return p.since ? `bu sezon, ${p.since} itibarıyla` : "bu sezon";
-    return p.since ? `tüm zamanlar, kayıtlarım ${p.since} itibarıyla` : "tüm zamanlar";
-  },
-  stats_span: (p) => spanTr(p.period),
-  stats_period_unreached: (p) =>
-    `Bu kulüp için kayıtlarım ${p.since} itibarıyla başlıyor, yani ${p.span} için elimdeki her şey bu.`,
-  stats_period_not_cut: (p) => {
-    const every = p.since ? `${p.since} itibarıyla oynanan tüm maçlar` : "tüm maçlar";
-    switch (p.table) {
-      case "elo":
-        return `Elo sürekli güncellenen bir puan, o yüzden bu tablo ${p.span} için değil, şu anki durum.`;
-      case "team_of_season":
-        return `Sezonun takımı ${every} üzerinden seçiliyor, o yüzden ${p.span} için ayrıca çıkaramıyorum.`;
-      case "mr_reliable":
-        return `Mr Reliable istatistik sayfasındaki rozet ve ${every} üzerinden veriliyor, o yüzden ${p.span} için ayrıca çıkaramıyorum.`;
-      case "chemistry":
-        return `Uyum ${every} üzerinden hesaplanıyor, o yüzden ${p.span} için ayrıca çıkaramıyorum.`;
-      case "generic":
-        return `Bu rakamlar ${p.since ? `${p.since} itibarıyla oynanan tüm maçları` : "tüm maçları"} kapsıyor, sadece ${p.span} değil.`;
-    }
-  },
-  // "maç" is one of `isLeaderboardLine`'s markers (group-copy.ts), so
-  // this row is never mistaken for a squad roster.
-  stats_apps_head: (p) => (p.when ? `En çok maça çıkanlar (${p.when}):` : "En çok maça çıkanlar:"),
-  stats_apps_row: (p) => `${p.rank}. ${p.name}: ${p.matches} maç`,
-  stats_apps_empty: (p) =>
-    p.when ? `Bu dönemde (${p.when}) sayılacak tamamlanmış maç yok.` : "Henüz sayılacak tamamlanmış maç yok.",
-  stats_ratings_head: (p) =>
-    p.when
-      ? `Kulüp puanında ilk ${p.n} (${p.when}; en az ${p.minGames} puanlı maçı olanlar):`
-      : `Kulüp puanında ilk ${p.n} (en az ${p.minGames} puanlı maçı olanlar):`,
-  stats_ratings_row: (p) => `${p.rank}. ${p.name}: ${p.avg} (${p.games} maç)`,
-  stats_ratings_empty: (p) =>
-    p.when
-      ? `Bu dönemde (${p.when}) en az ${p.minGames} puanlı maçı olan kimse yok, o yüzden paylaşacak bir puan tablosu yok. Tüm istatistikler sitede: ${p.url}`
-      : `Henüz ${p.minGames} puanlı maçı olan kimse yok, o yüzden paylaşacak bir puan tablosu yok. Tüm istatistikler sitede: ${p.url}`,
-  stats_capped: (p) => `Grupta en fazla ${p.cap} kişiyi listeliyorum. Tablonun tamamı sitede: ${p.url}`,
-  stats_bottom: (p) =>
-    `Grupta tabloların sadece üst kısmını paylaşıyorum, alt sıraları değil. Tabloların tamamı sitede: ${p.url}`,
-  stats_mom_head: "En çok maçın adamı seçilenler:",
-  stats_mom_row: (p) => `${p.rank}. ${p.name}: ${p.wins} kez`,
-  stats_mom_empty: "Henüz kimse maçın adamı seçilmedi.",
-  stats_mom_head_when: (p) => `En çok maçın adamı seçilenler (${p.when}):`,
-  stats_mom_empty_when: (p) => `Bu dönemde (${p.when}) kimse maçın adamı seçilmedi.`,
-  stats_elo_head: (p) => `Elo puanında ilk ${p.n} (en az ${p.minMatches} maç oynayanlar):`,
-  stats_elo_row: (p) => `${p.rank}. ${p.name}: ${p.rating} (${p.matches} maç)`,
-  stats_elo_empty: (p) => `Henüz ${p.minMatches} maç oynayan kimse yok, o yüzden paylaşacak bir Elo tablosu yok.`,
-  stats_tots_head: (p) =>
-    `Sezonun takımı (${p.sportName}), her mevkide en yüksek ortalama puan (en az ${p.minGames} puanlı maç):`,
-  stats_tots_row: (p) => `${p.n}. ${p.name}${p.position ? ` (${p.position})` : ""}: ${p.avg} (${p.games} maç)`,
-  stats_tots_empty: (p) => `Henüz sezonun takımı yok: ${p.minGames} puanlı maçı olan kimse yok.`,
-  stats_movers_head:
-    "Puan hareketini maç maç takip ediyorum, son maçtan beri kulüp puan tablosunda en çok yükselenler:",
-  stats_movers_row: (p) =>
-    `${p.n}. ${p.name}: ${p.delta} sıra yükseldi${p.rank !== null ? `, şu an ${p.rank}. sırada` : ""} (${p.games} maç)`,
-  stats_movers_empty: "Son maçtan sonra kulüp puan tablosunda yükselen olmadı.",
-  stats_reliable_head: (p) =>
-    `Mr Reliable rozeti olanlar, istatistik sayfasındaki rozet (ortalama ${p.minAvg} ve üzeri, az dalgalanma, en az ${p.minGames} puanlı maç), en istikrarlıdan başlayarak:`,
-  stats_reliable_row: (p) => `${p.n}. ${p.name}: ortalama ${p.avg} (${p.games} maç)`,
-  stats_reliable_empty: (p) =>
-    `Henüz Mr Reliable rozeti olan kimse yok (ortalama ${p.minAvg} ve üzeri, az dalgalanma, en az ${p.minGames} puanlı maç).`,
-  stats_chem_head: (p) => `${p.name} için en iyi takım arkadaşları:`,
-  stats_chem_winrate: (p) => `• Galibiyet oranına göre: ${p.partner}, birlikte ${p.games} maçta ${p.wins} galibiyet (%${p.pct})`,
-  stats_chem_rating: (p) => `• Puana göre: ${p.partner}, ${p.player} onunla aynı takımdayken ortalama ${p.avg} alıyor`,
-  stats_chem_nemesis: (p) =>
-    `• ${p.player} için en zorlu rakip: ${p.name} (karşı karşıya ${p.games} maç, ${p.wins} galibiyet)`,
-  stats_chem_empty: (p) =>
-    `${p.name} henüz aynı takım arkadaşıyla 2 maç oynamadı, o yüzden gösterilecek bir uyum yok.`,
-  stats_generic_safe: (p) => `Bunu buradan tam olarak cevaplayamıyorum. Tüm istatistikler sitede: ${p.url}`,
-  stats_ask_unknown: (p) => `${p.asker ? `${p.asker}, k` : "K"}adroda ${p.ref} diye biri yok. Kimi kastettiniz?`,
-  stats_ask_ambiguous: (p) => `${p.asker ? `${p.asker}, h` : "H"}angisini kastettiniz: ${p.choices}?`,
 
   // ── rows 32 to 42: the acks ────────────────────────────────────────
 
@@ -4040,14 +3902,6 @@ export const tr: Strings = {
   oa_relay_lead: "📋 Organizatörler için, oyuncu grubuna gönderilmedi:",
   oa_list_by_organisers: "Listeyi organizatörler paylaşacak.",
   oa_teams_by_organisers: "Takımları organizatörler paylaşacak.",
-  oa_space_answer: (p) => {
-    if (p.open <= 0) {
-      return p.organisersPick
-        ? `${p.kickoffLabel} maçı için kadro dolu. Yedeğe girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.`
-        : `${p.kickoffLabel} maçı için kadro dolu. Yedeğe girmek için *VARIM* yazın.`;
-    }
-    return `${p.kickoffLabel} maçı için ${p.open} yer boş. ${p.organisersPick ? ORGANISER_ASK_TAIL_TR : "Almak için *VARIM* yazın."}`;
-  },
   oa_slot_opened: (p) => {
     const names = p.outFirstNames;
     const lead =

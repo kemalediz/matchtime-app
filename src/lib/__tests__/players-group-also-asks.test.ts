@@ -150,7 +150,7 @@ const FEATURES: OrgFeatures = {
   squadFromList: false,
 } as OrgFeatures;
 
-const SQUAD_Q = { topic: "squad", personRef: "", statedCount: -1 };
+const SQUAD_Q = { kind: "list", personRef: "", feature: "none", badge: "none" };
 const OUT_AND_LIST = "@Match Time I'm out, what's the list?";
 
 function m(o: Partial<AnswerBatchMessage> & { waMessageId: string; route: Route }): AnswerBatchMessage {

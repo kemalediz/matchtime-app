@@ -292,9 +292,10 @@ describe("no long dash survives the model-output pass", () => {
   // Listed by file so a new composer has to be added here on purpose.
   it.each([
     ["src/lib/chase-lead.ts", /applyHouseStyle\(enforceProximity\(/],
-    ["src/lib/dm-qa.ts", /if \(lang === "en"\) return applyHouseStyle\(text, lang\);/],
-    ["src/lib/dm-qa.ts", /return applyHouseStyle\(cut \|\| text, lang\);/],
-    ["src/lib/pipeline/stats-generic.ts", /stripLongDashes\(text, args\.lang\)/],
+    // The DM answer is the unified one since 2026-11-18: it strips the
+    // dashes itself, and the DM applies the house style on top.
+    ["src/lib/dm-qa.ts", /applyHouseStyle\(g\.result\.text, args\.lang\)/],
+    ["src/lib/pipeline/unified-answer.ts", /stripLongDashes\(text, lang\)/],
     ["src/lib/onboarding-analyzer.ts", /stripLongDashes\(po\.evidence/],
     ["src/lib/onboarding-analyzer.ts", /stripLongDashes\(ph\.evidence/],
     ["src/lib/rating-adjuster.ts", /stripLongDashes\(r\.reason/],

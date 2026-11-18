@@ -47,6 +47,8 @@ export function guestView(input: UnifiedAnswerInput, guestBlock: string | null):
     clubFacts: null,
     lastMatchRatings: null,
     own: guestBlock ? [guestBlock] : [],
+    // The roster above is his game's: never the club's registered count.
+    membersHidden: true,
   };
 }
 

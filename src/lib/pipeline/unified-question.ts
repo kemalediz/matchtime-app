@@ -1,8 +1,8 @@
 /**
- * THE QUESTION EXTRACTOR UNDER UNIFIED_ANSWERS (Kemal, 2026-11-10).
+ * THE QUESTION EXTRACTOR (Kemal, 2026-11-10; the only one since 2026-11-18).
  *
- * With the flag on, every question is answered by one model call over the
- * club's data (`unified-answer.ts`), so the extractor no longer sorts a
+ * Every question is answered by one model call over the club's data
+ * (`unified-answer.ts`), so the extractor no longer sorts a
  * question into fifteen topics. It says only which of the four things code
  * still does itself is asked for, or "anything else":
  *
@@ -16,9 +16,9 @@
  * answer shows one player's pairings (chemistry), and who that player is is
  * read by the same who-is-who call as before, never by spelling.
  *
- * A NEW PROMPT, written whole (Kemal's rule, 2026-09-23); the old one in
- * `extractors.ts` is untouched and still runs with the flag off. Both are
- * saved under MDs/prompt-question-unified-{old,new}-2026-11-10.txt.
+ * A NEW PROMPT, written whole (Kemal's rule, 2026-09-23); the fifteen-topic
+ * one it replaced was deleted with the UNIFIED_ANSWERS flag on 2026-11-18.
+ * Both are saved under MDs/prompt-question-unified-{old,new}-2026-11-10.txt.
  * Rewritten whole again for round 2 (2026-11-11): "which squad list to
  * accept? mention it again" was read as help and "make the list" as
  * anything else, so `list` is now defined by wanting to SEE the list in any
@@ -135,7 +135,6 @@ export function parseUnifiedQuestion(raw: Record<string, unknown>): { facts: Que
     kind: "question",
     topic,
     personRef: topic === "other" && s(raw.personRef).trim() ? s(raw.personRef).trim() : null,
-    statedCount: null,
   };
   if (topic === "how_it_works") {
     const featureRaw = s(raw.feature).toLowerCase();

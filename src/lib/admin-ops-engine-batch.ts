@@ -328,6 +328,10 @@ export interface AdminOpsMessageOutcome {
    *  `partOfSeveral` sent the organisers nothing, and the route sends them
    *  that match's list after the batch's claims. Absent otherwise. */
   switchedMatchId?: string;
+  /** A dead end (`request_not_handled`): why nothing was done, in plain
+   *  words, for the unified answer that replaces the one line
+   *  (`dead-end-answer.ts`, 2026-11-18). */
+  deadEndWhy?: string;
 }
 
 export interface AdminOpsBatchResult {
@@ -1169,10 +1173,11 @@ export async function runAdminOpsBatch(args: {
           ? requestNotHandledAdminReply(state.features.language)
           : requestNotHandledReply(state.features.language),
         react: null,
-        // A dead end (`dead-end-answer.ts`): with UNIFIED_ANSWERS on, the
-        // analyze route hands it to the unified answer, and this line is
-        // only its fallback (2026-11-17).
+        // A dead end (`dead-end-answer.ts`): the analyze route hands it to
+        // the unified answer, and this line is only its fallback
+        // (2026-11-17), told why (2026-11-18).
         intent: "request_not_handled",
+        deadEndWhy: "MatchTime has no action for what it asks: it is none of the things MatchTime does when tagged (its help menu)",
         action: "reply",
         reasoning:
           `${ADMIN_OPS_HANDLED_BY} (${m.route}): admin action "other" has no handler; ` +

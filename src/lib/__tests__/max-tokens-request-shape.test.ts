@@ -112,7 +112,7 @@ vi.mock("@/lib/match-history", () => ({
 
 import { composeChaseText } from "@/lib/message-analyzer";
 import { t } from "@/lib/i18n/t";
-import { answerScopedQuestion } from "@/lib/dm-qa";
+
 
 beforeEach(() => {
   captured.length = 0;
@@ -198,34 +198,4 @@ describe("truncated responses never reach a human", () => {
     expect(out?.split("\n")[0]).toBe("Need 12 more for tomorrow.");
   });
 
-  it("answerScopedQuestion does not DM a half-finished sentence", async () => {
-    RESPONSES = [
-      {
-        text: "Your next match is Tuesday at 8:30pm at Sim Ar",
-        stop_reason: "max_tokens",
-      },
-    ];
-
-    const out = await answerScopedQuestion({
-      userId: "u0",
-      orgId: "org-1",
-      question: "when is my next match?",
-    });
-
-    expect(out?.answer ?? "").not.toContain("Sim Ar");
-    expect(
-      out?.answer ?? "",
-      "a truncated DM must degrade to the existing apology, not partial text",
-    ).toMatch(/couldn't work that one out/i);
-  });
-
-  it("answerScopedQuestion still returns a complete answer", async () => {
-    RESPONSES = [{ text: "Tuesday, 8:30pm at Sim Arena.", stop_reason: "end_turn" }];
-    const out = await answerScopedQuestion({
-      userId: "u0",
-      orgId: "org-1",
-      question: "when is my next match?",
-    });
-    expect(out?.answer).toBe("Tuesday, 8:30pm at Sim Arena.");
-  });
 });

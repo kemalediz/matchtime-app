@@ -31,13 +31,10 @@ import { formatLondon } from "../london-time";
 import { db } from "../db";
 import {
   GROUP_QUESTION_TTL_MS,
-  STATS_CLARIFICATION_INTENT,
-  STATS_CLARIFIED_INTENT,
   ATTENDANCE_ASK_KIND,
   attendanceAskKeyPrefix,
   openAttendanceAsks,
   openQuestionAt,
-  openStatsClarifications,
   type AwaitingQuestion,
   type StatsClarification,
 } from "./awaiting-answer";
@@ -121,27 +118,19 @@ export async function loadOpenQuestion(
 }
 
 /**
- * READ-ONLY. The stats clarifications this org has open right now: the
- * "who do you mean?" questions MatchTime put to individual posters in
- * the last hour and has not had answered. One indexed read of
- * `AnalyzedMessage` (`[orgId, createdAt]`), rows the analyze route
- * writes for every owned message anyway. See the essay at the foot of
- * `awaiting-answer.ts`.
+ * READ-ONLY. The "who is that?" questions MatchTime has open about a place
+ * in the squad (2026-11-17, `awaiting-answer.ts` `AttendanceAsk`): put to
+ * individual posters in the last hour and not answered yet, kept as
+ * `SentNotification` rows. One indexed read.
+ *
+ * It also read the stats "who do you mean?" questions until 2026-11-18,
+ * when the stats answers that asked them were deleted with UNIFIED_ANSWERS:
+ * the unified answer reads the roster itself and asks nobody.
  */
 export async function loadOpenStatsClarifications(
   orgId: string,
   now: Date = new Date(),
 ): Promise<StatsClarification[]> {
-  const rows = await db.analyzedMessage.findMany({
-    where: {
-      orgId,
-      intent: { in: [STATS_CLARIFICATION_INTENT, STATS_CLARIFIED_INTENT] },
-      createdAt: { gte: new Date(now.getTime() - GROUP_QUESTION_TTL_MS) },
-    },
-    select: { id: true, orgId: true, intent: true, authorUserId: true, authorName: true, body: true, createdAt: true },
-  });
-  // …and the "who is that?" questions about a place (2026-11-17), kept as
-  // `SentNotification` rows (`awaiting-answer.ts`). Same hour, one read.
   const asks = await db.sentNotification.findMany({
     where: {
       kind: ATTENDANCE_ASK_KIND,
@@ -150,9 +139,7 @@ export async function loadOpenStatsClarifications(
     },
     select: { id: true, key: true, targetUser: true, text: true, createdAt: true },
   });
-  return [...openStatsClarifications(rows, orgId, now), ...openAttendanceAsks(asks, orgId, now)].sort(
-    (a, b) => a.askedAt.getTime() - b.askedAt.getTime(),
-  );
+  return openAttendanceAsks(asks, orgId, now).sort((a, b) => a.askedAt.getTime() - b.askedAt.getTime());
 }
 
 /**

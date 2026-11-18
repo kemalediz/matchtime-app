@@ -47,7 +47,7 @@ async function main() {
     const r = await answerHqQuestion({
       orgId, lang: org.language, messageId: "dump", body: question, senderUserId: asker.userId, senderName: asker.name, now: NOW,
       history: week.slice(-8).map((l) => ({ author: l.author, body: l.body })), weekChat: async () => week,
-      lastBotPost: null, gates: hqHelpGates(org as never, {}), poolEnv: {}, unified: true, deps: { model },
+      lastBotPost: null, gates: hqHelpGates(org as never, {}), poolEnv: {}, deps: { model },
     });
     console.log("=== HQ reply:", r);
   } else {
@@ -57,7 +57,7 @@ async function main() {
       messages: [{ waMessageId: "dump", body: question, authorName: asker.name, senderUserId: asker.userId, senderName: asker.name, tagged: true, addressed: true, route: "question" as Route, gated: false }],
       history: week.slice(-8).map((l) => ({ author: l.author, body: l.body })), weekChat: async () => week,
       expectedMatchId: st.matchId, enabled: enabledStepSevenRoutes({}), monthNotStarted: st.matchId ? await monthNotStartedFor(st.matchId) : false,
-      poolEnv: async () => ({}), unified: true, deps: { model },
+      poolEnv: async () => ({}), deps: { model },
     });
     console.log("=== outcome:", res.outcomes.get("dump"), res.degradations);
   }

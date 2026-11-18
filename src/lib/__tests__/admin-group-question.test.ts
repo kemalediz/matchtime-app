@@ -13,13 +13,15 @@ import { NOW, world } from "../pipeline/__tests__/helpers";
 
 const FEATURES = { botEnabled: true, attendance: true, bench: true, teamBalancing: true, statsQa: true, language: "en" } as OrgFeatures;
 
+const KIND_OF: Record<string, string> = { how_it_works: "help", squad: "list", my_stats: "my_stats" };
+
 function extractor(topic: string, calls: ModelRequest[] = []): PipelineModel {
   return {
     name: "stub",
     async complete(req: ModelRequest): Promise<ModelResponse> {
       calls.push(req);
       return {
-        text: JSON.stringify({ topic, personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none" }),
+        text: JSON.stringify({ kind: KIND_OF[topic] ?? "other", personRef: "", feature: "none", badge: "none" }),
         stopReason: "end_turn",
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: 0,
@@ -54,23 +56,6 @@ function ask(topic: string, over: { lastBotPost?: string | null; calls?: ModelRe
 }
 
 describe("answerHqQuestion", () => {
-  it("the incident: a club question names the admins", async () => {
-    expect(await ask("club")).toEqual({
-      outcome: "hq-answered",
-      replyText: "👥 Admins: Kemal Ediz and Elvin Aliyev\n💷 Money collector: Elvin Aliyev\n💷 Match fee: £5 a player\n⚽ Teams ready: 10:00 on match day",
-    });
-  });
-
-  it("who is on the bench: the bench itself, though the organisers announce the list", async () => {
-    const r = await ask("bench");
-    expect(r?.outcome).toBe("hq-answered");
-    expect(r?.replyText).toContain("Erdal Ozkan");
-  });
-
-  it("how many are in: the count", async () => {
-    expect((await ask("count"))?.replyText).toMatch(/2/);
-  });
-
   it("what can you do: the HQ menu", async () => {
     const r = await ask("how_it_works");
     expect(r?.outcome).toBe("hq-help");

@@ -108,7 +108,7 @@ const LIVE_HARNESSES: Array<[file: string, owes: RegExp]> = [
   ["e2e/replay/router-recall-live.ts", RESOLVER_CALL],
   ["e2e/replay/router-regressions-live.ts", RESOLVER_CALL],
   ["scripts/chase-at-risk-live.ts", RESOLVER_CALL],
-  ["scripts/dryrun-dm-qa.ts", RESOLVER_CALL],
+  // scripts/dryrun-dm-qa.ts was deleted on 2026-11-18 with the DM prompt it ran.
   ["scripts/dryrun-fee-confirm.ts", RESOLVER_CALL],
   ["scripts/dryrun-payment-claim.ts", RESOLVER_CALL],
   ["scripts/dryrun-pipeline.ts", RESOLVER_CALL],

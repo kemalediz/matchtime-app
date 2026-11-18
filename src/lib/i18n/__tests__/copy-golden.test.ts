@@ -383,7 +383,8 @@ import {
 } from "../../club-setup-followup-rules";
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";
-import { periodKey } from "../../pipeline/stats-period";
+// The keys the deleted stats answers looked a period up under (2026-11-18).
+const periodKey = (p: { kind: "last"; count: number; unit: string }): string => `last:${p.count}:${p.unit}`;
 import { compose } from "../../pipeline/compose";
 import { world, fullName } from "../../pipeline/__tests__/helpers";
 import type { Lang } from "../lang";
@@ -786,10 +787,6 @@ function cases(lang: Lang): Case[] {
   add("R1 squad_status / named for its match", say(dated(short, false), { kind: "squad_status", messageId: null }));
   add("R1 squad_status / this week's match cancelled", say(dated(full, true), { kind: "squad_status", messageId: null }));
 
-  add("R6 answer_count / short, no stated count", say(short, { kind: "answer_count", messageId: MSG, statedCount: null }));
-  add("R6 answer_count / short, stated count wrong", say(short, { kind: "answer_count", messageId: MSG, statedCount: 9 }));
-  add("R6 answer_count / full", say(full, { kind: "answer_count", messageId: MSG, statedCount: null }));
-
   add("R7 answer_squad / short", say(short, { kind: "answer_squad", messageId: MSG }));
   // 2026-09-15: once the teams are out, BOTH squad-state posts are the
   // line-ups rather than the fourteen-name roster. The three cases above
@@ -822,114 +819,6 @@ function cases(lang: Lang): Case[] {
       swaps: [{ outName: fullName("wasim"), inName: fullName("najib"), team: "YELLOW", outWentOut: true }],
     }),
   );
-
-  add("R8 answer_fixture / venue", say(short, { kind: "answer_fixture", messageId: MSG }));
-  add("R8 answer_fixture / no venue", say({ ...short, venue: "" }, { kind: "answer_fixture", messageId: MSG }));
-
-  add("R9 answer_score / no played match", say(short, { kind: "answer_score", messageId: MSG }));
-  add("R10 answer_score / no score yet", say(sw({ completedMatch: { id: "m-0" } }), { kind: "answer_score", messageId: MSG }));
-  add("R11 answer_score / red won", say(sw({ completedMatch: { id: "m-0", redScore: 4, yellowScore: 2 } }), { kind: "answer_score", messageId: MSG }));
-  add("R11 answer_score / yellow won", say(sw({ completedMatch: { id: "m-0", redScore: 1, yellowScore: 3 } }), { kind: "answer_score", messageId: MSG }));
-  add("R11 answer_score / draw", say(sw({ completedMatch: { id: "m-0", redScore: 2, yellowScore: 2 } }), { kind: "answer_score", messageId: MSG }));
-
-  // ── R183 answer_results (2026-09-29) ──
-  const resRow = (i: number, red: number, yellow: number) => ({
-    dayLabel: lang === "tr" ? `${29 - 3 * i} Eylül` : `${29 - 3 * i} Sep`,
-    redLabel: lang === "tr" ? "Kırmızı" : "Red",
-    yellowLabel: lang === "tr" ? "Sarı" : "Yellow",
-    red,
-    yellow,
-  });
-  const FIVE_RES = [resRow(0, 5, 4), resRow(1, 2, 6), resRow(2, 3, 3), resRow(3, 7, 1)];
-  const withRes = (key: string, rows: typeof FIVE_RES, more = false): SquadState => ({ ...short, results: { [key]: { since: null, rows, more } } });
-  const res = (limit: number, asked: number | null, period: StatsPeriod | null = null) =>
-    ({ kind: "answer_results", messageId: MSG, limit, asked, period }) as const;
-  add("R183 answer_results / the last 3", say(withRes("all", FIVE_RES), res(3, 3)));
-  add("R183 answer_results / asked 5, the record holds 4", say(withRes("all", FIVE_RES), res(5, 5)));
-  add("R183 answer_results / asked 20, capped at 10", say(withRes("all", Array.from({ length: 10 }, (_, i) => resRow(i, i, 2)), true), res(10, 20)));
-  add("R183 answer_results / this season", say(withRes("all", FIVE_RES), res(10, null, { kind: "season" })));
-  add("R183 answer_results / all time", say(withRes("all", FIVE_RES), res(10, null, { kind: "all_time" })));
-  add("R183 answer_results / this month", say(withRes("this:month", FIVE_RES.slice(0, 2)), res(10, null, { kind: "this", unit: "month" })));
-  add("R183 answer_results / the last 3 months, more than 10", say(withRes("last:3:month", Array.from({ length: 10 }, (_, i) => resRow(i, i, 2)), true), res(10, null, { kind: "last", count: 3, unit: "month" })));
-  add("R183 answer_results / one result", say(withRes("all", FIVE_RES.slice(0, 1)), res(5, 5)));
-  add("R183 answer_results / nothing on record", say(withRes("all", []), res(5, 5)));
-  add("R183 answer_results / nothing this month", say(withRes("this:month", []), res(10, null, { kind: "this", unit: "month" })));
-  add("R183 answer_results / not loaded", say(short, res(5, 5)));
-
-  add("R12 answer_payments / not tracked", say(sw({ payments: { kind: "not_tracked" } }), { kind: "answer_payments", messageId: MSG }));
-  add("R13 answer_payments / no settled match", say(sw({ payments: { kind: "no_settled_match" } }), { kind: "answer_payments", messageId: MSG }));
-  add("R14 answer_payments / no signal", say(sw({ payments: { kind: "no_signal", kickoffLabel: "Tue 21:30" } }), { kind: "answer_payments", messageId: MSG }));
-  add("R15 answer_payments / all settled", say(sw({ payments: { kind: "counted", chargeable: 13, unpaid: 0, kickoffLabel: "Tue 21:30" } }), { kind: "answer_payments", messageId: MSG }));
-  add("R16 answer_payments / some unpaid", say(sw({ payments: { kind: "counted", chargeable: 13, unpaid: 4, kickoffLabel: "Tue 21:30" } }), { kind: "answer_payments", messageId: MSG }));
-  add("R16 answer_payments / not loaded", say(short, { kind: "answer_payments", messageId: MSG }));
-
-  add("R17 answer_rating_progress / in progress", say(sw({ ratingProgress: { ok: true, matchName: "Tuesday 7-a-side", matchWhen: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", confirmed: 14, ratedCount: 9, momCount: 7, notRated: ["Abid Hussain", "Idris Bello"], ratedNoMom: ["Faris Nasser"] } }), { kind: "answer_rating_progress", messageId: MSG }));
-  add("R17 answer_rating_progress / everyone rated", say(sw({ ratingProgress: { ok: true, matchName: "Tuesday 7-a-side", matchWhen: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", confirmed: 14, ratedCount: 14, momCount: 14, notRated: [], ratedNoMom: [] } }), { kind: "answer_rating_progress", messageId: MSG }));
-  add("R60 answer_rating_progress / no recent match", say(sw({ ratingProgress: { ok: false, reason: t(lang).rating_progress_no_match } }), { kind: "answer_rating_progress", messageId: MSG }));
-  add("R17 answer_rating_progress / not loaded", say(short, { kind: "answer_rating_progress", messageId: MSG }));
-
-  add("R18 answer_bench / empty", say(w({ confirmed: ELEVEN }), { kind: "answer_bench", messageId: MSG }));
-  add("R19 answer_bench / two", say(short, { kind: "answer_bench", messageId: MSG }));
-  add("R19 answer_bench / one", say(sw({ bench: ["erdal"] }), { kind: "answer_bench", messageId: MSG }));
-  add("R19 answer_bench / three", say(sw({ bench: ["erdal", "amir", "zeeshan"] }), { kind: "answer_bench", messageId: MSG }));
-
-  add("R20 answer_person_status / not down", say(short, { kind: "answer_person_status", messageId: MSG, personRef: "Zeeshan", userId: "u-zeeshan" }));
-  add("R20 answer_person_status / dropped", say(short, { kind: "answer_person_status", messageId: MSG, personRef: "Habib", userId: "u-habib" }));
-  add("R21 answer_person_status / bench", say(short, { kind: "answer_person_status", messageId: MSG, personRef: "Erdal", userId: "u-erdal" }));
-  add("R22 answer_person_status / confirmed", say(short, { kind: "answer_person_status", messageId: MSG, personRef: "Sait", userId: "u-sait" }));
-  add("R20 answer_person_status / unknown person", say(short, { kind: "answer_person_status", messageId: MSG, personRef: "Bob", userId: null }));
-  add("R5 answer_person_status / pushname is a phone number", say(short, { kind: "answer_person_status", messageId: MSG, personRef: "+44 7700 900123", userId: null }));
-
-  add("R23 answer_phones / none missing", say(short, { kind: "answer_phones", messageId: MSG }));
-  add("R24 answer_phones / one missing", say(sw({ noPhone: ["sait"] }), { kind: "answer_phones", messageId: MSG }));
-  add("R24 answer_phones / three missing", say(sw({ noPhone: ["sait", "abid", "erdal"] }), { kind: "answer_phones", messageId: MSG }));
-
-  // ── The stats tables (2026-09-23) ──
-  const sa = (over: Partial<StatsSnapshot> = {}): SquadState => ({ ...short, stats: statsFixture(over) });
-  const table = (t: "ratings" | "appearances" | "mom" | "elo" | "team_of_season" | "movers" | "mr_reliable" | "chemistry", o: { size?: number; requested?: number | null; person?: string | null; self?: boolean; period?: StatsPeriod | null } = {}) =>
-    ({ kind: "answer_stats_table", messageId: MSG, table: t, size: o.size ?? 10, requested: o.requested ?? null, personUserId: o.person ?? null, self: o.self ?? false, period: o.period ?? null }) as const;
-  const LAST_YEAR: StatsPeriod = { kind: "last", count: 1, unit: "year" };
-  const LAST_MONTH: StatsPeriod = { kind: "last", count: 1, unit: "month" };
-  // R25, R26 and R26b: the appearances answer, retired from its 30-day
-  // window and em-dash row onto the full record (see the header).
-  add("R25 answer_stats_table / appearances, nothing to go on", say(sa({ appearances: [], recordsStart: { matches: null, mom: null } }), table("appearances")));
-  add("R26 answer_stats_table / appearances, no period stated", say(sa(), table("appearances")));
-  add("R26b answer_stats_table / appearances, five asked for", say(sa(), table("appearances", { size: 5, requested: 5 })));
-  add("R161 answer_stats_table / appearances, the last month (the records reach it)", say(sa(), table("appearances", { period: LAST_MONTH })));
-  add("R161 answer_stats_table / appearances, this season", say(sa(), table("appearances", { period: { kind: "season" } })));
-  add("R161 answer_stats_table / appearances, all time", say(sa(), table("appearances", { period: { kind: "all_time" } })));
-  add("R161 answer_stats_table / ratings, top 5 in the last month", say(sa(), table("ratings", { size: 5, requested: 5, period: LAST_MONTH })));
-  add("R161 answer_stats_table / Man of the Match, the last month", say(sa(), table("mom", { period: LAST_MONTH })));
-  add("R161 answer_stats_table / Man of the Match, all time", say(sa(), table("mom", { period: { kind: "all_time" } })));
-  add("R162 answer_stats_table / appearances, the last 1 year (Kemal's question, before the records)", say(sa(), table("appearances", { period: LAST_YEAR })));
-  add("R163 answer_stats_table / Elo, the last month cannot be cut", say(sa(), table("elo", { period: LAST_MONTH })));
-  add("R163 answer_stats_table / Team of the Season, the last month cannot be cut", say(sa(), table("team_of_season", { period: LAST_MONTH })));
-  add("R163 answer_stats_table / Mr Reliable, the last month cannot be cut", say(sa(), table("mr_reliable", { period: LAST_MONTH })));
-  add("R163 answer_stats_table / chemistry, this month cannot be cut", say(sa(), table("chemistry", { person: "u-idris", period: { kind: "this", unit: "month" } })));
-  add("R163 answer_stats_generic / grounded answer, the last month noted", say(sa(), { kind: "answer_stats_generic", messageId: MSG, period: LAST_MONTH }));
-  add("R147 answer_stats_table / ratings, the 2026-09-23 incident (top 10)", say(sa(), table("ratings", { requested: 10 })));
-  add("R147 answer_stats_table / ratings, top 20 served as 10", say(sa(), table("ratings", { requested: 20 })));
-  add("R147 answer_stats_table / ratings, nobody has three rated matches", say(sa({ ratings: [] }), table("ratings")));
-  add("R148 answer_stats_bottom / who's the worst", say(sa(), { kind: "answer_stats_bottom", messageId: MSG }));
-  add("R149 answer_stats_table / Man of the Match", say(sa(), table("mom")));
-  add("R150 answer_stats_table / Elo", say(sa(), table("elo")));
-  add("R151 answer_stats_table / Team of the Season", say(sa(), table("team_of_season")));
-  add("R152 answer_stats_table / biggest climbers", say(sa(), table("movers", { size: 5 })));
-  add("R152 answer_stats_table / nobody climbed", say(sa({ ratings: [] }), table("movers", { size: 5 })));
-  add("R153 answer_stats_table / Mr Reliable", say(sa(), table("mr_reliable")));
-  add("R153 answer_stats_table / nobody holds Mr Reliable", say(sa({ mrReliable: [] }), table("mr_reliable")));
-  add("R154 answer_stats_table / chemistry, another player (no nemesis)", say(sa(), table("chemistry", { person: "u-idris" })));
-  add("R154 answer_stats_table / chemistry, the asker about themselves", say(sa(), table("chemistry", { person: "u-idris", self: true })));
-  add("R155 answer_stats_generic / grounded answer, said as written", say(sa(), { kind: "answer_stats_generic", messageId: MSG }));
-  add("R155 answer_stats_generic / rejected, the safe line", say(sa({ generic: { [MSG]: { rejected: "grounding check failed" } } }), { kind: "answer_stats_generic", messageId: MSG }));
-  add("R156 ask_stats_person / a name nobody has", say(short, { kind: "ask_stats_person", messageId: MSG, askerName: "Kemal Ediz", ref: "Zork", candidates: [] }));
-  add("R156 ask_stats_person / a name two members have", say(short, { kind: "ask_stats_person", messageId: MSG, askerName: "Kemal Ediz", ref: "Idris", candidates: ["Idris Bello", "Idris Musa"] }));
-
-  add("R27 answer_options / full", say(full, { kind: "answer_options", messageId: MSG }));
-  add("R28 answer_options / no smaller format", say(short, { kind: "answer_options", messageId: MSG }));
-  add("R29 answer_options / none viable", say(sw({ smallerFormats: [{ sportName: "Football 6-a-side", totalPlayers: 12 }] }), { kind: "answer_options", messageId: MSG }));
-  add("R30 answer_options / proposals", say(sw({ smallerFormats: [{ sportName: "Football 5-a-side", totalPlayers: 10 }, { sportName: "Football 6-a-side", totalPlayers: 12 }] }), { kind: "answer_options", messageId: MSG }));
-  add("R30 answer_options / nobody benched", say(sw({ smallerFormats: [{ sportName: "Futsal", totalPlayers: 11 }] }), { kind: "answer_options", messageId: MSG }));
 
   add("R31 teams_post", say(teams, { kind: "teams_post", messageId: MSG }));
   add("R32 teams_not_generated", say(full, { kind: "teams_not_generated", messageId: MSG }));

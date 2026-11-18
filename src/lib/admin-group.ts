@@ -88,8 +88,6 @@ export interface AdminGroupMessage {
   now?: Date;
   /** The pool switch as the route read it (local player pool L10). */
   poolEnv?: Record<string, string | undefined>;
-  /** UNIFIED_ANSWERS as the route read it (`unified-answers-flag.ts`). */
-  unifiedAnswers?: boolean;
 }
 
 export type AdminGroupMessageResult =
@@ -315,7 +313,6 @@ export async function handleAdminGroupMessage(input: AdminGroupMessage): Promise
       chatId: msg.groupId,
       ...(msg.mentions ? { mentions: msg.mentions } : {}),
       ...(msg.poolEnv ? { poolEnv: msg.poolEnv } : {}),
-      ...(msg.unifiedAnswers !== undefined ? { unifiedAnswers: msg.unifiedAnswers } : {}),
     });
   };
 

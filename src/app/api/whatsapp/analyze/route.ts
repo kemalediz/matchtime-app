@@ -363,7 +363,6 @@ import { recordVenueList } from "@/lib/venue-list-log";
 import { askWhichSource, nobodyLeftReply, sourcesAvailable } from "@/lib/ask-source";
 import { decideRecruitSource, type RecruitSource } from "@/lib/ask-source-rules";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
-import { unifiedAnswersEnabledForApiRequest } from "@/lib/unified-answers-flag";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 import { pastedListIds, type RoutedForListSignal } from "@/lib/pasted-list-signal";
 import type { MonthlyReading } from "@/lib/monthly-reader-prompt";
@@ -1850,11 +1849,11 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   //      `AnalyzedMessage.action`", and this is what makes "did the gate
   //      eat an IN?" a query. That row matters MORE now that it is the
   //      nightly `none`-bucket sweep's only input.
-  // The "who do you mean?" questions MatchTime has open about a stats
-  // question (2026-09-23). One indexed read, and an empty list on almost
+  // The "who is that?" questions MatchTime has open about a place in the
+  // squad (2026-11-17). One indexed read, and an empty list on almost
   // every batch. The router lets the asker's reply through as an answer
-  // and the answer owner reads it against the original question. See
-  // the essay at the foot of `pipeline/awaiting-answer.ts`.
+  // and the attendance engine reads it against the original message. See
+  // `pipeline/awaiting-answer.ts`.
   const statsClarifications =
     fresh.length > 0
       ? await loadOpenStatsClarifications(org.id).catch((err) => {
@@ -2758,6 +2757,19 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
             .map(([id]) => id),
         ],
   );
+  // WHAT THE OTHER PARTS OF THE SAME MESSAGE ALREADY DID (Sutton 17 Nov
+  // 12:53: the size was switched, then the question part said "I can't
+  // switch the match from this message"). The replies the early admin pass
+  // and the attendance engine sent for each message that also asks
+  // MatchTime something: the answer is shown them as done, and answers only
+  // the question. A part whose write threw said nothing, so it is not here.
+  const alsoDone = new Map<string, string[]>();
+  for (const id of alsoAsksIds) {
+    const admin = earlyAdminBatch?.outcomes.get(id);
+    const engine = engineBatch?.outcomes.get(id);
+    const done = [admin && !admin.writeFailed ? admin.reply : null, engine?.reply ?? null].filter((r): r is string => !!r?.trim());
+    if (done.length > 0) alsoDone.set(id, done);
+  }
   // This group's week of chat, for the open answer and the dead ends.
   const playersWeekChat = async () =>
     (await import("@/lib/week-chat")).playersWeekChat({
@@ -2793,13 +2805,11 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
           expectedMatchId: activeMatchForReply?.id ?? null,
           enabled: stepSevenEnabled,
           deps: {},
-          clarifications: statsClarifications,
           ...(alsoAsksIds.size > 0 ? { alsoAsks: alsoAsksIds } : {}),
+          ...(alsoDone.size > 0 ? { alsoDone } : {}),
           // The help's pool answer reads the switch as this request does,
           // only when a help question is answered.
           poolEnv: () => poolEnvForApiRequest(request),
-          // UNIFIED_ANSWERS (Kemal, 2026-11-10): off unless set.
-          unified: unifiedAnswersEnabledForApiRequest(request),
         })
       : null;
 
@@ -4800,10 +4810,12 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   //   The canned "can't do that" and not-understood lines above are only
   //   the fallback: each tagged dead end (by its outcome's intent, never
   //   the words, `dead-end-answer.ts`) is answered by the unified answer,
-  //   which says what MatchTime can do instead. Not a message with several
-  //   instructions, a joined answer, or a reply carrying the composed squad
-  //   post: each carries more than the line.
-  if (unifiedAnswersEnabledForApiRequest(request) && !aiCapped) {
+  //   told why its path stopped (`deadEndWhy`, Sutton 17 Nov 19:23: "swap
+  //   Sam with Alex" named nobody in the squad, and the answer guessed "I
+  //   can't swap players from here"), and what MatchTime can do instead.
+  //   Not a message with several instructions, a joined answer, or a reply
+  //   carrying the composed squad post: each carries more than the line.
+  if (!aiCapped) {
     const deadEnds = fresh.filter((m) => {
       const r = results.find((x) => x.waMessageId === m.waMessageId);
       return (
@@ -4818,10 +4830,14 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
         !answerBatch?.alsoAnswered.has(m.waMessageId)
       );
     });
+    // Why each one's path stopped, when the path said: the team change's
+    // own outcome, else the admin owner's (never read from the words).
+    const why = (id: string): string | null =>
+      teamOpsBatch?.outcomes.get(id)?.deadEndWhy ?? adminOpsBatch?.outcomes.get(id)?.deadEndWhy ?? earlyAdminBatch?.outcomes.get(id)?.deadEndWhy ?? null;
     const answered = await answerDeadEnds({
       orgId: org.id,
       now,
-      messages: deadEnds.map(ownerMessageOf),
+      messages: deadEnds.map((m) => ({ ...ownerMessageOf(m), why: why(m.waMessageId) })),
       history: ownerHistory,
       weekChat: playersWeekChat,
       expectedMatchId: activeMatchForReply?.id ?? null,

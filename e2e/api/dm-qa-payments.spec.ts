@@ -46,11 +46,11 @@ test("a player asking what he owes is shown his own unpaid fee, his pay link and
   const json = await postDm(request, PHONE.player, "how much do I owe?");
   expect(json.handled).toBe("dm-qa");
   const answer = await db.one<{ text: string }>(
-    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[scoped-qa-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
+    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[unified-dm-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
     [digits(PHONE.player)],
   );
   const ctx = answer?.text ?? "";
-  expect(ctx).toContain("YOUR PAYMENTS");
+  expect(ctx).toContain("THE ASKER'S OWN PAYMENTS");
   expect(ctx).toMatch(/: owes £8, not paid yet\. Pay link: https?:\/\/\S+/);
   expect(ctx).toContain(`- Money collector: ${NAME.collector}`);
   expect(ctx).toContain(`- Ways to pay: pay by bank, card, pay ${NAME.collector} directly`);
@@ -64,7 +64,7 @@ test("the collector is told he has nothing to pay", async ({ request, db }) => {
   const json = await postDm(request, PHONE.collector, "how much do I owe?");
   expect(json.handled).toBe("dm-qa");
   const answer = await db.one<{ text: string }>(
-    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[scoped-qa-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
+    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[unified-dm-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
     [digits(PHONE.collector)],
   );
   expect(answer?.text).toContain("You collect this club's match fees, so you have nothing to pay.");
@@ -75,7 +75,7 @@ test("a player who paid sees it recorded, with no pay link", async ({ request, d
   const json = await postDm(request, PHONE.rater, "did you get my payment?");
   expect(json.handled).toBe("dm-qa");
   const answer = await db.one<{ text: string }>(
-    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[scoped-qa-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
+    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[unified-dm-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
     [digits(PHONE.rater)],
   );
   expect(answer?.text).toContain("paid: payment received and recorded. Nothing to pay.");
@@ -109,7 +109,7 @@ for (const lang of ["en", "tr"] as const) {
     const json = await postDm(request, PHONE.player, HOW[lang]);
     const sent = await lastDmTo(db, PHONE.player);
     expect(json.handled, `reply sent: ${JSON.stringify(sent?.text)}`).toBe("dm-qa");
-    expect(sent?.text).toMatch(/^\[scoped-qa-stub\]/);
+    expect(sent?.text).toMatch(/^\[unified-dm-stub\]/);
     expect(sent?.text).toMatch(/: owes £8, not paid yet\. Pay link: https?:\/\/\S+/);
   });
 }

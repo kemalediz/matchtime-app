@@ -51,6 +51,9 @@ import { selfIn } from "../helpers/stub";
 const IN = { route: "self_att", facts: selfIn() };
 /** A question the answer engine owns; the ANSWER is composed from the
  *  database, so the stub can only say what was asked ABOUT. */
+// Since 2026-11-18 the only question the squad post answers is the list
+// itself (the question extractor's "list"; the old count and bench answers
+// were deleted with the other question categories).
 const ask = (topic: string) => ({
   route: "question",
   facts: { topic, personRef: null, statedCount: null },
@@ -88,13 +91,13 @@ test("a burst of mixed messages collapses to ONE squad+bench post built from the
       player: "owner",
       body: "@Match Time are we full for tuesday?",
       tag: true,
-      ...ask("count"),
+      ...ask("squad"),
     },
     {
       player: "alice",
       body: "@Match Time who's on the bench?",
       tag: true,
-      ...ask("bench"),
+      ...ask("squad"),
     },
   ]);
 
@@ -128,11 +131,11 @@ test("a burst of mixed messages collapses to ONE squad+bench post built from the
  * `verdict.reply`; there is no such thing. What remains falsifiable is
  * that a count question ON ITS OWN — no write in the batch, so the
  * answer engine really does own it — is answered from the database. */
-test("a count question on its own is answered from the database", async ({ request, db }) => {
+test("the list asked for on its own is answered from the database", async ({ request, db }) => {
   const grp = await group(request, db);
   const r = await grp.post("pete", "@Match Time how many are we?", {
     tag: true,
-    ...ask("count"),
+    ...ask("squad"),
   });
   expect(r.reply, "the squad is 4/5 and MatchTime says so").toMatch(/4\s*\/\s*5|4 of 5/);
   expect(r.reply).not.toContain("2/5");
@@ -144,7 +147,7 @@ test('a FULL squad is reported full, with no slot-open language anywhere', async
   await grp.post("felix", "in", IN); // 5/5 now
   const r = await grp.post("owner", "@Match Time where are we at?", {
     tag: true,
-    ...ask("count"),
+    ...ask("squad"),
   });
   expect(r.reply).toContain("5/5");
   expect(r.reply).not.toContain("4/5");
@@ -166,7 +169,7 @@ test('a FULL squad is reported full, with no slot-open language anywhere', async
  * itself against hand-built `SquadState`s, which is where a count bug
  * would now be introduced. */
 
-test("a bench answer never promotes anyone, and says who is actually on it", async ({ request, db }) => {
+test("the list asked for never promotes anyone, and says who is actually on the bench", async ({ request, db }) => {
   // WAS: 'never "X moves up from the bench" while X is still benched',
   // driven by a hallucinated `verdict.reply`. The hallucination cannot be
   // authored; the property that a READ never writes still can be, and
@@ -176,7 +179,7 @@ test("a bench answer never promotes anyone, and says who is actually on it", asy
   expect(await grp.bench()).toContain("Greg Gale"); // still benched
   const r = await grp.post("owner", "@Match Time who's on the bench?", {
     tag: true,
-    ...ask("bench"),
+    ...ask("squad"),
   });
   expect(r.reply ?? "").toContain("Greg Gale");
   expect(r.reply ?? "").not.toContain("moves up");
@@ -193,7 +196,7 @@ test("a raw-digit pushname never appears as a player name anywhere", async ({ re
       ...IN,
     },
     { player: "owner", body: "@Match Time who's in then?", tag: true, ...ask("squad") },
-    { player: "alice", body: "@Match Time and the bench?", tag: true, ...ask("bench") },
+    { player: "alice", body: "@Match Time and the bench?", tag: true, ...ask("squad") },
   ]);
 
   // Squad full → the unknown sender is provisioned neutrally and benched.

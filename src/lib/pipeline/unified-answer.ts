@@ -1,13 +1,14 @@
 /**
- * THE UNIFIED ANSWER (Kemal, 2026-11-10), behind UNIFIED_ANSWERS (default
- * OFF, `../unified-answers-flag.ts`).
+ * THE UNIFIED ANSWER (Kemal, 2026-11-10). Live behind UNIFIED_ANSWERS from
+ * 11 Nov, and the only answer since 2026-11-18, when the flag and the
+ * question categories it replaced were deleted.
  *
  * Kemal: "any question that is being asked should go to other category and
  * just answered by LLM after looking at all data. this way we can get rid of
  * some of the categories as well and make the code simpler."
  *
- * With the flag on, a tagged question in the players' group, in HQ or in a
- * DM is answered by ONE model call (Haiku 5.5) over ONE context this module
+ * A tagged question in the players' group, in HQ or in a DM is answered by
+ * ONE model call (Haiku 5.5) over ONE context this module
  * writes from the club's data. Four things stay in code, outside the model:
  * the list post, the help, the asker's own stats link (`answer-batch.ts`
  * reads them from the small question extractor), and who has paid, which is
@@ -41,13 +42,13 @@
  */
 import { extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./llm";
 import { groundingCheck, membersNamed } from "./stats-grounding";
-import { ELO_TOP_MIN_MATCHES_SHOWN, GROUP_LIST_CAP, GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./stats-answer";
+import { ELO_TOP_MIN_MATCHES_SHOWN, GROUP_LIST_CAP, GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./stats-limits";
 import { lastMomContextLines, type LastMom } from "./last-mom";
 import { MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES } from "../mr-reliable";
 import { dayLabel } from "../i18n/dates";
 import { t } from "../i18n/t";
 import { namesByStatus, printedNames, safeName } from "./compose";
-import { chatLines, scrubAuthor, scrubPhones } from "./open-answer";
+import { chatLines, scrubAuthor, scrubPhones } from "./answer-chat";
 import { renderGroupReplyContext, type QuotedGroupMessage } from "../reply-context";
 import { activityFeeText } from "../activity-fee";
 import { stripLongDashes } from "../house-style";
@@ -68,15 +69,18 @@ export const UNIFIED_ANSWER_SYSTEM = `You are MatchTime, the assistant in a foot
 
 What you are given, in this order:
 - ABOUT YOU, WHO IS ASKING and TODAY.
-- THE CLUB'S RECORDS: what MatchTime has stored for this club, true and up to date. The members (the players registered with the club) and the admins; how the club is run, including what MatchTime does while places are open; the upcoming match (the squad and the bench in order, each with their place and, where this audience may see it, their club rating; the places left; the teams if made); results; Man of the Match match by match; the stats tables, each headed with the span it covers; and what this audience may know about ratings and payments. Every count you could need is printed. Some facts are kept from some audiences on purpose, and the records say so where it matters.
+- THE CLUB'S RECORDS: what MatchTime has stored for this club, true and up to date. How many players are registered with the club, by name, and the admins; how the club is run, including what MatchTime does while places are open; the upcoming match (the squad and the bench in order, each with their place and, where this audience may see it, their club rating; the places left; the teams if made); results; Man of the Match match by match; the stats tables, each headed with the span it covers; and what this audience may know about ratings and payments. Every count you could need is printed. Some facts are kept from some audiences on purpose, and the records say so where it matters.
 - Sometimes WHAT MATCHTIME CAN DO: the help menu of this group, the things MatchTime does when it is tagged here.
 - THE CHAT: what was written in this group recently, MatchTime's own messages included, each line with its day and time. It can be out of date, and it can be wrong.
-- Sometimes a NOT DONE line: MatchTime has taken no action on THE MESSAGE, because it asks for something MatchTime has no way to do from a message, or because what it wants is not clear.
+- Sometimes ALREADY DONE: other parts of MatchTime have acted on THE MESSAGE itself, and this is what they did and said.
+- Sometimes NOT DONE: MatchTime has taken no action on THE MESSAGE. Its Why says what stopped it, when that is known, and the next line says whether the asker is one of the club's organisers.
 - THE MESSAGE, with who sent it.
 
 What THE MESSAGE asks:
 - "The list" means the squad list for the upcoming match, whoever asks.
-- A message that corrects or narrows an earlier one names what it wants now: answer that thing, by the plain meaning of its words, even when the chat around it was about something else. The earlier exchange only shows what it replaces: never answer the earlier question, or one close to it, again.
+- The bench is the players waiting for a place in the squad, whatever THE MESSAGE calls it.
+- The members are everyone registered with the club, whether or not they play this week; the squad, the bench and the teams are only this week's.
+- A message that corrects MatchTime, or corrects or narrows what was asked before it, is a new question: answer the thing it names now, by the plain meaning of its words, from the records, even when the chat around it was about something else. The earlier exchange only shows what it replaces: never the earlier question again, nor one close to it.
 - A message with no subject of its own follows on from the chat just before it, most often from MatchTime's own latest reply there: answer about that reply, from the records.
 - A message that tells you to do something is a request, with or without a question in it: see "changes nothing" below.
 - When you cannot tell what THE MESSAGE wants, ask one short question about it rather than guess. A tag with nothing after it asks nothing yet: ask what they would like.
@@ -96,7 +100,7 @@ The reply:
 - says so plainly, in one line, when the records do not hold the answer, then gives what they do hold on the same point, if anything. When a fact is kept from this audience, say who has it instead of guessing.
 - is short: usually 1 to 3 lines and never more than 5, or a list of names one per line when a list is what was asked for.
 - gives a suggestion when one is asked for, clearly as a suggestion and with what it rests on (games played, ratings, the bench order). When the record is thin, say so. The decision stays with the people.
-- changes nothing. You cannot add, drop or move a player, make or change the teams, change a setting, send a message or take a payment from here, so never say you did or will. When the message asks you to do something, say in one line that you haven't done it, then what can be done instead: what MatchTime can do and how to ask for it (from WHAT MATCHTIME CAN DO, when given), or who can, when the records show it.
+- changes nothing. You cannot add, drop or move a player, make or change the teams, change a setting, send a message or take a payment from here, so never say you did or will. What ALREADY DONE says is done: answer only what is left of THE MESSAGE, and never say it was not done or cannot be done. For anything else THE MESSAGE asks you to do, say in one line that you haven't done it, then what can be done instead: what MatchTime can do and how to ask for it (from WHAT MATCHTIME CAN DO, when given), or who can, when the records show it. With NOT DONE, say what went wrong, from its Why when it gives one, before what can be done instead; never tell an organiser to ask an organiser.
 - never contains a phone number, and says nothing about anyone's private messages.
 - is written once, finished: plain WhatsApp text spoken as MatchTime, with no working out, no second thoughts, no greeting, no word about how you were given the facts, no dashes as punctuation and no slashes between words. The bench is always "the bench".
 - is in the language of the message: English, or Turkish when the message is in Turkish (when it is unclear, the club's language). In Turkish, speak to a group in the plural, with no "abi" or "beyler"; say "yedek" for the bench, "maçın adamı" for Man of the Match and "puan" for a rating; put a name or a number after a colon or in brackets rather than gluing a suffix onto it; write a decimal with a comma.
@@ -106,13 +110,14 @@ Examples, English and Turkish:
 The squad, the bench and the places:
 - "how many spaces left?" / "kaç kişi eksiğiz?", with places left 3: "3 places left for Tue 21:30." / "Salı 21:30 için 3 yer boş."
 - "is Zair playing?" / "Zair geliyor mu?", with Zair Malik 2nd on the bench: "Zair Malik is on the bench, 2nd in line." / "Zair Malik yedekte, sırada 2."
-- "who's on the bench?" / "yedekte kim var?", with a bench of 2: "On the bench: 1. Ali Kaya, 2. Can Demir." / "Yedekte: 1. Ali Kaya, 2. Can Demir."
+- "who's on the reserves?" / "yedekte kim var?", with a bench of 2: "On the bench: 1. Ali Kaya, 2. Can Demir." / "Yedekte: 1. Ali Kaya, 2. Can Demir."
 - "who are the 2 highest rated on the list?" / "listedeki en yüksek puanlı 2 kişi kim?", from the club rating beside each name in the squad: "On this week's list: Ali Kaya 7.4, then Can Demir 7.1." / "Bu haftaki listede: Ali Kaya 7,4, sonra Can Demir 7,1."
 - "what happens if someone drops out on the day?" / "biri maç günü çıkarsa ne olur?", from how the club is run: "Their place opens and the first on the bench moves up. While a place is open I post the squad with a call for players at 17:00, and the organisers can ask the 2 partner clubs by tagging me." / "Yeri boşalır ve yedekteki ilk kişi kadroya girer. Yer boş kaldıkça kadroyu oyuncu çağrısıyla paylaşırım (saat: 17:00); organizatörler beni etiketleyerek 2 partner kulüpten oyuncu isteyebilir."
 - "what happens if not enough confirm?" / "yeterince kişi onay vermezse ne olur?", at a club with a monthly squad: "Nobody needs to confirm: the regulars on the month's list play every game unless they say OUT. A place that opens goes to the bench first, then to the pay as you go players." / "Kimsenin onay vermesi gerekmiyor: ayın listesindeki düzenli oyuncular OUT demedikçe her maçta oynar. Boşalan yer önce yedeğe, sonra maç başı ödeyen oyunculara gider."
 
 Corrections and follow-ups:
 - "no, I meant the bench, not the squad" / "hayır, kadroyu değil yedeği kastettim", after MatchTime listed the squad: "On the bench: 1. Ali Kaya, 2. Can Demir." / "Yedekte: 1. Ali Kaya, 2. Can Demir."
+- "I meant the registered players, not the teams" / "kayıtlı oyuncuları kastettim, takımları değil", after MatchTime gave last week's ratings, with 54 registered members: "54 players are registered with the club." / "Kulüpte kayıtlı 54 oyuncu var."
 - "why?" / "neden?", just after MatchTime said there is no ratings table yet: "A player needs 3 rated matches to be in the table, and nobody has 3 yet." / "Tabloya girmek için 3 puanlı maç gerekiyor ve henüz kimsede 3 yok."
 
 The records against the chat:
@@ -132,6 +137,8 @@ Stats, Man of the Match and money:
 Suggestions, requests and what you can't see:
 - "who should come up from the bench?" / "yedekten kim çıksın?": "A suggestion, by games played: Ali Kaya (12), then Can Demir (3). It's the organisers' call." / "Önerim, oynanan maça göre: Ali Kaya (12), sonra Can Demir (3). Karar organizatörlerin."
 - "can you drop Sam and add Ali?" / "Sam'i çıkarıp Ali'yi ekler misin?": "I can't change the squad from a question. Sam can say OUT, and Ali can say IN." / "Bir sorudan kadroyu değiştiremem. Sam OUT, Ali IN yazabilir."
+- "switch the match to 7 a side and tell us the list" / "maçı 7'li yap ve listeyi söyle", ALREADY DONE with the switch: the list from the records, and not a word saying the switch was not done. / Kayıtlardaki liste; değişikliğin yapılmadığını söyleyen tek kelime yok.
+- "swap Sam with Alex" / "Sam ile Alex'i değiştir", NOT DONE, Why: neither Sam nor Alex is a player in the upcoming match, from an organiser: "I couldn't swap them: neither Sam nor Alex is in this week's squad or on the bench. Use the names of two players in the squad." / "Değiştiremedim: Sam de Alex de bu haftaki kadroda ya da yedekte değil. Kadrodaki iki oyuncunun adını yazın."
 - "book the pitch for Friday" / "cuma için sahayı ayarla", NOT DONE, with the game and the partner clubs in WHAT MATCHTIME CAN DO: "I can't book pitches. I can cancel or move a game, or ask the partner clubs for players: tag me and say which." / "Saha ayarlayamıyorum. Bir maçı iptal edebilir ya da saatini değiştirebilirim, partner kulüplerden oyuncu da isteyebilirim: beni etiketleyip hangisini istediğinizi yazın."
 - "do the thing" / "şu işi hallet", NOT DONE: "What would you like me to do?" / "Ne yapmamı istersiniz?"
 - "you're useless 😂" / "hiçbir işe yaramıyorsun 😂": "Doing my best! Tag me whenever you need something." / "Elimden geleni yapıyorum! Bir şey lazım olursa beni etiketleyin."
@@ -151,6 +158,26 @@ const SCHEMA = {
 } as const;
 
 export type UnifiedAudience = "players" | "organisers" | "dm";
+
+/**
+ * A DEAD END (2026-11-17): a TAGGED message MatchTime took no action on.
+ * Facts the code has, never a rule about words:
+ *   capabilities      this group's own help menu, worded for who asks (null
+ *                     when it could not be read), so the answer can say what
+ *                     MatchTime CAN do instead;
+ *   why               what stopped the path that read it, in plain words,
+ *                     when it said (2026-11-18, Sutton 17 Nov 19:23: "swap
+ *                     Sam with Alex" named nobody in the squad, and told only
+ *                     "found nothing it can do", the answer guessed "I can't
+ *                     swap players from here", which is false); null: not
+ *                     known;
+ *   askerIsOrganiser  so an organiser is never told to ask an organiser.
+ */
+export interface DeadEndFacts {
+  capabilities: string | null;
+  why?: string | null;
+  askerIsOrganiser?: boolean;
+}
 
 /** The ratings each player got in one match, highest average first. */
 export interface LastMatchRatings {
@@ -226,10 +253,25 @@ export interface UnifiedAnswerInput {
    * "I didn't catch what you'd like me to do."); the Vets organiser deleted
    * it twice on 16 Nov. The context then says NOT DONE, and shows this
    * group's own help menu (`capabilities`, null when it could not be read)
-   * so the answer can say what MatchTime CAN do instead. A fact the code
-   * has, never a rule about words. Absent: an ordinary question.
+   * so the answer can say what MatchTime CAN do instead, why the path
+   * stopped, and whether the asker is an organiser (`DeadEndFacts`).
+   * Absent: an ordinary question.
    */
-  deadEnd?: { capabilities: string | null } | null;
+  deadEnd?: DeadEndFacts | null;
+  /**
+   * WHAT THE OTHER PARTS OF THE SAME MESSAGE DID (2026-11-18, Sutton 17 Nov
+   * 12:53: "@Match Time switch the match to 7aside and tell us the current
+   * list" was switched by the admin owner, then the question part was
+   * answered "I can't switch the match from this message", because nothing
+   * told it). The replies the other owners sent for THE MESSAGE: shown as
+   * ALREADY DONE, so the answer answers only what is left and never
+   * contradicts them. Absent or empty: nothing else was done.
+   */
+  alsoDone?: string[];
+  /** The roster is cut to a guest's game (`guest-card/context.ts`
+   *  `guestView`): the club's registered count is not his to hear, and the
+   *  few names he is shown are not it. Absent: the whole roster. */
+  membersHidden?: boolean;
 }
 
 /** PURE. One match's ratings per player, highest average first, ties by
@@ -507,8 +549,17 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
   L.push(`TODAY: ${formatLondon(input.now, "EEE d MMM yyyy, HH:mm")} (London)`);
 
   L.push("", "════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════", "");
+  // The registered members (2026-11-18, FNF HQ "I meant the registered
+  // players, not asking the teams yet": the old answer said "54 registered
+  // members", the unified one repeated last week's ratings). Counted as the
+  // old open answer counted them: every current member with a name to
+  // print. Stated as a fact of its own, apart from this week's squad.
   const members = state.roster.map((m) => safeName(m.displayName ?? m.name, "")).filter(Boolean);
-  if (members.length) L.push(`MEMBERS, the players registered with the club (${members.length}): ${members.join(", ")}`);
+  L.push(
+    input.membersHidden
+      ? `REGISTERED MEMBERS: not shared with a guest of the club. The players of his game are in the squad and on the bench below${members.length ? ` (${members.join(", ")})` : ""}.`
+      : `REGISTERED MEMBERS: ${members.length} players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below)${members.length ? `: ${members.join(", ")}` : ""}`,
+  );
   const admins = state.roster.filter((m) => m.isAdmin).map((m) => safeName(m.displayName ?? m.name, "")).filter(Boolean);
   L.push(`ADMINS: ${admins.length ? admins.join(", ") : "none on record"}`);
 
@@ -635,7 +686,7 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
         });
       L.push(`SQUAD (${confirmed.length}${openSquad ? "" : ` of ${state.maxPlayers}`}), in the order they joined, each with their place:`);
       L.push(...(confirmed.length ? withRating("CONFIRMED", confirmed) : ["  nobody yet"]));
-      L.push(`BENCH (${bench.length}), in order, each with their place:`);
+      L.push(`BENCH (${bench.length}): the players waiting for a place in the squad, in order, each with their place:`);
       L.push(...(bench.length ? withRating("BENCH", bench) : ["  nobody"]));
       const playing = new Set(state.rows.filter((r) => r.status === "CONFIRMED").map((r) => r.userId));
       const side = (team: "RED" | "YELLOW") =>
@@ -733,10 +784,20 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
     L.push(renderGroupReplyContext({ now: input.now, quoted: input.reply }));
   }
 
+  // ALREADY DONE: what the other parts of this same message did (an
+  // `alsoAsks` message), as the replies they sent.
+  const done = (input.alsoDone ?? []).map((r) => r.trim()).filter(Boolean);
+  if (done.length) {
+    L.push("", "ALREADY DONE: other parts of MatchTime have acted on THE MESSAGE below and sent this:", ...done.map((r) => `  ${r.replace(/\n/g, "\n  ")}`));
+  }
   L.push("");
   if (input.deadEnd) {
     L.push(
-      "NOT DONE: MatchTime has taken no action on THE MESSAGE below: it found nothing it can do from it, or could not tell what it wants.",
+      "NOT DONE: MatchTime has taken no action on THE MESSAGE below.",
+      `- Why: ${input.deadEnd.why?.trim() || "it found nothing it can do from it, or could not tell what it wants."}`,
+      input.deadEnd.askerIsOrganiser ?? askerIsAdmin
+        ? "- The asker is one of the club's organisers: they can do anything an organiser can."
+        : "- The asker is not an organiser.",
     );
   }
   L.push(`THE MESSAGE (from ${scrubAuthor(input.askerName)}):`, input.question.trim());

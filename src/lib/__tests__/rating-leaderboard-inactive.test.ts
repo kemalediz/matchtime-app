@@ -35,7 +35,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { loadRatingLeaderboard, loadTeamOfSeason } from "@/lib/player-stats";
-import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "@/lib/pipeline/stats-answer";
+import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "@/lib/pipeline/stats-limits";
 
 const ORG = "org-1";
 const NOW = new Date("2026-09-15T12:00:00.000Z");

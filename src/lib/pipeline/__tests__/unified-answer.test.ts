@@ -228,7 +228,7 @@ describe("round 2: records over chat, and who MatchTime is", () => {
   it("the squad and the bench are headed with their own counts", () => {
     const { text } = buildUnifiedContext(input());
     expect(text).toContain("SQUAD (3 of 14), in the order they joined");
-    expect(text).toContain("BENCH (2), in order");
+    expect(text).toContain("BENCH (2): the players waiting for a place in the squad, in order");
   });
 });
 
@@ -458,7 +458,7 @@ describe("round 3: as much as this audience is shown (Sutton 'tell us the top 50
 describe("round 3: the registered players (FNF HQ 'I meant the registered players')", () => {
   it("the members are labelled as the players registered with the club, with their count", () => {
     const { text } = buildUnifiedContext(input());
-    expect(text).toMatch(/MEMBERS, the players registered with the club \(\d+\): /);
+    expect(text).toMatch(/REGISTERED MEMBERS: \d+ players are registered with the club [^\n]*: /);
   });
 });
 
@@ -621,10 +621,129 @@ describe("a dead end: a tagged message MatchTime could not act on (2026-11-17, t
   });
 
   it("the prompt: a request says it wasn't done and what can be done instead; unclear asks one question; a jab gets a friendly line", () => {
-    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/NOT DONE line/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/Sometimes NOT DONE/);
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/say in one line that you haven't done it, then what can be done instead/);
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/ask one short question about it rather than guess/);
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/A joke or a jab at you gets one short, friendly line/);
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"book the pitch for Friday" \/ "cuma için sahayı ayarla"/);
+  });
+});
+
+describe("the registered members (FNF HQ 'I meant the registered players, not asking the teams yet': the old answer said 54 members, the unified one repeated last week's ratings)", () => {
+  it("the records state how many players are registered with the club as a fact of its own, counted as the old answer counted them (every current member with a name to print)", () => {
+    const base = input();
+    const named = base.state.roster.length;
+    // A member whose only name is a phone number has no name to print, and
+    // was never counted.
+    const st = { ...base.state, roster: [...base.state.roster, { userId: "u-num", name: "447700900123", isAdmin: false, hasPhone: true }] };
+    const { text } = buildUnifiedContext(input({ state: st }));
+    expect(text).toContain(`REGISTERED MEMBERS: ${named} players are registered with the club`);
+    expect(text).toMatch(/REGISTERED MEMBERS: [^\n]*whether or not they play this week[^\n]*not the squad, the bench or the teams/);
+  });
+
+  it("the prompt reads a correction as a new question: what it now names is answered, never the question before it", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/A message that corrects MatchTime[^\n]*is a new question/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/never the earlier question again/);
+  });
+
+  it("the prompt's corrections show the registered members, in English and Turkish", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toContain('"I meant the registered players, not the teams" / "kayıtlı oyuncuları kastettim, takımları değil"');
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/54 players are registered with the club/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/Kulüpte kayıtlı 54 oyuncu var/);
+  });
+});
+
+describe("the bench, never 'waiting list' (12 Nov: 'There is no waiting list on record' before the bench)", () => {
+  const MENU = "ℹ️ *MatchTime help*\n🗓️ *schedule*: when and where you play";
+  const variants = (): UnifiedAnswerInput[] => {
+    const base = input();
+    const oa = { ...base.state, features: { ...base.state.features, listAnnouncer: "organisers" as const } };
+    const open = { ...base.state, features: { ...base.state.features, openSquad: true } };
+    return [
+      input(),
+      input({ audience: "organisers" }),
+      input({ audience: "dm" }),
+      input({ squadMode: "monthly" }),
+      input({ squadMode: "monthly", state: open }),
+      input({ state: oa }),
+      input({ state: open }),
+      input({ monthNotStarted: true, squadMode: "monthly" }),
+      input({ deadEnd: { capabilities: MENU, why: 'neither "Sam" nor "Alex" is a player in the upcoming match', askerIsOrganiser: true } }),
+      input({ alsoDone: ["Switched to 7 a side."] }),
+      input({ clubFacts: { pool: { open: true, platformOpen: true, clubFlag: true }, partners: { active: 2 } } }),
+    ];
+  };
+
+  it("no context MatchTime builds, for any audience or club, says 'waiting list' (or 'bekleme listesi')", () => {
+    for (const v of variants()) {
+      const { text } = buildUnifiedContext(v);
+      expect(text).not.toMatch(/waiting[ -]?list|wait list|waitlist|bekleme listesi/i);
+    }
+  });
+
+  it("the prompt never says it either", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).not.toMatch(/waiting[ -]?list|wait list|waitlist|bekleme listesi/i);
+  });
+
+  it("the records say what the bench is: the players waiting for a place, in order", () => {
+    const { text } = buildUnifiedContext(input());
+    expect(text).toMatch(/BENCH \(2\): the players waiting for a place in the squad, in order, each with their place:/);
+  });
+
+  it("the prompt: the bench is whatever the message calls it, and the reply always calls it the bench (yedek in Turkish)", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/whatever THE MESSAGE calls it/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/always "the bench"/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"yedek" for the bench/);
+  });
+});
+
+describe("what the other parts of the same message did (Sutton 17 Nov 12:53: 'switch the match to 7aside and tell us the current list' was switched, then answered 'I can't switch the match from this message')", () => {
+  it("the context says what was already done with THE MESSAGE, with the replies sent, just before it", () => {
+    const { text } = buildUnifiedContext(
+      input({ question: "@Match Time switch the match to 7aside and tell us the current list", alsoDone: ["Switched Tue 21:30 to 7 a side (14 players)."] }),
+    );
+    const done = text.indexOf("ALREADY DONE:");
+    expect(done).toBeGreaterThan(text.indexOf("THE CHAT"));
+    expect(done).toBeLessThan(text.indexOf("THE MESSAGE (from"));
+    expect(text).toContain("Switched Tue 21:30 to 7 a side (14 players).");
+  });
+
+  it("an ordinary question has no such block", () => {
+    expect(buildUnifiedContext(input()).text).not.toContain("ALREADY DONE");
+  });
+
+  it("the prompt: what is ALREADY DONE is done; the reply answers only what is left and never says it was not or cannot be done", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/Sometimes ALREADY DONE/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/answer only what is left[^\n]*never say it was not done or cannot be done/);
+    expect(UNIFIED_ANSWER_SYSTEM).toContain('"switch the match to 7 a side and tell us the list" / "maçı 7\'li yap ve listeyi söyle"');
+  });
+});
+
+describe("a dead end says why it stopped and who is asking (Sutton 17 Nov 19:23: admin Elvin copied the help's 'swap Sam with Alex'; the answer guessed 'I can't swap players from here', which is false)", () => {
+  const WHY = 'neither "Sam" nor "Alex" is a player in the upcoming match (not in the squad, on the bench or on the team sheet), so nobody was swapped';
+
+  it("NOT DONE carries the reason the path stopped, when it said", () => {
+    const { text } = buildUnifiedContext(input({ question: "@Match Time swap Sam with Alex", deadEnd: { capabilities: null, why: WHY, askerIsOrganiser: true } }));
+    const block = text.slice(text.indexOf("NOT DONE:"), text.indexOf("THE MESSAGE (from"));
+    expect(block).toContain(`- Why: ${WHY}`);
+  });
+
+  it("with no reason, it says so plainly rather than inventing one", () => {
+    const { text } = buildUnifiedContext(input({ deadEnd: { capabilities: null, why: null, askerIsOrganiser: false } }));
+    const block = text.slice(text.indexOf("NOT DONE:"), text.indexOf("THE MESSAGE (from"));
+    expect(block).toMatch(/- Why: it found nothing it can do from it, or could not tell what it wants\./);
+  });
+
+  it("says whether the asker is one of the club's organisers", () => {
+    const org = buildUnifiedContext(input({ deadEnd: { capabilities: null, why: WHY, askerIsOrganiser: true } })).text;
+    expect(org).toMatch(/- The asker is one of the club's organisers: they can do anything an organiser can\./);
+    const player = buildUnifiedContext(input({ deadEnd: { capabilities: null, why: WHY, askerIsOrganiser: false } })).text;
+    expect(player).toMatch(/- The asker is not an organiser\./);
+  });
+
+  it("the prompt: NOT DONE is answered from its Why, and an organiser is never told to ask an organiser", () => {
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/say what went wrong, from its Why/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/never tell an organiser to ask an organiser/);
+    expect(UNIFIED_ANSWER_SYSTEM).toContain('"swap Sam with Alex" / "Sam ile Alex\'i değiştir"');
   });
 });

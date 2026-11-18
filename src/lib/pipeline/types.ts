@@ -342,152 +342,21 @@ export interface AttendanceFacts {
 }
 
 /**
- * `fixture` was ADDED on 2026-09-06, and the reason is a measurement
- * rather than a hunch.
+ * WHAT A TAGGED QUESTION ASKS FOR (2026-11-18: the unified answer is the only
+ * path). Three fixed things code does itself, and everything else:
  *
- * Twelve tagged questions were replayed through the live pipeline
- * against the real Sutton squad. The router caught 12/12; seven produced
- * no answer, and FOUR of those seven were the same shape:
+ *   squad         the squad list post, as the list is posted (people copy it)
+ *   how_it_works  the help menu, or one topic's help (`feature`, `badge`)
+ *   my_stats      the asker's own stats link, by DM (the players' group)
+ *   other         answered by ONE model call over the club's records
+ *                 (`unified-answer.ts`), filtered by audience
  *
- *   "@Match Time what time is kickoff"      → topic `other`
- *   "@Match Time where are we playing"      → topic `other`
- *   "@Match Time are we playing tuesday?"   → topic `other`
- *   "@Match Time is the game still on"      → topic `other`
- *
- * `other` reaches `engine.ts`'s `default:` branch, which degrades — an
- * operator note and not one word to the group. So the most ordinary
- * question a Sunday-league group asks was silence, while the mega-prompt
- * it was replacing still answered it, in its own words: *"Asking about
- * squad numbers, venue, kickoff time … 21:30 at <venue>"*
- * (`message-analyzer.ts:455-457`, as it stood before §10 step 8 deleted
- * it).
- *
- * PAST TENSE ON PURPOSE. That comparison is what made adding `fixture`
- * a REQUIREMENT of step 8 rather than an improvement: the moment the
- * mega-prompt went, "what time is kickoff?" would have been answered by
- * nobody at all. There is no path left that answers a `fixture` question
- * except this topic.
- *
- * `state.kickoffLabel` and `state.venue` are already loaded and already
- * pre-formatted for exactly this. Nothing new is read; a topic that had
- * nowhere to go now has one.
+ * The topics before it (count, bench, fixture, payments, stats and the
+ * rest, each with its own composed answer) were deleted on 2026-11-18,
+ * after a week of UNIFIED_ANSWERS live with nothing harmful found. Kemal's
+ * rule: never add a topic; widen what the one answer is shown instead.
  */
-export type QuestionTopic =
-  | "squad"
-  | "bench"
-  | "count"
-  | "person_status"
-  | "phones"
-  /** is the match on, when does it kick off, where is it played */
-  | "fixture"
-  /**
-   * THE RESULT OF THE MATCH THAT WAS PLAYED — "what was the score?",
-   * "did we win on tuesday?", "how did we get on last night?".
-   *
-   * Added 2026-09-09. The data was already there: `completedMatch`
-   * carries `redScore`, `yellowScore` and `status`, loaded for the
-   * score-REPORTING route. Reading it back cost a topic and a composer
-   * branch.
-   *
-   * ── THE AMBIGUOUS PHRASING, SETTLED BY MEASUREMENT ─────────────────
-   * "whats the score situation" is a real message from the group and it
-   * can be read two ways: the RESULT of the last match, or "how are we
-   * doing for numbers". It was NOT settled by argument. Ten live runs
-   * against the real Sutton squad with only the old nine topics
-   * available: `count` 8/10, `other` 2/10 — not one drift toward a
-   * result reading, and `count` produced "We're 6/14 for Tue 21:30,
-   * need 8 more 🙏". Ten more with `score` on the menu, so the model
-   * had somewhere else to go: `count` again.
-   *
-   * So the model is CONSISTENT, and this topic follows it rather than
-   * overriding it. "Score situation" means the tally. That also matches
-   * the English: a Sunday-league group asks "what's the score" about a
-   * result and "what's the score SITUATION" about where things stand,
-   * and it is the phrasing on the harness's Q3, which has expected
-   * `count` since the case was written.
-   *
-   * The four UNAMBIGUOUS result phrasings are Q25-Q28 and they are what
-   * this topic is for.
-   */
-  | "score"
-  /**
-   * WHO HAS NOT PAID for the last match — money, and the only topic in
-   * this list that reads something `loadSquadState` does not load.
-   *
-   * It is the one question on the 2026-09-06 list where being WRONG
-   * costs a person something rather than costing MatchTime credibility,
-   * so it is also the one with three refusals to its one answer. The
-   * whole decision — which org flag gates it, why the answer names
-   * nobody, and why the last match must be COMPLETED — is in
-   * `payment-answer.ts`'s header, not repeated here.
-   *
-   * "payments", not "unpaid": the extractor is classifying a SUBJECT,
-   * and "has everyone paid for last week" is the same subject asked from
-   * the other side.
-   */
-  | "payments"
-  /**
-   * HOW MANY HAVE RATED the match just played, and WHO HAS NOT.
-   *
-   * Added 2026-09-11, and it is a DELETION rather than a feature. Until
-   * that day this ask was recognised by `looksLikeRatingProgressRequest`
-   * — (a rating word) AND (a progress word), scattered anywhere in the
-   * body — in a clause-peeled fast path that `analyze/route.ts` itself
-   * called "the WIDEST trigger of the six peels". It is the conjunction
-   * shape that caused 2026-09-01 and 2026-09-10, and it is gone.
-   *
-   * ── WHY A TOPIC AND NOT AN `admin_ops` ACTION ─────────────────────
-   * MEASURED, on the live router, 2026-09-11: "who hasn't rated yet?",
-   * "how many have rated so far?", "who hasn't picked a MoM yet?" and
-   * "who is still to rate from tuesday" come back `question` 15/15
-   * each — 60 of 60. The router's rule 8 is why: "ASKING is question;
-   * INSTRUCTING is admin_ops." The stats blast IS an instruction and
-   * went to `admin_ops`; this is an ask and belongs here.
-   *
-   * The second topic that reads something `loadSquadState` does not
-   * load. It follows `payments` in every respect except one: this
-   * answer NAMES the players who have not rated, so it keeps the fast
-   * path's ADMIN gate, which `payment-answer.ts` predicted would be
-   * needed the moment an answer named anybody.
-   * `rating-progress-answer.ts` carries the whole argument.
-   */
-  | "rating_progress"
-  /**
-   * The ASKER wants their OWN stats: "my stats", "can I see my ratings",
-   * "wrapped", "istatistiklerim". Answered with a private DM carrying a
-   * magic link to their own stats page, never in the group.
-   *
-   * Added 2026-09-17, and it is a DELETION: `STATS_REQUEST` in
-   * `analyze/route.ts` was an English-only regex fast path, so the
-   * Turkish help's "@Match Time istatistiklerim" did nothing.
-   * `MDs/router-accuracy-2026-09-11.md` §2.5 recommended this topic over
-   * an `admin_ops` action, to keep a personal DM away from the route
-   * that guards the mass-DM doors.
-   *
-   * NEVER A RECIPIENT. The fact names nobody the link goes to: the engine
-   * sets `MessageOutcome.statsLinkRequested` on the ASKING message, and
-   * the route DMs that message's sender. "what are Wasim's stats" is
-   * `stats`, a group question.
-   */
-  | "my_stats"
-  | "stats"
-  | "options"
-  /**
-   * HOW MATCHTIME ITSELF WORKS HERE (2026-10-16). FNF: "Bench? We do bench
-   * now?", replying to MatchTime's own "the bench is open", asked what the
-   * bench is, and `other` answered nobody. Which part is `QuestionFacts.
-   * feature`; the answer is the help explainer "@Match Time help <topic>"
-   * already sends, written for the club's settings (`buildHelpReply`).
-   */
-  | "how_it_works"
-  /**
-   * HOW THE CLUB ITSELF IS RUN (2026-10-16, FNF HQ: "MatchTime who are the
-   * admins?" got the help menu). Who the admins are, who collects the
-   * money, the match fee, what time the teams are made. Answered in both
-   * groups (nothing private), from the roster and `SquadState.club`.
-   */
-  | "club"
-  | "other";
+export type QuestionTopic = "squad" | "how_it_works" | "my_stats" | "other";
 
 /** The help topics a `how_it_works` question can name: every topic the
  *  help explains (`buildHelpReply`, onboarding-conversation.ts). Since
@@ -553,33 +422,6 @@ export interface HelpRequest {
 }
 
 /**
- * WHICH STATS TABLE a `stats` question is about (2026-09-23).
- *
- * The incident: "@Match Time please share the leaderboard of ratings,
- * top 10" was answered with the three most frequent attenders of the
- * last 30 days. `QuestionFacts` had no field for WHICH table and none
- * for HOW MANY, so "ratings" and "10" were discarded by construction and
- * the composer answered from the only stats data it held.
- *
- * The model still only CLASSIFIES. It names a table; every name and
- * number in the answer is rendered by code from the loaders the website
- * uses (`lib/pipeline/stats-answer.ts`). `other` is the one table the
- * code cannot render exactly: it goes to the grounded generic prompt,
- * whose reply is rejected unless every name and number in it appears
- * in the tables it was given (`stats-grounding.ts`).
- */
-export type StatsTable =
-  | "ratings"
-  | "appearances"
-  | "mom"
-  | "elo"
-  | "team_of_season"
-  | "movers"
-  | "chemistry"
-  | "mr_reliable"
-  | "other";
-
-/**
  * THE STRETCH OF TIME A STATS QUESTION ASKS ABOUT (2026-09-23).
  *
  * The incident: "@Match Time who has played most matches in the last 1
@@ -613,35 +455,9 @@ export type StatsPeriod =
 export interface QuestionFacts {
   kind: "question";
   topic: QuestionTopic;
-  /** The message answers MatchTime's open "who do you mean?" about the
-   *  sender's earlier stats question, and these facts are that question's
-   *  with the person named (2026-10-30). Absent: a question of its own. */
-  answersClarification?: boolean;
-  /** Who the question is about, verbatim, when it names anyone. */
+  /** On `other` only: the one member the question is about, verbatim
+   *  ("me" for the asker), whose pairings the answer is shown. */
   personRef: string | null;
-  /** A number the message ASSERTS about the squad ("we're 9/14 right?").
-   *  §3.2 S24: the engine compares it to the database. */
-  statedCount: number | null;
-  /**
-   * For `topic: "stats"` only: which table (see `StatsTable`). ABSENT or
-   * null means the question named none, and the engine answers exactly
-   * what it answered before this field existed (the appearances list).
-   * Optional so the stubs and fixtures that predate it keep their shape;
-   * the parser always sets it.
-   */
-  table?: StatsTable | null;
-  /** How many rows the question asked for ("top 10" is 10), or null.
-   *  Verbatim from the message: the group cap is applied by the engine,
-   *  never asked of the model. On a `score` question (2026-09-29) it is
-   *  how many RESULTS were asked for ("the last 5 matches" is 5). */
-  listSize?: number | null;
-  /** "bottom" when the question asks for the worst or the foot of a
-   *  table. The group never names anybody for that (Kemal, 2026-09-23). */
-  listEnd?: "top" | "bottom";
-  /** The period the question asks about (see `StatsPeriod`), or null
-   *  when it names none. For `topic: "stats"` and, since 2026-09-29,
-   *  `topic: "score"` ("results this season"). */
-  period?: StatsPeriod | null;
   /** For `topic: "how_it_works"` only (2026-10-16): the help topic it
    *  asks about, or null for MatchTime as a whole (the help menu). */
   feature?: HelpFeature | null;
@@ -1905,104 +1721,14 @@ export type SpeechIntent =
    * could say). Nothing is written for the claim until the answer comes.
    */
   | { kind: "ask_attendance_person"; messageId: string; ref: string; candidates: string[]; candidateIds: string[] }
-  | { kind: "answer_bench"; messageId: string }
-  | { kind: "answer_count"; messageId: string; statedCount: number | null }
   /**
-   * "who's playing / list the players / show me the squad" — the ROSTER,
-   * rendered by `composeSquadStatusPost`.
-   *
-   * Split from `answer_count` on 2026-09-06. Both topics shared one
-   * intent, so "list the players" was answered "We're 6/14 for Tue
-   * 21:30, need 8 more 🙏" — the right answer to a different question,
-   * with not one name in it. It read correctly in production only
-   * because `route.ts:2393` swapped the string for the roster post, and
-   * §6.4's whole claim is that the composer produces the final words.
+   * The squad list, as it is posted, rendered by `composeSquadStatusPost`
+   * (`QuestionTopic.squad`).
    */
   | { kind: "answer_squad"; messageId: string }
-  /** kickoff time and venue, and nothing else — see `QuestionTopic`. */
-  | { kind: "answer_fixture"; messageId: string }
-  /** The club's setup, for the organisers (`QuestionTopic.club`). */
-  | { kind: "answer_club"; messageId: string }
-  /** Anything else (`QuestionTopic.other`, 2026-11-10): the grounded open
-   *  answer from `state.openAnswers`, or nothing when it was not usable. */
+  /** Anything else (`QuestionTopic.other`): the unified answer from
+   *  `state.openAnswers`, or nothing when it was not usable. */
   | { kind: "answer_open"; messageId: string }
-  | { kind: "answer_person_status"; messageId: string; personRef: string; userId: string | null }
-  | { kind: "answer_phones"; messageId: string }
-  /**
-   * One of the known stats tables, rendered EXACTLY by code from
-   * `state.stats` (`stats-answer.ts`). `size` is already capped at the
-   * group's ten; `requested` is what was asked, so the answer can say
-   * when it was capped. `personUserId` is the resolved player for a
-   * chemistry answer, and `self` says the asker asked about themselves.
-   *
-   * `period` is what the question asked for (2026-09-23). The renderer
-   * honours it where the data can be cut and says so in the header, and
-   * says plainly what it shows where it cannot. Optional so fixtures that
-   * predate it keep their shape; absent is "no period stated".
-   *
-   * (`answer_stats`, the 30-day appearances answer with an em-dash row,
-   * was retired the same day: appearances is one of these tables now.)
-   */
-  | {
-      kind: "answer_stats_table";
-      messageId: string;
-      table: Exclude<StatsTable, "other">;
-      size: number;
-      requested: number | null;
-      personUserId: string | null;
-      self: boolean;
-      period?: StatsPeriod | null;
-    }
-  /** A request for the bottom of a table: names nobody, points at the site. */
-  | { kind: "answer_stats_bottom"; messageId: string }
-  /** The grounded generic answer (or its safe line), from
-   *  `state.stats.generic`. A period the tables cannot be cut to is
-   *  said after it, by code. */
-  | { kind: "answer_stats_generic"; messageId: string; period?: StatsPeriod | null }
-  /**
-   * MatchTime could not tell WHO the question means, and asks the poster
-   * rather than guessing (Kemal, 2026-09-23). `candidates` are resolved
-   * roster names when the name fits several members, empty when it fits
-   * nobody. The poster's reply is matched to this by the open-question
-   * mechanism (`awaiting-answer.ts`, kind `stats-clarification`).
-   */
-  | {
-      kind: "ask_stats_person";
-      messageId: string;
-      askerName: string | null;
-      ref: string;
-      candidates: string[];
-    }
-  /**
-   * The RESULT of the last match played. Carries no numbers: the
-   * composer reads `state.completedMatch` and renders one of three
-   * sentences (a result, "nobody reported one", "we haven't played
-   * one"). The engine deliberately does not branch on which — see the
-   * engine's `case "score"`.
-   */
-  | { kind: "answer_score"; messageId: string }
-  /**
-   * SEVERAL RESULTS, or the results of a period (2026-09-29). The
-   * composer reads `state.results[resultsKey(period)]`; `limit` is
-   * already capped at `RESULTS_MAX`, `asked` is the number the question
-   * named (or null), so the answer can say when it posted fewer.
-   */
-  | { kind: "answer_results"; messageId: string; limit: number; asked: number | null; period: StatsPeriod | null }
-  /**
-   * How many have not paid for the last settled match. Carries no count
-   * and no name: the composer reads `state.payments`, which is a
-   * `PaymentSnapshot` and has no field a name could come out of.
-   */
-  | { kind: "answer_payments"; messageId: string }
-  /**
-   * How many have rated the match just played, and who has not. Carries
-   * no counts and no names: the composer reads `state.ratingProgress`,
-   * which `answer-batch.ts` loaded from the database. Same split as
-   * `answer_payments`, and the same reason — the engine is a pure
-   * function of one value and cannot query anything.
-   */
-  | { kind: "answer_rating_progress"; messageId: string }
-  | { kind: "answer_options"; messageId: string }
   | { kind: "teams_post"; messageId: string }
   /**
    * Asked to show the teams when none have been generated.
@@ -2175,12 +1901,6 @@ export interface MessageOutcome {
    * `answer-batch.ts`, which can load the club's features. Absent means no.
    */
   helpRequested?: HelpRequest;
-  /**
-   * The engine asked the poster who they meant instead of answering
-   * (`ask_stats_person`). The route records the message with the
-   * `stats_clarification` intent, which is what opens the question.
-   */
-  statsClarificationAsked?: boolean;
   /**
    * The engine asked the sender who a name in an attendance claim is
    * (`ask_attendance_person`). The batch records the message with the

@@ -141,7 +141,6 @@ import { piMentionsBot } from "./interaction-contract";
 import { answerClosedPartnerAskYes, answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
-import { isUnifiedAnswersEnabled } from "./unified-answers-flag";
 import { joinAdminNames } from "./seed-nudge-rules";
 import { answerFeeProposalYes, feeProposalsAwaiting, proposeFeeFreeInHq } from "./fee-waiver";
 import { parseFeeAskRef } from "./fee-waiver-rules";
@@ -225,8 +224,6 @@ export interface UnderstandInput {
   /** The pool switch as the request read it (`pool/switch-env.ts`):
    *  the platform switch row, or the e2e seam under MT_TEST_MODE=1. */
   poolEnv?: Record<string, string | undefined>;
-  /** UNIFIED_ANSWERS as the route read it (`unified-answers-flag.ts`). */
-  unifiedAnswers?: boolean;
   /** Injected in tests only. */
   deps?: {
     routerModel?: PipelineModel;
@@ -707,19 +704,15 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         reply: replyShown,
         gates: hqGates,
         ...(input.poolEnv ? { poolEnv: input.poolEnv } : {}),
-        ...(input.unifiedAnswers !== undefined ? { unified: input.unifiedAnswers } : {}),
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
     // A DEAD END (2026-11-17, `dead-end-answer.ts`): a tagged message HQ has
     // no action for is handed to the unified answer, told NOT DONE and shown
     // the HQ menu, instead of a canned line. The line (`fallback`) is said
-    // only when that answer fails, or with UNIFIED_ANSWERS off.
-    const unifiedOn = input.unifiedAnswers ?? isUnifiedAnswersEnabled();
+    // only when that answer fails.
     const deadEnd = async (fallback: () => Promise<Understood | null> | Understood | null): Promise<Understood | null> => {
-      if (unifiedOn) {
-        const r = await answerQuestionOnce(true);
-        if (r) return said(r.outcome, r.replyText);
-      }
+      const r = await answerQuestionOnce(true);
+      if (r) return said(r.outcome, r.replyText);
       return fallback();
     };
 

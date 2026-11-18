@@ -24,11 +24,11 @@ import { describe, it, expect } from "vitest";
 import { decide } from "./support/stub-picks";
 import { NOW, msg, world } from "./helpers";
 
-const MY_STATS = { kind: "question", topic: "my_stats", personRef: null, statedCount: null } as const;
+const MY_STATS = { kind: "question", topic: "my_stats", personRef: null } as const;
 
 const ask = (
   from: string | null,
-  opts: { tagged?: boolean; noMatch?: boolean; attendance?: boolean; topic?: "my_stats" | "stats" } = {},
+  opts: { tagged?: boolean; noMatch?: boolean; attendance?: boolean; topic?: "my_stats" | "other" } = {},
 ) =>
   decide({
     now: NOW,
@@ -94,7 +94,7 @@ describe("the personal stats link is decided by the engine", () => {
   });
 
   it("the GROUP stats topic never requests a link", () => {
-    expect(outcome(ask("sait", { topic: "stats" })).statsLinkRequested ?? false).toBe(false);
+    expect(outcome(ask("sait", { topic: "other" })).statsLinkRequested ?? false).toBe(false);
   });
 });
 
@@ -106,7 +106,7 @@ describe("the question extractor accepts the topic", () => {
         name: "stub",
         async complete() {
           return {
-            text: JSON.stringify({ topic: "my_stats", personRef: "", statedCount: -1 }),
+            text: JSON.stringify({ kind: "my_stats", personRef: "", feature: "none", badge: "none" }),
             stopReason: "end_turn",
             usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
             costUsd: 0,

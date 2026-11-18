@@ -56,12 +56,10 @@ export interface HqQuestionInput {
   gates: HqHelpGates;
   /** The pool switch as the request read it, for the pool's help. */
   poolEnv?: Record<string, string | undefined>;
-  /** UNIFIED_ANSWERS as the route read it. Absent: the environment's flag. */
-  unified?: boolean;
   /** A DEAD END (2026-11-17, `dead-end-answer.ts`): HQ took no action on
    *  this tagged message. It is answered by the unified answer, with no
-   *  extractor call, told NOT DONE and shown the HQ menu. UNIFIED_ANSWERS
-   *  only; null when that answer fails, so the caller keeps its line. */
+   *  extractor call, told NOT DONE and shown the HQ menu; null when that
+   *  answer fails, so the caller keeps its line. */
   deadEnd?: boolean;
   deps?: Pick<
     AnswerBatchDeps,
@@ -110,8 +108,7 @@ export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcom
     expectedMatchId: state.matchId,
     enabled: enabledStepSevenRoutes(process.env),
     audience: "organisers",
-    ...(input.unified !== undefined ? { unified: input.unified } : {}),
-    ...(input.deadEnd ? { unified: true, deadEnds: new Set([messageId]) } : {}),
+    ...(input.deadEnd ? { deadEnds: new Map([[messageId, { why: null }]]) } : {}),
     // Read by the unified answer's pool facts only; the help below is HQ's own.
     ...(input.poolEnv ? { poolEnv: async () => input.poolEnv! } : {}),
     deps: {

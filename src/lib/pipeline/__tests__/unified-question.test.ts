@@ -34,8 +34,8 @@ describe("the prompt", () => {
     expect(UNIFIED_QUESTION_PROMPT.length / 2.6).toBeGreaterThan(MIN_CACHEABLE_TOKENS["claude-haiku-5-5"] * 1.5);
   });
 
-  it("is much smaller than the prompt it replaces with the flag on", () => {
-    expect(UNIFIED_QUESTION_PROMPT.length).toBeLessThan(EXTRACTOR_PROMPTS.question.length * 0.75);
+  it("is the question extractor's prompt: the fifteen-topic one is gone (2026-11-18)", () => {
+    expect(EXTRACTOR_PROMPTS.question).toBe(UNIFIED_QUESTION_PROMPT);
   });
 
   it("has English and Turkish examples side by side for each kind", () => {
@@ -57,7 +57,6 @@ describe("reading the reply as the engine's topics", () => {
       kind: "question",
       topic: "squad",
       personRef: null,
-      statedCount: null,
     });
     expect(parseUnifiedQuestion({ kind: "help", personRef: "", feature: "teams", badge: "none" }).facts).toMatchObject({
       topic: "how_it_works",
@@ -73,7 +72,6 @@ describe("reading the reply as the engine's topics", () => {
       kind: "question",
       topic: "other",
       personRef: "Idris",
-      statedCount: null,
     });
   });
 
@@ -89,39 +87,26 @@ describe("reading the reply as the engine's topics", () => {
 });
 
 describe("the extractor call", () => {
-  it("with the flag on: the small prompt, its schema and its own label", async () => {
+  it("the question extractor: the small prompt, its schema and its label", async () => {
     const { model, reqs } = stub({ kind: "list", personRef: "", feature: "none", badge: "none" });
-    const res = await extractForRoute(model, "question", { ...MSG, unified: true });
+    const res = await extractForRoute(model, "question", MSG);
     expect(res.facts).toMatchObject({ kind: "question", topic: "squad" });
     expect(reqs[0].system).toBe(UNIFIED_QUESTION_PROMPT);
     expect(reqs[0].schema).toEqual(UNIFIED_QUESTION_SCHEMA);
-    expect(reqs[0].label).toBe("extractor:question-unified");
-  });
-
-  it("with the flag off: the old prompt, schema and label, exactly", async () => {
-    const { model, reqs } = stub({
-      topic: "squad",
-      personRef: "",
-      statedCount: -1,
-      table: "none",
-      listSize: -1,
-      listEnd: "top",
-      period: "none",
-      periodCount: -1,
-      periodUnit: "none",
-      feature: "none",
-      badge: "none",
-      answersClarification: false,
-    });
-    await extractForRoute(model, "question", MSG);
-    expect(reqs[0].system).toBe(EXTRACTOR_PROMPTS.question);
-    expect(reqs[0].schema).toEqual(factsSchemaFor("question"));
+    expect(factsSchemaFor("question")).toEqual(UNIFIED_QUESTION_SCHEMA);
     expect(reqs[0].label).toBe("extractor:question");
   });
 
-  it("the flag never changes another extractor", async () => {
+  it("an old-shape reply (a `topic`, no `kind`) is anything else, and said", async () => {
+    const { model } = stub({ topic: "count", personRef: "" });
+    const res = await extractForRoute(model, "question", MSG);
+    expect(res.facts).toMatchObject({ kind: "question", topic: "other" });
+    expect(res.degradations.map((d) => d.detail).join(" ")).toMatch(/unknown question kind/);
+  });
+
+  it("another extractor keeps its own prompt", async () => {
     const { model, reqs } = stub({ claims: [], affirmation: "none", sideRequests: [] });
-    await extractForRoute(model, "self_att", { ...MSG, body: "in", unified: true });
+    await extractForRoute(model, "self_att", { ...MSG, body: "in" });
     expect(reqs[0].system).toBe(EXTRACTOR_PROMPTS.attendance);
     expect(reqs[0].label).toBe("extractor:attendance");
   });

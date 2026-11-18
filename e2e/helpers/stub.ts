@@ -145,7 +145,14 @@ export interface ExtractorStub {
 
 export function setExtractorStub(stub: ExtractorStub): void {
   mkdirSync(path.dirname(E2E.EXTRACTOR_STUB_FILE), { recursive: true });
-  writeFileSync(E2E.EXTRACTOR_STUB_FILE, JSON.stringify(stub, null, 2));
+  const kinds = (m: Record<string, Record<string, unknown>> | undefined) =>
+    m ? Object.fromEntries(Object.entries(m).map(([body, f]) => [body, questionKind(f)])) : undefined;
+  const written: ExtractorStub = {
+    ...stub,
+    ...(stub.bodies ? { bodies: kinds(stub.bodies) } : {}),
+    ...(stub.byExtractor ? { byExtractor: Object.fromEntries(Object.entries(stub.byExtractor).map(([k, m]) => [k, kinds(m)!])) } : {}),
+  };
+  writeFileSync(E2E.EXTRACTOR_STUB_FILE, JSON.stringify(written, null, 2));
 }
 
 export function clearExtractorStub(): void {
@@ -642,6 +649,20 @@ export function teamsFacts(
   return { action, includeRefs: [], teamNames: [], swaps: [], moves, pairings: [], swapSides: false, sides: { red: [], yellow: [] }, toMatchTime: true, ...over };
 }
 
+/**
+ * THE QUESTION EXTRACTOR READS `kind` (2026-11-18, `unified-question.ts`):
+ * list, help, my_stats, or other. A stub written with the old extractor's
+ * `topic` keeps working for the three fixed posts: `squad` is the list,
+ * `how_it_works` the help, `my_stats` the stats link. Any other topic is
+ * "other", the unified answer's, and a stub that wants its answer says
+ * `answer` beside it (the unified answer's stub reads the same body).
+ */
+function questionKind(facts: Record<string, unknown>): Record<string, unknown> {
+  if (typeof facts.topic !== "string" || "kind" in facts) return facts;
+  const kind = facts.topic === "squad" ? "list" : facts.topic === "how_it_works" ? "help" : facts.topic === "my_stats" ? "my_stats" : "other";
+  return { ...facts, kind };
+}
+
 export interface BodyRouting {
   route: string;
   facts?: Record<string, unknown>;
@@ -717,26 +738,14 @@ export function engineOn(
 
 // ── Help (2026-10-28) ─────────────────────────────────────────────────
 //
-// Help is read by the question extractor in every place (`how_it_works`
-// and its `feature`, plus `badge` for a badges question): the players'
-// group and HQ through the router, a DM straight through `readDmHelp`.
+// Help is read by the question extractor in every place (kind `help` and
+// its `feature`, plus `badge` for a badges question): the players' group and
+// HQ through the router, a DM straight through `readDmHelp`.
 
 /** The question extractor's raw answer for a help question. `feature`
  *  "none" is the menu. */
 export function helpFacts(feature = "none", badge = "none"): Record<string, unknown> {
-  return {
-    topic: "how_it_works",
-    personRef: "",
-    statedCount: -1,
-    table: "none",
-    listSize: -1,
-    listEnd: "top",
-    period: "none",
-    periodCount: -1,
-    periodUnit: "none",
-    feature,
-    badge,
-  };
+  return { kind: "help", personRef: "", feature, badge };
 }
 
 /** Arm the router and the extractor for help questions, by body: the

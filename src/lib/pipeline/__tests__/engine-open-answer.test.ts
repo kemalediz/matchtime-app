@@ -22,7 +22,7 @@ const ask = (opts: { tagged?: boolean; openAnswers?: SquadState["openAnswers"] }
         tagged: opts.tagged ?? true,
         body: "@Match Time is it going to be cold tonight?",
         route: "question",
-        facts: { kind: "question", topic: "other", personRef: null, statedCount: null },
+        facts: { kind: "question", topic: "other", personRef: null },
       }),
     ],
   });

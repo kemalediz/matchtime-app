@@ -1,26 +1,29 @@
 /**
  * "IS THERE STILL SPACE?" IN A CLUB WHOSE ORGANISERS ANNOUNCE THE LIST,
- * END TO END (FNF players' group, 2026-10-20 12:47 UTC).
+ * END TO END (FNF players' group, 2026-10-20 12:47 UTC; the unified answer's
+ * since 2026-11-18).
  *
- * MatchTime had posted the organiser-requested call-out "We need 3 more
- * players for Fri 20:30. Say IN if you can make it and the organisers will
- * confirm who gets the places." Clarence swipe-replied "Is there still
- * space?" and was told "The organisers will post the list.": the count
- * answer was composed, then the organisers-mode net replaced it because it
- * carried a squad count. The organisers keep the LIST, not whether there is
- * room, so:
+ * Clarence swipe-replied "Is there still space?" to the organisers' call-out
+ * and was told "The organisers will post the list.". The organisers keep the
+ * LIST, not whether there is room. The composed space answer that fixed it
+ * was deleted with the other question categories: the question is the
+ * unified answer's, whose context in this group names nobody in the squad or
+ * on the bench, and whose reply the organisers-mode net leaves alone. So:
  *
- *   1. a space question is answered with the number of open places and
- *      how to ask for one, never a name (EN, and TR);
- *   2. a full squad says so and how to go on the bench;
- *   3. "who's playing?" still gets "The organisers will post the list."
+ *   1. a space question gets the unified answer, never the organisers' line,
+ *      and its context holds the counts but no squad or bench names;
+ *   2. "who's playing?" (the list) still gets "The organisers will post the
+ *      list."
  *
- * The router and the question extractor are stubbed (what the model would
- * say); the ownership, the composer and both nets in the analyze route are
- * the real code. The seed's upcoming match is 4 of 5 with Ben on the bench.
+ * The router, the question extractor and the unified answer are stubbed
+ * (what the model would say); the ownership, the context, the composer and
+ * both nets in the analyze route are the real code. The seed's upcoming
+ * match is 4 of 5 with Ben on the bench.
  */
+import { readFileSync } from "node:fs";
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { MATCH, ORG_ID, U } from "../helpers/constants";
+import { ORG_ID } from "../helpers/constants";
+import { E2E } from "../helpers/env";
 import { engineOn, clearPipelineStubs } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
@@ -28,21 +31,8 @@ test.describe.configure({ mode: "serial" });
 const CALL_OUT =
   "We need 1 more player for Fri 20:30. Say *IN* if you can make it and the organisers will confirm who gets the place.";
 const SPACE = "Is there still space?";
-const SPACE_TR = "Hala yer var mı?";
+const SPACE_ANSWER = "There is still a place open. Say *IN* and the organisers will confirm who gets it.";
 const WHO = "who's playing?";
-
-const question = (topic: string) => ({
-  topic,
-  personRef: "",
-  statedCount: -1,
-  table: "none",
-  listSize: -1,
-  listEnd: "top",
-  period: "none",
-  periodCount: -1,
-  periodUnit: "none",
-  feature: "none",
-});
 
 let n = 0;
 const msgId = () => `e2e-oa-space-${Date.now()}-${++n}`;
@@ -59,6 +49,18 @@ async function ask(request: Parameters<typeof postAnalyze>[0], body: string): Pr
   return (res.results as Result[]).find((x) => x.waMessageId === id)!;
 }
 
+/** The unified answer's turn for this body, as the stub was shown it. */
+function turnFor(body: string): string {
+  return (
+    readFileSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { label: string; user: string })
+      .filter((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(body))
+      .pop()?.user ?? ""
+  );
+}
+
 test.beforeEach(async ({ db }) => {
   resetDb();
   // FNF's settings: the organisers announce the list and pick who plays.
@@ -70,40 +72,19 @@ test.afterAll(() => {
   resetDb();
 });
 
-test("a space question is answered with the open places and how to ask for one, never names", async ({ request }) => {
-  engineOn({ [SPACE]: { route: "question", facts: question("count") } });
+test("a space question is the unified answer, never the organisers' line, and its context names nobody in the squad", async ({ request }) => {
+  engineOn({ [SPACE]: { route: "question", facts: { kind: "other", personRef: "", feature: "none", badge: "none", answer: SPACE_ANSWER } } });
   const r = await ask(request, SPACE);
-  expect(r.handledBy).toBe("llm");
-  expect(r.reply).toMatch(
-    /^There's 1 place left for \S.*\. Say \*IN\* if you can make it and the organisers will confirm who gets the place\.$/,
-  );
-  expect(r.reply).not.toContain("The organisers will post the list.");
-  expect(r.reply).not.toContain("Ben");
-  expect(r.reply).not.toMatch(/[—–]/);
-});
-
-test("the same question in a Turkish club is answered in Turkish", async ({ request, db }) => {
-  await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
-  engineOn({ [SPACE_TR]: { route: "question", facts: question("count") } });
-  const r = await ask(request, SPACE_TR);
-  expect(r.reply).toMatch(/^\S.* maçı için 1 yer boş\. Gelebiliyorsanız \*VARIM\* yazın, yeri kimin alacağını organizatörler onaylayacak\.$/);
-  expect(r.reply).not.toContain("Listeyi organizatörler paylaşacak.");
-});
-
-test("a full squad says so and how to go on the bench, still without names", async ({ request, db }) => {
-  await db.run(
-    `INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt")
-     VALUES ('e2e-oa-space-fill', $1, $2, 'CONFIRMED', 99, now())`,
-    [MATCH.upcoming, U.extra],
-  );
-  engineOn({ [SPACE]: { route: "question", facts: question("count") } });
-  const r = await ask(request, SPACE);
-  expect(r.reply).toMatch(/^The squad is full for \S.*\. Say \*IN\* to go on the bench and the organisers will pick who plays\.$/);
-  expect(r.reply).not.toContain("Ben");
+  expect(r.intent).toBe("unified_answer");
+  expect(r.reply).toBe(SPACE_ANSWER);
+  const turn = turnFor(SPACE);
+  expect(turn).toMatch(/In the squad: 4 of 5\. Places left: 1\./);
+  expect(turn).toMatch(/Who is in the squad and who is on the bench is not shared in this group/);
+  expect(turn).not.toMatch(/^BENCH \(/m);
 });
 
 test("who's playing still gets 'The organisers will post the list.'", async ({ request }) => {
-  engineOn({ [WHO]: { route: "question", facts: question("squad") } });
+  engineOn({ [WHO]: { route: "question", facts: { kind: "list", personRef: "", feature: "none", badge: "none" } } });
   const r = await ask(request, WHO);
   expect(r.reply).toBe("The organisers will post the list.");
 });

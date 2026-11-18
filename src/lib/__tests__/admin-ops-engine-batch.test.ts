@@ -842,6 +842,8 @@ describe("every failure hands the message back to the analyzer", () => {
     expect(out.reply).toBe("Sorry, I can't do that one yet.");
     // A dead end the analyze route hands to the unified answer (2026-11-17).
     expect(out.intent).toBe("request_not_handled");
+    // Why, for the unified answer that replaces the line (2026-11-18).
+    expect(out.deadEndWhy).toMatch(/no action for what it asks/);
     expect(out.react).toBeNull();
     expect(out.recruitRequest).toBe(false);
     expect(out.statsBlastRequest).toBe(false);
