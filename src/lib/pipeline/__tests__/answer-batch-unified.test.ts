@@ -108,6 +108,7 @@ async function ask(opts: {
   senderUserId?: string;
   features?: Partial<OrgFeatures>;
   personRef?: string;
+  tables?: Omit<StatsSnapshot, "chemistry" | "generic" | "periods">;
 }) {
   const state = opts.state ?? world({ confirmed: ["kemal", "sait", "idris"], bench: ["erdal", "zair"] });
   const { model, reqs } = stubModel(opts);
@@ -125,7 +126,7 @@ async function ask(opts: {
       loadState: async () => state,
       loadFeatures: async () => ({ ...FEATURES, ...(opts.features ?? {}) }),
       loadClub: async () => CLUB,
-      loadStats: async () => (loads.push("stats"), TABLES),
+      loadStats: async () => (loads.push("stats"), opts.tables ?? TABLES),
       loadLastMatchRatings: async () => (loads.push("lastMatchRatings"), { date: new Date("2026-08-25T20:30:00Z"), rows: [{ userId: "u-sait", name: fullName("sait"), avg: 7.4, count: 6 }] }),
       loadOwnStats: async (_o: string, userId: string) => (loads.push(`own:${userId}`), "THE ASKER'S OWN STATS:\n- Average rating: 6.8"),
       loadStatsPeriod: async () => (loads.push("period"), { appearances: [], ratings: [], mom: [] }),
@@ -287,5 +288,69 @@ describe("round 3 (2026-11-12)", () => {
     expect(user).toMatch(/While places are open[^\n]*17:00 to the organisers in HQ/);
     // The organisers still see every name.
     expect(user).toContain(`1. ${fullName("kemal")}`);
+  });
+});
+
+/* ── "WHO WAS THE LAST MAN OF THE MATCH?" (#608, re-homed 2026-11-18) ─────
+ *
+ * The old question categories that carried this (`stats-answer.ts`,
+ * `stats-generic.ts`) are gone (#626): the last Man of the Match reaches the
+ * one unified answer through its records (`load-stats.ts` -> `lastMom` ->
+ * `unified-answer.ts`). Through the real batch: a posted result is in the
+ * records as announced, a final never-posted one by its winner only, an open
+ * vote by its status alone, and a reply naming the winner-only winner (no
+ * vote count to ground) passes the grounding check and is posted.
+ */
+describe("the last Man of the Match, through the batch (#608)", () => {
+  const w = (name: string) => ({ userId: `u-${name}`, name });
+  const lastMom: NonNullable<StatsSnapshot["lastMom"]> = (() => {
+    const announced = {
+      date: new Date("2026-08-18T20:30:00Z"),
+      teamLabels: ["Red", "Yellow"] as [string, string],
+      score: { red: 7, yellow: 9 },
+      winners: [w("Mo Hassan")],
+      told: "announced" as const,
+      postedAt: new Date("2026-08-19T09:00:00Z"),
+      pickedByOrganisers: false,
+      tally: [{ ...w("Mo Hassan"), votes: 5 }, { ...w("Naim Ali"), votes: 4 }],
+      votes: { top: 5, total: 9 },
+    };
+    const winnerOnly = {
+      date: new Date("2026-08-11T20:30:00Z"),
+      teamLabels: ["Red", "Yellow"] as [string, string],
+      score: null,
+      winners: [w(fullName("habib"))],
+      told: "winner-only" as const,
+      postedAt: null,
+      pickedByOrganisers: false,
+      tally: [],
+      votes: null,
+    };
+    return {
+      last: announced,
+      pending: [{ date: new Date("2026-08-25T20:30:00Z"), state: "voting" as const, toBePosted: true }],
+      recent: [announced, winnerOnly],
+    };
+  })();
+  const tables = { ...TABLES, lastMom };
+
+  it("the records carry the announced result, the winner-only one, and the open vote's status alone", async () => {
+    const { reqs } = await ask({ kind: "other", body: "@Match Time who was the last man of the match?", tables, answer: "Mo Hassan, 5 of the 9 votes." });
+    const user = reqs.find((r) => r.label === "unified-answer")!.user;
+    expect(user).toMatch(/Man of the Match: Mo Hassan, with 5 of the 9 votes cast, as announced in the group/);
+    expect(user).toMatch(/Votes each player got, as announced: Mo Hassan 5, Naim Ali 4/);
+    expect(user).toMatch(/Tue 11 Aug: Habib Rahman \(the winner only, no vote counts\)/);
+    expect(user).toMatch(/Voting for Man of the Match of the match on Tue 25 Aug is still open/);
+  });
+
+  it("the announced answer is posted", async () => {
+    const { outcome } = await ask({ kind: "other", body: "@Match Time who was the last man of the match?", tables, answer: "Mo Hassan, 5 of the 9 votes." });
+    expect(outcome?.reply).toBe("Mo Hassan, 5 of the 9 votes.");
+  });
+
+  it("a reply naming the winner-only winner, with no count, is posted", async () => {
+    const { outcome, res } = await ask({ kind: "other", body: "@Match Time who won it on 11 Aug?", tables, answer: "Habib Rahman, on Tue 11 Aug." });
+    expect(res.degradations.join(" ")).not.toMatch(/unified answer not used/);
+    expect(outcome?.reply).toBe("Habib Rahman, on Tue 11 Aug.");
   });
 });

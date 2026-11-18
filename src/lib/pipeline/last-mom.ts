@@ -5,8 +5,9 @@
  * who was the last MoM and for which game it was? How many votes did he get
  * out of how many votes?" The question extractor read the `mom` table and
  * the group got the all-time "Most Man of the Match wins" top ten. This
- * module writes ONE match's Man of the Match into the stats context the
- * grounded answers share (`stats-generic.ts`, `unified-answer.ts`).
+ * module writes ONE match's Man of the Match into the records the unified
+ * answer reads (`unified-answer.ts`, through `load-stats.ts` and
+ * `answer-batch.ts`), the only question path since 2026-11-18 (#626).
  *
  * WHAT MAY BE TOLD (Kemal, 2026-11-16):
  *   1. A result POSTED in the group is told exactly as announced: the same
