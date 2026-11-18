@@ -23,7 +23,7 @@
 /** `monthly-week.ts`'s `MONTHLY_PAYMENT_METHOD`, repeated here because
  *  that module reads the database and this one must not;
  *  fee-waiver-rules.test.ts pins that the two agree. */
-const MONTHLY_PAYMENT_METHOD = "monthly";
+export const MONTHLY_PAYMENT_METHOD = "monthly";
 
 import { formatLondon } from "./london-time";
 import { selectRegistrationMatch } from "./registration-match-select";
