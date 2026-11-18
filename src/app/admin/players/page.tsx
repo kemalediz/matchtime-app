@@ -53,7 +53,6 @@ interface Player {
    *  Null only when the caller is not an owner or admin. */
   clubRating: { rating: number | null; ratedGames: number } | null;
   phoneNumber: string | null;
-  isActive: boolean;
   leftAt: string | null;
   provisionallyAddedAt: string | null;
   /** A guest from a partner club (cross-club ask, S4): that club's name.

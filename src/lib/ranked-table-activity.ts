@@ -299,8 +299,7 @@ interface AttendanceReader {
 
 /**
  * "Played at this club" as an Attendance filter: the definition above,
- * in one place. Also read by the admin roster's Inactive badge
- * (`club-member-activity.ts`), so that page and these tables agree.
+ * in one place.
  */
 export function playedAttendanceWhere(orgId: string) {
   return {

@@ -57,7 +57,6 @@ vi.mock("@/lib/db", () => ({
       findMany: (...a: unknown[]) => membershipFindMany(...a),
       findFirst: (...a: unknown[]) => membershipFindFirst(...a),
     },
-    attendance: { groupBy: vi.fn().mockResolvedValue([]) },
     userAlias: { findMany: vi.fn().mockResolvedValue([{ userId: "u-walt", alias: "walty", source: "manual" }]) },
     organisation: { findUnique: (...a: unknown[]) => organisationFindUnique(...a) },
     user: { findUnique: (...a: unknown[]) => userFindUnique(...a) },

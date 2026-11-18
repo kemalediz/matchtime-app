@@ -14,7 +14,6 @@ interface Player {
   /** Null for a partner club's guest (never listed on this page anyway). */
   email: string | null;
   phoneNumber: string | null;
-  isActive: boolean;
   positions: string[];
   _count: { attendances: number };
   /** A partner club's guest (cross-club ask, S4): not this club's to phone. */
@@ -28,7 +27,7 @@ export default function BulkPhonesPage() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [lang, setLang] = useState<Lang>(DEFAULT_LANG);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | "missing" | "active">("active");
+  const [missingOnly, setMissingOnly] = useState(false);
   const [search, setSearch] = useState("");
 
   // Per-row local state so saving one row doesn't reset others.
@@ -130,12 +129,11 @@ export default function BulkPhonesPage() {
       // A partner club's guest is never listed here: his number is not this
       // club's to see or to type (cross-club ask, S4).
       if (p.guestFrom) return false;
-      if (filter === "missing" && p.phoneNumber) return false;
-      if (filter === "active" && !p.isActive) return false;
+      if (missingOnly && p.phoneNumber) return false;
       if (!q) return true;
       return adminPlayerMatches(p, q) || (p.phoneNumber ?? "").includes(q);
     });
-  }, [players, filter, search]);
+  }, [players, missingOnly, search]);
 
   const withPhone = players.filter((p) => !!p.phoneNumber).length;
 
@@ -162,21 +160,18 @@ export default function BulkPhonesPage() {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit">
-          {(["active", "missing", "all"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
-                filter === f
-                  ? "bg-white text-slate-800 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {f === "missing" ? "Missing phone" : f === "active" ? "Active" : "All"}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          aria-pressed={missingOnly}
+          onClick={() => setMissingOnly((v) => !v)}
+          className={`w-fit px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+            missingOnly
+              ? "bg-slate-800 border-slate-800 text-white"
+              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Missing phone
+        </button>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -207,11 +202,6 @@ export default function BulkPhonesPage() {
                   <div className="min-w-0">
                     <p className="font-medium text-slate-800 truncate">
                       {adminPlayerLabel(p, lang)}
-                      {!p.isActive && (
-                        <span className="ml-2 inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider">
-                          Inactive
-                        </span>
-                      )}
                     </p>
                     <p className="text-xs text-slate-500 truncate">
                       {p.email} · {p._count.attendances} matches

@@ -32,7 +32,6 @@ vi.mock("@/lib/db", () => ({
   db: {
     activity: { findFirst: vi.fn().mockResolvedValue(null) },
     membership: { findMany: (...a: unknown[]) => membershipFindMany(...a) },
-    attendance: { groupBy: vi.fn().mockResolvedValue([]) },
     userAlias: { findMany: vi.fn().mockResolvedValue([]) },
     organisation: { findUnique: vi.fn().mockResolvedValue({ lastParticipantSweepAt: null }) },
     rating: { findMany: (...a: unknown[]) => ratingFindMany(...a) },

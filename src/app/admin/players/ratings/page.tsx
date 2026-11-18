@@ -26,7 +26,6 @@ interface Player {
   phoneNumber?: string | null;
   guestFrom?: string | null;
   seedRating: number | null;
-  isActive: boolean;
   _count: { attendances: number };
 }
 
@@ -40,7 +39,6 @@ export default function BulkRatingsPage() {
   // club's own language.
   const [lang, setLang] = useState<Lang>(DEFAULT_LANG);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"active" | "all">("active");
   const [search, setSearch] = useState("");
   const [infoOpen, setInfoOpen] = useState(false);
 
@@ -126,11 +124,10 @@ export default function BulkRatingsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return players.filter((p) => {
-      if (filter === "active" && !p.isActive) return false;
       if (!q) return true;
       return adminPlayerMatches(p, q);
     });
-  }, [players, filter, search]);
+  }, [players, search]);
 
   if (loading) return <div className="p-10 text-center text-slate-400">Loading…</div>;
 
@@ -169,21 +166,6 @@ export default function BulkRatingsPage() {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit">
-          {(["active", "all"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
-                filter === f
-                  ? "bg-white text-slate-800 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {f === "active" ? "Active" : "All"}
-            </button>
-          ))}
-        </div>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -213,11 +195,6 @@ export default function BulkRatingsPage() {
                   <div className="min-w-0">
                     <p className="font-medium text-slate-800 truncate">
                       {adminPlayerLabel(p, lang)}
-                      {!p.isActive && (
-                        <span className="ml-2 inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider">
-                          Inactive
-                        </span>
-                      )}
                     </p>
                     <p className="text-xs text-slate-500 truncate">
                       {p._count.attendances} matches
