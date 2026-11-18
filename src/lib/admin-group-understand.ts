@@ -130,7 +130,7 @@ import { quotedTeamSheet } from "./team-sheet-history";
 import { membersNamedIn } from "./pipeline/identity";
 import { teamCommandFromFacts } from "./team-proposal-rules";
 import { formNoteReplyFor } from "./form-note";
-import { answerSquadPasteYes, proposeSquadPaste, readHqSquad, type HqSquadRead } from "./admin-group-paste";
+import { answerSquadPasteYes, changedListNotice, proposeSquadPaste, readHqSquad, type HqSquadRead } from "./admin-group-paste";
 import { answerGraphicRequest } from "./admin-group-graphics";
 import { hqHelpGates, hqHelpMenu } from "./admin-group-help";
 import { NOT_HERE_ID_PREFIX, hqLogSince, listAskRef, recordMatchTimeLine, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
@@ -491,7 +491,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // newest here (looked up only when a list is out).
         answering: async () =>
           input.quoted?.text ??
-          (await db.adminGroupMessage.findFirst({ where: { orgId: org.id, fromMatchTime: true }, orderBy: { createdAt: "desc" }, select: { text: true } }))?.text ??
+          (await db.adminGroupMessage.findFirst({ where: { orgId: org.id, fromMatchTime: true, text: { not: "" } }, orderBy: { createdAt: "desc" }, select: { text: true } }))?.text ??
           null,
         text: input.text,
         waMessageId: messageId,
@@ -567,7 +567,9 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       console.log(`[admin-group] ${messageId}: a reply to the pairing notice: ${r?.outcome ?? "not an answer"}`);
       return r ? { route: null, outcome: r.outcome, replyText: r.replyText } : null;
     }
-    const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
+    // A line its author edited keeps its row (the safe-YES rule above reads
+    // it) but no words: never shown to a model as a blank line (2026-11-16).
+    const recent = log.filter((r) => r.text.trim() !== "" && now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
     // The extractors' recent chat: MatchTime's own lines as MatchTime, an
     // organiser's under his roster name (never a pushname), the way the
     // players' group's lines are named (`group-chat-history.ts`).
@@ -580,7 +582,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     }));
     // MatchTime's last line in HQ. A reply's quoted message is shown to
     // every extractor beside it (`replyShown`), whoever wrote it.
-    const lastHqPost = [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null;
+    const lastHqPost = [...log].reverse().find((r) => r.fromMatchTime && r.text.trim() !== "")?.text ?? null;
     const capped = (await getAiBudgetStatus(org.id).catch(() => null))?.capped ?? false;
 
     // Every message goes to the shared router first. A list of names, a
@@ -954,7 +956,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     const askOne = async (source: RecruitSource, organiser: string, clubRef: string | null): Promise<Understood> => {
       if (source === "pool") return askPoolInWords();
       if (source === "partners") {
-        const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: organiser, via: "hq", clubRef, lang, now });
+        const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: organiser, via: "hq", clubRef, sourceMessageId: messageId, lang, now });
         return said(r.outcome, r.replyText);
       }
       const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
@@ -1104,6 +1106,14 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             const r = await answerTeamsYes(base(actor));
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
+        }
+        // A YES about a pasted list that was dropped because its message was
+        // deleted (2026-11-15): said once. Only a YES quoting that list's
+        // question, or the paster's own quoting nothing with nothing newer
+        // since; any other YES goes on exactly as before.
+        if (pending.length === 0) {
+          const changed = await changedListNotice({ orgId: org.id, lang, now, senderUserId: actor ?? squadActor ?? null, quoted });
+          if (changed) return said(changed.outcome, changed.replyText);
         }
         const decision = decideApproval({ pending, quoted, log, now });
         console.log(`[admin-group] ${messageId}: approval ${decision.kind}${"why" in decision ? ` (${decision.why})` : ""}`);

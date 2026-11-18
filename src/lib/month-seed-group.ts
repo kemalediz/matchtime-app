@@ -15,6 +15,7 @@
  * Null-safe: anything that does not fit (not an organiser, no coming month
  * to start, a list for another month) returns false and the caller goes on.
  */
+import { MONTH_SEED_ABOUT_PREFIX } from "./message-change";
 import { db } from "./db";
 import type { MonthSeedProposalData } from "./month-seed-hq";
 import { loadClubQuietHours } from "./club-quiet-hours";
@@ -90,7 +91,12 @@ export async function proposeMonthSeedFromGroup(args: {
     await db.sentNotification.create({ data: { key: `org-${args.orgId}:month-seed-dm:${proposal.id}`, kind: MONTH_SEED_DM_KIND, text, targetUser: args.senderUserId } });
     if (phone) {
       const sendAfter = adminNoticeSendAfter(now, await loadClubQuietHours(args.orgId));
-      await db.botJob.create({ data: { orgId: args.orgId, kind: "dm", phone, text, ...(sendAfter ? { sendAfter } : {}) } });
+      // The pasted message it was read from: a delete of that message
+      // cancels this DM unsent, and clears the offer's words above
+      // (`message-change.ts`, 2026-11-15). An edit never cancels anything.
+      await db.botJob.create({
+        data: { orgId: args.orgId, kind: "dm", phone, text, aboutKey: `${MONTH_SEED_ABOUT_PREFIX}${args.waMessageId}`, ...(sendAfter ? { sendAfter } : {}) },
+      });
     }
   } catch (err) {
     if (!isUniqueViolation(err)) console.error("[month-seed-group] DM to the organiser failed:", err);

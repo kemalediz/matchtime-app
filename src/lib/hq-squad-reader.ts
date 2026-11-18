@@ -134,7 +134,9 @@ async function teamLabelsOf(
  *  under his roster name (never a pushname), oldest first. */
 export async function loadHqRecentMessages(orgId: string, messageId: string, now: Date): Promise<HqSquadReaderInput["history"]> {
   const rows = (await hqLogSince(orgId, new Date(now.getTime() - RECENT_MS)).catch(() => [])) ?? [];
-  const recent = rows.filter((r) => r.waMessageId !== messageId).slice(-HQ_SQUAD_READER_RECENT_LINES);
+  // A line with no words (its author edited it, or a delete cleared
+  // MatchTime's question: `message-change.ts`) is never shown as a blank line.
+  const recent = rows.filter((r) => r.waMessageId !== messageId && r.text.trim() !== "").slice(-HQ_SQUAD_READER_RECENT_LINES);
   const names = await rosterLabels(recent.filter((r) => !r.fromMatchTime).map((r) => r.senderUserId)).catch(() => new Map<string, string | null>());
   return recent.map((r) => ({
     author: r.fromMatchTime ? "MatchTime" : r.senderUserId ? (names.get(r.senderUserId) ?? null) : null,

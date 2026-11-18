@@ -20,6 +20,7 @@ import { NextResponse } from "next/server";
 import { handleAdminGroupMessage } from "@/lib/admin-group";
 import { withMomRecordsScope } from "@/lib/mom-records-scope";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
+import { deletedAmong, enforceDeletes, withoutDeletedQuotes } from "@/lib/message-change";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -32,6 +33,30 @@ export async function POST(request: Request) {
   if (!groupId || !groupId.endsWith("@g.us") || typeof body?.text !== "string") {
     return NextResponse.json({ error: "groupId and text required" }, { status: 400 });
   }
+  // A MESSAGE DELETED FOR EVERYONE (2026-11-15): one whose delete is
+  // already recorded is not read, recorded or answered; a reply quoting one
+  // carries no quote text, never the Pi's copy (`message-change.ts`).
+  const inboundId = str(body.messageId);
+  if (inboundId && (await deletedAmong(groupId, [{ id: inboundId, authorPhone: str(body.senderPhone) }])).has(inboundId)) {
+    console.log(`[admin-group] ${groupId} ${inboundId}: deleted for everyone, not read`);
+    return NextResponse.json({ ok: true, handled: false, ignored: "deleted", replyText: null });
+  }
+  const [quote] = await withoutDeletedQuotes(
+    groupId,
+    [{ quotedMessageId: str(body.quotedMessageId), quotedAuthorPhone: str(body.quotedAuthorPhone), quotedAuthorJid: str(body.quotedAuthorJid), quotedText: body.quotedText }],
+    "quotedText",
+  );
+  body.quotedText = quote.quotedText;
+  try {
+    return await answerAdminGroup(request, body, groupId);
+  } finally {
+    // Its delete may have landed while this ran (the original and its
+    // delete arriving together): whatever was written is cleared again.
+    if (inboundId) await enforceDeletes(groupId, [inboundId]);
+  }
+}
+
+async function answerAdminGroup(request: Request, body: Record<string, unknown>, groupId: string) {
   // TEST SEAMS, honoured only under MT_TEST_MODE=1: `x-test-now` (the
   // clock) and `x-mt-test-pool-open` (the pool switch, `pool/switch-env.ts`).
   let now: Date | undefined;
@@ -39,8 +64,9 @@ export async function POST(request: Request) {
     const pinned = new Date(request.headers.get("x-test-now") ?? "");
     if (!Number.isNaN(pinned.getTime())) now = pinned;
   }
-  // Checked a string above; a closure does not keep that narrowing.
-  const text: string = body.text;
+  // Checked a string in POST before this is called; neither the call nor a
+  // closure keeps that narrowing.
+  const text = body.text as string;
   // One read of the club's Man of the Match records per message (`mom-records.ts`).
   const result = await withMomRecordsScope(async () => handleAdminGroupMessage({
     groupId,

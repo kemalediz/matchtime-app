@@ -112,6 +112,97 @@ test("the organiser is asked, and \"Yoobie\" puts Yoobie IN", async ({ request, 
   expect(await usersNamed(g, "Abu Ayoub"), "nobody new was added").toEqual([]);
 });
 
+// ── A DELETE OR AN EDIT OF THE MESSAGE ASKED ABOUT (PR #606) ─────────────
+// The question's row holds the message's words ("body") and the name
+// ("ref"). A delete closes it with no words; an author's edit keeps an open
+// one for its hour (MatchTime acts on what it read), then the sweep takes them.
+
+const digits = (p: string | null) => (p ?? "").replace(/\D/g, "");
+let seq = 0;
+
+/** The organiser's message under a WhatsApp id the change can name. */
+async function askWithId(g: SimGroup): Promise<{ bare: string; reply: string | null }> {
+  const bare = `3EB0ASK${Date.now().toString(16).toUpperCase()}${++seq}`;
+  const r = await g.postBatch([
+    {
+      player: "olly",
+      body: ASKED,
+      tag: true,
+      route: "other_att",
+      facts: otherFacts("Abu Ayoub", "in", { personKind: "named" }),
+      people: { "Abu Ayoub": { verdict: "ambiguous", names: ["Yoobie"] } },
+      waMessageId: `false_${g.groupId}_${bare}_${digits(g.player("olly").phone)}@c.us`,
+    },
+  ]);
+  return { bare, reply: r.results[0].reply };
+}
+
+async function changeBy(request: APIRequestContext, g: SimGroup, kind: "revoke" | "edit", bare: string) {
+  const phone = digits(g.player("olly").phone);
+  const res = await request.post("/api/whatsapp/message-change", {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+    data: { kind, chatId: g.groupId, messageId: bare, byAdmin: false, senderJids: [`${phone}@c.us`], senderPhone: phone },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+}
+
+test("the message asked about is DELETED: the question is closed and keeps no words; the next message is not read as its answer", async ({ request, db }) => {
+  const g = (await mkGroup(request, db)).attach(request);
+  const { bare, reply } = await askWithId(g);
+  expect(reply).toBe(QUESTION);
+  await changeBy(request, g, "revoke", bare);
+
+  const asks = await openAsks(g);
+  expect(asks).toHaveLength(1);
+  expect(asks[0].text).not.toContain("Abu Ayoub");
+  expect(JSON.parse(asks[0].text)).toMatchObject({ body: "", ref: "", answeredAt: expect.any(String) });
+
+  await g.post("olly", "new", { route: "other_att", facts: otherFacts("Someone", "in", { personKind: "named" }) });
+  const shown = stubCalls(E2E.EXTRACTOR_STUB_FILE).filter((c) => c.user.endsWith("\nnew"));
+  expect(shown.at(-1)?.user ?? "", "nothing of the deleted message is shown as an open question").not.toContain("MATCHTIME ASKED");
+});
+
+test("the message asked about is EDITED by its author: the question stays open with its words for its hour and is answered as today; the sweep then takes the words", async ({ request, db }) => {
+  const g = (await mkGroup(request, db)).attach(request);
+  const { bare, reply } = await askWithId(g);
+  expect(reply).toBe(QUESTION);
+  await changeBy(request, g, "edit", bare);
+  expect(JSON.parse((await openAsks(g))[0].text)).toMatchObject({ body: ASKED, ref: "Abu Ayoub", answeredAt: null });
+
+  const a = await g.post("olly", "new", {
+    route: "other_att",
+    facts: facts([otherClaim("Abu Ayoub", "in", { personKind: "named", newPlayer: true })], { answersClarification: true }),
+  });
+  expect(a.reply ?? "").not.toMatch(NOT_UNDERSTOOD);
+  const abu = await usersNamed(g, "Abu Ayoub");
+  expect(abu, "the answer is acted on, as without the edit").toHaveLength(1);
+  expect(await statusOfUser(g, abu[0].id)).toBe("CONFIRMED");
+
+  // An hour on, the hourly sweep: the question's words go (it was answered, so at once).
+  const res = await request.get("/api/cron/bot-health", { headers: { authorization: `Bearer ${E2E.CRON_SECRET}` } });
+  expect(res.status(), await res.text()).toBe(200);
+  const after = await openAsks(g);
+  expect(after.map((r) => r.text).join("\n")).not.toContain(ASKED);
+  expect(JSON.parse(after[0].text)).toMatchObject({ body: "", ref: "", answeredAt: expect.any(String) });
+  expect(await db.one(`SELECT "enforcedAt" IS NOT NULL AS done FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare])).toEqual({ done: true });
+});
+
+test("an EDITED message's open question is left alone by the sweep inside its hour, and loses its words after it", async ({ request, db }) => {
+  const g = (await mkGroup(request, db)).attach(request);
+  const { bare } = await askWithId(g);
+  await changeBy(request, g, "edit", bare);
+  const sweep = async () => {
+    const res = await request.get("/api/cron/bot-health", { headers: { authorization: `Bearer ${E2E.CRON_SECRET}` } });
+    expect(res.status(), await res.text()).toBe(200);
+  };
+  await sweep();
+  expect((await openAsks(g))[0].text).toContain(ASKED);
+  // The hour is up.
+  await db.run(`UPDATE "SentNotification" SET "createdAt" = now() - interval '61 minutes' WHERE kind = 'attendance-ask' AND key LIKE $1`, [`attendance-ask:${g.orgId}:%`]);
+  await sweep();
+  expect((await openAsks(g))[0].text).not.toContain("Abu Ayoub");
+});
+
 test("a player's untagged message about an unclear name stays silent: nothing asked", async ({ request, db }) => {
   const g = (await mkGroup(request, db)).attach(request);
   const r = await g.post("pete", "Abu Ayoub is IN", {

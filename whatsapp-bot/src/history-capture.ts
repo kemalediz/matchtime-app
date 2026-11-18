@@ -37,6 +37,9 @@ export interface HistoryCollectorDeps {
   log?(line: string): void;
   warn?(line: string): void;
   sleep?(ms: number): Promise<void>;
+  /** Deleted for everyone, or edited by its author, as the Pi's own record
+   *  says (`smart-analysis.ts` `isChangedLocally`, 2026-11-15): never captured. */
+  isDeleted?(groupId: string, msg: InboundMessage): boolean;
 }
 
 function describe(err: unknown): string {
@@ -91,6 +94,7 @@ export function createHistoryCollector(
     for (const { m, t } of dated) {
       try {
         if (safeRead(m, "fromMe") === true) continue;
+        if (deps.isDeleted?.(groupId, m)) continue;
         const author = asString(safeRead(m, "author")) ?? asString(safeRead(m, "from")) ?? "";
         if (self.has(author)) continue;
         const text = readMessageBody(m);

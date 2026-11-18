@@ -244,6 +244,20 @@ export function pastedListUserTurn(messages: SourceMessage[]): string {
   ].join("\n");
 }
 
+/**
+ * The archived messages of a window, oldest first, as the reading gets
+ * them. A message deleted for everyone keeps its row with an EMPTY body
+ * (`message-change.ts`: the row is the archive's dedupe key), and is left
+ * out here, so the model is never shown a deleted message or a blank one.
+ */
+export async function loadSquadSourceMessages(orgId: string, since: Date): Promise<SourceMessage[]> {
+  return db.groupMessage.findMany({
+    where: { orgId, timestamp: { gte: since }, NOT: { body: "" } },
+    orderBy: { timestamp: "asc" },
+    select: { waMessageId: true, body: true, senderPhone: true, senderPushname: true, timestamp: true },
+  });
+}
+
 /** Run the one-shot LLM extraction over a window of stored
  *  GroupMessage rows. Falls open (returns []) on any error so a single
  *  flaky run doesn't poison the queue — the next cron tick will retry. */
@@ -251,10 +265,7 @@ export async function extractSquadListsFromWindow(
   orgId: string,
   since: Date,
 ): Promise<ParsedList[]> {
-  const messages = await db.groupMessage.findMany({
-    where: { orgId, timestamp: { gte: since } },
-    orderBy: { timestamp: "asc" },
-  });
+  const messages = await loadSquadSourceMessages(orgId, since);
   if (messages.length === 0) return [];
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
     console.warn("[squad-from-list] ANTHROPIC_API_KEY missing — skipping extraction");

@@ -14,6 +14,7 @@ import {
   postBotRemoved,
   postDmReply,
   postHeartbeat,
+  postMessageChange,
   reportPlatformJob,
 } from "./api.js";
 import { emptyCounters } from "./heartbeat.js";
@@ -286,5 +287,31 @@ describe("slice 2a: the capability header and the admin-group forwards", () => {
     expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/whatsapp\/admin-group-link$/);
     fetchMock.mockRejectedValue(new Error("ECONNRESET"));
     expect(await postAdminGroupLink(fwd)).toBeNull();
+  });
+});
+
+describe("postMessageChange (2026-11-15)", () => {
+  const G = "120363000000000000@g.us";
+
+  it("POSTs the change to its own route with the Pi's key and returns the counts", async () => {
+    fetchMock.mockResolvedValue(res(200, { ok: true, analyzed: 1 }));
+    const out = await postMessageChange({ kind: "revoke", chatId: G, messageId: "3EB0AAAA0001" });
+    expect(out).toEqual({ ok: true, analyzed: 1 });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/whatsapp\/message-change$/);
+    expect(init.method).toBe("POST");
+    expect(init.headers["x-api-key"]).toBeDefined();
+    expect(JSON.parse(init.body)).toEqual({ kind: "revoke", chatId: G, messageId: "3EB0AAAA0001" });
+  });
+
+  it("an older server (404), an error or a network failure is null, and never throws or logs the words", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock.mockResolvedValueOnce(res(404, {}));
+    expect(await postMessageChange({ kind: "edit", chatId: G, messageId: "3EB0AAAA0001", senderJids: ["447700900123@c.us"], senderPhone: null })).toBeNull();
+    fetchMock.mockResolvedValueOnce(res(500, {}));
+    expect(await postMessageChange({ kind: "revoke", chatId: G, messageId: "3EB0AAAA0001" })).toBeNull();
+    fetchMock.mockRejectedValueOnce(new Error("ECONNRESET"));
+    expect(await postMessageChange({ kind: "revoke", chatId: G, messageId: "3EB0AAAA0001" })).toBeNull();
+    expect(JSON.stringify(error.mock.calls)).not.toContain("private words");
   });
 });

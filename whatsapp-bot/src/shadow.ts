@@ -306,6 +306,24 @@ export function shadowGuard<T extends WaDriver>(driver: T, opts: ShadowGuardOpti
  * log line may carry any of its text: see `describeDescription` in
  * bot-added.ts.
  */
+/**
+ * What a refused write's payload may show. A deleted or edited message's
+ * change (2026-11-15) is shown by its ids only: it carries no words, and
+ * a log line could otherwise show whatever a future field adds.
+ */
+function previewable(route: string, body: string): string {
+  if (route.endsWith("/api/whatsapp/message-change")) {
+    try {
+      const b = JSON.parse(body) as Record<string, unknown> | null;
+      const pick = (k: string) => (typeof b?.[k] === "string" ? (b[k] as string) : "?");
+      return JSON.stringify({ kind: pick("kind"), chatId: pick("chatId"), messageId: pick("messageId") });
+    } catch {
+      return "<not shown>";
+    }
+  }
+  return withoutGroupDescription(body);
+}
+
 function withoutGroupDescription(body: string): string {
   if (!body.includes("groupDescription")) return body;
   try {
@@ -332,7 +350,7 @@ export function refuseServerWriteInShadow(url: string, body?: unknown): boolean 
   }
   console.warn(
     `[shadow] REFUSED server write ${route}: nothing was sent to MatchTime. ` +
-      `Payload would have been: ${shadowPreview(withoutGroupDescription(typeof body === "string" ? body : String(body ?? "")))}`,
+      `Payload would have been: ${shadowPreview(previewable(route, typeof body === "string" ? body : String(body ?? "")))}`,
   );
   return true;
 }

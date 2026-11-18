@@ -408,6 +408,8 @@ export const UNTOUCHED_COLUMNS: Record<string, string> = {
   "MessageMentions.mentions":
     "who a group message tagged as WhatsApp gave it (JIDs, phones, WhatsApp names), no user ids: each is matched to a user afresh when read, so after a merge it finds the survivor by the same phone; deleted after 7 days",
   "WaInbound.waUserId": "Meta's business scoped user id, not a MatchTime User id",
+  "DeletedMessage.changes":
+    "each delete or edit of a WhatsApp message (reason, sender JIDs and phones, admin flag, time), no user ids: matched to a stored message's author by phone or JID when read; deleted after 14 days",
 };
 
 export const delegateOf = (model: string): string => model.charAt(0).toLowerCase() + model.slice(1);

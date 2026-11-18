@@ -357,6 +357,7 @@ import { askPoolFromWords } from "@/lib/pool-ask-words";
 import { recruitPlacesFromWords } from "@/lib/recruit-source";
 import { dmNamedPeople } from "@/lib/named-invite";
 import { rememberMentions } from "@/lib/group-mentions";
+import { deletedAmong, enforceDeletes, withoutChangedHistory, withoutDeletedQuotes } from "@/lib/message-change";
 import { groupSourceAnswers } from "@/lib/ask-source-group";
 import { groupAdminFollowups } from "@/lib/group-admin-followups";
 import { setVenueFromWords } from "@/lib/venue-from-words";
@@ -427,6 +428,8 @@ interface InboundHistory {
   authorName: string | null;
   body: string;
   timestamp: string;
+  /** The line's own message id (Pi builds from 2026-11-15), so a changed message's line can be left out. */
+  waMessageId?: string;
 }
 
 interface InboundBody {
@@ -460,6 +463,8 @@ type ActionForBot = {
  * Purely additive: the column is nullable and nothing branches on it.
  */
 export async function POST(request: Request) {
+  // Read again at the end for the deletes (below); the handler reads its own copy.
+  const copy = request.clone();
   // One read of each club's Man of the Match records per request
   // (`mom-records.ts`), however many answers in the batch read them.
   return withAnalyzeBatch(() => withMomRecordsScope(() =>
@@ -477,9 +482,21 @@ export async function POST(request: Request) {
         // every row is written by now whichever path wrote it. Never
         // throws: see `pipeline/trace.ts`.
         await persistPipelineTraces(writePipelineTrace);
+        // A message deleted for everyone WHILE this batch ran (2026-11-15):
+        // every row is written by now, traces included, so whatever a
+        // recorded delete applies to is cleared again. Never throws.
+        await enforceDeletesOfBatch(copy);
       }
     })),
   );
+}
+
+/** The batch's messages, cleared again of any recorded delete (`message-change.ts`). */
+async function enforceDeletesOfBatch(copy: Request): Promise<void> {
+  if (copy.headers.get("x-api-key") !== process.env.WHATSAPP_API_KEY) return;
+  const b = (await copy.json().catch(() => null)) as InboundBody | null;
+  if (!b?.groupId || !Array.isArray(b.messages)) return;
+  await enforceDeletes(b.groupId, b.messages.map((m) => (typeof m?.waMessageId === "string" ? m.waMessageId : null)));
 }
 
 async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => undefined) {
@@ -525,9 +542,48 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   const organisersMode = organisersAnnounce(org);
   bindAiBudgetKey(org.id);
 
-  // A SHARED CONTACT CARD IS TAKEN ASIDE FIRST (2026-11-17, review of #621,
-  // `lib/guest-card/intake.ts`): its name and number never reach anything
-  // below (sender resolution, reply contexts, the models, the stored rows,
+  // A MESSAGE DELETED FOR EVERYONE (2026-11-15) is left out before anything
+  // reads it: not archived, not analysed, not stored, not shown as recent
+  // chat (a Pi replaying it after a restart, or a delete that beat its
+  // batch here). Only a DELETE: an edited message is analysed as the Pi
+  // sent it (MatchTime acts on what it read and never re-reads an edit),
+  // and clear-after-write then purges what was stored under an edited
+  // tombstone. A reply QUOTING a deleted or edited message
+  // carries no quote text: never the Pi's copy of the words
+  // (`message-change.ts`). Best-effort: with no record readable, nothing
+  // is left out.
+  {
+    const gone = await deletedAmong(body.groupId, body.messages.map((m) => ({ id: m.waMessageId, authorPhone: m.authorPhone })));
+    if (gone.size > 0) {
+      console.log(`[analyze] ${body.groupId}: ${gone.size} message(s) deleted for everyone left out: ${[...gone].join(", ")}`);
+      body.messages = body.messages.filter((m) => !gone.has(m.waMessageId));
+    }
+    body.messages = await withoutDeletedQuotes(body.groupId, body.messages, "quotedBody");
+    // The server's safety net for the Pi's recent chat (round 6): a line of a
+    // DELETED message never reaches a model; one its author EDITED shows the
+    // edited words (round 14).
+    if (Array.isArray(body.history)) body.history = await withoutChangedHistory(body.groupId, body.history, "body");
+    if (body.messages.length === 0) {
+      // Nothing left to read; the Pi still needs the next kickoff for its urgency flush.
+      const next = await db.match.findFirst({
+        where: { activity: { orgId: org.id }, status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
+        orderBy: { date: "asc" },
+        select: { date: true },
+      });
+      return NextResponse.json({ ok: true, results: [], nextKickoffMs: next?.date.getTime() ?? null });
+    }
+    // TEST SEAM, honoured only under MT_TEST_MODE=1: hold the batch here, past
+    // the door, so an e2e spec can land a delete WHILE it is being analysed.
+    if (process.env.MT_TEST_MODE === "1") {
+      const ms = Number(request.headers.get("x-mt-test-pause-after-door-ms") ?? 0);
+      if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 10_000)));
+    }
+  }
+
+  // A SHARED CONTACT CARD IS TAKEN ASIDE NEXT (2026-11-17, review of #621,
+  // `lib/guest-card/intake.ts`; only the delete door above, which reads ids,
+  // comes first, so a deleted card never reaches the card door): its name
+  // and number never reach anything below (sender resolution, reply contexts, the models, the stored rows,
   // the chat history). The bodies, the quotes and the Pi's history carry
   // its label; the raw text goes to the guest card door only.
   const cardsAside = takeCardsAside(body.messages);
@@ -4497,6 +4553,8 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
         requestedByUserId: ask.sender.userId,
         via: "group",
         clubRef: ask.clubRef,
+        // The message that asked (PR #606): its delete cancels an ask still awaiting approval.
+        sourceMessageId: ask.msg.waMessageId,
         // Null: the asks code made from an answer or the attendance path,
         // for the club's next match (`askPartnersFromWords` loads it).
         matchId: ask.matchId ?? undefined,
@@ -5317,6 +5375,9 @@ async function recordAnalysis(args: {
         action: args.action,
         confidence: args.confidence,
         reasoning: args.reasoning.slice(0, 2000),
+        // The message it quoted (PR #606, round 14): a change to that one
+        // clears what this row's reading may carry of its words.
+        quotedMessageId: args.msg.quotedMessageId || null,
         // The flush this message was reasoned about in. Null outside a
         // batch (nothing else calls this) — see analyze-batch-context.ts.
         batchId: currentAnalyzeBatchId(),

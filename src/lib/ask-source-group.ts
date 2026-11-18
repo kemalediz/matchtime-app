@@ -104,7 +104,7 @@ export async function groupSourceAnswers(args: {
         authorName: m.authorName,
         tagged: m.tagged,
         history: [],
-        lastBotPost: question?.text ?? null,
+        lastBotPost: question?.text || null,
         ...(m.reply ? { reply: m.reply } : {}),
         now,
       }).catch(() => null);

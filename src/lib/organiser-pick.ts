@@ -882,7 +882,7 @@ async function resolvePickTags(
 /** HQ only: the recent messages there (the last hour), the reply itself
  *  left out, MatchTime's own as "MatchTime", a member's under his roster
  *  name. Never throws. */
-async function recentHqMessages(
+export async function recentHqMessages(
   orgId: string,
   senderUserId: string,
   text: string,
@@ -892,7 +892,8 @@ async function recentHqMessages(
   const rows = await hqLogSince(orgId, new Date(now.getTime() - 60 * 60 * 1000)).catch(() => []);
   const nameOf = new Map(members.map((m) => [m.userId, m.name]));
   return (rows ?? [])
-    .filter((r) => !(r.senderUserId === senderUserId && r.text === text))
+    // A line with no words (edited, or a cleared question: `message-change.ts`) is never shown blank.
+    .filter((r) => r.text.trim() !== "" && !(r.senderUserId === senderUserId && r.text === text))
     .map((r) => ({ author: r.fromMatchTime ? "MatchTime" : r.senderUserId ? (nameOf.get(r.senderUserId) ?? null) : null, body: r.text }));
 }
 

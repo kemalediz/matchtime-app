@@ -519,6 +519,55 @@ export async function postGroupPostability(body: {
   }
 }
 
+// ─────────────── Deletes and edits (2026-11-15) ───────────────────────
+
+/** A group message deleted for everyone, or edited (message-change.ts).
+ *  An edit is a purge: it carries no words, old or new. */
+export type MessageChangeBody =
+  | { kind: "revoke"; chatId: string; messageId: string; byAdmin: boolean; senderJids: string[]; senderPhone: string | null }
+  | { kind: "edit"; chatId: string; messageId: string; senderJids: string[]; senderPhone: string | null; text?: string; editedAt?: number };
+
+/** Counts only: the server never sends the words back. */
+export interface MessageChangeResponse {
+  ok: boolean;
+  analyzed?: number;
+  archived?: number;
+  hq?: number;
+  mentions?: number;
+  refused?: number;
+  /** Shadow mode refused the write here (`apiFetch`): nothing to retry. */
+  shadowMode?: boolean;
+}
+
+/**
+ * Housekeeping only: the server records the delete or the edit and takes
+ * the message's original words out of what it stored (an edit is posted
+ * only for a message already sent, and carries no words). Null on any
+ * failure (a 404 from a server older than the route included). Never
+ * throws, and never logs the body.
+ */
+export async function postMessageChange(body: MessageChangeBody): Promise<MessageChangeResponse | null> {
+  try {
+    const res = await apiFetch(`${config.apiUrl}/api/whatsapp/message-change`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (res.status === 404) {
+      console.error("message-change post failed: 404 (the server predates /api/whatsapp/message-change)");
+      return null;
+    }
+    if (!res.ok) {
+      console.error(`message-change post failed: ${res.status}`);
+      return null;
+    }
+    return (await res.json().catch(() => null)) as MessageChangeResponse | null;
+  } catch (err) {
+    console.error("message-change post failed:", err instanceof Error ? err.message : "failed");
+    return null;
+  }
+}
+
 // ─────────────── Admin groups (slice 2a, 2026-09-30) ──────────────────
 
 /** What the Pi forwards from an admin group or a link command. */
@@ -540,6 +589,8 @@ export interface AdminGroupForward {
    *  (unverified) and phone. Absent for a reply to MatchTime. */
   quotedAuthorName?: string;
   quotedAuthorPhone?: string;
+  /** The quoted message's author as WhatsApp named it, `@c.us` or `@lid` (2026-11-15). */
+  quotedAuthorJid?: string;
 }
 
 export interface AdminGroupAnswer {
@@ -660,12 +711,16 @@ export interface AnalyzeInboundMessage {
    *  (unverified) and phone. Absent for a reply to MatchTime. */
   quotedAuthorName?: string;
   quotedAuthorPhone?: string;
+  /** The quoted message's author as WhatsApp named it, `@c.us` or `@lid` (2026-11-15). */
+  quotedAuthorJid?: string;
 }
 
 export interface AnalyzeInboundHistory {
   authorName: string | null;
   body: string;
   timestamp: string; // ISO
+  /** The line's own message id (2026-11-15): the server leaves out a changed one too. */
+  waMessageId?: string;
 }
 
 export interface AnalyzeResult {
