@@ -18,8 +18,10 @@
  * posts that kept their text need no backfill), when its vote closes, its
  * next fixture by the scheduler's own rule (`nextFixtureKickoff`), whether it
  * is a historical (back-filled) anchor, and whether the scheduler can post
- * its result at all (COMPLETED, `postMatchEndFlow`, the club's `momVoting`,
- * and the club's posts not suppressed: `clubPostsWhere`, the due-posts gate).
+ * its result at all (not cancelled, `postMatchEndFlow`, the club's
+ * `momVoting`, and the club's posts not suppressed: `clubPostsWhere`, the
+ * due-posts gate). A post is "posted" only when its claim row carries the
+ * sent message's id (`waMessageId`, stamped by the Pi's ack).
  *
  * The matches: the club's, not cancelled, with MoMVote rows OR a stored
  * result (a posted result stays selectable after its vote rows are gone).
@@ -139,7 +141,7 @@ async function readClub(orgId: string): Promise<MomRecords> {
   const oldest = matches[matches.length - 1].date;
   const [counts, posted, later] = await Promise.all([
     db.moMVote.groupBy({ by: ["matchId", "playerId"], where: { matchId: { in: ids } }, _count: { playerId: true } }),
-    db.sentNotification.findMany({ where: { key: { in: ids.map((id) => `${id}:mom-announcement`) } }, select: { key: true, createdAt: true, text: true } }),
+    db.sentNotification.findMany({ where: { key: { in: ids.map((id) => `${id}:mom-announcement`) } }, select: { key: true, createdAt: true, text: true, waMessageId: true } }),
     // The fixtures after them, played or to come, for the next-fixture rule.
     db.match.findMany({
       where: { activity: { orgId }, isHistorical: false, date: { gt: oldest } },
@@ -155,9 +157,14 @@ async function readClub(orgId: string): Promise<MomRecords> {
     select: { id: true, name: true },
   });
   const nameOf = new Map(users.map((u) => [u.id, u.name ?? "?"]));
-  const postedAt = new Map(posted.map((p) => [p.key, p.createdAt]));
+  // A claim counts as POSTED only once the Pi stamped the sent message's id
+  // on it (`/api/whatsapp/ack`; round 6 of the review). A claim with none
+  // was never confirmed sent: not announced, and never claimed again.
+  const sent = posted.filter((p) => p.waMessageId);
+  const unsent = new Set(posted.filter((p) => !p.waMessageId).map((p) => p.key));
+  const postedAt = new Map(sent.map((p) => [p.key, p.createdAt]));
   const fromText = await resultsFromPostText(
-    posted.flatMap((p) => {
+    sent.flatMap((p) => {
       const matchId = p.key.slice(0, -":mom-announcement".length);
       return !stored.has(matchId) && p.text ? [{ matchId, text: p.text }] : [];
     }),
@@ -165,7 +172,9 @@ async function readClub(orgId: string): Promise<MomRecords> {
   );
   const canPost = features.momVoting && posting > 0;
   const records: LoadedMomRecord[] = matches.map((m) => {
-    const at = postedAt.get(`${m.id}:mom-announcement`) ?? null;
+    const key = `${m.id}:mom-announcement`;
+    const at = postedAt.get(key) ?? null;
+    const postUnsent = unsent.has(key);
     return {
       matchId: m.id,
       status: m.status,
@@ -178,11 +187,16 @@ async function readClub(orgId: string): Promise<MomRecords> {
         .map((c) => ({ userId: c.playerId, name: nameOf.get(c.playerId) ?? "?", votes: c._count.playerId })),
       announced: at !== null,
       postedAt: at,
-      announcedResult: withCurrentNames(stored.get(m.id) ?? fromText.get(m.id) ?? null, nameOf),
+      announcedResult: at === null ? null : withCurrentNames(stored.get(m.id) ?? fromText.get(m.id) ?? null, nameOf),
       voteClosesAt: momVoteClosesAt(m.date, m.activity.ratingWindowHours),
       nextFixtureAt: nextFixtureKickoff(m, later),
       isHistorical: m.isHistorical,
-      announceable: canPost && m.postMatchEndFlow !== false && m.status === "COMPLETED",
+      // Not cancelled (the query) is enough: a match that has kicked off and
+      // is still to be COMPLETED is posted once it completes, so a pick
+      // made in that gap waits for its post (round 6 of the review).
+      // `loadMomRecords` keeps only matches that have kicked off.
+      announceable: canPost && m.postMatchEndFlow !== false && !postUnsent,
+      postUnsent,
     };
   });
   return { records, organisersPick, nameOf };

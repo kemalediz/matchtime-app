@@ -15,6 +15,10 @@
  * must then be exactly one of that match's people (CONFIRMED attendance, the
  * team sheet, or a player with a vote now), by exact name.
  *
+ * WHICH ROWS: the matches with MoMVote rows, then their claim rows by key
+ * (no full-table scan). A claim with no `waMessageId` was never confirmed
+ * sent and is skipped (counted, not recorded).
+ *
  * SKIPPED, AND LISTED: a post with no stored text (before 2026-10-20), a
  * text that does not read back exactly (cut at 1000 characters, edited, not
  * ours), a name nobody or two people at the match have, and every match that
@@ -32,22 +36,38 @@ import { isMomAnnouncementClaimKey, type MomAnnouncedResult } from "../src/lib/m
 
 const APPLY = process.argv.includes("--apply");
 const SUFFIX = ":mom-announcement";
+/** Keys per `IN (...)` read. */
+const CHUNK = 500;
 
 async function main() {
   const db = new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL || process.env.DATABASE_URL! }),
   } as any);
 
-  // The posts' own claim rows only: the outbound text log's rows
-  // (`txtlog:<org>:<hash>:<key>`) end with the same suffix and are not posts.
-  const posts = (
-    await db.sentNotification.findMany({
-      where: { key: { endsWith: SUFFIX }, NOT: { key: { startsWith: "txtlog:" } } },
-      select: { key: true, matchId: true, text: true, createdAt: true },
-      orderBy: { createdAt: "asc" },
-    })
-  ).filter((p: { key: string }) => isMomAnnouncementClaimKey(p.key));
-  const existing = new Set((await db.moMAnnouncement.findMany({ select: { matchId: true } })).map((r: { matchId: string }) => r.matchId));
+  // NO FULL-TABLE SCAN (round 6 of the review). First the matches that have
+  // Man of the Match rows (a vote or a pick: MoMVote, read by its matchId
+  // index), then exactly their claim rows by key (`key IN (...)`, the
+  // unique index), as `src/lib/mom-records.ts` reads them. Only a claim the
+  // Pi confirmed sent (it stamped `waMessageId`) is a post: a claim with no
+  // message id never went out, so it is no announcement to record.
+  const matchIds = (await db.moMVote.findMany({ distinct: ["matchId"], select: { matchId: true } })).map((r: { matchId: string }) => r.matchId);
+  const posts: Array<{ key: string; matchId: string | null; text: string | null; createdAt: Date }> = [];
+  let unsent = 0;
+  const existing = new Set<string>();
+  for (let i = 0; i < matchIds.length; i += CHUNK) {
+    const ids = matchIds.slice(i, i + CHUNK);
+    const rows = await db.sentNotification.findMany({
+      where: { key: { in: ids.map((id: string) => `${id}${SUFFIX}`) } },
+      select: { key: true, matchId: true, text: true, createdAt: true, waMessageId: true },
+    });
+    for (const r of rows) {
+      if (!isMomAnnouncementClaimKey(r.key)) continue;
+      if (!r.waMessageId) unsent++;
+      else posts.push(r);
+    }
+    for (const r of await db.moMAnnouncement.findMany({ where: { matchId: { in: ids } }, select: { matchId: true } })) existing.add(r.matchId);
+  }
+  posts.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
   const toWrite: Array<{ matchId: string; result: MomAnnouncedResult; announcedAt: Date }> = [];
   const skipped: string[] = [];
@@ -98,6 +118,7 @@ async function main() {
   }
 
   console.log("");
+  console.log(`matches with MoM rows: ${matchIds.length}  claims never confirmed sent (skipped): ${unsent}`);
   console.log(`posts: ${posts.length}  already recorded: ${already}  no stored text (before 2026-10-20): ${noText}`);
   console.log(`readable and matched: ${toWrite.length}  skipped: ${skipped.length}`);
   for (const s of skipped) console.log(`  SKIP ${s}`);

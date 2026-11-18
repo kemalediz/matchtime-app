@@ -45,7 +45,7 @@ test("the organisers' pick gives the player the Man of the Match crown on their 
   await expect(tile.locator("div").first()).toHaveText("0");
 
   // The scheduler posts it: the claim row and the record it stores.
-  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ('e2e-web-pick-sn', $1, 'group-message', $2)`, [`${MATCH.rate}:mom-announcement`, MATCH.rate]);
+  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId", "waMessageId") VALUES ('e2e-web-pick-sn', $1, 'group-message', $2, 'wa-e2e-web-pick')`, [`${MATCH.rate}:mom-announcement`, MATCH.rate]);
   await db.run(`INSERT INTO "MoMAnnouncement" ("matchId", result) VALUES ($1, $2::jsonb)`, [
     MATCH.rate,
     JSON.stringify({ v: 1, kind: "pick", winner: { userId: U.rater, name: "Riley Rater" } }),

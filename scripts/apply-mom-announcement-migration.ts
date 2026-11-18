@@ -15,8 +15,9 @@
  *
  * WHAT IT DOES, all additive: CREATE TABLE "MoMAnnouncement" (new, empty)
  * and its foreign key to "Match". It rewrites, backfills, drops or renames
- * nothing. The dry run prints the table's state and the posted
- * announcements' row count; the apply checks that count is unchanged.
+ * nothing. The dry run prints the table's state and the number of MoM
+ * announcement claims (counted once, by key, no full-table scan); the apply
+ * checks the table and its foreign key are in place.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -48,15 +49,22 @@ async function main() {
     const fk: any = await db.$queryRawUnsafe(
       `SELECT COUNT(*)::int AS n FROM pg_constraint WHERE conname = 'MoMAnnouncement_matchId_fkey';`,
     );
-    const posted: any = await db.$queryRawUnsafe(
-      `SELECT COUNT(*)::int AS n FROM "SentNotification" WHERE key LIKE '%:mom-announcement';`,
-    );
-    return { table: table[0].t ?? "MISSING", fk: fk[0].n, posted: posted[0].n };
+    return { table: table[0].t ?? "MISSING", fk: fk[0].n };
   };
+
+  // The posted announcements, for the operator's information, counted ONCE
+  // and with no full-table scan (round 6 of the review): the matches with
+  // MoMVote rows first, then their claim keys by `key = ANY(...)` (the
+  // unique index), as `src/lib/mom-records.ts` reads them.
+  const ids: Array<{ matchId: string }> = await db.$queryRawUnsafe(`SELECT DISTINCT "matchId" FROM "MoMVote";`);
+  const posted: any = await db.$queryRawUnsafe(
+    `SELECT COUNT(*)::int AS n FROM "SentNotification" WHERE key = ANY($1::text[]);`,
+    ids.map((r) => `${r.matchId}:mom-announcement`),
+  );
 
   const todo = statements(readFileSync(FILE, "utf8"));
   const before = await state();
-  console.log(`BEFORE: MoMAnnouncement=${before.table}  FK=${before.fk}/1  (posted MoM announcements: ${before.posted})`);
+  console.log(`BEFORE: MoMAnnouncement=${before.table}  FK=${before.fk}/1  (MoM announcement claims: ${posted[0].n})`);
   if (!APPLY) {
     console.log(`(dry run: ${todo.length} statements would run; pass --apply to make the change)`);
     for (const s of todo) console.log(`  ${s.split("\n")[0]}`);
@@ -70,10 +78,9 @@ async function main() {
   });
 
   const after = await state();
-  console.log(`AFTER:  MoMAnnouncement=${after.table}  FK=${after.fk}/1  (posted MoM announcements: ${after.posted})`);
-  if (after.posted !== before.posted) throw new Error("SentNotification row count changed: this migration must be additive only");
+  console.log(`AFTER:  MoMAnnouncement=${after.table}  FK=${after.fk}/1`);
   if (after.table === "MISSING" || after.fk !== 1) throw new Error("MoMAnnouncement is not complete");
-  console.log("existing rows untouched, table and foreign key in place");
+  console.log("table and foreign key in place (the migration only creates them)");
   await db.$disconnect();
 }
 

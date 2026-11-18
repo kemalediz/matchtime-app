@@ -103,7 +103,7 @@ test("a provisional MoM leader is not announced; once the MoM result is posted, 
   // still open credits nobody (review of #608: the votes may yet differ from
   // what the group saw), so still no Man of the Match badge.
   await db.run(
-    `INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ('e2e-bdg-mom', $1, 'group-message', $2)`,
+    `INSERT INTO "SentNotification" (id, key, kind, "matchId", "waMessageId") VALUES ('e2e-bdg-mom', $1, 'group-message', $2, 'wa-e2e-bdg-mom')`,
     [`${MATCH.rate}:mom-announcement`, MATCH.rate],
   );
   expect(badgesPost(await poll(request, londonAt(1, 18, 30), true))?.text).not.toContain("Man of the Match");

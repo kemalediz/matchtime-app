@@ -591,3 +591,51 @@ describe("recent: every Man of the Match that can be told, newest first", () => 
     expect(f.last!.winners[0].name).toBe("Craig");
   });
 });
+
+/* ── A CLAIM THAT NEVER WENT OUT (review of #608, round 6) ─────────────
+ *
+ * The claim row (`<matchId>:mom-announcement`) is written before the Pi
+ * sends; the Pi stamps `waMessageId` on it only once WhatsApp took the
+ * message. A row with no message id was never confirmed sent (production,
+ * 18 Nov: 3 of 26 MoM claims, all Sept), and the scheduler never posts that
+ * key again. So it is NOT "as announced": the never-posted rules, with no
+ * post to come.
+ */
+describe("a claimed post never confirmed sent (no message id)", () => {
+  const unsent = (o: Partial<MomMatchRecord> & { date: Date }) =>
+    rec({ announced: false, postedAt: null, announcedResult: null, postUnsent: true, ...o });
+
+  it("once the vote is over: the winner only, no counts, never 'as announced'", () => {
+    // 6 days ago, a 120h vote: closed; the 9-day stop and the next fixture
+    // are still ahead, so without the unsent claim it would wait for a post.
+    const f = lastMomFacts([unsent({ date: ago(6), tally: live(["Mojib", 3], ["Habib", 1]) })], VOTERS);
+    expect(f.pending).toEqual([]);
+    expect(f.last!.told).toBe("winner-only");
+    expect(f.last!.winners.map((w) => w.name)).toEqual(["Mojib"]);
+    expect(f.last!.votes).toBeNull();
+    expect(f.last!.tally).toEqual([]);
+    const t = text(f);
+    expect(t).not.toMatch(/as announced|votes cast|Habib/);
+    expect(t).toContain("Man of the Match: Mojib. Only the winner is told");
+  });
+
+  it("while the vote is open: nothing told, and no post promised", () => {
+    const f = lastMomFacts([unsent({ date: ago(2), tally: live(["Mojib", 3]) })], VOTERS);
+    expect(f.last).toBeNull();
+    expect(f.pending).toEqual([{ date: ago(2), state: "undecided", toBePosted: false }]);
+    expect(text(f)).not.toMatch(/will be posted|Mojib/);
+  });
+
+  it("credits the final winner once the vote is over, nobody while open", () => {
+    expect(momCredit(unsent({ date: ago(6), tally: live(["Mojib", 3]) }), NOW, false).map((w) => w.name)).toEqual(["Mojib"]);
+    expect(momCredit(unsent({ date: ago(2), tally: live(["Mojib", 3]) }), NOW, false)).toEqual([]);
+  });
+
+  it("an organisers' pick whose post never went: told as the pick, not held for a post that will not come", () => {
+    const f = lastMomFacts([unsent({ date: ago(1), tally: live(["Akram", 1]) })], PICKERS);
+    expect(f.pending).toEqual([]);
+    expect(f.last!.winners.map((w) => w.name)).toEqual(["Akram"]);
+    expect(f.last!.pickedByOrganisers).toBe(true);
+    expect(text(f)).not.toMatch(/as announced/);
+  });
+});

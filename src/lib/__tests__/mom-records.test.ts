@@ -19,6 +19,8 @@ interface M {
   postMatchEndFlow?: boolean;
   votes: Array<[string, number]>;
   posted?: boolean;
+  /** The Pi stamped the sent message's id on the claim (default true). */
+  sent?: boolean;
   stored?: unknown;
   /** The post's own words (`SentNotification.text`). */
   text?: string;
@@ -28,13 +30,14 @@ interface M {
 const state = vi.hoisted(() => ({
   matches: [] as Array<Record<string, unknown>>,
   momVoting: true,
+  momChosenBy: "players",
   posting: true,
   storedThrows: null as Error | null,
   calls: { match: 0, stored: 0 },
 }));
 let fixture: M[] = [];
 
-vi.mock("@/lib/org-features", () => ({ getOrgFeatures: async () => ({ momVoting: state.momVoting, momChosenBy: "players" }) }));
+vi.mock("@/lib/org-features", () => ({ getOrgFeatures: async () => ({ momVoting: state.momVoting, momChosenBy: state.momChosenBy }) }));
 vi.mock("@/lib/db", () => {
   const act = { orgId: "org-1", venue: "Goals", dayOfWeek: 2, ratingWindowHours: 120, sport: { teamLabels: ["Red", "Yellow"] } };
   return {
@@ -73,7 +76,9 @@ vi.mock("@/lib/db", () => {
       },
       sentNotification: {
         findMany: async () =>
-          fixture.filter((m) => m.posted).map((m) => ({ key: `${m.id}:mom-announcement`, createdAt: new Date(m.date.getTime() + DAY), text: m.text ?? null })),
+          fixture
+            .filter((m) => m.posted)
+            .map((m) => ({ key: `${m.id}:mom-announcement`, createdAt: new Date(m.date.getTime() + DAY), text: m.text ?? null, waMessageId: m.sent === false ? null : `wa-${m.id}` })),
       },
       attendance: {
         findMany: async () => fixture.flatMap((m) => (m.played ?? []).map((n) => ({ matchId: m.id, user: { id: `u-${n}`, name: n } }))),
@@ -96,6 +101,7 @@ const credits = async () => {
 beforeEach(() => {
   fixture = [];
   state.momVoting = true;
+  state.momChosenBy = "players";
   state.posting = true;
   state.storedThrows = null;
   state.calls = { match: 0, stored: 0 };
@@ -170,16 +176,65 @@ describe("no post is promised when the scheduler will not send one", () => {
     expect(await promised()).toEqual([false]);
   });
 
-  it("not when MoM votes are off, the post-match flow is off, or the match is not completed", async () => {
-    fixture = [
-      { id: "flow", date: ago(1), postMatchEndFlow: false, votes: [["Greg", 1]] },
-      { id: "status", date: ago(2), status: "TEAMS_PUBLISHED", votes: [["Greg", 1]] },
-    ];
-    expect(await promised()).toEqual([false, false]);
+  it("not when MoM votes are off or the post-match flow is off", async () => {
+    fixture = [{ id: "flow", date: ago(1), postMatchEndFlow: false, votes: [["Greg", 1]] }];
+    expect(await promised()).toEqual([false]);
     clearMomRecordsForTests();
     state.momVoting = false;
     fixture = [{ id: "a", date: ago(1), votes: [["Greg", 1]] }];
     expect(await promised()).toEqual([false]);
+  });
+});
+
+describe("round 6 of the review", () => {
+  it("a claim the Pi never confirmed sent (no message id) is not 'as announced': the winner only, no counts", async () => {
+    fixture = [
+      {
+        id: "unsent",
+        date: ago(6),
+        votes: [["Dan", 3], ["Pete", 1]],
+        posted: true,
+        sent: false,
+        stored: { v: 1, kind: "vote", tally: [{ userId: "u-Pete", name: "Pete", votes: 3 }, { userId: "u-Dan", name: "Dan", votes: 1 }], winners: ["u-Pete"] },
+      },
+    ];
+    const { records } = await loadMomRecords("org-1", NOW);
+    expect(records[0].announced).toBe(false);
+    expect(records[0].postedAt).toBeNull();
+    expect(records[0].announcedResult).toBeNull();
+    const d = await loadMomDecisions("org-1", NOW);
+    const x = d.get("unsent")!;
+    expect(x.decision.kind).toBe("told");
+    if (x.decision.kind !== "told") return;
+    expect(x.decision.mom.told).toBe("winner-only");
+    expect(x.decision.mom.votes).toBeNull();
+    expect(x.credit.map((w) => w.name)).toEqual(["Dan"]);
+  });
+
+  it("the same claim once the Pi stamped its message id is as announced", async () => {
+    fixture = [
+      {
+        id: "sent",
+        date: ago(6),
+        votes: [["Dan", 3], ["Pete", 1]],
+        posted: true,
+        stored: { v: 1, kind: "vote", tally: [{ userId: "u-Pete", name: "Pete", votes: 3 }, { userId: "u-Dan", name: "Dan", votes: 1 }], winners: ["u-Pete"] },
+      },
+    ];
+    const d = await loadMomDecisions("org-1", NOW);
+    const x = d.get("sent")!;
+    expect(x.decision.kind === "told" && x.decision.mom.told).toBe("announced");
+    expect(x.credit.map((w) => w.name)).toEqual(["Pete"]);
+  });
+
+  it("an organisers' pick in the gap after kickoff, before the match is COMPLETED, waits for its post", async () => {
+    state.momChosenBy = "organisers";
+    fixture = [{ id: "kicked-off", date: new Date(NOW.getTime() - 3 * H), status: "TEAMS_PUBLISHED", votes: [["Akram", 1]] }];
+    const { records } = await loadMomRecords("org-1", NOW);
+    expect(records[0].announceable).toBe(true);
+    const x = (await loadMomDecisions("org-1", NOW)).get("kicked-off")!;
+    expect(x.decision.kind).toBe("pending");
+    expect(x.credit).toEqual([]);
   });
 });
 

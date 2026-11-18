@@ -80,7 +80,6 @@ export default async function MatchDetailPage({
           },
         },
       },
-      momVotes: true,
     },
   });
   if (!match) redirect("/matches");

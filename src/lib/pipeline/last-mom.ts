@@ -85,11 +85,19 @@ export interface MomMatchRecord {
   /** A synthetic match anchoring a back-filled award (`Match.isHistorical`):
    *  decided, told by its final winner only. */
   isHistorical: boolean;
-  /** The scheduler can post its result at all: the match is COMPLETED, its
-   *  post-match flow is on (`Match.postMatchEndFlow`) and the club has Man
-   *  of the Match votes switched on (`momVoting`, `due-key-feature.ts`).
-   *  Without all three no post is ever promised. */
+  /** The scheduler can post its result at all: the match is not cancelled
+   *  (kicked off and still to be COMPLETED counts, round 6 of the review:
+   *  it posts once the match completes), its post-match flow is on
+   *  (`Match.postMatchEndFlow`), the club has Man of the Match votes on
+   *  (`momVoting`, `due-key-feature.ts`) and its posts are not suppressed.
+   *  Without all of them no post is ever promised. */
   announceable: boolean;
+  /** The post was CLAIMED but WhatsApp never confirmed it went out: the
+   *  claim row has no `waMessageId` (round 6 of the review). Not announced,
+   *  and the scheduler never posts that key again, so no post is coming:
+   *  the never-posted rules apply at once (the winner only once the vote is
+   *  over, no counts). Absent: false. */
+  postUnsent?: boolean;
 }
 
 /** A Man of the Match winner, by name. */
@@ -251,14 +259,16 @@ export function decideMom(m: MomMatchRecord, now: Date, organisersPick: boolean)
   // ones), and the scheduler never posts them as a pick: rule 2.
   if (organisersPick) {
     const pickers = live.length;
-    if (momPickWillBePosted({ kickoff: m.date, nextFixtureAt: m.nextFixtureAt, announceable: m.announceable, pickers, now })) {
+    if (!m.postUnsent && momPickWillBePosted({ kickoff: m.date, nextFixtureAt: m.nextFixtureAt, announceable: m.announceable, pickers, now })) {
       return { kind: "pending", state: "picked", toBePosted: true };
     }
     return winnerOnly(pickers === 1);
   }
 
   if (live.length === 0) return { kind: "none" };
-  const givenUp = t > stop || (m.nextFixtureAt !== null && m.nextFixtureAt.getTime() <= t);
+  // Given up: past the 9-day stop, the next fixture has kicked off, or the
+  // post was claimed and never went out (it is never claimed again).
+  const givenUp = m.postUnsent === true || t > stop || (m.nextFixtureAt !== null && m.nextFixtureAt.getTime() <= t);
 
   // Rule 2: final, never posted, the vote over.
   if (givenUp && !open) return winnerOnly(false);

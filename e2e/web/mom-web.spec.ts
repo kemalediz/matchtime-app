@@ -68,7 +68,7 @@ test("an OPEN vote: the leader's own dashboard tile and stats, and the admin sta
 
 test("POSTED, then the votes moved: every page shows what was announced", async ({ page, db }) => {
   // The post said Tom 2, Olivia 1; the votes have since moved to Olivia.
-  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ('e2e-web-mom-sn', $1, 'group-message', $2)`, [`${MATCH.rate}:mom-announcement`, MATCH.rate]);
+  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId", "waMessageId") VALUES ('e2e-web-mom-sn', $1, 'group-message', $2, 'wa-e2e-web-mom')`, [`${MATCH.rate}:mom-announcement`, MATCH.rate]);
   await db.run(`INSERT INTO "MoMAnnouncement" ("matchId", result) VALUES ($1, $2::jsonb)`, [
     MATCH.rate,
     JSON.stringify({ v: 1, kind: "vote", tally: [{ userId: U.third, name: NAME.third, votes: 2 }, { userId: U.opt, name: NAME.opt, votes: 1 }] }),

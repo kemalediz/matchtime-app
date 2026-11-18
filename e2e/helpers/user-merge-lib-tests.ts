@@ -282,7 +282,7 @@ async function main() {
     const date = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     await db.match.create({ data: { id, activityId: ACTIVITY_ID, date, maxPlayers: 14, status: "COMPLETED", attendanceDeadline: date } });
     await db.sentNotification.create({
-      data: { key: `${id}:mom-announcement`, kind: "group-message", matchId: id, text: buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "E2E 5-a-side", tally, lang: "en" }) },
+      data: { key: `${id}:mom-announcement`, kind: "group-message", matchId: id, waMessageId: `wa-${id}`, text: buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "E2E 5-a-side", tally, lang: "en" }) },
     });
   };
   const voters = [U.admin, U.collector, U.rater, U.third, U.stale, U.opt, U.fresh];

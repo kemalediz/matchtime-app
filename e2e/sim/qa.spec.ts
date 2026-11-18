@@ -281,7 +281,7 @@ test('"who was the last Man of the Match?": as announced if posted, the winner o
   await matchAt("sim-mom-posted", 6);
   for (const v of ["alice", "dan", "owner"]) await vote("sim-mom-posted", v, "pete");
   await vote("sim-mom-posted", "pete", "dan");
-  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ('sim-mom-posted-sn', 'sim-mom-posted:mom-announcement', 'group-message', 'sim-mom-posted')`);
+  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId", "waMessageId") VALUES ('sim-mom-posted-sn', 'sim-mom-posted:mom-announcement', 'group-message', 'sim-mom-posted', 'wa-sim-mom-posted')`);
   await db.run(`INSERT INTO "MoMAnnouncement" ("matchId", result) VALUES ('sim-mom-posted', $1::jsonb)`, [
     JSON.stringify({ v: 1, kind: "vote", tally: [{ userId: id("pete"), name: grp.player("pete").name, votes: 3 }, { userId: id("dan"), name: grp.player("dan").name, votes: 1 }] }),
   ]);
@@ -292,13 +292,13 @@ test('"who was the last Man of the Match?": as announced if posted, the winner o
   await matchAt("sim-mom-legacy", 8);
   await vote("sim-mom-legacy", "pete", "alice");
   await db.run(
-    `INSERT INTO "SentNotification" (id, key, kind, "matchId", "createdAt") VALUES ('sim-mom-legacy-sn', 'sim-mom-legacy:mom-announcement', 'group-message', 'sim-mom-legacy', $1)`,
+    `INSERT INTO "SentNotification" (id, key, kind, "matchId", "createdAt", "waMessageId") VALUES ('sim-mom-legacy-sn', 'sim-mom-legacy:mom-announcement', 'group-message', 'sim-mom-legacy', $1, 'wa-sim-mom-legacy')`,
     [new Date(now - 3 * DAY)],
   );
   // 10 days ago, posted with a stored record (the owner, 2 of 2), and its
   // vote rows since gone: it stays selectable and still credits the owner.
   await matchAt("sim-mom-norows", 10);
-  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ('sim-mom-norows-sn', 'sim-mom-norows:mom-announcement', 'group-message', 'sim-mom-norows')`);
+  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId", "waMessageId") VALUES ('sim-mom-norows-sn', 'sim-mom-norows:mom-announcement', 'group-message', 'sim-mom-norows', 'wa-sim-mom-norows')`);
   await db.run(`INSERT INTO "MoMAnnouncement" ("matchId", result) VALUES ('sim-mom-norows', $1::jsonb)`, [
     JSON.stringify({ v: 1, kind: "vote", tally: [{ userId: id("owner"), name: grp.player("owner").name, votes: 2 }] }),
   ]);
@@ -306,12 +306,21 @@ test('"who was the last Man of the Match?": as announced if posted, the winner o
   await matchAt("sim-mom-historical", 20);
   await db.run(`UPDATE "Match" SET "isHistorical" = true WHERE id = 'sim-mom-historical'`);
   await vote("sim-mom-historical", "dan", "pete");
+  // 7 days ago, CLAIMED with a stored record (Alice 9 of 9) but the Pi
+  // never confirmed the send (no waMessageId; round 6 of the review): not
+  // "as announced", so no counts; its vote over, Alice by the winner only.
+  await matchAt("sim-mom-unsent", 7);
+  await vote("sim-mom-unsent", "dan", "alice");
+  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ('sim-mom-unsent-sn', 'sim-mom-unsent:mom-announcement', 'group-message', 'sim-mom-unsent')`);
+  await db.run(`INSERT INTO "MoMAnnouncement" ("matchId", result) VALUES ('sim-mom-unsent', $1::jsonb)`, [
+    JSON.stringify({ v: 1, kind: "vote", tally: [{ userId: id("alice"), name: grp.player("alice").name, votes: 9 }], winners: [id("alice")] }),
+  ]);
   // 3 days ago, posted before results were stored, its vote still OPEN:
   // nobody is named (Greg leads the votes now).
   await matchAt("sim-mom-legacy-open", 3);
   await vote("sim-mom-legacy-open", "pete", "greg");
   await db.run(
-    `INSERT INTO "SentNotification" (id, key, kind, "matchId", "createdAt") VALUES ('sim-mom-legacy-open-sn', 'sim-mom-legacy-open:mom-announcement', 'group-message', 'sim-mom-legacy-open', $1)`,
+    `INSERT INTO "SentNotification" (id, key, kind, "matchId", "createdAt", "waMessageId") VALUES ('sim-mom-legacy-open-sn', 'sim-mom-legacy-open:mom-announcement', 'group-message', 'sim-mom-legacy-open', $1, 'wa-sim-mom-legacy-open')`,
     [new Date(now - 1 * DAY)],
   );
   // 1 day ago, still voting: Greg is ahead, and nobody may know it.
@@ -336,6 +345,8 @@ test('"who was the last Man of the Match?": as announced if posted, the winner o
   // Posted: as announced, not the re-counted 3 for Dan.
   expect(block).toContain(`${grp.player("pete").name}, 3 of 4 votes`);
   expect(block).not.toContain(`${grp.player("dan").name}, 3`);
+  // Claimed but never confirmed sent: no counts from its record, never "as announced".
+  expect(block).not.toContain("9 of 9");
   // Final, never posted: the winner only.
   expect(block).toMatch(new RegExp(`: ${grp.player("alice").name} \\(the winner only, no vote counts\\)`));
   // Still voting: said to be open, nothing of it told.
@@ -357,7 +368,8 @@ test('"who was the last Man of the Match?": as announced if posted, the winner o
   expect(winsAt).toBeGreaterThan(-1);
   const winsEnd = user.indexOf("\n\n", winsAt);
   const wins = user.slice(winsAt, winsEnd === -1 ? undefined : winsEnd);
-  expect(wins).toContain(`${grp.player("alice").name}: 2`);
+  // (and the unsent claim, by its final winner).
+  expect(wins).toContain(`${grp.player("alice").name}: 3`);
   // Pete: the posted match (as announced) and the historical award.
   expect(wins).toContain(`${grp.player("pete").name}: 2`);
   // The owner: the posted match whose vote rows are gone (from its record).
