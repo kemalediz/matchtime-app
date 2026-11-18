@@ -1045,6 +1045,21 @@ describe("round 14: what a delete also takes", () => {
     expect(T.sentNotification.map((n) => n.text)).toEqual([null, "a cancelled match's DM"]);
   });
 
+  it("a pay-link DM (#627, aboutKey `<match>:pay-link:<user>`) is never touched by a delete or an edit, sent or not, nor its dispatch claim", async () => {
+    T.botJob.push(
+      row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "Pay for Tuesday: https://pay.example/x", aboutKey: "m1:pay-link:u-sam", sentAt: null, createdAt: ago(5) }),
+      row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "Pay for Monday: https://pay.example/y", aboutKey: `${ID}:pay-link:u-sam`, sentAt: ago(1), createdAt: ago(5) }),
+    );
+    T.sentNotification.push(row({ key: `botjob-${T.botJob[0].id}`, kind: "dm", text: "Pay for Tuesday: https://pay.example/x", createdAt: ago(1) }));
+    seed();
+    await applyMessageChange({ ...editBy(SAM), text: "edited" }, ago(1));
+    await applyMessageChange(byAuthor, NOW);
+    await sweepRecentTombstones(new Date(NOW.getTime() + 61 * 60 * 1000));
+    expect(T.botJob.map((j) => j.text)).toEqual(["Pay for Tuesday: https://pay.example/x", "Pay for Monday: https://pay.example/y"]);
+    expect(T.sentNotification[0].text).toBe("Pay for Tuesday: https://pay.example/x");
+    expect(T.deletedMessage[0].cancelledJobIds ?? []).toEqual([]);
+  });
+
   it("the reminder lookup is bounded to the 14 days: an older job made from a message with the same id is not touched", async () => {
     T.botJob.push(row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "an old reminder", aboutKey: `asked-reminder:${SAM_ID}`, sentAt: ago(20 * 24 * 60), createdAt: ago(20 * 24 * 60) }));
     await applyMessageChange(byAuthor, NOW);

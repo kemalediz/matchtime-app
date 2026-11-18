@@ -64,8 +64,9 @@ async function answerAdminGroup(request: Request, body: Record<string, unknown>,
     const pinned = new Date(request.headers.get("x-test-now") ?? "");
     if (!Number.isNaN(pinned.getTime())) now = pinned;
   }
-  // Checked a string above; a closure does not keep that narrowing.
-  const text: string = body.text;
+  // Checked a string in POST before this is called; neither the call nor a
+  // closure keeps that narrowing.
+  const text = body.text as string;
   // One read of the club's Man of the Match records per message (`mom-records.ts`).
   const result = await withMomRecordsScope(async () => handleAdminGroupMessage({
     groupId,
