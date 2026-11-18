@@ -17,6 +17,8 @@ import type { ClubSnapshot, Route, SquadState, StatsSnapshot } from "../types";
 import { NOW, fullName, world } from "./helpers";
 import { answerHqQuestion } from "../../admin-group-question";
 import { composeSquadStatusPost } from "../../group-copy";
+import { AiBudgetExceededError } from "../../ai-budget-context";
+import { isSelfRefAmong } from "../engine";
 
 const FEATURES = {
   botEnabled: true,
@@ -63,12 +65,13 @@ const OLD_SQUAD = {
 
 /** A model that answers each label: the old or the new extractor, and the
  *  unified answer. */
-function stubModel(opts: { kind?: string; feature?: string; personRef?: string; answer?: string; old?: Record<string, unknown> } = {}) {
+function stubModel(opts: { kind?: string; feature?: string; personRef?: string; answer?: string; old?: Record<string, unknown>; capAnswer?: boolean } = {}) {
   const reqs: ModelRequest[] = [];
   const model: PipelineModel = {
     name: "stub",
     async complete(req: ModelRequest): Promise<ModelResponse> {
       reqs.push(req);
+      if (req.label === "unified-answer" && opts.capAnswer) throw new AiBudgetExceededError("org:org-1", "unified-answer");
       let text: string;
       if (req.label === "unified-answer") text = JSON.stringify({ answer: opts.answer ?? "11 places left for Tue 21:30." });
       else if (req.label === "extractor:question")
@@ -109,6 +112,7 @@ async function ask(opts: {
   features?: Partial<OrgFeatures>;
   personRef?: string;
   tables?: Omit<StatsSnapshot, "chemistry" | "generic" | "periods">;
+  capAnswer?: boolean;
 }) {
   const state = opts.state ?? world({ confirmed: ["kemal", "sait", "idris"], bench: ["erdal", "zair"] });
   const { model, reqs } = stubModel(opts);
@@ -269,6 +273,11 @@ describe("round 2 (2026-11-11)", () => {
     expect(loads).toContain("own:u-kemal");
   });
 
+  it.each(["I", "myself", "beni", "bana"])("HQ, the asker's own numbers when the question says '%s'", async (personRef) => {
+    const { loads } = await ask({ kind: "other", personRef, audience: "organisers", senderUserId: "u-kemal", answer: "6.8." });
+    expect(loads).toContain("own:u-kemal");
+  });
+
   it("the players' group never reads the asker's own block (their stats go by DM)", async () => {
     const { loads } = await ask({ kind: "other", personRef: "me", senderUserId: "u-sait" });
     expect(loads.some((l) => l.startsWith("own:"))).toBe(false);
@@ -352,5 +361,229 @@ describe("the last Man of the Match, through the batch (#608)", () => {
     const { outcome, res } = await ask({ kind: "other", body: "@Match Time who won it on 11 Aug?", tables, answer: "Habib Rahman, on Tue 11 Aug." });
     expect(res.degradations.join(" ")).not.toMatch(/unified answer not used/);
     expect(outcome?.reply).toBe("Habib Rahman, on Tue 11 Aug.");
+  });
+});
+
+/**
+ * WHO THE QUESTION IS ABOUT (review of #595, 2026-11-15). The subject
+ * started as the asker and was replaced only when the named person resolved
+ * to exactly one member, so "what is Alex's rating?" (two Alexes) or "what is
+ * Zed's rating?" (nobody) put THE PLAYER THE QUESTION IS ABOUT: <the asker>,
+ * with the asker's numbers, in the context. Now a question that names
+ * someone else who does not resolve has no subject block at all; the tables
+ * still carry everyone's numbers under their own names. Made-up people.
+ */
+describe("the person a question names", () => {
+  const people: Array<[string, string]> = [
+    ["u-bruno", "Bruno Carr"],
+    ["u-alex1", "Alex Dale"],
+    ["u-alex2", "Alex Ewing"],
+    ["u-cosmo", "Cosmo Finch"],
+  ];
+  const state = (): SquadState => {
+    const base = world({ players: [] });
+    return {
+      ...base,
+      roster: people.map(([userId, name]) => ({ userId, name, isAdmin: false, hasPhone: true })),
+      rows: [
+        { userId: "u-bruno", status: "CONFIRMED", position: 1 },
+        { userId: "u-alex1", status: "CONFIRMED", position: 2 },
+      ],
+    };
+  };
+  const contextFor = async (personRef: string) => {
+    const { reqs, loads } = await ask({ kind: "other", personRef, state: state(), senderUserId: "u-bruno", answer: "I can't tell that." });
+    return { user: reqs.find((r) => r.label === "unified-answer")!.user, loads };
+  };
+
+  it("an ambiguous name (two Alexes): no subject block, never the asker as the subject", async () => {
+    const { user, loads } = await contextFor("Alex");
+    expect(user).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
+    expect(loads).not.toContain("chemistry");
+  });
+
+  it("an unknown or misspelt name: no subject block either", async () => {
+    expect((await contextFor("Zed")).user).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
+    expect((await contextFor("Brunno Kar")).user).not.toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  it("UNCHANGED: a name that resolves to one member is the subject", async () => {
+    const { user } = await contextFor("Cosmo");
+    expect(user).toContain("THE PLAYER THE QUESTION IS ABOUT: Cosmo Finch");
+  });
+
+  it("UNCHANGED: 'me', or no name at all, is the asker", async () => {
+    expect((await contextFor("me")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+    expect((await contextFor("")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  // Review of #604 (2026-11-16): the literal "me" missed every other way of
+  // saying it, which `isSelfRef` (engine.ts) already knows, English and
+  // Turkish, so "I" or "beni" lost the asker's own numbers.
+  it.each(["I", "myself", "Me", "beni", "bana", "kendim", "BENİ"])("'%s' is the asker too", async (ref) => {
+    expect((await contextFor(ref)).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  // Review of #628: "ben" is the Turkish "I", and a name. With no Ben in
+  // the club it is the asker; with one, it is him (below).
+  it("'Ben' with no Ben in the club: the asker", async () => {
+    expect((await contextFor("Ben")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+});
+
+/**
+ * A SELF WORD THAT IS ALSO A MEMBER'S NAME (review round 2, 2026-11-16).
+ * "Bana" is Turkish for "to me" and also a given name: in a club with a Bana,
+ * "what is Bana's rating?" is not about the asker. Ben is a name too (never a
+ * self word). Made-up people.
+ */
+describe("a member called Bana, a member called Ben", () => {
+  const state = (): SquadState => {
+    const base = world({ players: [] });
+    const people: Array<[string, string]> = [
+      ["u-bruno", "Bruno Carr"],
+      ["u-bana", "Bana Kaya"],
+      ["u-ben", "Ben Hale"],
+    ];
+    return {
+      ...base,
+      roster: people.map(([userId, name]) => ({ userId, name, isAdmin: false, hasPhone: true })),
+      rows: [{ userId: "u-bruno", status: "CONFIRMED", position: 1 }],
+    };
+  };
+  const contextFor = async (personRef: string, audience?: "organisers") => {
+    const { reqs, loads } = await ask({ kind: "other", personRef, state: state(), senderUserId: "u-bruno", answer: "I can't tell that.", ...(audience ? { audience } : {}) });
+    return { user: reqs.find((r) => r.label === "unified-answer")!.user, loads };
+  };
+
+  // Review of #628: the name lookup (who-is-who) skipped "bana" with the
+  // plain self list, so Bana was never looked up and never the subject.
+  it("'Bana' in a club with a Bana: Bana is the subject, never the asker", async () => {
+    const { user } = await contextFor("Bana");
+    expect(user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bana Kaya");
+    expect(user).not.toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  it("HQ, 'Bana' in a club with a Bana: Bana is the subject, and not the asker's own stats", async () => {
+    const { user, loads } = await contextFor("Bana", "organisers");
+    expect(user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bana Kaya");
+    expect(loads).not.toContain("own:u-bruno");
+  });
+
+  it("'Ben' in a club with a Ben: that member", async () => {
+    expect((await contextFor("Ben")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Ben Hale");
+  });
+
+  // Review of #628: self words the list did not know ("my", "benim") fell
+  // to "no subject" and lost the asker. "ben" is the asker unless the club
+  // has a Ben.
+  const noBen = (): SquadState => ({ ...state(), roster: state().roster.filter((m) => m.userId !== "u-ben") });
+  const withoutBen = async (personRef: string, audience?: "organisers") => {
+    const { reqs, loads } = await ask({ kind: "other", personRef, state: noBen(), senderUserId: "u-bruno", answer: "I can't tell that.", ...(audience ? { audience } : {}) });
+    return { user: reqs.find((r) => r.label === "unified-answer")!.user, loads };
+  };
+
+  it.each(["my", "mine", "benim", "kendi"])("'%s' is the asker, with or without a Ben in the club", async (ref) => {
+    expect((await contextFor(ref)).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+    expect((await withoutBen(ref)).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  it.each(["my", "benim"])("HQ, '%s': the asker's own stats", async (ref) => {
+    expect((await contextFor(ref, "organisers")).loads).toContain("own:u-bruno");
+  });
+
+  it("'ben kaçıncıyım?' (personRef 'ben') with no Ben in the club: the asker, and in HQ their own stats", async () => {
+    expect((await withoutBen("ben")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+    expect((await withoutBen("ben", "organisers")).loads).toContain("own:u-bruno");
+  });
+
+  it("'ben' with a Ben in the club: Ben, and no own stats for the asker in HQ", async () => {
+    expect((await contextFor("ben")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Ben Hale");
+    expect((await contextFor("ben", "organisers")).loads).not.toContain("own:u-bruno");
+  });
+
+  it("UNCHANGED: 'bana' meaning 'me' in a club with no Bana, and 'beni' beside a Bana, are the asker", async () => {
+    const noBana = (): SquadState => ({ ...state(), roster: state().roster.filter((m) => m.userId !== "u-bana") });
+    const { reqs } = await ask({ kind: "other", personRef: "bana", state: noBana(), senderUserId: "u-bruno", answer: "I can't tell that." });
+    expect(reqs.find((r) => r.label === "unified-answer")!.user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+    expect((await contextFor("beni")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+});
+
+/**
+ * THE DAILY AI CAP IN THE GROUPS (review of #595, 2026-11-15). Unchanged by
+ * the fix, on purpose: a group at its cap is told so once by the route
+ * before any model is asked (`route.ts`, the capped router), and a cap that
+ * trips between the extractor and the answer leaves the message unanswered
+ * here and disowned, exactly as the open answer did before #595. It never
+ * throws out of the batch.
+ */
+describe("the daily AI cap trips at the answer", () => {
+  it("the players' group: no reply, the message is disowned with the reason, nothing throws", async () => {
+    const { res, outcome } = await ask({ kind: "other", capAnswer: true });
+    expect(outcome).toBeUndefined();
+    expect(res.degradations.join(" ")).toMatch(/daily AI cap/);
+  });
+
+  it("HQ: the same", async () => {
+    const { outcome } = await ask({ kind: "other", audience: "organisers", capAnswer: true });
+    expect(outcome).toBeUndefined();
+  });
+});
+
+describe("isSelfRefAmong (engine.ts): a self word, unless it is a member's name", () => {
+  const roster = [{ name: "Bana Kaya" }, { name: "Ben Hale" }, { name: null }];
+  it.each([
+    ["me", true],
+    ["I", true],
+    ["beni", true],
+    ["BENİ", true],
+    ["Bana", false],
+    ["bana", false],
+    ["Ben", false],
+    ["Bruno", false],
+  ] as const)("'%s' -> %s", (ref, self) => {
+    expect(isSelfRefAmong(ref, roster)).toBe(self);
+  });
+
+  it("'bana' with no Bana in the club is the sender", () => {
+    expect(isSelfRefAmong("bana", [{ name: "Ben Hale" }])).toBe(true);
+  });
+
+  // Review round 3: the Turkish lowercase alone turns a plain capital I into
+  // a dotless one, so "BENI" never met a member "Beni". Folded both ways.
+  it.each([
+    ["BENI", "Beni Aslan"],
+    ["BENİ", "Beni Aslan"],
+    ["beni", "Beni Aslan"],
+    ["KENDIM", "Kendim Yurt"],
+    ["Kendim", "KENDİM YURT"],
+  ])("'%s' beside a member called %s is that member, not the sender", (ref, name) => {
+    expect(isSelfRefAmong(ref, [{ name }])).toBe(false);
+  });
+
+  // Review round 4: a member's alias (`UserAlias`, set by the club) is a
+  // name too, as `resolvePerson` reads it.
+  it.each([
+    ["Beni", ["Beni"]],
+    ["BENI", ["beni"]],
+    ["bana", ["Bana"]],
+  ])("'%s' beside a member whose alias is %j is that member, not the sender", (ref, aliases) => {
+    expect(isSelfRefAmong(ref, [{ name: "Ahmet Kaya", aliases }])).toBe(false);
+  });
+
+  it("'ben' is the sender only when no member is called Ben", () => {
+    expect(isSelfRefAmong("ben", [{ name: "Bana Kaya" }])).toBe(true);
+    expect(isSelfRefAmong("Ben", [{ name: "Ben Hale" }])).toBe(false);
+    expect(isSelfRefAmong("ben", [{ name: "Benjamin Hale", aliases: ["Ben"] }])).toBe(false);
+  });
+
+  it.each(["my", "mine", "benim", "kendi"])("'%s' is the sender", (ref) => {
+    expect(isSelfRefAmong(ref, [{ name: "Ben Hale" }])).toBe(true);
+  });
+
+  it("'BENI' and 'KENDIM' with no such member are the sender", () => {
+    expect(isSelfRefAmong("BENI", [{ name: "Ben Hale" }])).toBe(true);
+    expect(isSelfRefAmong("KENDIM", [{ name: "Ben Hale" }])).toBe(true);
   });
 });

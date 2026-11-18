@@ -114,7 +114,6 @@ import {
 } from "@/lib/roster-shown";
 import {
   composeSquadStateReply,
-  skipsSquadComposition,
   buildRecruitAckReply,
   teamSheetNames,
   stripSquadPostMarker,
@@ -365,6 +364,7 @@ import { recordVenueList } from "@/lib/venue-list-log";
 import { askWhichSource, nobodyLeftReply, sourcesAvailable } from "@/lib/ask-source";
 import { decideRecruitSource, type RecruitSource } from "@/lib/ask-source-rules";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
+import { composesSquadPost, squadPostCarrierId as squadPostCarrierFor } from "@/lib/squad-post-carrier";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 import { pastedListIds, type RoutedForListSignal } from "@/lib/pasted-list-signal";
 import type { MonthlyReading } from "@/lib/monthly-reader-prompt";
@@ -3860,7 +3860,12 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   //   it is avoidable.
   //
   //   So the marker goes on the LAST result that is already going to
-  //   speak — whichever decider produced it. `composeSquadStateReply`
+  //   speak, whichever decider produced it, AND that the composition
+  //   below renders (review of #595, `squad-post-carrier.ts`). A reply the
+  //   composition skips (the unified answer, a stats answer, help) never
+  //   rendered the marker, the strip removed it, and the batch's squad post
+  //   was lost; with no such reply the post goes on the message that
+  //   changed the squad. A team post is left as before. `composeSquadStateReply`
   //   then renders `lead + roster` into that one message, keeping the
   //   analyzer's answer AND the database's roster in a single send, and
   //   the collapse below still guarantees at most one composed post.
@@ -3882,13 +3887,12 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
       : (engineBatch?.squadPostForMessageId ?? null);
   // The organisers announce the list (2026-10-14): no batch squad post.
   if (squadPostId && !organisersMode) {
-    const speaks = results.filter(
-      (r) => (r.reply ?? "").length > 0 && !lateById.has(r.waMessageId),
-    );
-    const target =
-      speaks.length > 0
-        ? speaks[speaks.length - 1]
-        : results.find((r) => r.waMessageId === squadPostId);
+    const carrierId = squadPostCarrierFor(results, {
+      squadPostId,
+      late: new Set(lateById.keys()),
+      teamPostIds: deterministicTeamPostIds,
+    });
+    const target = carrierId ? results.find((r) => r.waMessageId === carrierId) : undefined;
     if (target) {
       target.reply = target.reply
         ? `${target.reply}\n\n${SQUAD_POST_MARKER}`
@@ -3960,19 +3964,18 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
         // shorter fix and the wrong one: the help reply, the stats-blast
         // ack and the guest-name ask are also `fast-path`, and none of
         // them should be re-composed into a roster.
-        const pastedRosterAck = r.handledBy === "fast-path" && r.intent === "pasted_roster";
-        if (!r.reply) continue;
-        if (r.handledBy !== "llm" && !pastedRosterAck) continue;
+        //
         // The two team posts, and since 2026-09-23 every stats answer: a
         // leaderboard is a numbered list of players, which this pass
         // would otherwise replace with the squad. See
-        // `STATS_ANSWER_INTENTS` in `group-copy.ts`.
-        if (skipsSquadComposition(r.intent)) continue;
-        // The 2026-09-15 replacement post — a team sheet with a lead this
-        // pass would strip. Excluded on the same argument as the two
-        // intents above, on a flag because the message's own intent is
-        // still the attendance one that caused it.
-        if (deterministicTeamPostIds.has(r.waMessageId)) continue;
+        // `STATS_ANSWER_INTENTS` in `group-copy.ts`. And the 2026-09-15
+        // replacement post: a team sheet with a lead this pass would
+        // strip, excluded by id because the message's own intent is still
+        // the attendance one that caused it.
+        //
+        // One definition (`composesSquadPost`), shared with the choice of
+        // the reply that carries the marker above, so the two cannot drift.
+        if (!composesSquadPost(r, deterministicTeamPostIds)) continue;
         candidates.push(i);
       }
       if (candidates.length > 0) {

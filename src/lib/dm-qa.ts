@@ -117,6 +117,13 @@ export interface ScopedAnswer {
   orgName: string;
 }
 
+/** The club is at its daily AI cap: nothing is sent, and the route says so
+ *  (`ignored: "qa-capped"`, review of #628). */
+export interface ScopedCapped {
+  capped: true;
+  orgId: string;
+}
+
 export async function answerScopedQuestion(args: {
   userId: string;
   orgId: string;
@@ -132,7 +139,10 @@ export async function answerScopedQuestion(args: {
   /** Where DMs to this player are queued (digits, no "+"), for the chat
    *  context's recent messages. */
   phone?: string | null;
-}): Promise<ScopedAnswer | null> {
+  /** The player pool switch as the request resolved it, for the answer's
+   *  pool facts (`pool/switch-env.ts`). Absent: closed. */
+  poolEnv?: () => Promise<Record<string, string | undefined>>;
+}): Promise<ScopedAnswer | ScopedCapped | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   // TEST-ONLY seam: the e2e suite runs with no Anthropic key. Instead of
   // calling the model we return the context itself as the "answer", so
@@ -170,7 +180,8 @@ async function answerScopedQuestionUnified(args: {
   lang: Lang;
   apiKey: string | null;
   stubMode: boolean;
-}): Promise<ScopedAnswer | null> {
+  poolEnv?: () => Promise<Record<string, string | undefined>>;
+}): Promise<ScopedAnswer | ScopedCapped | null> {
   const replyContext = await loadDmReplyContext(db, {
     userId: args.userId,
     phone: args.phone ?? null,
@@ -188,6 +199,7 @@ async function answerScopedQuestionUnified(args: {
     lang: args.lang,
     replyContext,
     now: new Date(),
+    ...(args.poolEnv ? { poolEnv: args.poolEnv } : {}),
   });
   if (args.stubMode) {
     return { answer: `[unified-dm-stub]\n${buildUnifiedContext(input).text}`, orgId: args.orgId, orgName: args.orgName };
@@ -195,6 +207,13 @@ async function answerScopedQuestionUnified(args: {
   const model = anthropicModel({ apiKey: args.apiKey ?? undefined });
   try {
     const g = await withOrgAiBudget(args.orgId, () => answerUnified({ ...input, model }));
+    // The daily cap: no answer and nothing sent. `answerUnified` never
+    // throws, so the cap comes back as `capped` (review of #595: it came
+    // back as a plain rejection and the apology went out).
+    if (g.capped) {
+      console.log(`[dm-qa] org=${args.orgId} is at its daily AI cap; no answer composed`);
+      return { capped: true, orgId: args.orgId };
+    }
     if ("rejected" in g.result) {
       console.error(`[dm-qa] org=${args.orgId}: unified answer not used (${g.result.rejected}); the apology instead`);
       return { answer: buildDmQaApology(args.lang), orgId: args.orgId, orgName: args.orgName };
@@ -203,7 +222,7 @@ async function answerScopedQuestionUnified(args: {
   } catch (err) {
     if (isAiBudgetExceeded(err)) {
       console.log(`[dm-qa] org=${args.orgId} is at its daily AI cap; no answer composed`);
-      return null;
+      return { capped: true, orgId: args.orgId };
     }
     throw err;
   }

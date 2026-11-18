@@ -344,6 +344,11 @@ export const STATS_ANSWER_INTENTS: ReadonlySet<string> = new Set([
 
 const TEAM_POST_INTENTS: ReadonlySet<string> = new Set(["generate_teams_request", "show_teams_request"]);
 
+/** PURE. The make-teams and show-teams replies (`squad-post-carrier.ts`). */
+export function isTeamPostIntent(intent: string | null | undefined): boolean {
+  return !!intent && TEAM_POST_INTENTS.has(intent);
+}
+
 /**
  * The intent of the UNIFIED answer (2026-11-10, `pipeline/unified-answer.ts`;
  * the only answer to an "anything else" question since 2026-11-18, when the

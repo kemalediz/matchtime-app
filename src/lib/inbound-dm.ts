@@ -1757,7 +1757,11 @@ async function handleInboundDmInScope(body: InboundDm, ctx: InboundDmContext): P
         includePhoneFlags,
         quoted: qa.quoted,
         phone: replyPhone,
+        // The pool switch, resolved as the group and HQ resolve it.
+        poolEnv: () => poolEnvForApiRequest(request),
       });
+      // At the daily AI cap nothing is sent, and the response says why.
+      if (result && "capped" in result) return NextResponse.json({ ok: true, ignored: "qa-capped" });
       if (result) {
         await db.botJob.create({
           data: { orgId, kind: "dm", phone: replyPhone, text: result.answer, ...REPLY_PRIORITY },
