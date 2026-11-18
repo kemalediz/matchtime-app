@@ -67,6 +67,15 @@ import { payCollectorName } from "./direct-payment";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { isSameRecurringFixture } from "./match-slot";
 import { buildMomAnnouncement, buildMomPickedAnnouncement } from "./mom-announcement";
+import {
+  announcedWinnersOf,
+  isMomCivilHour,
+  MOM_CIVIL_FROM_HOUR,
+  MOM_CIVIL_TO_HOUR,
+  momAnnouncementStopped,
+  nextFixtureKickoff,
+  type MomAnnouncedResult,
+} from "./mom-announce-rules";
 import { organisersPickMom } from "./mom-chooser";
 import { computeBadgeAnnouncements } from "./badge-announcement-scheduler";
 import {
@@ -269,6 +278,13 @@ export type DueInstruction =
        *  the post out, so the list post does not repeat it. Server-side;
        *  stripped before the Pi sees it. */
       weekListShown?: { hash: string };
+      /** A Man of the Match announcement only (section 6e, 2026-11-16):
+       *  what it tells the group, as data, from the same tally its words
+       *  were built from. /api/whatsapp/due-posts stores it when it claims
+       *  the post ("MoMAnnouncement"), so "who was the last Man of the
+       *  Match?" is told exactly as announced. Server-side; stripped before
+       *  the Pi sees it. */
+      momResult?: MomAnnouncedResult;
     }
   | {
       kind: "group-poll";
@@ -387,9 +403,10 @@ export const MOM_BACKSTOP_DAYS = 5;
  */
 export const MOM_BACKSTOP_FROM_HOUR = 15;
 export const MOM_BACKSTOP_TO_HOUR = 21;
-/** Civil hours for the EARLY trigger, 09:00 up to 20:59. Unchanged. */
-const MOM_EARLY_FROM_HOUR = 9;
-const MOM_EARLY_TO_HOUR = 21;
+/** Civil hours for the EARLY trigger, 09:00 up to 20:59. Unchanged. Shared
+ *  with the "last Man of the Match" answer (`mom-announce-rules.ts`). */
+const MOM_EARLY_FROM_HOUR = MOM_CIVIL_FROM_HOUR;
+const MOM_EARLY_TO_HOUR = MOM_CIVIL_TO_HOUR;
 /**
  * Hard stop for a MoM announcement, in days after kickoff.
  *
@@ -3914,30 +3931,21 @@ async function computeForMatch(
       const lh = londonHour(now);
       const ageDays = hoursSinceMatch / 24;
 
-      // Too old to be news. See MOM_ANNOUNCE_MAX_AGE_DAYS for the number
-      // and why it sits where it does relative to the lookback.
-      const tooStale = ageDays > MOM_ANNOUNCE_MAX_AGE_DAYS;
-
-      // The club plays weekly, so once the next fixture has kicked off
-      // "here is your Man of the Match" reads as tonight's result. A
-      // sibling only counts when it starts at least a day later: a format
+      // THE STOPS. Too old to be news (see MOM_ANNOUNCE_MAX_AGE_DAYS for the
+      // number and why it sits where it does relative to the lookback), or
+      // the club's next fixture has kicked off: the club plays weekly, so
+      // after it "here is your Man of the Match" reads as tonight's result.
+      // A sibling only counts when it starts at least a day later: a format
       // switch can leave a co-timed ghost match under the other format's
-      // activity (the 2026-06-27 ghost bug), and a ghost must never
-      // silence a real announcement. Fixture identity is the same one the
-      // announce/evening rollover guard uses, so a format-switched
-      // successor still counts.
-      const supersededByNextFixture = siblingMatches.some(
-        (s) =>
-          s.id !== m.id &&
-          s.status !== "CANCELLED" &&
-          (s.activityId === m.activityId ||
-            isSameRecurringFixture(s.activity, m.activity)) &&
-          s.date.getTime() >= m.date.getTime() + 24 * 60 * 60 * 1000 &&
-          s.date.getTime() <= now.getTime(),
-      );
+      // activity (the 2026-06-27 ghost bug), and a ghost must never silence
+      // a real announcement. Fixture identity is the same one the
+      // announce/evening rollover guard uses, so a format-switched successor
+      // still counts. Both stops are `momAnnouncementStopped`
+      // (mom-announce-rules.ts), shared with the "last Man of the Match"
+      // answer so the two can never disagree about whether a post is coming.
+      const stopped = momAnnouncementStopped(m.date, nextFixtureKickoff(m, siblingMatches), now);
 
-      const canAnnounce =
-        !sentKeys.has(key) && !tooStale && !supersededByNextFixture;
+      const canAnnounce = !sentKeys.has(key) && !stopped;
 
       const backstopWindow =
         canAnnounce &&
@@ -3949,7 +3957,7 @@ async function computeForMatch(
       // for. Announced from the pick, in the same civil hours, under the
       // same key and the same stops, and never as a vote count.
       if (momByOrganisers) {
-        if (canAnnounce && lh >= MOM_EARLY_FROM_HOUR && lh < MOM_EARLY_TO_HOUR) {
+        if (canAnnounce && isMomCivilHour(now)) {
           const picks = await db.moMVote.findMany({ where: { matchId }, select: { playerId: true } });
           const winners = [...new Set(picks.map((p) => p.playerId))];
           // One pick, one name. Anything else is not an organisers' pick
@@ -3957,11 +3965,13 @@ async function computeForMatch(
           // announce a tally as if somebody chose it.
           if (winners.length === 1) {
             const u = await db.user.findUnique({ where: { id: winners[0] }, select: { name: true } });
+            const name = u?.name ?? "?";
             out.push({
               kind: "group-message",
               key,
               matchId,
-              text: buildMomPickedAnnouncement({ mvpLabel: sport.mvpLabel, activityName: activity.name, name: u?.name ?? "?", lang }),
+              text: buildMomPickedAnnouncement({ mvpLabel: sport.mvpLabel, activityName: activity.name, name, lang }),
+              momResult: { v: 1, kind: "pick", winner: { userId: winners[0], name } },
             });
           }
         }
@@ -3995,6 +4005,7 @@ async function computeForMatch(
           const nameById = new Map(allUsers.map((u) => [u.id, u.name ?? "?"]));
           const tally = votes
             .map((v) => ({
+              userId: v.playerId,
               name: nameById.get(v.playerId) ?? "?",
               votes: v._count.playerId,
             }))
@@ -4009,6 +4020,9 @@ async function computeForMatch(
               tally,
               lang,
             }),
+            // The same tally the words above were built from, and the
+            // winners they announce (stored, never re-derived later).
+            momResult: { v: 1, kind: "vote", tally, winners: announcedWinnersOf(tally) },
           });
         }
         // If 0 votes, skip silently.

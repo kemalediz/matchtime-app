@@ -234,6 +234,90 @@ async function main() {
   assert.equal((await db.user.findUnique({ where: { id: s3 } }))!.isActive, true);
   ok("a blocked merge writes nothing");
 
+  // ── A stored Man of the Match result naming both (review of #608) ──
+  // The user merge: combined into the target, votes summed, not blocked.
+  const s6 = `${P}-src6`;
+  const t6 = `${P}-tgt6`;
+  await db.user.create({ data: { id: s6, name: "Mojo", email: `${P}-s6@placeholder.matchtime` } });
+  await db.user.create({ data: { id: t6, name: "Mojib", email: `${P}-t6@placeholder.matchtime`, phoneNumber: "+447700900996" } });
+  await db.moMAnnouncement.create({
+    data: { matchId: MATCH.pay, result: { v: 1, kind: "vote", tally: [{ userId: U.player, name: "Pat Player", votes: 3 }, { userId: t6, name: "Mojib", votes: 2 }, { userId: s6, name: "Mojo", votes: 2 }], winners: [U.player] } },
+  });
+  const r6 = await applyUserMerge(db, s6, t6);
+  assert.ok(r6.ok, `applied: ${JSON.stringify(r6.plan.blockers)}`);
+  assert.deepEqual((await db.moMAnnouncement.findUnique({ where: { matchId: MATCH.pay } }))!.result, {
+    v: 1,
+    kind: "vote",
+    tally: [{ userId: t6, name: "Mojib", votes: 4 }, { userId: U.player, name: "Pat Player", votes: 3 }],
+    // Pat won it 3 to 2 and 2: the summed Mojib records never take his win.
+    winners: [U.player],
+    merged: true,
+  });
+  ok("user merge: a stored MoM result naming both is combined into the target, votes summed, the announced winner kept");
+
+  // The main merge path (admin, phone, cross-club, placeholder merges):
+  // the dropped user is deleted, so his stored win must move first.
+  const { mergePlayersCore } = await import("@/lib/merge-players-core");
+  const s7 = `${P}-src7`;
+  const t7 = `${P}-tgt7`;
+  await db.user.create({ data: { id: s7, name: "Uncle Sait", email: `${P}-s7@placeholder.matchtime` } });
+  await db.user.create({ data: { id: t7, name: "Sait", email: `${P}-t7@placeholder.matchtime` } });
+  await db.moMAnnouncement.create({ data: { matchId: MATCH.upcoming, result: { v: 1, kind: "pick", winner: { userId: s7, name: "Uncle Sait" } } } });
+  await db.$transaction((tx) => mergePlayersCore(tx, t7, s7, { saveAliasInOrgIds: [] }));
+  assert.equal(await db.user.count({ where: { id: s7 } }), 0, "the dropped user is deleted");
+  assert.deepEqual((await db.moMAnnouncement.findUnique({ where: { matchId: MATCH.upcoming } }))!.result, {
+    v: 1,
+    kind: "pick",
+    winner: { userId: t7, name: "Uncle Sait" },
+  });
+  ok("players merge: the dropped user's stored MoM win moves to the kept player");
+
+  // ── A posted result with NO stored record, only its text (round 5) ──
+  // The read-back from the post's words needs the names as they were; a
+  // merge removes the dropped one. So the merge stores the record from the
+  // text first, then remaps it: the announced winner never changes.
+  const { buildMomAnnouncement } = await import("@/lib/mom-announcement");
+  const { ACTIVITY_ID } = await import("./constants");
+  const postedMatch = async (id: string, tally: Array<{ name: string; votes: number }>) => {
+    const date = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    await db.match.create({ data: { id, activityId: ACTIVITY_ID, date, maxPlayers: 14, status: "COMPLETED", attendanceDeadline: date } });
+    await db.sentNotification.create({
+      data: { key: `${id}:mom-announcement`, kind: "group-message", matchId: id, text: buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "E2E 5-a-side", tally, lang: "en" }) },
+    });
+  };
+  const voters = [U.admin, U.collector, U.rater, U.third, U.stale, U.opt, U.fresh];
+  const castVotes = async (matchId: string, picks: string[]) => {
+    for (const [i, playerId] of picks.entries()) await db.moMVote.create({ data: { matchId, voterId: voters[i], playerId } });
+  };
+
+  // The user merge: Pat 3, Pete 2, Pete S 2. Merging the two Petes must not make Pete the winner.
+  const s8 = `${P}-src8`;
+  const t8 = `${P}-tgt8`;
+  const m8 = `${P}-mom-text-8`;
+  await db.user.create({ data: { id: s8, name: "Pete S", email: `${P}-s8@placeholder.matchtime` } });
+  await db.user.create({ data: { id: t8, name: "Pete", email: `${P}-t8@placeholder.matchtime`, phoneNumber: "+447700900998" } });
+  await postedMatch(m8, [{ name: "Pat Player", votes: 3 }, { name: "Pete", votes: 2 }, { name: "Pete S", votes: 2 }]);
+  await castVotes(m8, [U.player, U.player, U.player, t8, t8, s8, s8]);
+  const r8 = await applyUserMerge(db, s8, t8);
+  assert.ok(r8.ok, `applied: ${JSON.stringify(r8.plan.blockers)}`);
+  const rec8 = (await db.moMAnnouncement.findUnique({ where: { matchId: m8 } }))?.result as { winners?: string[]; merged?: boolean } | undefined;
+  assert.deepEqual(rec8?.winners, [U.player], "Pat won it; the merged Petes never take his win");
+  assert.equal(rec8?.merged, true);
+  ok("user merge: a posted result with only its text is stored from the text first, so the announced winner stays");
+
+  // The players merge (the dropped user is deleted): his posted win moves to the kept player.
+  const s9 = `${P}-src9`;
+  const t9 = `${P}-tgt9`;
+  const m9 = `${P}-mom-text-9`;
+  await db.user.create({ data: { id: s9, name: "Uncle Sam", email: `${P}-s9@placeholder.matchtime` } });
+  await db.user.create({ data: { id: t9, name: "Sam", email: `${P}-t9@placeholder.matchtime` } });
+  await postedMatch(m9, [{ name: "Uncle Sam", votes: 2 }, { name: "Pat Player", votes: 1 }]);
+  await castVotes(m9, [s9, s9, U.player]);
+  await db.$transaction((tx) => mergePlayersCore(tx, t9, s9, { saveAliasInOrgIds: [] }));
+  const rec9 = (await db.moMAnnouncement.findUnique({ where: { matchId: m9 } }))?.result as { winners?: string[] } | undefined;
+  assert.deepEqual(rec9?.winners, [t9]);
+  ok("players merge: a posted result with only its text is stored first, then the win moves to the kept player");
+
   console.log(`OK (${n} checks)`);
   await db.$disconnect();
 }

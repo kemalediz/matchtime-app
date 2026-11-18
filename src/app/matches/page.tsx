@@ -8,7 +8,8 @@ import { format, formatDistanceToNow, isToday, isTomorrow } from "date-fns";
 import { Calendar, MapPin, Users, Star } from "lucide-react";
 import { MatchesTabs } from "@/components/match/matches-tabs";
 import { formatLondon } from "@/lib/london-time";
-import { getMomSummaries } from "@/lib/mom";
+import { loadMomDecisions } from "@/lib/mom-records";
+import { momWebLine, momWebView } from "@/lib/mom-web";
 import { t } from "@/lib/i18n/t";
 import { ResultScore } from "@/components/match/result-score";
 
@@ -51,7 +52,9 @@ export default async function MatchesPage() {
     take: 20,
     include: { activity: { include: { sport: true } } },
   });
-  const momByMatch = await getMomSummaries(pastMatches.map((m) => m.id));
+  // Man of the Match by the same decision as the group (review of #608):
+  // an open vote shows no leader and no counts (`mom-web.ts`).
+  const momByMatch = await loadMomDecisions(orgId, new Date());
   // An admin sees "Add score" on a played match with no result (FNF,
   // 2026-10-18: the Past tab showed nothing, so nothing said it was missing).
   const isAdmin = await isOrgAdmin(session.user.id, orgId);
@@ -140,12 +143,7 @@ export default async function MatchesPage() {
   });
 
   const pastCards = pastMatches.map((m) => {
-    const mom = momByMatch.get(m.id);
-    const momLabel = mom
-      ? mom.topPlayers.length > 1
-        ? `${mom.topPlayers.map((p) => p.name).join(" & ")} (${mom.topCount} each, ${mom.totalVotes} votes)`
-        : `${mom.topPlayers[0].name} (${mom.topCount}/${mom.totalVotes} votes)`
-      : null;
+    const momLabel = momWebLine(momWebView(momByMatch.get(m.id)), membership.org.language);
     return (
       <div
         key={m.id}

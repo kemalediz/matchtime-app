@@ -48,16 +48,19 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-/** MoM wins, keyed by match id, injected per-test. */
+/** MoM wins, keyed by match id, injected per-test: each a DECIDED match
+ *  crediting its winner (`mom-records.ts`, review of #608). */
 let momByMatch: Map<string, { playerId: string; name: string }> = new Map();
-vi.mock("@/lib/mom", () => ({
-  getMomSummaries: async (ids: string[]) => {
+vi.mock("@/lib/mom-records", () => ({
+  loadMomDecisions: async () => {
     const out = new Map();
-    for (const id of ids) {
-      const w = momByMatch.get(id);
-      if (w) {
-        out.set(id, { topPlayers: [{ playerId: w.playerId, name: w.name, votes: 5 }], totalVotes: 5, topCount: 5 });
-      }
+    for (const [id, w] of momByMatch) {
+      const winners = [{ userId: w.playerId, name: w.name }];
+      out.set(id, {
+        date: new Date(0),
+        decision: { kind: "told", mom: { winners, told: "winner-only", pickedByOrganisers: false, tally: [], votes: null }, credit: winners },
+        credit: winners,
+      });
     }
     return out;
   },

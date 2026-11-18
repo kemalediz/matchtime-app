@@ -18,6 +18,7 @@
 import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { NextResponse } from "next/server";
 import { handleAdminGroupMessage } from "@/lib/admin-group";
+import { withMomRecordsScope } from "@/lib/mom-records-scope";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
@@ -38,12 +39,15 @@ export async function POST(request: Request) {
     const pinned = new Date(request.headers.get("x-test-now") ?? "");
     if (!Number.isNaN(pinned.getTime())) now = pinned;
   }
-  const result = await handleAdminGroupMessage({
+  // Checked a string above; a closure does not keep that narrowing.
+  const text: string = body.text;
+  // One read of the club's Man of the Match records per message (`mom-records.ts`).
+  const result = await withMomRecordsScope(async () => handleAdminGroupMessage({
     groupId,
     ...(now ? { now } : {}),
     poolEnv: await poolEnvForApiRequest(request),
     messageId: str(body.messageId),
-    text: body.text,
+    text,
     botMentioned: body?.botMentioned === true,
     senderPhone: str(body.senderPhone),
     senderLid: str(body.senderLid),
@@ -74,7 +78,7 @@ export async function POST(request: Request) {
             authorPhone: str(body.quotedAuthorPhone),
           }
         : null,
-  });
+  }));
   // MatchTime's HQ reply is claimed like its other posts (review of #341,
   // finding 3): the Pi acks it with `replyKey`, the ack stamps the stanza
   // id on the claim and on the HQ log line with the same words, and a YES

@@ -63,10 +63,12 @@ import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations, type DueInstruction } from "@/lib/bot-scheduler";
 import { sweepBenchFill } from "@/lib/bench-fill";
 import { badgeLedgerOf, claimBadgePost, withoutServerBookkeeping } from "@/lib/badge-announcement-scheduler";
+import { momAnnouncedResultOf } from "@/lib/mom-announce-rules";
+import type { Prisma } from "@/generated/prisma/client";
 import { recordScheduledHqQuestion } from "@/lib/admin-group-log";
 import { ROSTER_SHOWN_KIND, rosterShownKey } from "@/lib/roster-shown";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
-import { billingQuietWhere } from "@/lib/club-billing-rules";
+import { clubPostsWhere } from "@/lib/club-posting";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { piSendsQuotedIds } from "@/lib/quoted-message";
@@ -212,6 +214,32 @@ async function recordHqQuestion(orgId: string, instr: Claimable, now: Date): Pro
 }
 
 /**
+ * A Man of the Match post's result, stored as the group is shown it (Kemal,
+ * 2026-11-16, src/lib/mom-announce-rules.ts), once its claim is won: the
+ * same tally the scheduler built the words from, in this same request. Only
+ * the poller that won the claim gets here, so a lost race records nothing.
+ * BEST EFFORT, after the claim: a failure (the table not migrated yet) is
+ * logged and the post still goes out; the answer then names nobody for
+ * that result (the post has it). A re-claimed key (an operator cleared it to re-post)
+ * replaces the record, so it always holds the latest post.
+ */
+async function recordMomResult(instr: Claimable, now: Date): Promise<void> {
+  const result = momAnnouncedResultOf(instr);
+  const matchId = instr.matchId;
+  if (!result || !matchId || !instr.key.endsWith(":mom-announcement")) return;
+  const json = result as unknown as Prisma.InputJsonValue;
+  try {
+    await db.moMAnnouncement.upsert({
+      where: { matchId },
+      create: { matchId, result: json, announcedAt: now },
+      update: { result: json, announcedAt: now },
+    });
+  } catch (err) {
+    console.error(`[due-posts] MoM result not recorded for match ${matchId} (the post still goes out):`, err);
+  }
+}
+
+/**
  * A scheduled post that carries the squad roster leaves a marker, so the
  * next one does not list the same squad again inside three hours
  * (`src/lib/roster-shown.ts`, 2026-10-06). Written once the post is
@@ -272,7 +300,9 @@ export async function GET(request: Request) {
   // refused here too, so a stale Pi that still polls gets a 404 and never
   // a post. `billingQuietWhere()` is empty while BILLING_ENABLED is off.
   const org = await db.organisation.findFirst({
-    where: { whatsappGroupId: groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
+    // The posting gate, shared with the "last Man of the Match" answer so it
+    // never promises a post this route would never hand out (`club-posting.ts`).
+    where: { whatsappGroupId: groupId, ...clubPostsWhere() },
     // `liveAt`: a club that was approved and held is "new" from the day it
     // went live (cap 8 below, `newClubDmCap`).
     select: { id: true, approvedAt: true, liveAt: true },
@@ -492,6 +522,7 @@ export async function GET(request: Request) {
           text: claimTextOf(instr),
         },
       });
+      await recordMomResult(instr, now);
       await recordRosterShown(instr, now);
       await recordMonthListShown(instr);
       await recordHqQuestion(org.id, instr, now);

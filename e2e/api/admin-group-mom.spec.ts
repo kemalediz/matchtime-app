@@ -17,6 +17,7 @@ import { E2E } from "../helpers/env";
 import { engineOn, clearPipelineStubs } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 test.describe.configure({ mode: "serial" });
 
@@ -34,6 +35,8 @@ const AMBIGUOUS = "MoM Omar";
 const ANSWER = "Omar One";
 const STRANGER = "MoM Zed";
 const CHANGE = "sorry, MoM was Pat";
+const LAST_MOM = "@Match Time who was the last man of the match?";
+const LAST_MOM_ANSWER = "Pat Player, picked by the organisers.";
 
 let seq = 0;
 async function say(request: APIRequestContext, text: string, senderPhone = ADMIN, quoted?: { text: string; fromMatchTime: boolean }) {
@@ -92,6 +95,8 @@ test.beforeAll(async ({ db }) => {
     [ANSWER]: { route: "other_att", facts: { ...NO, momRef: "Omar One" } },
     [STRANGER]: { route: "score", facts: { ...NO, momRef: "Zed" } },
     [CHANGE]: { route: "score", facts: { ...NO, momRef: "Pat" } },
+    // The players' group asks; the unified answer is stubbed, its context is real.
+    [LAST_MOM]: { route: "question", facts: { ...NO, personRef: "", statedCount: -1, topic: "other", kind: "other", answer: LAST_MOM_ANSWER } },
   });
 });
 
@@ -176,6 +181,62 @@ test('the HQ score ask asks for Man of the Match too: "who was Man of the Match?
     groupId: HQ,
     text: "🏁 *E2E 5-a-side*: what was the final score, which team won, and who was Man of the Match? Tag me here with it and I'll record it. To tag me, type *@* and pick *Match Time* from the list.",
   });
+});
+
+// Kemal, 2026-11-16: the HQ pick is announced in the players' group, and
+// claiming that post stores the name it gave. An organiser correcting the
+// pick in HQ afterwards (setMatchMom deletes and recreates the row, so it is
+// NEWER than the post) changes the rows, never that record. In an
+// organisers' club the CORRECTION WINS (PR #608): "who was the last Man of
+// the Match?" is told the latest pick, still as picked by the organisers.
+test("the pick's announcement is stored when claimed; after a correction in HQ the answer tells the correction, as a pick", async ({ request, db }) => {
+  await played(db, new Date(), { red: 4, yellow: 7 });
+  // A finished match whose post-match flow runs, so the scheduler announces it.
+  await db.run(`UPDATE "Match" SET "postMatchEndFlow" = true WHERE id = $1`, [MATCH_ID]);
+  expect(await say(request, NAME_ONLY)).toMatchObject({ outcome: "hq-mom-saved", replyText: "Man of the Match: Riley Rater." });
+
+  // The first civil-hours tick (09:00 to 21:00 London) from now.
+  const londonHour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+  const at = londonHour >= 9 && londonHour < 21 ? new Date() : londonHour < 9 ? londonAt(0, 9, 30) : londonAt(1, 9, 30);
+  const key = `${MATCH_ID}:mom-announcement`;
+  const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`, {
+    headers: { ...KEY, "x-test-now": at.toISOString() },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  const post = ((await res.json()).instructions as Array<Record<string, unknown>>).find((i) => i.key === key);
+  expect(post?.text).toContain("Riley Rater");
+  const stored = () => db.all<{ result: unknown }>(`SELECT result FROM "MoMAnnouncement" WHERE "matchId" = $1`, [MATCH_ID]);
+  const RILEY = { v: 1, kind: "pick", winner: { userId: U.rater, name: "Riley Rater" } };
+  expect((await stored()).map((r) => r.result)).toEqual([RILEY]);
+
+  expect(await say(request, CHANGE)).toMatchObject({ outcome: "hq-mom-changed", replyText: "Man of the Match changed: Pat Player (it was Riley Rater)." });
+  expect(await momRows(db)).toEqual([{ voterId: U.admin, playerId: U.player }]);
+  expect((await stored()).map((r) => r.result)).toEqual([RILEY]);
+
+  // The players' group asks (unified answer on by the test header).
+  const msgId = `e2e-hqm-lastmom-${Date.now()}`;
+  const asked = await request.post("/api/whatsapp/analyze", {
+    headers: { ...KEY, "x-mt-test-unified-answers": "1" },
+    data: {
+      groupId: E2E.GROUP_ID,
+      messages: [{ waMessageId: msgId, body: LAST_MOM, authorPhone: PLAYER, authorName: "Pat Player", botMentioned: true, timestamp: new Date().toISOString() }],
+    },
+  });
+  expect(asked.status(), await asked.text()).toBe(200);
+  expect(((await asked.json()).results as Array<{ waMessageId: string; reply?: string }>).find((x) => x.waMessageId === msgId)?.reply).toBe(LAST_MOM_ANSWER);
+  const user = readFileSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as { label: string; user: string })
+    .filter((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(LAST_MOM))
+    .pop()!.user;
+  const from = user.indexOf("LAST MAN OF THE MATCH");
+  expect(from).toBeGreaterThan(-1);
+  const end = user.indexOf("\n\n", from);
+  const block = user.slice(from, end === -1 ? undefined : end);
+  expect(block).toContain("Man of the Match: Pat Player, picked by the organisers. There was no vote");
+  expect(block).not.toContain("Riley Rater");
+  await db.run(`DELETE FROM "MoMAnnouncement" WHERE "matchId" = $1`, [MATCH_ID]);
 });
 
 test("a club whose players vote: the same message records the score only, exactly as before", async ({ request, db }) => {

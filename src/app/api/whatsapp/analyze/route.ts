@@ -297,6 +297,7 @@ import { t as strings } from "@/lib/i18n/t";
 import { loadPlayerNames } from "@/lib/player-display-name";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { currentAnalyzeBatchId, withAnalyzeBatch } from "@/lib/analyze-batch-context";
+import { withMomRecordsScope } from "@/lib/mom-records-scope";
 import {
   persistPipelineTraces,
   traceRouting,
@@ -459,7 +460,9 @@ type ActionForBot = {
  * Purely additive: the column is nullable and nothing branches on it.
  */
 export async function POST(request: Request) {
-  return withAnalyzeBatch(() =>
+  // One read of each club's Man of the Match records per request
+  // (`mom-records.ts`), however many answers in the batch read them.
+  return withAnalyzeBatch(() => withMomRecordsScope(() =>
     withPipelineTrace(async () => {
       try {
         // THE DAILY AI CAP (2026-09-29): every model call this request
@@ -475,7 +478,7 @@ export async function POST(request: Request) {
         // throws: see `pipeline/trace.ts`.
         await persistPipelineTraces(writePipelineTrace);
       }
-    }),
+    })),
   );
 }
 

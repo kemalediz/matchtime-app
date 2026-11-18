@@ -190,15 +190,17 @@ describe("the call", () => {
 
 // ── ROUND 2 (2026-11-11): what the round 1 A/B found ─────────────────────
 
-const lastMomOf = (recent: NonNullable<StatsSnapshot["lastMom"]>["recent"]) => ({ last: recent?.[0] ?? null, openVoteDate: null, recent });
-const mom = (iso: string, name: string, votes: number, total: number, picked = false) => ({
+const lastMomOf = (recent: NonNullable<StatsSnapshot["lastMom"]>["recent"]) => ({ last: recent?.[0] ?? null, pending: [], recent });
+const mom = (iso: string, name: string, votes: number, total: number, picked = false, told: "announced" | "winner-only" = "announced") => ({
   date: new Date(iso),
   teamLabels: ["Red", "Yellow"] as [string, string],
   score: null,
-  winners: [{ userId: `u-${name}`, name, votes }],
-  tally: [{ userId: `u-${name}`, name, votes }],
-  totalVotes: total,
+  winners: [{ userId: `u-${name}`, name }],
+  told,
+  postedAt: null,
   pickedByOrganisers: picked,
+  tally: picked || told === "winner-only" ? [] : [{ userId: `u-${name}`, name, votes }],
+  votes: picked || told === "winner-only" ? null : { top: votes, total },
 });
 
 describe("round 2: records over chat, and who MatchTime is", () => {
@@ -254,16 +256,24 @@ describe("round 2: the stats the answer is given", () => {
     expect(text).toMatch(/CLUB RATINGS: nobody has 3 rated matches yet/);
   });
 
-  it("Man of the Match match by match, newest first, decided ones only", () => {
+  it("Man of the Match match by match, newest first, told ones only", () => {
     const stats = {
       ...STATS,
-      lastMom: lastMomOf([mom("2026-08-25T20:30:00Z", "Akram", 1, 1, true), mom("2026-08-18T20:30:00Z", "Mo", 5, 9), mom("2026-08-11T20:30:00Z", "Naim", 4, 8)]),
+      lastMom: lastMomOf([
+        mom("2026-08-25T20:30:00Z", "Akram", 1, 1, true),
+        mom("2026-08-18T20:30:00Z", "Mo", 5, 9),
+        mom("2026-08-11T20:30:00Z", "Naim", 4, 8),
+        mom("2026-08-04T20:30:00Z", "Sait", 3, 6, false, "winner-only"),
+      ]),
     };
     const { text } = buildUnifiedContext(input({ stats }));
     const block = text.slice(text.indexOf("MAN OF THE MATCH, MATCH BY MATCH"));
     expect(block).toMatch(/Tue 25 Aug: Akram, picked by the organisers/);
     expect(block).toMatch(/Tue 18 Aug: Mo, 5 of 9 votes/);
     expect(block).toMatch(/Tue 11 Aug: Naim, 4 of 8 votes/);
+    // Final but never posted (2026-11-16, rule 2): the winner only.
+    expect(block).toMatch(/Tue 4 Aug: Sait \(the winner only, no vote counts\)/);
+    expect(block).not.toMatch(/Sait, \d/);
     expect(block.indexOf("Akram")).toBeLessThan(block.indexOf("Naim"));
   });
 

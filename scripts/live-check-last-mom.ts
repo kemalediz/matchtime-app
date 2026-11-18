@@ -65,30 +65,35 @@ const NAMES = ["Kemal Ediz", "Mojib", "Habib", "Burak Yildiz", "Ozgur", "Sait", 
 const id = (n: string) => `u-${n.toLowerCase().replace(/\W+/g, "-")}`;
 const roster: Member[] = NAMES.map((n, i) => ({ userId: id(n), name: n, isAdmin: i === 0, hasPhone: true }));
 const v = (n: string, votes: number) => ({ userId: id(n), name: n, votes });
+const w = (n: string) => ({ userId: id(n), name: n });
 
 const SUTTON_LAST: LastMomFacts = {
   last: {
     date: new Date("2026-10-20T19:30:00.000Z"),
     teamLabels: ["Red", "Yellow"],
     score: { red: 7, yellow: 9 },
-    winners: [v("Habib", 2), v("Mojib", 2)],
+    winners: [w("Habib"), w("Mojib")],
+    told: "announced",
     tally: [v("Habib", 2), v("Mojib", 2), v("Burak Yildiz", 1), v("Ozgur", 1), v("Sait", 1)],
-    totalVotes: 7,
+    votes: { top: 2, total: 7 },
     pickedByOrganisers: false,
   },
-  openVoteDate: null,
+  pending: [],
+  recent: [],
 };
 const PICKED: LastMomFacts = {
   last: {
     date: new Date("2026-11-03T21:30:00.000Z"),
     teamLabels: ["Kırmızı", "Sarı"],
     score: { red: 5, yellow: 4 },
-    winners: [v("Mojib", 1)],
-    tally: [v("Mojib", 1)],
-    totalVotes: 1,
+    winners: [w("Mojib")],
+    told: "announced",
+    tally: [],
+    votes: null,
     pickedByOrganisers: true,
   },
-  openVoteDate: null,
+  pending: [],
+  recent: [],
 };
 
 function tables(lastMom: LastMomFacts): Omit<StatsSnapshot, "chemistry" | "generic" | "periods"> {
@@ -177,7 +182,7 @@ const CASES: Case[] = [
   { text: "@Match Time who has the most MoM?", lang: "en", lastMom: SUTTON_LAST, good: "Mojib first with 6, from the Man of the Match table in the records; nothing invented" },
   { text: "@Match Time top 5 MoM", lang: "en", lastMom: SUTTON_LAST, good: "the top 5 from the Man of the Match table, as printed; no more than 5 names" },
   { text: "@Match Time son maçın adamı kimdi?", lang: "tr", lastMom: PICKED, good: "Turkish: Mojib, picked by the organisers, no vote count" },
-  { text: "@Match Time who was the last man of the match?", lang: "en", lastMom: { last: null, openVoteDate: null }, good: "none decided yet; no name invented" },
+  { text: "@Match Time who was the last man of the match?", lang: "en", lastMom: { last: null, pending: [], recent: [] }, good: "none can be told yet; no name invented" },
 ];
 
 async function main() {

@@ -7,7 +7,9 @@
  * the 👑 on the stats timeline and the MoM tile (player-stats.ts), the
  * "MoM Machine" badge and the badge announcement (badge-announcements.ts),
  * the "who got MoM" answers (match-history.ts), the match page and the
- * dashboard (mom.ts). There is no MoM bonus in the club rating: Elo moves
+ * dashboard (mom-web.ts); since the review of #608 all of them through one
+ * decision (`decideMom`, `mom-records.ts`), which in an organisers' club
+ * credits the current pick row. There is no MoM bonus in the club rating: Elo moves
  * on the score alone (match-elo.ts), so nothing else needs feeding.
  *
  * So an organiser's pick is written as exactly ONE MoMVote for the match,

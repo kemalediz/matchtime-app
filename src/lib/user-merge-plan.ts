@@ -53,6 +53,7 @@
  *     person, or one key overwriting the other).
  *   - Idempotent: planning over an already-merged state yields no ops.
  */
+import { mergeStoredMomResult } from "./mom-result-merge";
 import { higherRole, isMemberRole } from "./role-change-rules";
 import { isPlaceholderEmail } from "./cross-club-link-rules";
 import { CLEAR_GUEST_MARKS, isGuestMembership } from "./guest-membership";
@@ -318,6 +319,12 @@ export const USER_REF_COLUMNS: RefColumn[] = [
   ...sc("MessageMentions", "senderUserId"),
   // Who set a form note last (2026-11-10): the player or an organiser.
   ...sc("FormNote", "setByUserId"),
+  // A stored Man of the Match result (review of #608): its user ids decide
+  // who the win is credited to (`decideMom`), so they move with the merge,
+  // by the rewrite the main merge path uses (`mom-result-merge.ts`). The
+  // names stay as the group was shown them. A result naming BOTH users is
+  // combined into the target, votes summed, never a blocker.
+  ...js("MoMAnnouncement", "result"),
   ...sc("UserAlias", "userId"),
   ...js("GroupPostState", "heldAdd"),
   ...sc("SquadMonth", "startedByUserId"),
@@ -412,6 +419,7 @@ export const PRIMARY_KEY_OF: Record<string, string> = {
   groupPostState: "groupId",
   platformSetting: "key",
   clubGraphicsChoice: "orgId",
+  moMAnnouncement: "matchId",
 };
 export const pkOf = (delegate: string): string => PRIMARY_KEY_OF[delegate] ?? "id";
 
@@ -555,7 +563,7 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
 
   // ── JSON naming both people: no silent combine ──
   const names = (v: unknown, id: string): boolean => JSON.stringify(v ?? null).split(/[":]/).includes(id);
-  for (const r of snap.refs.filter((x) => x.kind === "json")) {
+  for (const r of snap.refs.filter((x) => x.kind === "json" && x.table !== "moMAnnouncement")) {
     if (names(r.value, S) && names(r.value, T)) {
       blockers.push(`${r.table}.${r.column} ${r.id} names both users: rewriting would give one person two entries (or one key would overwrite the other)`);
     }
@@ -877,6 +885,7 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
     let next: unknown = r.value;
     if (r.kind === "scalar" && typeof r.value === "string") next = rewriteIdSegments(r.value, S, T);
     else if (r.kind === "array" && Array.isArray(r.value)) next = [...new Set((r.value as string[]).map((x) => (x === S ? T : x)))];
+    else if (r.kind === "json" && r.table === "moMAnnouncement") next = mergeStoredMomResult(r.value, S, T) ?? r.value;
     else if (r.kind === "json") next = rewriteJsonIds(r.value, S, T);
     if (jsonEq(next, r.value)) continue;
     upd(r.table, r.id, { [r.column]: next }, `${r.column} named the source`);

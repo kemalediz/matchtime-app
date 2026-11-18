@@ -666,3 +666,62 @@ describe("ordering and idempotency", () => {
     expect(p.tombstoneOrgIds).toEqual([]);
   });
 });
+
+/**
+ * A stored Man of the Match result names its winner by user id, and that
+ * id is what credits the win (review of #608, round 2). Merging S into T
+ * rewrites it, so T carries S's credit afterwards.
+ */
+describe("a stored Man of the Match result moves to the merged user", () => {
+  it("S won a stored result: the plan rewrites the id, and T gets the credit", async () => {
+    const { momCredit } = await import("../pipeline/last-mom");
+    const result = { v: 1, kind: "vote", tally: [{ userId: S, name: "Uncle Najib", votes: 3 }, { userId: X, name: "Mo", votes: 1 }] };
+    const p = plan(snap({ refs: [{ table: "moMAnnouncement", column: "result", kind: "json", id: "m1", value: result }] }));
+    expect(p.blockers).toEqual([]);
+    const op = find(p, "moMAnnouncement", "m1", "update");
+    expect(op.set.result.tally.map((t: { userId: string }) => t.userId)).toEqual([T, X]);
+    const date = new Date("2026-10-01T20:00:00Z");
+    const credited = momCredit(
+      {
+        date,
+        teamLabels: ["Red", "Yellow"],
+        redScore: 1,
+        yellowScore: 0,
+        tally: [],
+        announced: true,
+        postedAt: date,
+        announcedResult: op.set.result,
+        voteClosesAt: date,
+        nextFixtureAt: null,
+        isHistorical: false,
+        announceable: true,
+      },
+      NOW,
+      false,
+    );
+    expect(credited.map((w) => w.userId)).toEqual([T]);
+  });
+
+  it("the merge reads the column (it is a user reference, not left alone)", async () => {
+    const { USER_REF_COLUMNS, UNTOUCHED_COLUMNS, pkOf } = await import("../user-merge-plan");
+    expect(USER_REF_COLUMNS).toContainEqual({ model: "MoMAnnouncement", column: "result", kind: "json" });
+    expect(UNTOUCHED_COLUMNS["MoMAnnouncement.result"]).toBeUndefined();
+    expect(pkOf("moMAnnouncement")).toBe("matchId");
+  });
+});
+
+describe("a stored Man of the Match result naming BOTH users (review of #608, round 3)", () => {
+  it("is combined into the target, votes summed, the announced winner kept, instead of blocking the merge", () => {
+    const result = { v: 1, kind: "vote", tally: [{ userId: X, name: "Mo", votes: 3 }, { userId: T, name: "Najib", votes: 2 }, { userId: S, name: "Uncle Najib", votes: 2 }], winners: [X] };
+    const p = plan(snap({ refs: [{ table: "moMAnnouncement", column: "result", kind: "json", id: "m1", value: result }] }));
+    expect(p.blockers).toEqual([]);
+    // Mo won it with 3; the two Najib records summing to 4 never makes it his.
+    expect(find(p, "moMAnnouncement", "m1", "update").set.result).toEqual({
+      v: 1,
+      kind: "vote",
+      tally: [{ userId: T, name: "Najib", votes: 4 }, { userId: X, name: "Mo", votes: 3 }],
+      winners: [X],
+      merged: true,
+    });
+  });
+});

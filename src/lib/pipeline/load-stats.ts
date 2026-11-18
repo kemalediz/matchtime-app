@@ -31,7 +31,8 @@
  *                    leaderboard, three-month inactivity rule included,
  *                    over the whole record; and where the records begin
  *   last Man of the Match  `loadLastMom` (2026-11-10): ONE match, the most
- *                    recent decided one, with its votes (`last-mom.ts`)
+ *                    recent one that can be told, as announced or by the
+ *                    winner only (`last-mom.ts`, the rules of 2026-11-16)
  *
  * A PERIOD (2026-09-23): `loadStatsPeriod` cuts the three tables the
  * data genuinely supports (appearances, ratings, Man of the Match) to
@@ -50,10 +51,9 @@ import {
   loadTeamOfSeason,
 } from "../player-stats";
 import { GROUP_RATINGS_MIN_GAMES } from "./stats-limits";
-import { lastMomFacts, type LastMomFacts, type MomMatchRecord } from "./last-mom";
+import { lastMomFacts, type LastMomFacts } from "./last-mom";
+import { loadMomRecords } from "../mom-records";
 import { matchRatingsFrom, type LastMatchRatings } from "./unified-answer";
-import { organisersPickMom } from "../mom-chooser";
-import { resolveTeamLabels } from "../team-labels";
 import { NOT_CANCELLED } from "../played-match";
 import type { StatsChemistry, StatsPeriodTables, StatsRatingRow, StatsSnapshot } from "./types";
 
@@ -81,11 +81,11 @@ function rankedRows(rows: Awaited<ReturnType<typeof loadRatingLeaderboard>>): St
 export async function loadStatsTables(orgId: string, now: Date = new Date()): Promise<StatsTables> {
   const [ratings, history, tots, reliable, aliases, record, lastMom] = await Promise.all([
     loadRatingLeaderboard(orgId, { minGames: GROUP_RATINGS_MIN_GAMES, limit: WHOLE_TABLE }),
-    loadRecentHistory(orgId),
+    loadRecentHistory(orgId, now),
     loadTeamOfSeason(orgId),
     loadMrReliableHolders(orgId),
     db.userAlias.findMany({ where: { orgId }, select: { alias: true, userId: true } }),
-    loadClubRecordTables(orgId),
+    loadClubRecordTables(orgId, { now }),
     loadLastMom(orgId, now),
   ]);
   return {
@@ -120,63 +120,30 @@ export async function loadStatsTables(orgId: string, now: Date = new Date()): Pr
   };
 }
 
-/** Newest matches with Man of the Match votes read: the last decided one
- *  (a vote still open, at most one a week, sits in front of it) and, since
- *  2026-11-11, the recent ones match by match for the unified answer
- *  ("the last 3 weeks' MoMs"): about two months of weekly games. */
+/** Newest matches with Man of the Match votes read: the last one that can
+ *  be told (the matches still voting, about one a week per fixture, sit in
+ *  front of it) and, since 2026-11-11, the recent ones match by match for
+ *  the unified answer ("the last 3 weeks' MoMs"): about two months of
+ *  weekly games. */
 const LAST_MOM_LOOKBACK = 10;
 
 /**
- * THE LAST MAN OF THE MATCH (2026-11-10, `last-mom.ts` decides). The club's
- * newest matches that have MoMVote rows, not cancelled, already kicked off;
- * each one's votes counted per player voted FOR (who voted is never
- * selected), whether its result was posted, and the club's chooser.
+ * THE LAST MAN OF THE MATCH (2026-11-10; `last-mom.ts` decides, by the
+ * rules of 2026-11-16). The club's newest matches with Man of the Match
+ * votes or a stored result, read by `loadMomRecords` (`mom-records.ts`), the
+ * same loader every Man of the Match wins table reads, so the answer and the
+ * tables cannot disagree.
  */
 export async function loadLastMom(orgId: string, now: Date): Promise<LastMomFacts> {
-  const [org, matches] = await Promise.all([
-    db.organisation.findUnique({ where: { id: orgId }, select: { teamLabels: true, language: true, momChosenBy: true } }),
-    db.match.findMany({
-      where: { activity: { orgId }, ...NOT_CANCELLED, date: { lte: now }, momVotes: { some: {} } },
-      orderBy: { date: "desc" },
-      take: LAST_MOM_LOOKBACK,
-      select: {
-        id: true,
-        date: true,
-        redScore: true,
-        yellowScore: true,
-        teamLabels: true,
-        activity: { select: { sport: { select: { teamLabels: true } } } },
-      },
-    }),
-  ]);
-  if (matches.length === 0) return { last: null, openVoteDate: null, recent: [] };
-  const ids = matches.map((m) => m.id);
-  const [counts, posted] = await Promise.all([
-    db.moMVote.groupBy({ by: ["matchId", "playerId"], where: { matchId: { in: ids } }, _count: { playerId: true } }),
-    db.sentNotification.findMany({ where: { key: { in: ids.map((id) => `${id}:mom-announcement`) } }, select: { key: true } }),
-  ]);
-  const users = await db.user.findMany({
-    where: { id: { in: [...new Set(counts.map((c) => c.playerId))] } },
-    select: { id: true, name: true },
-  });
-  const nameOf = new Map(users.map((u) => [u.id, u.name ?? "?"]));
-  const announced = new Set(posted.map((p) => p.key));
-  const records: MomMatchRecord[] = matches.map((m) => ({
-    date: m.date,
-    teamLabels: resolveTeamLabels({ teamLabels: m.teamLabels }, org, m.activity.sport, org?.language),
-    redScore: m.redScore,
-    yellowScore: m.yellowScore,
-    tally: counts
-      .filter((c) => c.matchId === m.id)
-      .map((c) => ({ userId: c.playerId, name: nameOf.get(c.playerId) ?? "?", votes: c._count.playerId })),
-    announced: announced.has(`${m.id}:mom-announcement`),
-  }));
-  return lastMomFacts(records, { now, organisersPick: organisersPickMom(org) });
+  const { records, organisersPick } = await loadMomRecords(orgId, now, { take: LAST_MOM_LOOKBACK });
+  return lastMomFacts(records, { now, organisersPick });
 }
 
 /** One named player's chemistry, as the stats page shows it. */
-export async function loadStatsChemistry(orgId: string, userId: string): Promise<StatsChemistry | null> {
-  const st = await loadPlayerSeasonStats(orgId, userId);
+export async function loadStatsChemistry(orgId: string, userId: string, now: Date = new Date()): Promise<StatsChemistry | null> {
+  // At the batch's clock: his Man of the Match count depends on which
+  // matches are decided by then (review of #608).
+  const st = await loadPlayerSeasonStats(orgId, userId, now);
   if (!st) return null;
   const w = st.chemistry.bestByWinRate;
   const r = st.chemistry.bestByRating;
@@ -199,9 +166,10 @@ export async function loadStatsChemistry(orgId: string, userId: string): Promise
  * the group's ratings minimum of three rated matches applies within the
  * period.
  */
-export async function loadStatsPeriod(orgId: string, since: Date): Promise<Omit<StatsPeriodTables, "since">> {
+export async function loadStatsPeriod(orgId: string, since: Date, now: Date = new Date()): Promise<Omit<StatsPeriodTables, "since">> {
   const [record, ratings] = await Promise.all([
-    loadClubRecordTables(orgId, { since }),
+    // At the batch's clock, like the whole-record tables (review of #608).
+    loadClubRecordTables(orgId, { since, now }),
     loadRatingLeaderboard(orgId, { minGames: GROUP_RATINGS_MIN_GAMES, limit: WHOLE_TABLE, since }),
   ]);
   return { appearances: record.appearances, ratings: rankedRows(ratings), mom: record.mom };

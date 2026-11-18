@@ -201,3 +201,71 @@ test("evening rate REMINDERS skip the opted-out player too", async ({ request, d
   expect(reminderTargets).not.toContain(U.player); // already rated (seed)
   expect(reminderTargets).not.toContain(U.third); // already rated (seed)
 });
+
+/* ── THE MAN OF THE MATCH RESULT IS STORED WHEN THE POST IS CLAIMED ─────
+ *
+ * Kemal, 2026-11-16: "who was the last Man of the Match?" is told exactly
+ * as announced. So the claim stores what the post said ("MoMAnnouncement"),
+ * from the same tally its words were built from; later votes and changed
+ * votes never touch it. The scheduler's decision (here the EARLY trigger:
+ * every confirmed player has voted) is unchanged.
+ */
+test("the MoM announcement's result is stored at claim time, not before, and a later vote change never alters it", async ({ request, db }) => {
+  resetDb();
+  const MOM_KEY = `${MATCH.rate}:mom-announcement`;
+  // Every confirmed player votes (the early trigger): Pat 3, Tom 2.
+  const votes: Array<[string, string]> = [
+    [U.rater, U.player],
+    [U.third, U.player],
+    [U.stale, U.player],
+    [U.player, U.third],
+    [U.opt, U.third],
+  ];
+  for (const [voter, player] of votes) {
+    await db.run(`INSERT INTO "MoMVote" (id, "matchId", "voterId", "playerId") VALUES ($1, $2, $3, $4)`, [`e2e-mom-${voter}`, MATCH.rate, voter, player]);
+  }
+  const at = londonAt(0, 10, 0);
+  // The time as stored (UTC, naive column), so the machine's zone cannot move it.
+  const stored = () =>
+    db.all<{ result: unknown; at: string }>(
+      `SELECT result, to_char("announcedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at FROM "MoMAnnouncement" WHERE "matchId" = $1`,
+      [MATCH.rate],
+    );
+
+  // A preview poll (no claim) writes nothing.
+  expect((await duePostsAt(request, at)).map((i) => i.key)).toContain(MOM_KEY);
+  expect(await stored()).toEqual([]);
+
+  // The real poll claims the post and stores what it says.
+  const claimed = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`, {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-test-now": at.toISOString() },
+  });
+  expect(claimed.status(), await claimed.text()).toBe(200);
+  const post = ((await claimed.json()).instructions as Array<Record<string, unknown>>).find((i) => i.key === MOM_KEY);
+  expect(post?.text).toContain("Pat Player");
+  // The record is server-side: the Pi never sees it.
+  expect(post && "momResult" in post).toBe(false);
+  const RESULT = {
+    v: 1,
+    kind: "vote",
+    tally: [
+      { userId: U.player, name: "Pat Player", votes: 3 },
+      { userId: U.third, name: "Tom Third", votes: 2 },
+    ],
+    // The winners the post announced, stored (never re-derived later).
+    winners: [U.player],
+  };
+  const rows = await stored();
+  expect(rows.map((r) => r.result)).toEqual([RESULT]);
+  expect(rows[0].at).toBe(at.toISOString());
+
+  // Votes change after the post (an upsert keeps the row's createdAt).
+  await db.run(`UPDATE "MoMVote" SET "playerId" = $2 WHERE "matchId" = $1 AND "voterId" IN ($3, $4)`, [MATCH.rate, U.third, U.rater, U.stale]);
+  const again = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`, {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-test-now": new Date(at.getTime() + 60 * 60 * 1000).toISOString() },
+  });
+  expect(again.status()).toBe(200);
+  // Never announced twice, and the record still says what the group saw.
+  expect(((await again.json()).instructions as Array<{ key?: string }>).map((i) => i.key)).not.toContain(MOM_KEY);
+  expect((await stored()).map((r) => r.result)).toEqual([RESULT]);
+});

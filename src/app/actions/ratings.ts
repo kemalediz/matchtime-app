@@ -1,5 +1,6 @@
 "use server";
 
+import { momVoteOpen } from "@/lib/mom-vote-window";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ratingSchema, momVoteSchema } from "@/lib/validations";
@@ -183,8 +184,8 @@ export async function submitMoMVote(matchId: string, formData: { playerId: strin
     return { saved: false as const };
   }
 
-  const windowEnd = new Date(match.date.getTime() + match.activity.ratingWindowHours * 60 * 60 * 1000);
-  if (new Date() > windowEnd) throw new Error("Rating window has closed");
+  // One window for every vote path (`mom-vote-window.ts`).
+  if (!momVoteOpen(match.date, match.activity.ratingWindowHours, new Date())) throw new Error("Rating window has closed");
 
   // Check voter attended
   const attendance = await db.attendance.findUnique({

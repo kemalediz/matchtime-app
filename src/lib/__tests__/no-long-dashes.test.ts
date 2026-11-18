@@ -188,7 +188,6 @@ const COPY_MODULES = [
   "src/lib/info-copy.ts",
   "src/lib/london-time.ts",
   "src/lib/mom-announcement.ts",
-  "src/lib/mom.ts",
   "src/lib/payment-outcome.ts",
   "src/lib/pipeline/compose.ts",
   "src/lib/rating-progress-answer.ts",

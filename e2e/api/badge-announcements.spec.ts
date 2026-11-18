@@ -99,11 +99,20 @@ test("a provisional MoM leader is not announced; once the MoM result is posted, 
   const before = badgesPost(await poll(request, londonAt(1, 18, 30), true));
   expect(before?.text).not.toContain("Man of the Match");
 
-  // The vote is over: the MoM result went out.
+  // The MoM result went out. A post with NO stored result while its vote is
+  // still open credits nobody (review of #608: the votes may yet differ from
+  // what the group saw), so still no Man of the Match badge.
   await db.run(
     `INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ('e2e-bdg-mom', $1, 'group-message', $2)`,
     [`${MATCH.rate}:mom-announcement`, MATCH.rate],
   );
+  expect(badgesPost(await poll(request, londonAt(1, 18, 30), true))?.text).not.toContain("Man of the Match");
+  // What the claim stores with the post (`MoMAnnouncement`): Pat, 2 of 2.
+  // The badge credits the announced winner.
+  await db.run(`INSERT INTO "MoMAnnouncement" ("matchId", result) VALUES ($1, $2::jsonb)`, [
+    MATCH.rate,
+    JSON.stringify({ v: 1, kind: "vote", tally: [{ userId: U.player, name: NAME.player, votes: 2 }] }),
+  ]);
   const after = badgesPost(await poll(request, londonAt(1, 18, 30), true));
   expect(after?.text).toContain(`🏆 *Man of the Match*: *${NAME.player}* won it for the first time ⭐`);
 });

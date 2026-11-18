@@ -26,6 +26,7 @@ import { recordAttendanceEvent } from "./attendance-events";
 import { repointSquadMonthRows } from "./squad-month";
 import { higherRole, isMemberRole } from "./role-change-rules";
 import { recordRoleChange } from "./role-change";
+import { rekeyStoredMomResults, storeMomRecordsFromPostText } from "./mom-result-merge";
 
 /**
  * `Membership.matchRating`'s schema default, and Elo's genuine "no
@@ -75,6 +76,12 @@ export async function mergePlayersCore(
     tx.user.findUnique({ where: { id: dropUserId } }),
   ]);
   if (!keep || !drop) throw new Error("Player not found");
+
+  // 0. Posted Man of the Match results with no stored record are read back
+  //    from the post's words BY NAME, and the dropped name is about to go:
+  //    store their records now, before anything is re-pointed, so step 5b
+  //    remaps them and the announced winner never changes (review of #608).
+  await storeMomRecordsFromPostText(tx, dropUserId);
 
   // 1. Backfill missing fields on `keep` from `drop`.
   //
@@ -285,6 +292,11 @@ export async function mergePlayersCore(
   // Votes RECEIVED are safe to blanket re-point: playerId is not part of
   // the (matchId, voterId) unique key, so no collision is possible.
   await tx.moMVote.updateMany({ where: { playerId: dropUserId }, data: { playerId: keepUserId } });
+  // 5b. Stored Man of the Match results (review of #608): their user ids
+  //     decide who a posted win is credited to, and the dropped user is
+  //     deleted below. Both in one result become one entry, votes summed
+  //     (`mom-result-merge.ts`, shared with the user merge).
+  await rekeyStoredMomResults(tx, dropUserId, keepUserId);
 
   // 6. TeamAssignment — (matchId, userId) unique (via findFirst).
   const dropTeams = await tx.teamAssignment.findMany({ where: { userId: dropUserId } });

@@ -121,7 +121,14 @@ describe("played-match: a cancelled match is never counted", () => {
   it("the readers that list a club's matches for Man of the Match wins exclude a cancelled one", () => {
     const src = readFileSync(path.join(SRC, "lib/match-history.ts"), "utf8");
     const lists = src.match(/db\.match\.findMany\(\{\s*where: \{ activity: \{ orgId \}[^}]*\}/g) ?? [];
-    expect(lists.length).toBeGreaterThanOrEqual(2);
+    expect(lists.length).toBeGreaterThanOrEqual(1);
     for (const l of lists) expect(l).toMatch(/NOT_CANCELLED|COMPLETED/);
+    // The wins themselves are read by `mom-records.ts` since the review of
+    // #608 (one decision for the answer and every table): its match list
+    // excludes a cancelled match. (Its next-fixture read keeps them: the
+    // shared rule `isLaterFixtureOf` skips a cancelled fixture itself.)
+    const rec = readFileSync(path.join(SRC, "lib/mom-records.ts"), "utf8");
+    const main = rec.match(/db\.match\.findMany\(\{\s*where: \{\s*activity: \{ orgId \},\s*\.\.\.NOT_CANCELLED,/g) ?? [];
+    expect(main).toHaveLength(1);
   });
 });

@@ -109,11 +109,12 @@ export function badgesPostDue(now: Date, matchDate: Date): boolean {
 export const BADGE_FINAL_AFTER_DAYS = 9;
 
 /**
- * Does this match's MoM vote and ratings count toward badges yet? Yes
- * once its MoM result has been posted (`<matchId>:mom-announcement`, the
- * moment the scheduler declares the vote over), or once it is too old for
- * one ever to be posted (a club without MoM voting, a vote nobody cast,
- * a result overtaken by the next fixture).
+ * Does this match's MoM result and ratings count toward badges yet? Yes
+ * once its MoM result has been posted (`<matchId>:mom-announcement`; votes
+ * may still be cast after an early post or the day-5 backstop, so WHO it
+ * credits is the shared decision's, the announced winner: `momCredit`), or
+ * once it is too old for one ever to be posted (a club without MoM voting,
+ * a vote nobody cast, a result overtaken by the next fixture).
  */
 export function badgeMatchFinalised(
   match: { id: string; date: Date },
@@ -135,6 +136,12 @@ export interface RawBadgeMatch {
   teamUserIds: string[];
   ratings: { playerId: string; score: number }[];
   momVotes: { playerId: string }[];
+  /** Who the match credits as Man of the Match by the shared decision
+   *  (`momCredit`, `mom-records.ts`; review of #608): the announced
+   *  winner(s) when posted, the final winner when final, nobody while open.
+   *  When present it is what the replay counts, so a badge post and the
+   *  player's page cannot disagree. Absent: the current vote winner. */
+  momCredit?: string[];
 }
 
 /** A match as the replay sees it: provisional results already removed. */
@@ -159,7 +166,7 @@ export function toReplayMatches<T extends RawBadgeMatch>(
       id: m.id,
       played: [...new Set([...m.confirmed, ...m.teamUserIds])],
       ratings: final ? m.ratings : [],
-      momWinners: final ? [...momWinners(m.momVotes)] : [],
+      momWinners: final ? (m.momCredit ?? [...momWinners(m.momVotes)]) : [],
     };
   });
 }

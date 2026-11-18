@@ -239,3 +239,140 @@ test("an @lid sender with no phone on record gets no DM, no react and no group l
   expect(r.react ?? null).toBeNull();
   expect(r.reply ?? null).toBeNull();
 });
+
+/* ── "WHO WAS THE LAST MAN OF THE MATCH?" (Kemal, 2026-11-16) ───────────
+ *
+ * The unified answer is stubbed; what is asserted is what the shipped loader and context put
+ * in front of the model, from a real Postgres:
+ *   - a POSTED result is told exactly as announced (the stored record),
+ *     though the votes changed after the post;
+ *   - a FINAL result never posted (too old) is the winner only, no counts;
+ *   - a vote still OPEN is said to be open, and nothing of it is told.
+ */
+const LAST_MOM_Q = "@Match Time who was the last man of the match?";
+const LAST_MOM_A = "Pete Power, as announced.";
+
+test('"who was the last Man of the Match?": as announced if posted, the winner only if final and never posted, nothing of an open vote', async ({ request, db }) => {
+  const grp = await group(request, db);
+  const id = (k: string) => grp.player(k).userId;
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const matchAt = async (mid: string, daysAgo: number) => {
+    const date = new Date(now - daysAgo * DAY);
+    await db.run(
+      `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "redScore", "yellowScore", "updatedAt")
+       VALUES ($1, $2, $3, 14, 'COMPLETED', $4, 3, 5, now())`,
+      [mid, grp.activityId, date, new Date(date.getTime() - 5 * 60 * 60 * 1000)],
+    );
+  };
+  const vote = (mid: string, voter: string, player: string) =>
+    db.run(`INSERT INTO "MoMVote" (id, "matchId", "voterId", "playerId") VALUES ($1, $2, $3, $4)`, [`${mid}-${voter}`, mid, id(voter), id(player)]);
+
+  // 12 days ago, never posted: final, the winner only. Everyone played it, so
+  // all of them are in the ranked tables (three-month activity rule).
+  await matchAt("sim-mom-old", 12);
+  for (const [i, k] of ["alice", "pete", "dan", "greg", "owner"].entries()) {
+    await db.run(`INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt") VALUES ($1, 'sim-mom-old', $2, 'CONFIRMED', $3, now())`, [`sim-mom-old-att-${k}`, id(k), i + 1]);
+  }
+  await vote("sim-mom-old", "pete", "alice");
+  await vote("sim-mom-old", "dan", "alice");
+  await vote("sim-mom-old", "owner", "dan");
+  // 6 days ago, posted with Pete 3 of 4; two votes moved to Dan after the post.
+  await matchAt("sim-mom-posted", 6);
+  for (const v of ["alice", "dan", "owner"]) await vote("sim-mom-posted", v, "pete");
+  await vote("sim-mom-posted", "pete", "dan");
+  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ('sim-mom-posted-sn', 'sim-mom-posted:mom-announcement', 'group-message', 'sim-mom-posted')`);
+  await db.run(`INSERT INTO "MoMAnnouncement" ("matchId", result) VALUES ('sim-mom-posted', $1::jsonb)`, [
+    JSON.stringify({ v: 1, kind: "vote", tally: [{ userId: id("pete"), name: grp.player("pete").name, votes: 3 }, { userId: id("dan"), name: grp.player("dan").name, votes: 1 }] }),
+  ]);
+  // Alice and the owner move their votes to Dan: re-counted, Dan would now have 3.
+  await db.run(`UPDATE "MoMVote" SET "playerId" = $1 WHERE "matchId" = 'sim-mom-posted' AND "voterId" IN ($2, $3)`, [id("dan"), id("alice"), id("owner")]);
+  // 8 days ago, posted BEFORE results were stored (no record), its vote
+  // window closed: the votes are final, so Alice, the winner only.
+  await matchAt("sim-mom-legacy", 8);
+  await vote("sim-mom-legacy", "pete", "alice");
+  await db.run(
+    `INSERT INTO "SentNotification" (id, key, kind, "matchId", "createdAt") VALUES ('sim-mom-legacy-sn', 'sim-mom-legacy:mom-announcement', 'group-message', 'sim-mom-legacy', $1)`,
+    [new Date(now - 3 * DAY)],
+  );
+  // 10 days ago, posted with a stored record (the owner, 2 of 2), and its
+  // vote rows since gone: it stays selectable and still credits the owner.
+  await matchAt("sim-mom-norows", 10);
+  await db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId") VALUES ('sim-mom-norows-sn', 'sim-mom-norows:mom-announcement', 'group-message', 'sim-mom-norows')`);
+  await db.run(`INSERT INTO "MoMAnnouncement" ("matchId", result) VALUES ('sim-mom-norows', $1::jsonb)`, [
+    JSON.stringify({ v: 1, kind: "vote", tally: [{ userId: id("owner"), name: grp.player("owner").name, votes: 2 }] }),
+  ]);
+  // 20 days ago, a historical (back-filled) award for Pete: decided, his.
+  await matchAt("sim-mom-historical", 20);
+  await db.run(`UPDATE "Match" SET "isHistorical" = true WHERE id = 'sim-mom-historical'`);
+  await vote("sim-mom-historical", "dan", "pete");
+  // 3 days ago, posted before results were stored, its vote still OPEN:
+  // nobody is named (Greg leads the votes now).
+  await matchAt("sim-mom-legacy-open", 3);
+  await vote("sim-mom-legacy-open", "pete", "greg");
+  await db.run(
+    `INSERT INTO "SentNotification" (id, key, kind, "matchId", "createdAt") VALUES ('sim-mom-legacy-open-sn', 'sim-mom-legacy-open:mom-announcement', 'group-message', 'sim-mom-legacy-open', $1)`,
+    [new Date(now - 1 * DAY)],
+  );
+  // 1 day ago, still voting: Greg is ahead, and nobody may know it.
+  await matchAt("sim-mom-open", 1);
+  await vote("sim-mom-open", "pete", "greg");
+  await vote("sim-mom-open", "dan", "greg");
+
+  const r = await grp.post("alice", LAST_MOM_Q, {
+    tag: true,
+    route: "question",
+    facts: { personRef: "", statedCount: -1, topic: "other", kind: "other", answer: LAST_MOM_A },
+  });
+  expect(r.reply).toBe(LAST_MOM_A);
+  const user = unifiedTurn(LAST_MOM_Q);
+  // The two Man of the Match blocks: match by match, then the last one.
+  const from = user.indexOf("MAN OF THE MATCH, MATCH BY MATCH");
+  const last = user.indexOf("LAST MAN OF THE MATCH", from);
+  expect(from).toBeGreaterThan(-1);
+  expect(last).toBeGreaterThan(from);
+  const end = user.indexOf("\n\n", last);
+  const block = user.slice(from, end === -1 ? undefined : end);
+  // Posted: as announced, not the re-counted 3 for Dan.
+  expect(block).toContain(`${grp.player("pete").name}, 3 of 4 votes`);
+  expect(block).not.toContain(`${grp.player("dan").name}, 3`);
+  // Final, never posted: the winner only.
+  expect(block).toMatch(new RegExp(`: ${grp.player("alice").name} \\(the winner only, no vote counts\\)`));
+  // Still voting: said to be open, nothing of it told.
+  expect(block).toMatch(/is still open/);
+  expect(block).not.toContain(grp.player("greg").name);
+  // A posted match with no vote rows left is still told from its record.
+  expect(block).toContain(`${grp.player("owner").name}, 2 of 2 votes`);
+  // Posted with no stored record, vote still open: no name, the post has it.
+  // (The LAST block is that match: the newest one that can be spoken of.)
+  expect(block).toMatch(/the result was posted in the group on \w{3} \d{1,2} \w{3}; that post has it \(no name or votes here\)/);
+  expect(block).toMatch(/LAST MAN OF THE MATCH[^]*the result was posted in the group on \w{3} \d{1,2} \w{3}, and that post has it/);
+
+  // THE WINS TABLE (review of #608), through the same loader: the open vote
+  // credits nobody (Greg would lead it), the posted match credits the
+  // ANNOUNCED winner (Pete, not the re-counted Dan), the final matches their
+  // final winner (Alice twice: the old match, and the legacy post now
+  // closed), and the legacy post still open credits nobody.
+  const winsAt = user.indexOf("MAN OF THE MATCH WINS");
+  expect(winsAt).toBeGreaterThan(-1);
+  const winsEnd = user.indexOf("\n\n", winsAt);
+  const wins = user.slice(winsAt, winsEnd === -1 ? undefined : winsEnd);
+  expect(wins).toContain(`${grp.player("alice").name}: 2`);
+  // Pete: the posted match (as announced) and the historical award.
+  expect(wins).toContain(`${grp.player("pete").name}: 2`);
+  // The owner: the posted match whose vote rows are gone (from its record).
+  expect(wins).toContain(`${grp.player("owner").name}: 1`);
+  expect(wins).not.toContain(grp.player("greg").name);
+  expect(wins).not.toContain(grp.player("dan").name);
+
+  // THE PERIOD TABLES (round 2 of the review): "this week", "last month"
+  // and the rest credit by the same decision, so an open vote's leader is
+  // in none of them and the posted match credits Pete, not the re-count.
+  const periodMom = user.split("\n").filter((l) => l.startsWith("- Man of the Match wins:"));
+  expect(periodMom.length).toBeGreaterThan(0);
+  for (const l of periodMom) {
+    expect(l).not.toContain(grp.player("greg").name);
+    expect(l).not.toContain(grp.player("dan").name);
+  }
+  expect(periodMom.some((l) => l.includes(`${grp.player("pete").name} `))).toBe(true);
+});

@@ -371,12 +371,17 @@ function periodLines(p: UnifiedPeriod, cap: number, recordStart: Date | null): s
   return L;
 }
 
-/** One decided Man of the Match, on one line. */
+/** One Man of the Match that can be told, on one line (`last-mom.ts`):
+ *  as announced, or the winner only with no counts. */
 function momLine(m: LastMom): string {
   const who = m.winners.map((w) => w.name).join(" and ");
+  if (m.told === "posted-unrecorded") {
+    return `  ${dayLabel("en", m.date)}: the result was posted in the group${m.postedAt ? ` on ${dayLabel("en", m.postedAt)}` : ""}; that post has it (no name or votes here)`;
+  }
   if (m.pickedByOrganisers) return `  ${dayLabel("en", m.date)}: ${who}, picked by the organisers`;
-  const shared = m.winners.length > 1 ? ` (shared, ${m.winners[0].votes} votes each)` : "";
-  return `  ${dayLabel("en", m.date)}: ${who}${shared || `, ${m.winners[0].votes} of ${m.totalVotes} votes`}`;
+  if (!m.votes) return `  ${dayLabel("en", m.date)}: ${who} (${m.winners.length > 1 ? "the winners" : "the winner"} only, no vote counts)`;
+  const shared = m.winners.length > 1 ? ` (shared, ${m.votes.top} votes each)` : "";
+  return `  ${dayLabel("en", m.date)}: ${who}${shared || `, ${m.votes.top} of ${m.votes.total} votes`}`;
 }
 
 /**
@@ -455,7 +460,7 @@ function statsLines(input: UnifiedAnswerInput, s: StatsSnapshot, squadIds: Array
   // Man of the Match, match by match (2026-11-11): "the last 3 weeks' MoMs".
   const recent = s.lastMom?.recent ?? [];
   if (recent.length) {
-    L.push("", "MAN OF THE MATCH, MATCH BY MATCH (every decided one MatchTime has, newest first):", ...recent.map(momLine));
+    L.push("", "MAN OF THE MATCH, MATCH BY MATCH (every one MatchTime can tell, newest first):", ...recent.map(momLine));
   }
   const last = lastMomContextLines(s.lastMom);
   if (last.length) L.push("", ...last);
@@ -827,8 +832,7 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
           ...s.elo.map((r) => r.name),
           ...s.mrReliable.map((r) => r.name),
           ...(s.teamOfSeason?.slots.map((x) => x.name) ?? []),
-          ...(s.lastMom?.recent ?? []).flatMap((m) => m.tally.map((x) => x.name)),
-          ...(s.lastMom?.last?.tally.map((x) => x.name) ?? []),
+          ...(s.lastMom?.recent ?? []).flatMap((m) => [...m.winners, ...m.tally].map((x) => x.name)),
         ]
       : []),
     ...(input.lastMatchRatings?.rows.map((r) => r.name) ?? []),

@@ -1267,6 +1267,7 @@ model Match {
   teamAssignments         TeamAssignment[]
   ratings                 Rating[]
   momVotes                MoMVote[]
+  momAnnouncement         MoMAnnouncement?
   sentNotifications       SentNotification[]
   partnerAsks             PartnerAsk[]
   poolAsks                PoolAsk[]
@@ -2420,6 +2421,24 @@ model MoMVote {
   createdAt DateTime @default(now())
 
   @@unique([matchId, voterId])
+}
+
+/**
+ * What a Man of the Match announcement told the group (Kemal, 2026-11-16),
+ * one row per match, written when /api/whatsapp/due-posts claims the post
+ * (`<matchId>:mom-announcement`), from the same tally the post's words were
+ * built from (src/lib/mom-announce-rules.ts). "Who was the last Man of the
+ * Match?" reads this, never a re-count: votes keep coming in after an early
+ * post or the backstop, and an organiser's pick row is recreated on every
+ * restatement. Migration 20261116120000_mom_announcement.
+ */
+model MoMAnnouncement {
+  matchId     String   @id
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  /// { v: 1, kind: "vote", tally: [{ userId, name, votes }] } or
+  /// { v: 1, kind: "pick", winner: { userId, name } }. Never who voted.
+  result      Json
+  announcedAt DateTime @default(now())
 }
 
 /**
