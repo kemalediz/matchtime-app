@@ -562,11 +562,48 @@ export default async function AdminGuidePage() {
         <code>14. Tom (paid)</code>), or tag MatchTime in the group, in the
         organisers&apos; group or by DM, in your own words, for example{" "}
         <code>@Match Time add Tom to the November list, he&apos;s paid</code>.
-        He becomes a regular of the month for the games that are left, as
-        &quot;Add a player&quot; on the <strong>Months</strong>{" "}page does,
-        with what you wrote (paid, &quot;4 only&quot;, pay as you go), and he
-        is on the next game&apos;s squad. Only an organiser can add somebody
-        this way: a player who tries is told to ask an organiser.
+        He becomes a regular of the month, as &quot;Add a player&quot; on the{" "}
+        <strong>Months</strong>{" "}page does, with what you wrote (paid,
+        &quot;4 only&quot;, pay as you go), and he is on the next game&apos;s
+        squad. Only an organiser can add somebody this way: a player who
+        tries is told to ask an organiser.
+      </p>
+      <p>
+        Once the month has started, a new regular covers either the whole
+        month or the games left, and you choose which. On
+        the <strong>Months</strong>{" "}page, &quot;Add a player&quot; asks before
+        you add him. The choice records no payment: record what he paid on its own, as in WhatsApp. The whole month counts only the games that are on: a
+        week called off is credited to him as to everyone on the whole
+        month. In the organisers&apos; group, say it in your own words,
+        for example{" "}
+        <code>@Match Time add Tom to the November list, he&apos;s paid the whole month</code>
+        ; if you don&apos;t, MatchTime adds him for the games left and asks
+        &quot;Whole month, or just the games left?&quot;, and your tagged
+        answer settles it. To change it later, use <strong>Covers</strong>{" "}
+        beside his games on the <strong>Months</strong>{" "}page, or tag
+        MatchTime in the organisers&apos; group, for example{" "}
+        <code>@Match Time Dan covers the whole month</code>. When the month
+        has a price, or he has paid or says he has, MatchTime first says what the change does to his money and makes it when you say{" "}
+        <code>@Match Time YES</code>. It goes up to the
+        whole month and never below the games he has played since he joined,
+        the weeks called off he was credited for, and the games left (a
+        player on the list you started the month from covers every game the
+        month had when you started it, and a week called off since is
+        credited back to him; taken off and added back, he covers from when he is back), and what he owes follows. The
+        games he already paid as pay as you go are never counted again. The games are
+        counted as played: &quot;4 of 4&quot; after a week is called off
+        means every game that is on. MatchTime never confirms a
+        payment for you. Players added any other way (your list posted
+        again, a tag in the players&apos; group, a DM) are added for the
+        games left, and MatchTime tells you so and how to change it.
+      </p>
+      <p>
+        Correcting what a player covers before the month has a price changes
+        nothing he owes. Once it has a price, what he paid, or says he paid,
+        stays as it was: raise him and the <strong>Months</strong>{" "}page shows
+        the extra as owed; lower him and it shows the difference as money to
+        give back. MatchTime&apos;s reply says so too. Changing what a player
+        covers never marks him as paid.
       </p>
       <p>
         If MatchTime doesn&apos;t know the name, it adds him as a new player

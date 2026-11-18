@@ -40,7 +40,8 @@ import { loadClubWhoRoster } from "./club-who-roster";
 import type { PersonPicker } from "./pipeline/who-is-who";
 import type { MonthlyList } from "./monthly-list";
 import { placeListLines, unplacedLineNames } from "./monthly-line-placement";
-import { askWhoTheyAre, createNewcomer, joinMonthAsOrganiser } from "./month-newcomers";
+import { askWhoTheyAre, createNewcomer, gamesLeftNote, hasOrganisersGroup, joinMonthAsOrganiser, tellOrganiserOnce } from "./month-newcomers";
+import { monthNameLabel } from "./i18n/dates";
 import type { NewcomerLine } from "./month-newcomer-rules";
 import { pastedLineOf } from "./month-signup-rules";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek, weekListKeyPrefix } from "./monthly-week";
@@ -352,6 +353,9 @@ export async function handleMonthlyPaste(args: {
   /** Names on an organiser's re-post MatchTime does not know by name: he is
    *  asked who they are, in one DM, after everything else (2026-11-03). */
   const toAsk: Array<{ name: string; userId: string | null; line: NewcomerLine }> = [];
+  /** New regulars of a month under way, added for the games left: he is
+   *  told so, and how to change it (review of #611, item 9). */
+  const leftOnly: string[] = [];
   const weekDay = Number(formatLondon(week.matchDate, "d"));
   // Who each line is was decided before the reconcile (`placeMonthlyLines`
   // above): a "new" or "guest" action is a line who-is-who said is nobody.
@@ -376,6 +380,7 @@ export async function handleMonthlyPaste(args: {
           continue;
         }
         if (j.changed) applied.push(`${a.kind === "new" ? "new-" : ""}${j.outcome}:${a.name}`);
+        if (j.covered?.leftOnly) leftOnly.push(a.name);
         if (a.kind === "new") toAsk.push({ name: a.name, userId, line: a.line });
         continue;
       }
@@ -593,9 +598,29 @@ export async function handleMonthlyPaste(args: {
 
   // LAST of his DMs, so it is the one his reply answers: who the names
   // MatchTime does not know by name are, numbered by phone, to him only.
-  if (toAsk.length > 0 && sender.userId) {
-    const asked = await askWhoTheyAre({ orgId, monthId: week.monthId, organiserUserId: sender.userId, sourceRef: args.waMessageId, names: toAsk, now });
-    if (asked) applied.push(`asked-who:${toAsk.map((n) => n.name).join("|")}`);
+  // New regulars added for the games left are told so, with how to change
+  // it (review of #611, item 9), in that same DM when he is asked who
+  // somebody is: ONE DM either way (round 2, item 4).
+  if ((toAsk.length > 0 || leftOnly.length > 0) && sender.userId) {
+    const organiserId = sender.userId;
+    try {
+      const club = leftOnly.length > 0 ? await db.organisation.findUnique({ where: { id: orgId }, select: { adminGroupId: true, adminChannelMode: true } }) : null;
+      const note = leftOnly.length > 0 ? gamesLeftNote(week.language, leftOnly, monthNameLabel(week.language, week.matchDate), hasOrganisersGroup(club)) : null;
+      const told = await tellOrganiserOnce({
+        note,
+        ask:
+          toAsk.length > 0
+            ? (prefix) => askWhoTheyAre({ orgId, monthId: week.monthId, organiserUserId: organiserId, sourceRef: args.waMessageId, names: toAsk, prefix, now })
+            : null,
+        send: async (text) => {
+          const phone = phoneOf.get(organiserId);
+          if (phone && (await claimOnce(`${matchId}:paste-left-only:${args.waMessageId}`, "paste-sender-dm", matchId))) await dm(phone, text);
+        },
+      });
+      if (told === "asked") applied.push(`asked-who:${toAsk.map((n) => n.name).join("|")}`);
+    } catch (err) {
+      console.error("[monthly-paste] the organiser's DM failed:", err);
+    }
   }
 
   // The group has just seen this list: when it is the list as MatchTime

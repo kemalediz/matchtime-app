@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { applySignup, type ApplySignupResult } from "@/lib/month-signup";
+import type { SetCoverageError } from "@/lib/month-member-coverage";
 import type { SignupChoice } from "@/lib/month-signup-rules";
 
 const CHOICES: readonly SignupChoice[] = ["in", "payg", "out"];
@@ -45,22 +46,35 @@ export async function signUpForMonth(monthId: string, choice: SignupChoice, days
  * An organiser changes one member of a month on /admin/months: make them
  * a regular (past the cap if need be: the organiser decides, plan 4.1),
  * move them to PAYG, or take them off the month. OWNER and ADMIN only.
- * Nothing here writes a paid field, and no row is deleted.
+ * No row is deleted, and no paid field is written (coverage and payment
+ * are separate, Kemal 2026-11-18).
  */
 export async function setMonthMember(
   orgId: string,
   monthId: string,
   userId: string,
   to: "regular" | "payg" | "out",
-): Promise<ApplySignupResult> {
+  /** "Add a player" in a month already under way (2026-11-16): a new
+   *  regular covers the whole month or the games left (no payment). */
+  coverage?: "whole" | "left",
+): Promise<ApplySignupResult | { ok: false; error: SetCoverageError }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   const { requireOrgAdmin } = await import("@/lib/org");
   await requireOrgAdmin(session.user.id, orgId);
   if (to !== "regular" && to !== "payg" && to !== "out") return { ok: false, error: "not-found" };
+  if (coverage !== undefined && coverage !== "whole" && coverage !== "left") return { ok: false, error: "not-found" };
   // The month must be this club's: the id alone is not trusted.
   const month = await db.squadMonth.findFirst({ where: { id: monthId, orgId }, select: { id: true } });
   if (!month) return { ok: false, error: "not-found" };
+  // The coverage FIRST (review round 3, item 4): a refused one writes
+  // nothing, neither the sign-up nor the says-paid claim.
+  const now = new Date();
+  if (to === "regular" && coverage) {
+    const { checkMonthMemberCoverage } = await import("@/lib/month-member-coverage");
+    const allowed = await checkMonthMemberCoverage({ squadMonthId: monthId, userId, coverage, now });
+    if (!allowed.ok) return allowed;
+  }
   const res = await applySignup({
     monthId,
     userId,
@@ -69,6 +83,14 @@ export async function setMonthMember(
     actorUserId: session.user.id,
     byOrganiser: true,
   });
+  // What he covers, through the coverage editor's own write and bounds, for
+  // a new row and a returning one alike (review of #611, item 4). Coverage
+  // only: no payment is recorded here (Kemal, 2026-11-18). A payment is
+  // recorded on its own, as in WhatsApp.
+  if (res.ok && res.outcome === "regular" && coverage) {
+    const { setMonthMemberCoverage } = await import("@/lib/month-member-coverage");
+    await setMonthMemberCoverage({ squadMonthId: monthId, userId, coverage, now });
+  }
   // Slice 6: a regular who had paid and is taken off the month (or moved
   // to PAYG) is owed the games left, and one who is back is not. Worked
   // out at once, so the page shows it (and so sends the organisers no

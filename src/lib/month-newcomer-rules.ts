@@ -45,6 +45,9 @@ export interface NewcomerLine {
   paidPence: number | null;
   /** "4 only": the games he commits to. Null for every game. */
   games: number | null;
+  /** A month already under way (2026-11-16): the organiser said he covers
+   *  the whole month (paid it) or the games left. Absent: the games left. */
+  coverage?: "whole" | "left" | null;
 }
 
 /** A club member as the rules see him. */

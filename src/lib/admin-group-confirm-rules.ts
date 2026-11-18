@@ -45,7 +45,7 @@ export interface PendingItem {
    *  `joinRequestRef(invitationId)` (a guest who wants to join, L8's
    *  notice), both in `admin-group-pool-refs.ts`. */
   ref: string;
-  kind: "teams" | "list" | "partner-ask" | "fee" | "pairing" | "pool-ask" | "join-request";
+  kind: "teams" | "list" | "partner-ask" | "fee" | "pairing" | "pool-ask" | "join-request" | "coverage";
   /** When it was (last) asked: a quote of an older post about it is stale. */
   askedAt?: Date;
 }
@@ -195,4 +195,45 @@ function ask(pending: PendingItem[], log: HqLogRow[], now: Date, windowMs: numbe
   );
   if (recentAsk) return { kind: "silent", why: "asked-already" };
   return pending.length === 1 ? { kind: "ask", item: pending[0] } : { kind: "ask-which", items: pending };
+}
+
+/**
+ * IS THIS MESSAGE IN THE PLACE OF AN ANSWER to the latest of MatchTime's
+ * questions of one kind (`isAsk` says which ask refs are that kind)? The
+ * safe-YES rule's own two positional tests, on the question's logged row,
+ * shared by every question MatchTime asks in HQ and reads the answer to
+ * with a model ("who shall I ask?", the list of places, "whole month, or
+ * just the games left?"):
+ *
+ *   1. A WhatsApp reply quoting that question (by its id, or its words
+ *      when the id is unknown): yes. Quoting anything else: no.
+ *   2. Otherwise: the NEXT message in HQ after it (nobody else spoke in
+ *      between, and no other question of MatchTime's came after it),
+ *      within `windowMs`.
+ *
+ * Returns the question's row, or null. Whether the message IS an answer,
+ * and which, is then the model's read of the words, never code's.
+ *
+ * @param log the log since a day ago, oldest first, NOT including the
+ *            message being decided.
+ */
+export function questionInPlaceOfAnswer(p: {
+  quoted: QuotedMessage | null;
+  log: HqLogRow[];
+  now: Date;
+  windowMs?: number;
+  isAsk: (askRef: string | null) => boolean;
+}): HqLogRow | null {
+  const windowMs = p.windowMs ?? CONFIRM_WINDOW_MS;
+  const asked = [...p.log].reverse().find((r) => r.fromMatchTime && p.isAsk(r.askRef));
+  if (!asked) return null;
+  if (p.quoted && (p.quoted.text || p.quoted.fromMatchTime || p.quoted.messageId)) {
+    const { row } = quotedLogRow(p.quoted, p.log);
+    return row && row.waMessageId === asked.waMessageId ? asked : null;
+  }
+  const questions = p.log.filter((r) => r.fromMatchTime && r.askRef);
+  if (questions[questions.length - 1]?.waMessageId !== asked.waMessageId) return null;
+  const fresh = p.now.getTime() - asked.createdAt.getTime() <= windowMs;
+  const quiet = !p.log.some((r) => !r.fromMatchTime && r.createdAt.getTime() > asked.createdAt.getTime());
+  return fresh && quiet ? asked : null;
 }

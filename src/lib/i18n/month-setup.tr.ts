@@ -46,6 +46,69 @@ export const monthSetupTr: MonthSetupStrings = {
   my_games_label: (p) => `${p.of} maçın kaçında oynuyorsunuz?`,
   my_games_all: (p) => `${p.of} maçın hepsi`,
 
+  add_cover_label: "Ay başladı. Oyuncunun kapsadığı:",
+  add_cover_whole: (p) => `Ayın tamamı (${p.games} maç)`,
+  add_cover_left: (p) => `Kalan maçlar (${p.games})`,
+  add_cover_pick: "Önce ayın tamamını ya da kalan maçları seçin.",
+  cover_label: "Kapsadığı",
+  cover_opt: (p) => (p.whole ? `${p.of} maçtan ${p.games}, ayın tamamı` : p.left ? `${p.of} maçtan ${p.games}, en az (katıldığından beri oynanan, kredi verilen iptal haftaları ve kalan)` : `${p.of} maçtan ${p.games}`),
+  cover_save: "Kaydet",
+  cover_saved: "Kapsam kaydedildi",
+  cover_error: (p) =>
+    p.key === "below-games-left"
+      ? "Bu, kapsayabileceğinden az: katıldığından beri oynanan maçlar, kredi aldığı iptal edilen haftalar ve kalan maçlar."
+      : p.key === "more-than-the-month"
+        ? "Bu, ayın maç sayısından fazla."
+        : p.key === "below-credits"
+          ? "Bu aydan bundan fazla kredisi düşülmüş. Önce bir krediyi geri alın."
+          : p.key === "not-a-regular" || p.key === "not-a-member"
+            ? "Maçları yalnızca ayın daimi oyuncuları kapsar."
+            : p.key === "closed"
+              ? "Bu ay kapandı."
+              : "Kaydedilemedi. Tekrar deneyin.",
+
+  hq_cover_ask: (p) =>
+    `📋 ${p.month} listesindeki ${p.name}: ayın tamamı mı, yoksa sadece kalan maçlar mı? Ayın tamamı ${p.whole} maç; ${p.left} maç kaldı. Cevabını beni etiketleyerek yaz.`,
+  hq_cover_confirm_item: (p) =>
+    p.wholeMonth
+      ? `${p.name}: ${p.month} ayının tamamı (${p.games} maç${p.amount ? `, ${p.amount} ${p.more ? "fazla" : "az"}` : ""})`
+      : `${p.name}: ${p.month} ayının ${p.of} maçından ${p.games} maç${p.amount ? ` (${p.amount} ${p.more ? "fazla" : "az"})` : ""}`,
+  hq_cover_confirm: (p) => `Kapsamı değiştireyim mi? ${p.items}. Onaylamak için *@Match Time EVET* yazın.`,
+  hq_cover_confirm_changed: "Sorduğumdan beri fiyat ya da bir ödeme değişti.",
+  hq_cover_confirm_expired: "Bir oyuncunun kapsamıyla ilgili o soru 30 dakikadan eski, bu yüzden hiçbir şeyi değiştirmedim. Tekrar yazarsanız tekrar sorarım.",
+  hq_cover_done: (p) =>
+    p.wholeMonth
+      ? `✅ ${p.name}, ${p.month} ayının tamamını kapsıyor: ${p.games} maç.`
+      : `✅ ${p.name}, ${p.month} ayının ${p.of} maçından ${p.games} maçı kapsıyor.`,
+  hq_cover_same: (p) =>
+    p.wholeMonth
+      ? `${p.name} zaten ${p.month} ayının tamamını kapsıyor, hiçbir şey değişmedi.`
+      : `${p.name} zaten ${p.month} ayının ${p.of} maçından ${p.games} maçı kapsıyor, hiçbir şey değişmedi. Katıldığından beri oynadığı maçlar, kredi aldığı iptal haftaları ve kalan maçlardan az olamaz.`,
+  hq_cover_failed: (p) =>
+    p.key === "below-credits"
+      ? `${p.name} için ${p.month} ayından bundan fazla kredi düşülmüş, ${p.name} için kapsamı değiştirmedim. Aylar sayfasından değiştirebilirsin.`
+      : p.key === "below-games-left"
+        ? `${p.name}, katıldığından beri oynanan maçlar, kredi aldığı iptal haftaları ve kalan maçlardan azını kapsayamaz, ${p.name} için kapsamı değiştirmedim.`
+        : p.key === "not-a-regular" || p.key === "not-a-member"
+          ? `${p.name}, ${p.month} listesinde daimi oyuncu değil, ${p.name} için kapsamı değiştirmedim.`
+          : p.key === "closed"
+            ? `${p.month} kapandı, ${p.name} için kapsamı değiştirmedim.`
+            : `${p.name} için kapsamı değiştiremedim. Aylar sayfasından yapabilirsin.`,
+  hq_cover_balance: (p) => (p.owes ? `Hâlâ ödemesi gereken ${p.amount} görünüyor.` : `Ona geri verilecek ${p.amount} görünüyor.`),
+  hq_cover_others: (p) =>
+    `${p.names} için kapsamı değiştirmedim: bunu ayrı bir mesajla beni etiketleyerek yaz, örneğin "@Match Time ${p.first} ayın tamamını kapsıyor".`,
+  hq_cover_which: (p) =>
+    `Hangi oyuncuyu kastediyorsun: ${p.names}? Onunla ilgili soruma yanıt ver ya da beni adıyla etiketle, örneğin "@Match Time ${p.first} ayın tamamını kapsıyor".`,
+  hq_cover_merged: "Sorduğumdan beri o oyuncu başka bir oyuncuyla birleştirildi, hiçbir şeyi değiştirmedim. Lütfen onu yeniden ekle.",
+  added_left_note: (p) =>
+    p.group
+      ? `${p.names}, ${p.month} listesinde kalan maçlar için. Ayın tamamını ${p.count === 1 ? "ödediyse" : "ödedilerse"} aylar sayfasında Kapsadığı kısmından (${p.link}) ya da yönetici grubunda beni etiketleyerek ayın tamamına ayarla, örneğin "@Match Time ${p.first} ayın tamamını kapsıyor"; sayfa sonra ödenecek ya da onaylanacak kalanı gösterir.`
+      : `${p.names}, ${p.month} listesinde kalan maçlar için. Ayın tamamını ${p.count === 1 ? "ödediyse" : "ödedilerse"} aylar sayfasında Kapsadığı kısmından (${p.link}) ayın tamamına ayarla; sayfa sonra ödenecek ya da onaylanacak kalanı gösterir.`,
+  hq_cover_who: (p) =>
+    p.name
+      ? `${p.name} ayın listesindeki hangi daimi oyuncu, anlayamadım, ${p.name} için bir şey değiştirmedim.`
+      : `Kimi kastediyorsun? Beni adıyla etiketle, örneğin "@Match Time Dan ayın tamamını kapsıyor".`,
+
   break_title: "Sezon arası",
   break_body:
     "Kulübünüzün maç oynamadığı ayları işaretleyin. O aylarda liste açılmaz, maç oluşturulmaz ve hiçbir şey paylaşılmaz. Sonraki ay her zamanki gibi, oynanan son ayın daimi oyuncularıyla başlar.",

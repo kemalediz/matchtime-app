@@ -55,6 +55,88 @@ export const monthSetupEn = {
   my_games_label: (p: { of: number }): string => `How many of the ${p.of} games are you playing?`,
   my_games_all: (p: { of: number }): string => `All ${p.of}`,
 
+  // ── What a regular covers (2026-11-16) ───────────────────────────────
+  /** "Add a player" once the month has started: what the new regular covers. */
+  add_cover_label: "The month has started. They cover:",
+  add_cover_whole: (p: { games: number }): string => `The whole month (${p.games} ${p.games === 1 ? "game" : "games"})`,
+  add_cover_left: (p: { games: number }): string => `The games left (${p.games})`,
+  add_cover_pick: "Choose the whole month or the games left first.",
+  /** The coverage editor in the games column. */
+  cover_label: "Covers",
+  cover_opt: (p: { games: number; of: number; left: boolean; whole: boolean }): string =>
+    p.whole ? `${p.games} of ${p.of}, the whole month` : p.left ? `${p.games} of ${p.of}, the fewest (played since joining, weeks off credited, and left)` : `${p.games} of ${p.of}`,
+  cover_save: "Save",
+  cover_saved: "Coverage saved",
+  cover_error: (p: { key: string }): string =>
+    p.key === "below-games-left"
+      ? "That is fewer than they can cover: the games played since they joined, the weeks called off they were credited for, and the games left."
+      : p.key === "more-than-the-month"
+        ? "That is more games than the month has."
+        : p.key === "below-credits"
+          ? "They have more credits taken off this month than that. Take a credit back first."
+          : p.key === "not-a-regular" || p.key === "not-a-member"
+            ? "Only a regular of the month covers games."
+            : p.key === "closed"
+              ? "This month is closed."
+              : "That did not save. Try again.",
+
+  /** The organisers' group: "Whole month, or just the games left?", asked
+   *  once when the words did not say (an add, or a change of coverage). */
+  hq_cover_ask: (p: { name: string; month: string; left: number; whole: number }): string =>
+    `📋 ${p.name} on the ${p.month} list: whole month, or just the games left? The whole month is ${p.whole} ${p.whole === 1 ? "game" : "games"}; ${p.left} ${p.left === 1 ? "is" : "are"} left. Tag me with your answer.`,
+  /** Kemal, 2026-11-18: a change that affects money waits for YES. One
+   *  player's part of the question; `amount` null when there is no price. */
+  hq_cover_confirm_item: (p: { name: string; month: string; games: number; of: number; wholeMonth: boolean; amount: string | null; more: boolean }): string =>
+    p.wholeMonth
+      ? `${p.name} cover the whole of ${p.month} (${p.games} ${p.games === 1 ? "game" : "games"}${p.amount ? `, ${p.amount} ${p.more ? "more" : "less"}` : ""})`
+      : `${p.name} cover ${p.games} of the ${p.of} games of ${p.month}${p.amount ? ` (${p.amount} ${p.more ? "more" : "less"})` : ""}`,
+  /** `items`: the players' parts, already joined. */
+  hq_cover_confirm: (p: { items: string }): string => `Make ${p.items}? Say *@Match Time YES*.`,
+  hq_cover_confirm_changed: "The price or a payment changed since I asked.",
+  hq_cover_confirm_expired: "That question about what a player covers is over 30 minutes old, so I haven't changed anything. Say it again and I'll ask again.",
+  /** From the row as stored. `of`: the month's playable games. */
+  hq_cover_done: (p: { name: string; month: string; games: number; of: number; wholeMonth: boolean }): string =>
+    p.wholeMonth
+      ? `✅ ${p.name} covers the whole of ${p.month}: ${p.games} ${p.games === 1 ? "game" : "games"}.`
+      : `✅ ${p.name} covers ${p.games} of the ${p.of} games of ${p.month}.`,
+  hq_cover_same: (p: { name: string; month: string; games: number; of: number; wholeMonth: boolean }): string =>
+    p.wholeMonth
+      ? `${p.name} already covers the whole of ${p.month}, so nothing changed.`
+      : `${p.name} already covers ${p.games} of the ${p.of} games of ${p.month}, so nothing changed. It can't be fewer than the games he has played since he joined, the weeks called off he was credited for, and the games left.`,
+  hq_cover_failed: (p: { key: string; name: string; month: string }): string =>
+    p.key === "below-credits"
+      ? `${p.name} has more credits taken off ${p.month} than that, so I didn't change what ${p.name} covers. You can change it on the months page.`
+      : p.key === "below-games-left"
+        ? `${p.name} can't cover fewer than the games played since joining, the weeks called off he was credited for, and the games left, so I didn't change what ${p.name} covers.`
+        : p.key === "not-a-regular" || p.key === "not-a-member"
+          ? `${p.name} isn't a regular on the ${p.month} list, so I didn't change what ${p.name} covers.`
+          : p.key === "closed"
+            ? `${p.month} is closed, so I didn't change what ${p.name} covers.`
+            : `I couldn't change what ${p.name} covers. You can do it on the months page.`,
+  /** After a change: what the months page shows beside him (round 4, item 4). */
+  hq_cover_balance: (p: { owes: boolean; amount: string }): string =>
+    p.owes ? `He still shows ${p.amount} to pay.` : `He shows ${p.amount} to give back.`,
+  /** The add's words named somebody else too (round 4, item 3): left alone. */
+  hq_cover_others: (p: { names: string; first: string }): string =>
+    `I didn't change what ${p.names} covers: tag me about that in a message of its own, for example "@Match Time ${p.first} covers the whole month".`,
+  /** Two players asked about and the answer is not clear which. */
+  /** `names`: "Ben or Zara" (`joinChoice`); `first`: one of them, for the example. */
+  hq_cover_which: (p: { names: string; first: string }): string =>
+    `Which player do you mean: ${p.names}? Reply to my question about them, or tag me with their name, for example "@Match Time ${p.first} covers the whole month".`,
+  /** The player a question was about was merged into another since. */
+  hq_cover_merged: "That player was merged into another one since I asked, so I changed nothing. Please add them again.",
+  /** Every door with no coverage question (a re-posted list, the players'
+   *  group, a DM, the "who is this?" answer): added for the games left. */
+  /** `names`: "Tom, Zak"; `count`: how many; `first`: one of them, for the
+   *  example; `group`: the club has an organisers' group to tag me in. */
+  added_left_note: (p: { names: string; count: number; first: string; month: string; link: string; group: boolean }): string =>
+    `${p.names} ${p.count === 1 ? "is" : "are"} on the ${p.month} list for the games left. If ${p.count === 1 ? "he" : "they"} paid for the whole month, set ${p.count === 1 ? "him" : "them"} to the whole month under Covers on the months page (${p.link})${p.group ? ` or tag me in your organisers' group, for example "@Match Time ${p.first} covers the whole month"` : ""}; the page then shows what's left to pay or confirm.`,
+  /** Nobody on a live month's list the words could be. */
+  hq_cover_who: (p: { name: string }): string =>
+    p.name
+      ? `I couldn't tell which regular on the month's list ${p.name} is, so I didn't change anything for ${p.name}.`
+      : `Who do you mean? Tag me with their name, for example "@Match Time Dan covers the whole month".`,
+
   // ── Season break ─────────────────────────────────────────────────────
   break_title: "Season break",
   break_body:

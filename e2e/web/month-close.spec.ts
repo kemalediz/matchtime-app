@@ -515,6 +515,10 @@ test("6. a regular who paid and is taken off the month is owed: shown to the col
   await signInAs(page, P.adam.id, "/admin/months");
   const add = card(page, ACT).getByTestId("member-add");
   await add.getByTestId("member-add-select").selectOption(P.dev.id);
+  // 2026-11-16: a month under way offers the whole month or the games
+  // left; a returning payer keeps what he paid for either way.
+  const left = add.getByTestId("member-add-cover-left");
+  if ((await left.count()) > 0) await left.check();
   await add.getByTestId("member-add-regular").click();
   await expect(row(page, ACT, P.dev)).toBeVisible({ timeout: 30_000 });
   const back = (await member(db, P.dev))!;
