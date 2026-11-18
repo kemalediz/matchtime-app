@@ -16,11 +16,15 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { db } from "./db";
 import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
 import { formatLondon } from "./london-time";
+import { coverFor } from "./squad-month-rules";
+import { isRegularMember } from "./month-signup-rules";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./pipeline/llm";
 import {
   buildMonthlyReaderUserTurn,
   MONTHLY_READER_SCHEMA,
   MONTHLY_READER_SYSTEM,
+  monthCoversLine,
+  monthHeadLine,
   parseMonthlyReading,
   type MonthlyReaderContext,
   type MonthlyReaderInput,
@@ -86,16 +90,32 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
   });
 
   const day = (d: Date) => formatLondon(d, "EEE d MMM");
+  const labelOf = (m: (typeof months)[number]) => formatLondon(m.kickoffs[0] ?? m.firstKickoff, "MMMM yyyy");
   const monthBlocks = months.map((m) => {
-    const label = formatLondon(m.kickoffs[0] ?? m.firstKickoff, "MMMM yyyy");
+    const label = labelOf(m);
     const started = m.startedMidMonth || now.getTime() >= m.firstKickoff.getTime();
     const state = m.open ? "sign-up open" : started ? "under way" : "sign-up closed, not started yet";
-    const games = m.kickoffs.map((k) => `${day(k)}${k.getTime() < now.getTime() ? " (played)" : ""}`);
-    const left = m.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
+    // "Still to play" is exactly the games a joiner now covers (`applySignup`'s gamesLeft).
+    const games = m.kickoffs.map((k) => ({ day: day(k), played: k.getTime() <= now.getTime() }));
+    // What each regular on it covers, by ref (2026-11-16): a list line about
+    // somebody else is counted against HIS games, not the month's.
+    // The number is the guard's own (`coverFor`: never above the games
+    // scheduled), and the order is by name then id: never the rows' order.
+    const covers = monthCoversLine(
+      m.members
+        .filter((x) => isRegularMember(x) && Number.isInteger(x.gamesCovered))
+        .flatMap((x) => {
+          const r = members.find((y) => y.userId === x.userId);
+          const covered = coverFor({ kickoffs: m.kickoffs, rowCovered: x.gamesCovered, now }).covers;
+          return r ? [{ name: r.name || "no name yet", ref: r.ref, covered, userId: x.userId }] : [];
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, "en") || a.userId.localeCompare(b.userId)),
+    );
     return [
-      `  ${label} (month ${m.monthNumber}): ${state}. ${m.kickoffs.length} games: ${games.join(", ")}; ${left} still to play.`,
+      monthHeadLine({ label, monthNumber: m.monthNumber, state, games }),
       `  Its list as MatchTime has it:`,
       ...renderSignupList(m).text.split("\n").map((l) => `    ${l}`),
+      ...(covers ? [covers] : []),
     ].join("\n");
   });
 
@@ -107,6 +127,15 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     seedable,
     members,
     months: monthBlocks,
+    // What each REGULAR covers (2026-11-16): a pay-as-you-go or bench row is
+    // not on the list as a regular, so its player covers the games left (a
+    // leaver who paid included: what he says is about the games left, and
+    // `setMonthMemberGames` adds the games he played before he left).
+    cover: months.map((m) => ({
+      label: labelOf(m),
+      games: m.kickoffs.map((k) => ({ day: day(k), played: k.getTime() <= now.getTime() })),
+      regulars: m.members.filter((x) => isRegularMember(x) && Number.isInteger(x.gamesCovered)).map((x) => ({ userId: x.userId, covered: x.gamesCovered })),
+    })),
     week: liveWeek ? { game: formatLondon(liveWeek.matchDate, "EEE d MMM yyyy, HH:mm"), text: (await renderWeekList(liveWeek)).text } : null,
   };
 }

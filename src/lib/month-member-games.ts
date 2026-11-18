@@ -13,7 +13,14 @@
  *
  * Callers: /admin/months (the seed draft's games column, and a member's
  * row), the member's /month page, and the list reader (agent B's), which
- * reads "4 only" beside a name. Nothing here posts or calls a model.
+ * reads "4 only" beside a name. Nothing here calls a model.
+ *
+ * A count READ FROM A MESSAGE (`fitted`, 2026-11-16) is never refused for
+ * its size: THE ONE FIT RULE (`fitGamesCount`) is applied against the
+ * games his row covers and the games he has played, and when what is
+ * stored is not what was said, the organisers are told once
+ * (`noteFittedGames`). The pages keep their refusals (the person is there
+ * to see them).
  *
  * Under the club-month's lock and the club's credits lock, like every
  * other money write: what they owe is worked out again at once when the
@@ -23,7 +30,7 @@ import { db } from "./db";
 import { lockMonth } from "./month-signup";
 import { lockClubCredits, usableCredits } from "./month-payment";
 import { planPricing } from "./month-payment-rules";
-import { chargedGames, checkGamesCommitted, normaliseSquadMode } from "./squad-month-rules";
+import { chargedGames, checkGamesCommitted, fitGamesCount, monthPlayedWindow, normaliseSquadMode } from "./squad-month-rules";
 import { londonDateTimeToUtc } from "./london-time";
 
 export type SetMonthMemberGamesError =
@@ -37,6 +44,9 @@ export type SetMonthMemberGamesError =
   | "locked"
   | "fewer-than-played";
 
+/** What was said and what the fit rule stored instead (`fitGamesCount`). */
+type FitNote = { said: number; covers: number; played: number; stored: number };
+
 export { freezePaidAmount } from "./month-close-rules";
 import { freezePaidAmount } from "./month-close-rules";
 
@@ -48,8 +58,13 @@ export async function setMonthMemberGames(args: {
   /** "organiser": an owner or admin (the page). "reader": read from a list
    *  a member pasted; never changes a CONFIRMED payment's games. */
   by: "organiser" | "reader";
+  /** A count read from a message (any door): fitted, never refused for its
+   *  size. `words`: what the organisers' line quotes when it changed.
+   *  `fromNow`: the count is of the games still to play (a paid leaver back
+   *  on his kept row): the games he has played on the row are added. */
+  fitted?: { words: string | null; fromNow?: boolean };
   now?: Date;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<{ ok: true; games?: number | null } | { ok: false; error: string }> {
   const now = args.now ?? new Date();
   if (args.games !== null && checkGamesCommitted(args.games, Number.MAX_SAFE_INTEGER).ok === false) return { ok: false, error: "bad-games" };
   const month = await db.squadMonth.findUnique({
@@ -60,6 +75,7 @@ export async function setMonthMemberGames(args: {
   if (normaliseSquadMode(month.org.squadMode) !== "monthly") return { ok: false, error: "not-monthly" };
   if (month.status === "closed") return { ok: false, error: "closed" };
 
+  let fitNote: FitNote | null = null;
   const res = await db.$transaction(async (tx) => {
     await lockMonth(tx, month.id);
     await lockClubCredits(tx, month.orgId);
@@ -102,28 +118,40 @@ export async function setMonthMemberGames(args: {
     // A confirmed payment was for a number of games: only an organiser
     // changes that (the collector then sees the difference).
     if (args.by === "reader" && row.paidAt) return { ok: false as const, error: "locked" };
-    const checked = checkGamesCommitted(args.games, row.gamesCovered);
-    if (!checked.ok) return { ok: false as const, error: checked.error };
-    if (checked.value === row.gamesCommitted) return { ok: true as const };
-    // Never fewer games than they have already played this month: those
-    // were the month's games, paid for by it.
-    if (checked.value !== null) {
-      const monthStart = m.monthStart.toISOString().slice(0, 10);
+    // The games of the month he has actually played since he joined.
+    const playedCount = async (): Promise<number> => {
+      // This month's games only, never the next month's (`monthPlayedWindow`).
+      const window = monthPlayedWindow(m.monthStart.toISOString().slice(0, 10), now);
       const played = await tx.match.findMany({
         where: {
           activity: { orgId: month.orgId, venue: m.activity.venue, dayOfWeek: m.activity.dayOfWeek },
           isHistorical: false,
           status: { not: "CANCELLED" },
-          date: { gte: londonDateTimeToUtc(monthStart, "00:00"), lt: now },
+          date: window,
           attendances: { some: { userId: args.userId, status: "CONFIRMED" } },
         },
         select: { date: true },
       });
-      const count = played.filter((x) => x.date.getTime() >= row.joinedAt.getTime()).length + (row.source.startsWith("seed") ? m.gamesPlayedBeforeStart : 0);
-      if (checked.value < count) return { ok: false as const, error: "fewer-than-played" };
+      return played.filter((x) => x.date.getTime() >= row.joinedAt.getTime()).length + (row.source.startsWith("seed") ? m.gamesPlayedBeforeStart : 0);
+    };
+    let committed: number | null;
+    if (args.fitted) {
+      // THE ONE FIT RULE: against the games his row covers and those played.
+      const played = args.games === null ? 0 : await playedCount();
+      const total = args.games !== null && args.fitted.fromNow ? played + args.games : args.games;
+      const fit = fitGamesCount({ count: total, covers: row.gamesCovered, played });
+      if (fit.changed) fitNote = { said: total!, covers: row.gamesCovered, played, stored: fit.games ?? row.gamesCovered };
+      if (fit.games === row.gamesCommitted) return { ok: true as const, games: fit.games };
+      committed = fit.games;
+    } else {
+      const checked = checkGamesCommitted(args.games, row.gamesCovered);
+      if (!checked.ok) return { ok: false as const, error: checked.error };
+      if (checked.value === row.gamesCommitted) return { ok: true as const };
+      // Never fewer games than they have already played this month: those
+      // were the month's games, paid for by it.
+      if (checked.value !== null && checked.value < (await playedCount())) return { ok: false as const, error: "fewer-than-played" };
+      committed = checked.value;
     }
-
-    const committed = checked.value;
     const charged = chargedGames({ gamesCovered: row.gamesCovered, gamesCommitted: committed });
     let creditsApplied = row.creditsApplied;
     let amountDuePence: number | null | undefined;
@@ -189,8 +217,16 @@ export async function setMonthMemberGames(args: {
         ...(amountDuePence !== undefined ? { amountDuePence } : {}),
       },
     });
-    return { ok: true as const };
+    return { ok: true as const, games: committed };
   });
+  // What was said is not what was stored: the organisers are told once
+  // (also when it was already stored: the claim is per player, month and count).
+  // (Set inside the transaction's callback: TypeScript cannot see that.)
+  const note = fitNote as FitNote | null;
+  if (res.ok && note) {
+    const { noteFittedGames } = await import("./month-signup");
+    await noteFittedGames({ monthId: month.id, userId: args.userId, ...note, words: args.fitted?.words ?? null, now });
+  }
   // The credits follow the new count (PR #464 review): a called-off week,
   // or a missed one, that is now one of the weeks they never paid for has
   // its credit taken back, and one that is now paid for is credited, the

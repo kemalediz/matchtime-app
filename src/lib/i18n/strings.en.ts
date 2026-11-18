@@ -4821,8 +4821,22 @@ export const en = {
     `📋 I couldn't match ${p.names.join(", ")} on the list you pasted to a player, so I added nobody. ` +
     `To play, say *IN* in the group yourself, or ask an organiser to add them.`,
   /** To a player asked to confirm joining a month under way (review of #465). */
-  msu_dm_join_ask: (p: { month: string; games: number; price: string | null }): string =>
-    `📋 Join ${p.month} as a regular for the ${p.games} ${p.games === 1 ? "game" : "games"} left${p.price ? `, ${p.price}` : ""}? Reply yes and I'll put you on it.`,
+  /** `of` (2026-11-18): the games of them he said he will play, when fewer;
+   *  the price is then for those. */
+  msu_dm_join_ask: (p: { month: string; games: number; of?: number | null; price: string | null }): string =>
+    p.of
+      ? `📋 Join ${p.month} as a regular for ${p.of} of the ${p.games} games left${p.price ? `, ${p.price}` : ""}? Reply yes and I'll put you on it.`
+      : `📋 Join ${p.month} as a regular for the ${p.games} ${p.games === 1 ? "game" : "games"} left${p.price ? `, ${p.price}` : ""}? Reply yes and I'll put you on it.`,
+  /** To the organisers (2026-11-16): a games count read from a message
+   *  was not what got stored (above the games he covers, or below the games
+   *  he has played). Once per player, month and count. */
+  msu_admin_games_fitted: (p: { name: string; month: string; said: number; covers: number; played: number; stored: number; words: string }): string =>
+    `📋 ${p.name} said ${p.said} ${p.said === 1 ? "game" : "games"} of ${p.month}${p.words ? ` ("${p.words}")` : ""} but covers ${p.covers} (played ${p.played}); I recorded ${p.stored}. Change it on the month page if that's wrong.`,
+  /** To the organisers (2026-11-18): a games count read from a message for
+   *  somebody whose payment is confirmed, so only an organiser changes his
+   *  games. Once per player, month and count. */
+  msu_admin_games_unrecorded: (p: { name: string; month: string; games: number; words: string }): string =>
+    `📋 ${p.name} said ${p.games} ${p.games === 1 ? "game" : "games"} of ${p.month}${p.words ? ` ("${p.words}")` : ""}, but his payment is confirmed, so I left his games as they are. Change them on the month page if needed.`,
   /** To a member whose paste had more new players than one paste may add. */
   mwk_dm_paste_guests_refused: (p: { names: string[] }): string =>
     `📋 One list can only add a few new players, so I didn't add ${p.names.join(", ")}. An organiser can add them.`,
