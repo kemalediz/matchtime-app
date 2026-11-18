@@ -424,8 +424,10 @@ describe("the person a question names", () => {
     expect((await contextFor(ref)).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
   });
 
-  it("'Ben' is a name, not the asker (isSelfRef leaves the nominative out): no subject", async () => {
-    expect((await contextFor("Ben")).user).not.toContain("THE PLAYER THE QUESTION IS ABOUT");
+  // Review of #628: "ben" is the Turkish "I", and a name. With no Ben in
+  // the club it is the asker; with one, it is him (below).
+  it("'Ben' with no Ben in the club: the asker", async () => {
+    expect((await contextFor("Ben")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
   });
 });
 
@@ -454,18 +456,50 @@ describe("a member called Bana, a member called Ben", () => {
     return { user: reqs.find((r) => r.label === "unified-answer")!.user, loads };
   };
 
-  it("'Bana' in a club with a Bana: never the asker's numbers as the subject", async () => {
+  // Review of #628: the name lookup (who-is-who) skipped "bana" with the
+  // plain self list, so Bana was never looked up and never the subject.
+  it("'Bana' in a club with a Bana: Bana is the subject, never the asker", async () => {
     const { user } = await contextFor("Bana");
+    expect(user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bana Kaya");
     expect(user).not.toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
   });
 
-  it("HQ, 'Bana' in a club with a Bana: not the asker's own stats either", async () => {
-    const { loads } = await contextFor("Bana", "organisers");
+  it("HQ, 'Bana' in a club with a Bana: Bana is the subject, and not the asker's own stats", async () => {
+    const { user, loads } = await contextFor("Bana", "organisers");
+    expect(user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bana Kaya");
     expect(loads).not.toContain("own:u-bruno");
   });
 
   it("'Ben' in a club with a Ben: that member", async () => {
     expect((await contextFor("Ben")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Ben Hale");
+  });
+
+  // Review of #628: self words the list did not know ("my", "benim") fell
+  // to "no subject" and lost the asker. "ben" is the asker unless the club
+  // has a Ben.
+  const noBen = (): SquadState => ({ ...state(), roster: state().roster.filter((m) => m.userId !== "u-ben") });
+  const withoutBen = async (personRef: string, audience?: "organisers") => {
+    const { reqs, loads } = await ask({ kind: "other", personRef, state: noBen(), senderUserId: "u-bruno", answer: "I can't tell that.", ...(audience ? { audience } : {}) });
+    return { user: reqs.find((r) => r.label === "unified-answer")!.user, loads };
+  };
+
+  it.each(["my", "mine", "benim", "kendi"])("'%s' is the asker, with or without a Ben in the club", async (ref) => {
+    expect((await contextFor(ref)).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+    expect((await withoutBen(ref)).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+  });
+
+  it.each(["my", "benim"])("HQ, '%s': the asker's own stats", async (ref) => {
+    expect((await contextFor(ref, "organisers")).loads).toContain("own:u-bruno");
+  });
+
+  it("'ben kaçıncıyım?' (personRef 'ben') with no Ben in the club: the asker, and in HQ their own stats", async () => {
+    expect((await withoutBen("ben")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Bruno Carr");
+    expect((await withoutBen("ben", "organisers")).loads).toContain("own:u-bruno");
+  });
+
+  it("'ben' with a Ben in the club: Ben, and no own stats for the asker in HQ", async () => {
+    expect((await contextFor("ben")).user).toContain("THE PLAYER THE QUESTION IS ABOUT: Ben Hale");
+    expect((await contextFor("ben", "organisers")).loads).not.toContain("own:u-bruno");
   });
 
   it("UNCHANGED: 'bana' meaning 'me' in a club with no Bana, and 'beni' beside a Bana, are the asker", async () => {
@@ -536,6 +570,16 @@ describe("isSelfRefAmong (engine.ts): a self word, unless it is a member's name"
     ["bana", ["Bana"]],
   ])("'%s' beside a member whose alias is %j is that member, not the sender", (ref, aliases) => {
     expect(isSelfRefAmong(ref, [{ name: "Ahmet Kaya", aliases }])).toBe(false);
+  });
+
+  it("'ben' is the sender only when no member is called Ben", () => {
+    expect(isSelfRefAmong("ben", [{ name: "Bana Kaya" }])).toBe(true);
+    expect(isSelfRefAmong("Ben", [{ name: "Ben Hale" }])).toBe(false);
+    expect(isSelfRefAmong("ben", [{ name: "Benjamin Hale", aliases: ["Ben"] }])).toBe(false);
+  });
+
+  it.each(["my", "mine", "benim", "kendi"])("'%s' is the sender", (ref) => {
+    expect(isSelfRefAmong(ref, [{ name: "Ben Hale" }])).toBe(true);
   });
 
   it("'BENI' and 'KENDIM' with no such member are the sender", () => {

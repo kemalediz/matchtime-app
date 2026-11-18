@@ -8,7 +8,7 @@
  */
 import { extractorStubFromEnv, stubPeopleFromEnv } from "./extractor-stub";
 import { anthropicModel, type PipelineModel } from "./llm";
-import { isSelfRef, parsePendingSet } from "./engine";
+import { isSelfRef, isSelfRefAmong, parsePendingSet } from "./engine";
 import type { EngineMessage, Facts, Member, TeamFacts } from "./types";
 import {
   modelPersonPicker,
@@ -69,18 +69,34 @@ export interface Identified {
  * "Confirmed" (no claims, affirmation "yes") is about the names in
  * MatchTime's own last pending list (§3.2 S25, `parsePendingSet`), so
  * those are asked too: the engine resolves them like any other name.
+ *
+ * `roster` (review of #628): a word on the self list that is also a
+ * member's name or alias ("Bana" beside a Bana) is looked up like any other
+ * name (`notSelf`). Absent: the plain self list.
  */
 export function factRefs(
   facts: Facts,
   teamsReading?: TeamFacts | "unreadable" | null,
   lastBotPost?: string | null,
+  roster?: ReadonlyArray<{ name: string | null; aliases?: readonly string[] }>,
 ): string[] {
-  const refs = personRefsIn(facts, isSelfRef);
-  if (teamsReading && teamsReading !== "unreadable") refs.push(...personRefsIn(teamsReading, isSelfRef));
+  const self = selfFor(roster);
+  const refs = personRefsIn(facts, self);
+  if (teamsReading && teamsReading !== "unreadable") refs.push(...personRefsIn(teamsReading, self));
   if (facts.kind === "attendance" && facts.claims.length === 0 && facts.affirmation === "yes") {
     refs.push(...parsePendingSet(lastBotPost ?? null).map(refKey).filter(Boolean));
   }
   return [...new Set(refs)];
+}
+
+/**
+ * The words not looked up because they are the sender: the closed self
+ * list, minus a word that is also a member's name or alias. Only the closed
+ * list: "ben" is still looked up, as before, and the answer decides it
+ * (`isSelfRefAmong`).
+ */
+function selfFor(roster?: ReadonlyArray<{ name: string | null; aliases?: readonly string[] }>): (ref: string) => boolean {
+  return roster ? (r) => isSelfRef(r) && isSelfRefAmong(r, roster) : isSelfRef;
 }
 
 /** Never throws: a failed call leaves those names unidentified, which
@@ -104,7 +120,7 @@ export async function identifyFacts(args: {
   for (const item of args.items) {
     const known = item.known ?? new Map<string, PersonPick>();
     if (known.size > 0) people.set(item.id, known);
-    const refs = factRefs(item.facts, item.teamsReading, args.lastBotPost).filter((r) => !known.has(r));
+    const refs = factRefs(item.facts, item.teamsReading, args.lastBotPost, args.roster).filter((r) => !known.has(r));
     if (refs.length > 0) asked.push({ item, refs });
   }
   if (asked.length === 0) return { people, returning: [], costUsd: 0, calls: 0, degradations: [] };
@@ -169,7 +185,8 @@ export async function identifyRefs(args: {
   roster: ReadonlyArray<WhoRosterMember>;
   where?: string;
 }): Promise<{ people: PersonPicks; costUsd: number; calls: number; degradations: string[] }> {
-  const refs = [...new Set(args.refs.map((r) => r.trim()).filter((r) => r && !isSelfRef(r)))];
+  const self = selfFor(args.roster);
+  const refs = [...new Set(args.refs.map((r) => r.trim()).filter((r) => r && !self(r)))];
   if (refs.length === 0) return { people: new Map(), costUsd: 0, calls: 0, degradations: [] };
   const id = "m";
   const res = await args.picker({

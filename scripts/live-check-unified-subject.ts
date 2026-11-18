@@ -188,6 +188,9 @@ const CASES: Case[] = [
   { where: "players", lang: "tr", body: "@Match Time Alex'in puanı kaç?", good: "the same, in Turkish" },
   { where: "players", lang: "en", body: "@Match Time who's my nemesis?", good: "extractor personRef 'me'; the subject is the asker (Bruno Carr), who has no pairings on record: says so, never another member's" },
   { where: "players", lang: "tr", body: "@Match Time en zorlandığım rakip kim?", good: "extractor personRef a self word ('me', 'ben...'); the asker's subject block, never another member's" },
+  // Review of #628: self words the list did not know.
+  { where: "players", lang: "tr", body: "@Match Time ben kaçıncıyım?", good: "the asker (Bruno Carr) is no. 1 with 7.9; no Ben in this club" },
+  { where: "players", lang: "tr", body: "@Match Time benim nemesisim kim?", good: "the asker's subject block; says it has no rivalry on record, never another member's" },
 ];
 
 const only = (process.env.ONLY ?? "").split(",").map((s) => Number(s.trim())).filter((n) => n > 0);

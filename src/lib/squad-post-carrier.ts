@@ -17,11 +17,11 @@
  * one squad post per batch; a reply the composition skips keeps its own
  * words.
  *
- * A TEAM POST IS LEFT AS IT WAS. Once the match has teams the squad post the
- * composition renders IS the team sheet, so a batch that already sends one
- * must not send a second. A team post (the show-teams and make-teams replies,
- * the replacement and swap sheets) still takes the marker when it is the
- * last of them, exactly as before, and the strip removes it there.
+ * A BATCH WITH A TEAM POST HAS NO CARRIER (review of #628). Once the match
+ * has teams the squad post the composition renders IS the team sheet, so a
+ * batch that already sends a team post (the show-teams and make-teams
+ * replies, the replacement and swap sheets) must not send a second sheet on
+ * a reply after it. The team post stays the batch's only announcement.
  *
  * PURE: no database, no I/O. `route.ts` is the only caller.
  */
@@ -58,18 +58,17 @@ function isTeamPost(r: CarrierResult, teamPostIds: ReadonlySet<string>): boolean
 
 /**
  * PURE. The id of the result that carries the batch's squad post: the LAST
- * reply that already speaks, is not late, and is either rendered by the
- * composition or a team post (left as before); with none, the message that
- * changed the squad (`squadPostId`, already moved off a late message by the
- * caller). Null when that message is not in the results.
+ * reply that already speaks, is not late, and is rendered by the
+ * composition; with none, the message that changed the squad (`squadPostId`,
+ * already moved off a late message by the caller). Null when that message
+ * is not in the results, and null when any result is a team post.
  */
 export function squadPostCarrierId(
   results: ReadonlyArray<CarrierResult>,
   opts: { squadPostId: string; late: ReadonlySet<string>; teamPostIds: ReadonlySet<string> },
 ): string | null {
-  const eligible = results.filter(
-    (r) => !opts.late.has(r.waMessageId) && (composesSquadPost(r, opts.teamPostIds) || isTeamPost(r, opts.teamPostIds)),
-  );
+  if (results.some((r) => isTeamPost(r, opts.teamPostIds))) return null;
+  const eligible = results.filter((r) => !opts.late.has(r.waMessageId) && composesSquadPost(r, opts.teamPostIds));
   if (eligible.length > 0) return eligible[eligible.length - 1].waMessageId;
   return results.some((r) => r.waMessageId === opts.squadPostId) ? opts.squadPostId : null;
 }

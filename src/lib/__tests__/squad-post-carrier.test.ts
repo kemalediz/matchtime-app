@@ -48,16 +48,26 @@ describe("a reply the squad composition skips never carries the squad post", () 
   });
 });
 
-describe("UNCHANGED: a team post is left as it was", () => {
-  it.each(["show_teams_request", "generate_teams_request"])("%s, last: it takes the marker, as before", (intent) => {
-    expect(carrier([IN, ask(intent)])).toBe("wa-q");
+// Review of #628: a team post anywhere in the batch means nobody carries
+// the squad post. Once teams exist the squad post IS the team sheet, so a
+// composable reply after the team post would send the sheet a second time.
+describe("a batch with a team post: nobody carries the squad post", () => {
+  it.each(["show_teams_request", "generate_teams_request"])("%s, last: no carrier", (intent) => {
+    expect(carrier([IN, ask(intent)])).toBeNull();
   });
 
-  it("a replacement or swap sheet (by id), last: it takes the marker, as before", () => {
-    expect(carrier([IN, ask("in")], { teamPosts: ["wa-q"] })).toBe("wa-q");
+  it("a replacement or swap sheet (by id): no carrier", () => {
+    expect(carrier([IN, ask("in")], { teamPosts: ["wa-q"] })).toBeNull();
   });
 
-  it("a composable reply last: it carries it, as before", () => {
+  it("a team post, then a reply with words of its own, then a unified answer: no carrier", () => {
+    const sheet: CarrierResult = { waMessageId: "wa-teams", handledBy: "llm", intent: "show_teams_request", reply: "*Red*:\n1. Pat" };
+    const words: CarrierResult = { waMessageId: "wa-out", handledBy: "llm", intent: "out", reply: "Pat, you're out." };
+    const answer: CarrierResult = { waMessageId: "wa-q", handledBy: "llm", intent: "unified_answer", reply: "Ben is on the bench." };
+    expect(carrier([sheet, IN, words, answer])).toBeNull();
+  });
+
+  it("UNCHANGED: no team post, a composable reply last carries it", () => {
     expect(carrier([IN, ask("count")])).toBe("wa-q");
   });
 });

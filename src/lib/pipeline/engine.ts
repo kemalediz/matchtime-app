@@ -237,6 +237,11 @@ const SELF_REFS = new Set([
   // here: Ben is an English first name, and a closed list that turned
   // "put Ben with Sait" into the sender would be worse than the gap.
   "beni", "bana", "kendimi", "kendim",
+  // The possessives (review of #628, 2026-11-18): the question extractor
+  // sometimes writes the asker's words as they stand ("my", "benim"), and
+  // since an unresolved name has no subject, an unknown self word lost the
+  // asker.
+  "my", "mine", "benim", "kendi",
 ]);
 /** Case-folded both ways, so a typed "BENİ" and an English "I" both hit.
  *  Exported for the batches, which do not ask who-is-who about "me". */
@@ -246,7 +251,8 @@ export const isSelfRef = (ref: string): boolean => {
 };
 
 /**
- * `isSelfRef`, unless the word is also the name of one of these members
+ * `isSelfRef`, plus the Turkish "ben" (review of #628), unless the word is
+ * also the name of one of these members
  * (review of #604, 2026-11-16): "Bana" is Turkish for "to me" and a given
  * name, so in a club with a Bana it may be her, and is never read as the
  * sender. Compared with the member's whole name, first name and the club's
@@ -259,12 +265,15 @@ export const isSelfRefAmong = (
   ref: string,
   roster: ReadonlyArray<{ name: string | null; aliases?: readonly string[] }>,
 ): boolean => {
-  if (!isSelfRef(ref)) return false;
   const folds = (x: string): string[] => {
     const t = x.trim();
     return [...new Set([t.toLowerCase(), t.toLocaleLowerCase("tr")])];
   };
   const refs = new Set(folds(ref));
+  // "ben" is the Turkish "I" and an English name, so it is never on the
+  // closed list; here, where the club's names are known, it is the sender
+  // unless a member is called Ben.
+  if (!isSelfRef(ref) && !refs.has("ben")) return false;
   return !roster.some((m) => {
     const name = (m.name ?? "").trim();
     const words = name ? [name, name.split(/\s+/)[0]] : [];

@@ -94,7 +94,7 @@ vi.mock("@/lib/player-stats", () => ({
   }),
 }));
 
-import { answerScopedQuestion } from "../dm-qa";
+import { answerScopedQuestion, type ScopedAnswer } from "../dm-qa";
 import { loadUnifiedDmInput } from "../unified-dm";
 import { buildDmQaApology } from "../dm-copy";
 import { AiBudgetExceededError } from "../ai-budget-context";
@@ -136,8 +136,10 @@ const answering = (answer: string | Error) => {
   return calls;
 };
 
-const ask = (over: Partial<Parameters<typeof answerScopedQuestion>[0]> = {}) =>
-  answerScopedQuestion({ userId: "u-alfie", orgId: "org-1", question: "when is the next game?", askerName: "Alfie Brook", ...over });
+// The answer, or the cap's marker (`ScopedCapped`), read as an answer here:
+// only the cap test expects the marker, and checks it whole.
+const ask = async (over: Partial<Parameters<typeof answerScopedQuestion>[0]> = {}) =>
+  (await answerScopedQuestion({ userId: "u-alfie", orgId: "org-1", question: "when is the next game?", askerName: "Alfie Brook", ...over })) as ScopedAnswer | null;
 
 beforeEach(() => {
   h.state = squad();
@@ -154,7 +156,8 @@ beforeEach(() => {
 describe("the daily AI cap", () => {
   it("at the cap there is no DM reply at all, as the old DM answer did", async () => {
     const calls = answering(new AiBudgetExceededError("org:org-1", "unified-answer"));
-    expect(await ask()).toBeNull();
+    // A marker, not null (review of #628): the route logs it as qa-capped.
+    expect(await ask()).toEqual({ capped: true, orgId: "org-1" });
     expect(calls).toHaveLength(1);
   });
 

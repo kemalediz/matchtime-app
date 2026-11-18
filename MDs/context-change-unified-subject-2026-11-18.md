@@ -62,3 +62,26 @@ about 15 to 25 calls, under $0.05.
 Stubbed gates ($0): every e2e/api and e2e/sim spec, 1756 passed and 1 failed
 on a dev-server ECONNRESET (`sim/pool/ask-retry.spec.ts`), which passed 6 of 6
 when rerun alone.
+
+## Review of #628 (same day)
+
+- **A member called Bana is the subject.** The name lookup (who-is-who) skipped
+  every word on the self list, so "Bana" was never looked up. It now skips a
+  self word only when no member has that name or alias (`isSelfRefAmong`), in
+  `factRefs` and `identifyRefs`. "what is Bana's rating?" in a club with a
+  Bana: `THE PLAYER THE QUESTION IS ABOUT: Bana Kaya`, in groups and HQ.
+- **Self words the list did not know.** Since an unresolved name now has no
+  subject, an unknown self word lost the asker. `my`, `mine`, `benim`, `kendi`
+  join the self list; `ben` is the asker only when no member is called Ben.
+  HQ's own stats block follows the same rule.
+- **One team sheet.** A batch with any team post has no squad post carrier.
+- **The cap in a DM** answers `ignored: "qa-capped"`.
+
+Paid rerun, `scripts/live-check-unified-subject.ts` with two more Turkish
+cases ("ben kaçıncıyım?", "benim nemesisim kim?"): 22 calls, $0.0050. The
+extractor wrote `me` for both, so the new list words are the safety net, not
+the live path. Every case answered as its "good" line says except one: "en
+zorlandığım rakip kim?" read "rakip" as the opposing team this time (it
+answered correctly in the first run). Its context is the same before and
+after this round (personRef `me`, the asker), so this is the model varying,
+not this change.
