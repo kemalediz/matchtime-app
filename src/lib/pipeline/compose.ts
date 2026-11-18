@@ -41,7 +41,6 @@
  *
  * DRY-RUN: this returns strings. It does not send them anywhere.
  */
-import { buildFormatSwitchFacts } from "../format-switch";
 import { renderGuestNameAsk } from "../guest-name-ask";
 // From `../group-copy`, not from message-analyzer / team-generation:
 // both of those import the Prisma client, and this module has to be
@@ -52,20 +51,8 @@ import { composeSquadStatusPost, formatTeamsPost, withCancelledLine } from "../g
 // The Prisma-free half of `rating-progress.ts`, split out on 2026-09-11
 // precisely so this file can render that answer. See this module's
 // header for what a Prisma import here does to the corpus spec.
-import { formatRatingProgressReply } from "../rating-progress-answer";
-import { resolvePerson } from "./identity";
-import { renderResults, resultsKey } from "./results-answer";
-import {
-  renderAskPerson,
-  genericPeriodNote,
-  renderStatsBottom,
-  renderStatsGenericSafeLine,
-  renderStatsTable,
-} from "./stats-answer";
 import { t } from "../i18n/t";
-import { joinChoice, joinList } from "../i18n/text";
-import { activityFeeText } from "../activity-fee";
-import { benchClause } from "../squad-count-line";
+import { joinChoice } from "../i18n/text";
 import type { EngineResult, SquadState } from "./types";
 import { labelsWithSideNames } from "./score-sides";
 
@@ -73,13 +60,6 @@ export interface Utterance {
   /** The message this answers, or null for the batch-level squad post. */
   messageId: string | null;
   text: string;
-  /**
-   * Set only on the organisers-mode space answer (`oa_space_answer`): it
-   * names nobody and shows no list, so the players' group may hear it
-   * where the organisers announce the list. `answer-batch.ts` turns it
-   * into `ORGANISERS_SPACE_INTENT`, which the analyze route's nets skip.
-   */
-  organisersSafe?: true;
 }
 
 export interface ComposedOutput {
@@ -262,13 +242,10 @@ export function compose(result: EngineResult): ComposedOutput {
   // WHO ANNOUNCES THE LIST AND TEAMS (2026-10-14, list-announcer.ts). When
   // the club's organisers do, the players' group never gets the squad or a
   // team sheet from MatchTime: an IN or OUT gets its reaction and nothing
-  // else, a question about who is playing gets one line saying the
-  // organisers will post the list, and one about the teams the same for
-  // the teams. A question about SPACE ("is there still space?", "how many
-  // are we?") is answered with the open places and how to ask for one,
-  // never a name (FNF 2026-10-20: the organisers keep the list, not
-  // whether there is room). Every other answer (stats, scores) is
-  // unchanged.
+  // else, a request for the list gets one line saying the organisers will
+  // post it, and one for the teams the same for the teams. Every other
+  // question is the unified answer's, whose context names nobody in the
+  // squad here (`unified-answer.ts`).
   //
   // A SLOT OPENING is not said in the players' group either (2026-10-14,
   // the FNF rehearsal: "X is out, 17 of 18. One slot open, say IN" went
@@ -279,24 +256,12 @@ export function compose(result: EngineResult): ComposedOutput {
   for (const sp of result.speech) {
     if (organisersAnnounce) {
       if (sp.kind === "squad_status" || sp.kind === "replacement_teams_post") continue;
-      if (sp.kind === "answer_squad" || sp.kind === "answer_bench" || sp.kind === "answer_person_status") {
+      if (sp.kind === "answer_squad") {
         utterances.push({ messageId: sp.messageId, text: s.oa_list_by_organisers });
         continue;
       }
       if (sp.kind === "teams_post" || sp.kind === "teams_not_generated") {
         utterances.push({ messageId: sp.messageId, text: s.oa_teams_by_organisers });
-        continue;
-      }
-      if (sp.kind === "answer_count") {
-        utterances.push({
-          messageId: sp.messageId,
-          text: s.oa_space_answer({
-            open: Math.max(0, state.maxPlayers - confirmed.length),
-            kickoffLabel: state.kickoffLabel,
-            organisersPick: state.features.benchPickMode === "organiser",
-          }),
-          organisersSafe: true,
-        });
         continue;
       }
     }
@@ -394,26 +359,6 @@ export function compose(result: EngineResult): ComposedOutput {
         break;
       }
 
-      case "answer_count": {
-        const need = Math.max(0, state.maxPlayers - confirmed.length);
-        utterances.push({
-          messageId: sp.messageId,
-          text: s.answer_count({
-            ...(state.features.openSquad ? { openSquad: true } : {}),
-            stated: sp.statedCount !== null && sp.statedCount !== confirmed.length,
-            confirmed: confirmed.length,
-            maxPlayers: state.maxPlayers,
-            kickoffLabel: state.kickoffLabel,
-            need,
-            // Who is waiting, with the count (FNF 2026-10-18). A players'
-            // group whose organisers announce the list never reaches here:
-            // it gets `oa_space_answer` above, which names nobody.
-            bench: benchClause(lang, bench),
-          }),
-        });
-        break;
-      }
-
       case "answer_squad":
         // The SAME composer the batch squad post uses, called directly.
         // "who's playing?" used to reach `answer_count` and come back as
@@ -436,54 +381,11 @@ export function compose(result: EngineResult): ComposedOutput {
         utterances.push({ messageId: sp.messageId, text: state.forOrganisers ? organisersList() : squadStatePost() });
         break;
 
-      case "answer_fixture": {
-        // Kickoff and venue, both pre-formatted by `load-state.ts`, and
-        // NOTHING ELSE — deliberately no count.
-        //
-        // A count here would carry an `N/M` beside squad vocabulary,
-        // which is rule (c) of `displaysSquadState`, so
-        // `composeSquadStateReply` would drop this whole answer and post
-        // the roster instead: the person who asked what time kickoff is
-        // would get a list of names and no time. The same trap that kept
-        // the STATS and OPTIONS answers refused until 2026-09-09, when
-        // both were re-shaped to escape it rather than left unanswered.
-        // See `answer-batch.ts`'s `ANSWERABLE_TOPICS`.
-        utterances.push({
-          messageId: sp.messageId,
-          text: s.answer_fixture({ kickoffLabel: state.kickoffLabel, venue: state.venue.trim() }),
-        });
-        break;
-      }
-
-      case "answer_club": {
-        // THE CLUB'S SETUP, in either group (2026-10-16). Admins are the
-        // roster's OWNER and ADMIN members; the rest is `state.club`, which
-        // `answer-batch.ts` loads only for this question. Not loaded: say
-        // nothing, and the batch disowns the message with a receipt.
-        const club = state.club;
-        if (!club) {
-          operatorNotes.push(`compose: answer_club for ${sp.messageId} with no club snapshot loaded; saying nothing`);
-          break;
-        }
-        utterances.push({
-          messageId: sp.messageId,
-          text: s.answer_club({
-            admins: joinList(lang, state.roster.filter((m) => m.isAdmin && m.name).map((m) => m.name)),
-            collector: club.collectorName,
-            fee: club.feePerPlayer !== null ? activityFeeText(club.feePerPlayer) : null,
-            feeSplit: club.feeSplitTotal,
-            teamsReady: club.teamsReady,
-            forOrganisers: club.forOrganisers === true,
-          }),
-        });
-        break;
-      }
-
       case "answer_open": {
-        // ANYTHING ELSE (2026-11-10): the grounded open answer, written by
-        // `open-answer.ts` and already checked there. Not usable: say
-        // nothing, and `answer-batch.ts` disowns the message, which keeps
-        // today's line for the asker.
+        // ANYTHING ELSE: the unified answer, written by `unified-answer.ts`
+        // and already checked there. Not usable: say nothing, and
+        // `answer-batch.ts` disowns the message, which keeps the caller's
+        // line for the asker.
         const a = state.openAnswers?.[sp.messageId];
         if (!a || !("text" in a)) {
           operatorNotes.push(
@@ -492,285 +394,6 @@ export function compose(result: EngineResult): ComposedOutput {
           break;
         }
         utterances.push({ messageId: sp.messageId, text: a.text });
-        break;
-      }
-
-      case "answer_score": {
-        // THE RESULT OF THE LAST MATCH PLAYED, in three sentences —
-        // and the two that are not a scoreline are the point.
-        //
-        // `state.completedMatch` is the most recent match whose kickoff
-        // PLUS duration has passed, in any of three statuses. A match
-        // only becomes COMPLETED when somebody records a score, so an
-        // ended Tuesday with nobody's report sits at TEAMS_PUBLISHED
-        // with both scores null — which was the LIVE state on Sutton FC
-        // the day this was written. "0 - 0" would be a fabricated
-        // result; "we haven't played" would be false. Neither is said.
-        //
-        // The kickoff label is printed on every branch that has a match,
-        // because this field is "the most recent ended match" and the
-        // question is usually "did we win on TUESDAY?". If the two are
-        // different nights, the reader can see it. Nothing else in this
-        // answer can tell them.
-        const m = state.completedMatch;
-        if (!m) {
-          utterances.push({ messageId: sp.messageId, text: s.answer_score_no_match });
-          break;
-        }
-        if (m.redScore === null || m.yellowScore === null) {
-          utterances.push({
-            messageId: sp.messageId,
-            text: s.answer_score_no_score({ kickoffLabel: m.kickoffLabel }),
-          });
-          break;
-        }
-        const [redLabel, yellowLabel] = state.teamLabels;
-        utterances.push({
-          messageId: sp.messageId,
-          text: s.answer_score_result({
-            kickoffLabel: m.kickoffLabel,
-            redLabel,
-            red: m.redScore,
-            yellow: m.yellowScore,
-            yellowLabel,
-            winnerLabel:
-              m.redScore === m.yellowScore ? null : m.redScore > m.yellowScore ? redLabel : yellowLabel,
-          }),
-        });
-        break;
-      }
-
-      case "answer_results": {
-        // SEVERAL RESULTS, or a period's (2026-09-29). Rendered by
-        // `results-answer.ts` from `state.results`, which `answer-batch.ts`
-        // loads only when such a question survived ownership. Every date
-        // and score is the database's; the count and period are the
-        // extractor's fields, capped by the engine.
-        const text = renderResults(sp, state.results?.[resultsKey(sp.period)], state.features.language);
-        if (text === null) {
-          // NOT LOADED: say nothing, and the batch disowns the message
-          // with a receipt, exactly like the payment answer above.
-          operatorNotes.push(`compose: answer_results for ${sp.messageId} with no results loaded; saying nothing`);
-          break;
-        }
-        utterances.push({ messageId: sp.messageId, text });
-        break;
-      }
-
-      case "answer_payments": {
-        // WHO HAS NOT PAID — as a COUNT. There is no branch below that
-        // can print a name, because `PaymentSnapshot` has no field a
-        // name could come out of (`payment-answer.ts` returns counts on
-        // purpose). `buildUnpaidTail` posts the same shape to the same
-        // group and says why: "Poll-only format per Sait's suggestion
-        // (2026-04-25). No naming, no shaming."
-        //
-        // The question asked WHO, so the answer says out loud that it is
-        // not going to say. A count with no explanation reads as a bot
-        // that misunderstood; a count with one reads as a bot with a
-        // rule.
-        const p = state.payments;
-        if (!p) {
-          // NOT LOADED. `answer-batch.ts` does the payment load only when
-          // a `payments` topic survived ownership, so reaching here means
-          // the intent was emitted without it. Saying nothing sends this
-          // message to that module's silent-id check, which disowns it —
-          // a hand-back with a receipt rather than an empty answer.
-          operatorNotes.push(
-            `compose: answer_payments for ${sp.messageId} with no payment snapshot loaded; saying nothing`,
-          );
-          break;
-        }
-        const text =
-          p.kind === "not_tracked"
-            ? s.answer_payments_not_tracked
-            : p.kind === "no_settled_match"
-              ? s.answer_payments_no_settled
-              : p.kind === "no_signal"
-                ? s.answer_payments_no_signal({ kickoffLabel: p.kickoffLabel })
-                : p.unpaid === 0
-                  ? s.answer_payments_all_settled({ kickoffLabel: p.kickoffLabel })
-                  : s.answer_payments_unpaid({ unpaid: p.unpaid, chargeable: p.chargeable, kickoffLabel: p.kickoffLabel });
-        utterances.push({ messageId: sp.messageId, text });
-        break;
-      }
-
-      case "answer_rating_progress": {
-        // HOW MANY HAVE RATED, AND WHO HAS NOT. Rendered by
-        // `formatRatingProgressReply`, byte-for-byte the sentence the
-        // deleted fast path posted: the copy is not the thing that went
-        // wrong, and a rewrite would be an unreviewed change riding
-        // along with a fix.
-        //
-        // THIS ANSWER NAMES NAMES, which `answer_payments` deliberately
-        // cannot. That is why the engine gates it on the sender being an
-        // admin — see `rating-progress-answer.ts`.
-        const p = state.ratingProgress;
-        if (!p) {
-          // NOT LOADED. `answer-batch.ts` does the rating read only when
-          // a `rating_progress` topic survived ownership, so reaching
-          // here means the intent was emitted without it. Saying nothing
-          // sends this message to that module's silent-id check, which
-          // disowns it — a hand-back with a receipt rather than an empty
-          // answer.
-          operatorNotes.push(
-            `compose: answer_rating_progress for ${sp.messageId} with no rating snapshot loaded; saying nothing`,
-          );
-          break;
-        }
-        utterances.push({ messageId: sp.messageId, text: formatRatingProgressReply(p, lang) });
-        break;
-      }
-
-      case "answer_bench":
-        utterances.push({
-          messageId: sp.messageId,
-          text: bench.length === 0 ? s.answer_bench_empty : s.answer_bench_list({ names: bench }),
-        });
-        break;
-
-      case "answer_person_status": {
-        const who = sp.userId
-          ? name(state.roster.find((m) => m.userId === sp.userId)?.name ?? sp.personRef)
-          : name(sp.personRef);
-        const row = sp.userId ? state.rows.find((r) => r.userId === sp.userId) : undefined;
-        const p = { who, kickoffLabel: state.kickoffLabel };
-        const text =
-          !row || row.status === "DROPPED"
-            ? s.answer_person_not_down(p)
-            : row.status === "BENCH"
-              ? s.answer_person_bench(p)
-              : s.answer_person_confirmed(p);
-        utterances.push({ messageId: sp.messageId, text });
-        break;
-      }
-
-      case "answer_phones": {
-        // SQUAD-SCOPED, like the rule it replaced. `message-analyzer.ts`
-        // answered this from "the Confirmed and Bench lists in the Match
-        // Context", and the question it was answering is "anyone IN THE
-        // SQUAD without a number?". (That prompt is deleted as of §10
-        // step 8; the scoping rule is kept because it is right, not
-        // because anything still enforces it from the other side.)
-        //
-        // `state.roster` is EVERY active membership, so an org-scoped
-        // answer on a club that has been provisioning named guests for
-        // months is a wall of names about people who are not playing —
-        // and it is invisible to every net downstream, because a list of
-        // names is not squad state and `composeSquadStateReply` never
-        // looks at it. Found by an adversarial review of §10 step 7,
-        // before the `question` route was ever switched on.
-        const byId = new Map(state.roster.map((m) => [m.userId, m]));
-        const missing = state.rows
-          .filter((r) => r.status === "CONFIRMED" || r.status === "BENCH")
-          .sort((a, b) => a.position - b.position)
-          .filter((r) => byId.get(r.userId)?.hasPhone === false)
-          .map((r) => name(byId.get(r.userId)?.name ?? ""));
-        utterances.push({
-          messageId: sp.messageId,
-          text: missing.length === 0 ? s.answer_phones_none : s.answer_phones_missing({ names: missing }),
-        });
-        break;
-      }
-
-      // ── THE STATS TABLES (2026-09-23). Rendered by `stats-answer.ts`
-      // from `state.stats`, which `answer-batch.ts` loads only when one
-      // of these was asked for. Not loaded means say nothing, which
-      // makes that module disown the message with a receipt: the same
-      // contract as `answer_payments`.
-      case "answer_stats_table":
-      case "answer_stats_bottom":
-      case "answer_stats_generic": {
-        const snap = state.stats;
-        if (!snap) {
-          operatorNotes.push(`compose: ${sp.kind} for ${sp.messageId} with no stats snapshot loaded; saying nothing`);
-          break;
-        }
-        let text = "";
-        if (sp.kind === "answer_stats_table") text = renderStatsTable(sp, snap, lang);
-        else if (sp.kind === "answer_stats_bottom") text = renderStatsBottom(snap, lang);
-        else {
-          // The grounded answer when it passed; otherwise the safe line.
-          // A rejected answer is OUR error: the group is never asked
-          // about it.
-          const g = snap.generic[sp.messageId];
-          if (g && "text" in g) {
-            // A period the tables do not cut to is said after the answer,
-            // by code (2026-09-23): the model was given the whole record.
-            const note = genericPeriodNote(sp.period, snap, lang);
-            text = note ? `${g.text}\n${note}` : g.text;
-          } else {
-            if (g) operatorNotes.push(`compose: generic stats answer for ${sp.messageId} rejected (${g.rejected}); said the safe line`);
-            text = renderStatsGenericSafeLine(snap, lang);
-          }
-        }
-        if (!text) {
-          operatorNotes.push(`compose: ${sp.kind} for ${sp.messageId} had nothing loaded to render; saying nothing`);
-          break;
-        }
-        utterances.push({ messageId: sp.messageId, text });
-        break;
-      }
-
-      case "ask_stats_person": {
-        // The reference is the poster's own words, echoed back. A phone
-        // number or a paragraph is not echoed into the group.
-        const ref = safeName(sp.ref, "");
-        if (!ref || ref.length > 40) {
-          operatorNotes.push(`compose: ask_stats_person for ${sp.messageId} with an unprintable reference; saying nothing`);
-          break;
-        }
-        utterances.push({
-          messageId: sp.messageId,
-          // A pushname that is a phone number is never printed: the
-          // question is then asked without a name in front of it.
-          text: renderAskPerson(
-            { askerName: sp.askerName ? safeName(sp.askerName, "") || null : null, ref, candidates: sp.candidates },
-            lang,
-          ),
-        });
-        break;
-      }
-
-      case "answer_options": {
-        // format-switch.ts computes both the arithmetic and the names.
-        // The composer copies. On 2026-08-30 the model computed 8 − 5
-        // (players per TEAM) instead of 8 − 10 (the format TOTAL) and
-        // named three real people as losing their place when a switch
-        // would have benched nobody. `benchedOnFormatSwitch` takes the
-        // total and slices by position — the same rule
-        // `switchMatchFormat` applies for real — so the wrong names are
-        // not reachable from here. Nothing below recomputes anything:
-        // `f.proposal` is a finished sentence.
-        //
-        // ⚠️ THE LEAD SPELLS THE COUNT OUT, AND THAT IS NOT A STYLE
-        // CHOICE. It used to read "We're 8/14, need 6 more 🙏". An
-        // "N/M" beside squad vocabulary is rule (c) of
-        // `displaysSquadState`, and `route.ts:2480` REPLACES anything it
-        // recognises with the upcoming-squad roster — so the whole
-        // answer, arithmetic included, was dropped rather than appended
-        // to. That is why this topic was refused for months. "8 of 14"
-        // says the same thing to a human and carries no slash.
-        // `__tests__/answer-batch.test.ts` section 6 pins it.
-        const need = Math.max(0, state.maxPlayers - confirmed.length);
-        const facts = buildFormatSwitchFacts({
-          confirmedNames: confirmed,
-          currentMaxPlayers: state.maxPlayers,
-          alternatives: state.smallerFormats,
-          lang,
-        });
-        const viable = facts.filter((f) => f.proposal !== null);
-        const lines = [
-          s.answer_options_lead({ confirmed: confirmed.length, maxPlayers: state.maxPlayers, need }),
-        ];
-        if (viable.length === 0) {
-          lines.push(
-            state.smallerFormats.length === 0 ? s.answer_options_no_formats : s.answer_options_none_viable,
-          );
-        } else {
-          for (const f of viable) lines.push(f.proposal!);
-        }
-        utterances.push({ messageId: sp.messageId, text: lines.join(" ") });
         break;
       }
 
@@ -1086,6 +709,3 @@ export function spokenText(out: ComposedOutput): string[] {
   return out.utterances.map((u) => u.text);
 }
 
-/** Only used by the person-status answer; kept here so the composer has
- *  a single import surface. */
-export { resolvePerson };

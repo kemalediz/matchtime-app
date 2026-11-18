@@ -34,7 +34,7 @@ import {
   REGULAR_MIN_GAMES,
   momWinners,
 } from "./badge-rules";
-import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./pipeline/stats-answer";
+import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./pipeline/stats-limits";
 import { NOT_CANCELLED } from "@/lib/played-match";
 
 export {

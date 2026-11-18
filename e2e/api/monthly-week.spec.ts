@@ -494,9 +494,9 @@ test("3. a PAYG player takes it: the vacated slot number, the offer closed, the 
 
 test("asked for the squad, MatchTime answers with the month's list, not the weekly roster", async ({ request, db }) => {
   await ageListPosts(db);
-  const ASK = "@Match Time are we full for monday?";
+  const ASK = "@Match Time what's the list for monday?";
   engineOn({
-    [ASK]: { route: "question", facts: { topic: "count", personRef: null, statedCount: null } },
+    [ASK]: { route: "question", facts: { kind: "list", personRef: "", feature: "none", badge: "none" } },
     "out sorry": { route: "self_att", facts: selfOut() },
     "in": { route: "self_att", facts: selfIn() },
   });

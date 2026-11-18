@@ -22,6 +22,11 @@
  * sends nothing. Prints each case, the calls made and the cost. Stops at
  * MAX_USD. WHAT ONE PASS CANNOT PROVE: an occasional miss can pass once
  * and fail live.
+ *
+ * 2026-11-18 (cleanup of #626): the question extractor reads four kinds
+ * only (squad, how_it_works, my_stats, other); every old topic it used to
+ * name (bench, count, club, payments, stats and the rest) is now "other",
+ * answered by the unified answer. The expectations below say so.
  */
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
@@ -57,18 +62,18 @@ interface HqQuestion {
   why: string;
 }
 const HQ: HqQuestion[] = [
-  { text: "MatchTime who are the admins?", topics: ["club"], why: "the incident" },
-  { text: "MatchTime yöneticiler kim?", topics: ["club"], why: "the incident, TR" },
-  { text: "who's on the bench?", topics: ["bench"], why: "bench" },
-  { text: "yedekte kimler var?", topics: ["bench"], why: "bench, TR" },
-  { text: "@Match Time how many are in?", topics: ["count", "squad"], why: "count" },
-  { text: "@Match Time kaç kişi var?", topics: ["count", "squad"], why: "count, TR" },
-  { text: "MatchTime when are the teams made?", topics: ["club"], why: "the teams time" },
-  { text: "MatchTime takımlar ne zaman kuruluyor?", topics: ["club"], why: "the teams time, TR" },
-  { text: "MatchTime who collects the money?", topics: ["club"], why: "the collector" },
-  { text: "MatchTime parayı kim topluyor?", topics: ["club"], why: "the collector, TR" },
+  { text: "MatchTime who are the admins?", topics: ["other"], why: "the incident" },
+  { text: "MatchTime yöneticiler kim?", topics: ["other"], why: "the incident, TR" },
+  { text: "who's on the bench?", topics: ["other"], why: "bench" },
+  { text: "yedekte kimler var?", topics: ["other"], why: "bench, TR" },
+  { text: "@Match Time how many are in?", topics: ["other", "squad"], why: "count" },
+  { text: "@Match Time kaç kişi var?", topics: ["other", "squad"], why: "count, TR" },
+  { text: "MatchTime when are the teams made?", topics: ["other"], why: "the teams time" },
+  { text: "MatchTime takımlar ne zaman kuruluyor?", topics: ["other"], why: "the teams time, TR" },
+  { text: "MatchTime who collects the money?", topics: ["other"], why: "the collector" },
+  { text: "MatchTime parayı kim topluyor?", topics: ["other"], why: "the collector, TR" },
   { text: "what can you do?", topics: ["how_it_works"], why: "a genuine help question: the HQ menu" },
-  { text: "@Match Time what is squad now including bench?", topics: ["squad", "bench"], why: "FNF 2026-10-18 13:32" },
+  { text: "@Match Time what is squad now including bench?", topics: ["squad", "other"], why: "FNF 2026-10-18 13:32" },
 ];
 
 /**
@@ -130,10 +135,10 @@ const LIST: ListCase[] = [
   // request); the claim beside the question must not change the topic.
   { text: "Glazers is out now.\n\n@Match Time what is the list?", want: "squad", why: "the incident, 2026-10-24, beside an OUT" },
   { text: "Glazers yok artık.\n\n@Match Time liste ne?", want: "squad", why: "the incident, TR" },
-  { text: "anyone on the bench?", want: "bench", why: "the bench alone stays bench" },
-  { text: "what's the bench list?", want: "bench", why: "the bench's own list stays bench" },
-  { text: "yedekte kimse var mı?", want: "bench", why: "the bench alone, TR" },
-  { text: "yedek listesi ne?", want: "bench", why: "the bench's own list, TR" },
+  { text: "anyone on the bench?", want: "other", why: "the bench alone stays bench" },
+  { text: "what's the bench list?", want: "other", why: "the bench's own list stays bench" },
+  { text: "yedekte kimse var mı?", want: "other", why: "the bench alone, TR" },
+  { text: "yedek listesi ne?", want: "other", why: "the bench's own list, TR" },
 ];
 
 /** Players' group (manager review of #296): the fee and the teams time, held out
@@ -157,21 +162,21 @@ const REGRESSIONS: QCase[] = [
   { text: "@Match Time how are the teams picked?", check: (f) => f.topic === "how_it_works" && f.feature === "teams", why: "HOW the teams are made stays how_it_works (in the prompt)" },
   { text: "@Match Time how do the ratings work?", check: (f) => f.topic === "how_it_works" && f.feature === "ratings", why: "how_it_works, ratings" },
   { text: "@Match Time how do I pay?", check: (f) => f.topic === "how_it_works" && f.feature === "payments", why: "how_it_works, payments" },
-  { text: "@Match Time who's on the bench?", check: (f) => f.topic === "bench", why: "bench (in the prompt)" },
+  { text: "@Match Time who's on the bench?", check: (f) => f.topic === "other", why: "bench (in the prompt)" },
   { text: "@Match Time who's in?", check: (f) => f.topic === "squad", why: "squad" },
-  { text: "@Match Time how many spots left?", check: (f) => f.topic === "count", why: "count" },
-  { text: "@Match Time we're 9/14 right?", check: (f) => f.topic === "count" && f.statedCount === 9, why: "count, stated" },
-  { text: "@Match Time is Zair in?", check: (f) => f.topic === "person_status" && /zair/i.test(f.personRef ?? ""), why: "person_status" },
-  { text: "@Match Time anyone in the squad without a number?", check: (f) => f.topic === "phones", why: "phones" },
-  { text: "@Match Time maç kaçta?", check: (f) => f.topic === "fixture", why: "fixture, TR" },
-  { text: "@Match Time give us the scores of the last 5 matches", check: (f) => f.topic === "score" && f.listSize === 5, why: "score, list" },
-  { text: "@Match Time kim ödemedi?", check: (f) => f.topic === "payments", why: "payments, TR" },
-  { text: "@Match Time has everyone paid for last week?", check: (f) => f.topic === "payments", why: "payments, held out against club" },
-  { text: "@Match Time who hasn't rated yet?", check: (f) => f.topic === "rating_progress", why: "rating_progress" },
+  { text: "@Match Time how many spots left?", check: (f) => f.topic === "other", why: "count" },
+  { text: "@Match Time we're 9/14 right?", check: (f) => f.topic === "other", why: "count, stated" },
+  { text: "@Match Time is Zair in?", check: (f) => f.topic === "other" && /zair/i.test(f.personRef ?? ""), why: "person_status" },
+  { text: "@Match Time anyone in the squad without a number?", check: (f) => f.topic === "other", why: "phones" },
+  { text: "@Match Time maç kaçta?", check: (f) => f.topic === "other", why: "fixture, TR" },
+  { text: "@Match Time give us the scores of the last 5 matches", check: (f) => f.topic === "other", why: "score, list" },
+  { text: "@Match Time kim ödemedi?", check: (f) => f.topic === "other", why: "payments, TR" },
+  { text: "@Match Time has everyone paid for last week?", check: (f) => f.topic === "other", why: "payments, held out against club" },
+  { text: "@Match Time who hasn't rated yet?", check: (f) => f.topic === "other", why: "rating_progress" },
   { text: "@Match Time istatistiklerim", check: (f) => f.topic === "my_stats", why: "my_stats, TR" },
-  { text: "@Match Time top 5 ratings in the last month", check: (f) => f.topic === "stats" && f.table === "ratings" && f.listSize === 5 && f.period?.kind === "last", why: "stats, table, size, period" },
-  { text: "@Match Time we're short, what are our options?", check: (f) => f.topic === "options", why: "options" },
-  { text: "@Match Time how much do we pay each?", check: (f) => f.topic === "club", why: "the fee is club now (in the prompt)" },
+  { text: "@Match Time top 5 ratings in the last month", check: (f) => f.topic === "other", why: "stats, table, size, period" },
+  { text: "@Match Time we're short, what are our options?", check: (f) => f.topic === "other", why: "options" },
+  { text: "@Match Time how much do we pay each?", check: (f) => f.topic === "other", why: "the fee is club now (in the prompt)" },
 ];
 
 async function main() {
@@ -230,7 +235,7 @@ async function main() {
     console.log(`${mark(route === "question")}  ${JSON.stringify(c)}  routed ${route}   (want question)`);
     const ex = await extractForRoute(model, "question", { id: `pq${i}`, body: c, authorName: "Can", tagged: true, history: [], lastBotPost: null });
     const f = ex.facts.kind === "question" ? ex.facts : null;
-    console.log(`${mark(f?.topic === "club")}  ${JSON.stringify(c)}  ${f?.topic}   (want club)`);
+    console.log(`${mark(f?.topic === "other")}  ${JSON.stringify(c)}  ${f?.topic}   (want other)`);
   }
 
   const hqCases = playersOnly ? [] : HQ;
@@ -245,7 +250,7 @@ async function main() {
   for (const [i, c] of REGRESSIONS.entries()) {
     const ex = await extractForRoute(model, "question", { id: `r${i}`, body: c.text, authorName: "Can", tagged: true, history: [], lastBotPost: c.lastBotPost ?? null });
     const f = ex.facts.kind === "question" ? ex.facts : null;
-    console.log(`${mark(!!f && c.check(f))}  ${JSON.stringify(c.text)}  ${JSON.stringify(f && { topic: f.topic, feature: f.feature, personRef: f.personRef, statedCount: f.statedCount, table: f.table, listSize: f.listSize, period: f.period })}   (${c.why})`);
+    console.log(`${mark(!!f && c.check(f))}  ${JSON.stringify(c.text)}  ${JSON.stringify(f && { topic: f.topic, feature: f.feature, personRef: f.personRef })}   (${c.why})`);
   }
 
   if (!playersOnly && !routerOnly) await listSection(mark);

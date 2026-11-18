@@ -345,6 +345,41 @@ export function swapGuardFor(
   };
 }
 
+// ── WHY NO SWAP WAS MADE, FOR THE UNIFIED ANSWER (2026-11-18) ────────
+//
+// Sutton, 17 Nov 19:23: admin Elvin copied the help's example "@Match Time
+// swap Sam with Alex". Neither name is a player of the match, so the path
+// stopped, and the unified answer, told only that nothing was done,
+// guessed "I can't swap players from here", which is false. It is now
+// told why, in these words: a fact the code has, never read from the
+// message.
+
+/** Why a players' group team change was not made (`team-swap-apply.ts`). */
+export type SwapNotDone =
+  | { kind: "no-player"; a: string; b: string }
+  | { kind: "self"; a: string; b: string }
+  | { kind: "shape" }
+  | { kind: "no-match" };
+
+/** PURE. Why, in plain English, for the unified answer's NOT DONE line. */
+export function swapNotDoneWhy(w: SwapNotDone): string {
+  switch (w.kind) {
+    case "no-player":
+      return `neither "${w.a}" nor "${w.b}" is a name MatchTime can find among the players of the upcoming match (the squad, the bench and the team sheet), so nobody was swapped`;
+    case "self":
+      return `it names the sender, and reads as the sender giving their own place to someone else rather than a swap of two players; that is said with OUT, and the other player says IN`;
+    case "shape":
+      return "a team change MatchTime can make from a message is to swap two players, swap the two teams over, or keep players together or apart, and this asked for another kind of change";
+    case "no-match":
+      return "there is no upcoming match to change the teams of";
+  }
+}
+
+/** PURE. Is this word the sender ("me")? */
+export function isSwapSelfWord(word: string): boolean {
+  return SWAP_SELF_WORDS.has(swapToken(word));
+}
+
 // ── THE REFUSAL, NAMED ───────────────────────────────────────────────
 
 /** Why a real swap was not applied, in terms the owner can act on. */

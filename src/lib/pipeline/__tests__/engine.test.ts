@@ -903,29 +903,6 @@ describe("PR#29 · a message carrying TWO facts loses neither", () => {
 
 // ── S24 / S25 · claims about state, and short confirmations ────────────
 
-describe("S24 · fact-check a stated count (2026-04-24, f71b6ad)", () => {
-  it("answers with the DB's number, not the asserted one", () => {
-    const state = world({
-      confirmed: ["kemal", "elvin", "sait", "mustafa", "abid", "idris", "faris", "shaz", "adam", "efat", "usama"],
-    });
-    const r = decide({
-      now: NOW,
-      state,
-      messages: [
-        msg({
-          from: "amir",
-          body: "@Match Time we're 9/14 right?",
-          route: "question",
-          tagged: true,
-          facts: { kind: "question", topic: "count", personRef: null, statedCount: 9 },
-        }),
-      ],
-    });
-    expect(r.speech.some((s) => s.kind === "answer_count")).toBe(true);
-    expect(attWrites(r.writes)).toHaveLength(0);
-  });
-});
-
 describe("S25 · a bare 'Confirmed' resolves against the bot's own last post (7453daa)", () => {
   it("registers exactly the names MatchTime listed as pending", () => {
     const state = world({
@@ -1061,14 +1038,14 @@ describe("S36 · one authoritative squad post per batch", () => {
           body: "@Match Time how many are we now?",
           route: "question",
           tagged: true,
-          facts: { kind: "question", topic: "count", personRef: null, statedCount: null },
+          facts: { kind: "question", topic: "squad", personRef: null },
         }),
       ],
     });
     expect(confirmedCount(r.nextState)).toBe(12);
     expect(r.speech.filter((s) => s.kind === "squad_status")).toHaveLength(1);
     // The count question is answered BY that post, not by a second one.
-    expect(r.speech.filter((s) => s.kind === "answer_count")).toHaveLength(0);
+    expect(r.speech.filter((s) => s.kind === "answer_squad")).toHaveLength(0);
   });
 });
 
@@ -1088,13 +1065,11 @@ describe("S36b · a routine attendance change gets the react and nothing else (2
     kind: "question",
     topic: "squad",
     personRef: null,
-    statedCount: null,
   } as const;
   const COUNT_Q = {
     kind: "question",
-    topic: "count",
+    topic: "squad",
     personRef: null,
-    statedCount: null,
   } as const;
 
   it("one IN on a short squad: a ✅ and NO roster post", () => {
@@ -1215,7 +1190,7 @@ describe("S36b · a routine attendance change gets the react and nothing else (2
     // Answered ONCE, by the single authoritative post (S36) — not by a
     // second, separately-composed sentence beside it.
     expect(r.speech.filter((s) => s.kind === "squad_status")).toHaveLength(1);
-    expect(r.speech.filter((s) => s.kind === "answer_count")).toHaveLength(0);
+    expect(r.speech.filter((s) => s.kind === "answer_squad")).toHaveLength(0);
   });
 
   it("an admin BENCHING somebody else DOES post the roster — that player has no react", () => {
@@ -1303,7 +1278,7 @@ describe("S36b · a routine attendance change gets the react and nothing else (2
       ],
     });
     expect(r.speech.filter((s) => s.kind === "squad_status")).toHaveLength(1);
-    expect(r.speech.filter((s) => s.kind === "answer_count")).toHaveLength(0);
+    expect(r.speech.filter((s) => s.kind === "answer_squad")).toHaveLength(0);
   });
 
   it("a roster question in the SAME batch as an IN is still answered", () => {
@@ -1349,9 +1324,8 @@ describe("S36c · a drop that opens a spot speaks; an IN still does not (2026-09
   // spot nobody hears about cannot be filled.
   const COUNT_Q = {
     kind: "question",
-    topic: "count",
+    topic: "squad",
     personRef: null,
-    statedCount: null,
   } as const;
 
   const INCIDENT =
@@ -2855,10 +2829,9 @@ describe("S16 · a roster question is not a counting question", () => {
     kind: "question" as const,
     topic: "squad" as const,
     personRef: null,
-    statedCount: null,
   };
 
-  it("asks for `answer_squad`, never `answer_count`", () => {
+  it("asks for `answer_squad`", () => {
     const state = world({ confirmed: ["kemal", "elvin", "sait"] });
     const r = decide({
       now: NOW,
@@ -2874,7 +2847,6 @@ describe("S16 · a roster question is not a counting question", () => {
       ],
     });
     expect(r.speech.some((s) => s.kind === "answer_squad")).toBe(true);
-    expect(r.speech.some((s) => s.kind === "answer_count")).toBe(false);
     expect(r.writes).toHaveLength(0);
   });
 
@@ -2913,63 +2885,6 @@ describe("S16 · a roster question is not a counting question", () => {
       ],
     });
     expect(r.speech).toHaveLength(0);
-  });
-});
-
-describe("S16 · a fixture question is answered, not shrugged at", () => {
-  it("emits `answer_fixture` rather than degrading to silence", () => {
-    const state = world({ confirmed: ["kemal"] });
-    const r = decide({
-      now: NOW,
-      state,
-      messages: [
-        msg({
-          from: "adam",
-          body: "@Match Time what time is kickoff",
-          route: "question",
-          tagged: true,
-          facts: { kind: "question", topic: "fixture", personRef: null, statedCount: null },
-        }),
-      ],
-    });
-    expect(r.speech.some((s) => s.kind === "answer_fixture")).toBe(true);
-    expect(r.outcomes[0].disposition).toBe("acted");
-    expect(r.degradations).toHaveLength(0);
-    expect(r.writes).toHaveLength(0);
-  });
-});
-
-describe("a result question is answered from the match that was played", () => {
-  const scoreAsk = () =>
-    msg({
-      from: "adam",
-      body: "@Match Time what was the score",
-      route: "question",
-      tagged: true,
-      facts: { kind: "question", topic: "score", personRef: null, statedCount: null },
-    });
-
-  it("emits `answer_score` rather than degrading to silence", () => {
-    const state = world({
-      confirmed: ["kemal"],
-      completedMatch: { id: "m-old", redScore: 5, yellowScore: 3 },
-    });
-    const r = decide({ now: NOW, state, messages: [scoreAsk()] });
-    expect(r.speech.some((s) => s.kind === "answer_score")).toBe(true);
-    expect(r.outcomes[0].disposition).toBe("acted");
-    expect(r.degradations).toHaveLength(0);
-    expect(r.writes).toHaveLength(0);
-  });
-
-  it("still emits it when no match has been played — the composer says so", () => {
-    // The engine does NOT branch on whether a score exists. It emits the
-    // intent and the composer renders the honest sentence for each of
-    // the three states, because splitting the decision across two
-    // modules is how one of them ends up rendering a `null` as a number.
-    const state = world({ confirmed: ["kemal"] });
-    const r = decide({ now: NOW, state, messages: [scoreAsk()] });
-    expect(r.speech.some((s) => s.kind === "answer_score")).toBe(true);
-    expect(r.writes).toHaveLength(0);
   });
 });
 
@@ -4205,7 +4120,7 @@ describe("S44 · a replacement takes the dropped player's slot (2026-09-15)", ()
           body: "@Match Time who's playing?",
           tagged: true,
           route: "question",
-          facts: { kind: "question", topic: "squad", personRef: null, statedCount: null },
+          facts: { kind: "question", topic: "squad", personRef: null },
         }),
       ],
     });

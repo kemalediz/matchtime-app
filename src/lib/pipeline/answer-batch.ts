@@ -172,7 +172,7 @@ import type { SilenceFacts } from "../tagged-silence";
 import type { QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
-import { OPEN_ANSWER_INTENT, ORGANISERS_SPACE_INTENT, UNIFIED_ANSWER_INTENT } from "../group-copy";
+import { UNIFIED_ANSWER_INTENT } from "../group-copy";
 import { decide as decideDefault } from "./engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
@@ -182,19 +182,9 @@ import { resolvePerson } from "./identity";
 import { identifyFacts, personPickerFor } from "./identify-batch";
 import type { PersonPicker } from "./who-is-who";
 import { anthropicModel, type PipelineModel } from "./llm";
-import {
-  STATS_CLARIFICATION_INTENT,
-  STATS_CLARIFIED_INTENT,
-  isFromAsker,
-  type StatsClarification,
-} from "./awaiting-answer";
-import { planResultsQuestion, resultsKey } from "./results-answer";
-import { TABLES_CUT_BY_PERIOD, planStatsQuestion, type StatsPlan } from "./stats-answer";
-import { cutsTheRecord, periodKey, periodSince } from "./stats-period";
-import { answerGenericStats } from "./stats-generic";
-import { answerOpenQuestion } from "./open-answer";
-import { answerUnified, type LastMatchRatings, type UnifiedPeriod } from "./unified-answer";
-import { isUnifiedAnswersEnabled } from "../unified-answers-flag";
+import { periodSince } from "./stats-period";
+import { answerUnified, type DeadEndFacts, type LastMatchRatings, type UnifiedPeriod } from "./unified-answer";
+import type { AlsoDonePart } from "../also-done";
 import type { HelpClubFacts } from "../help-club-facts";
 import {
   ANSWER_ENGINE_ROUTES,
@@ -235,296 +225,31 @@ import { extractorCacheKey, fanOutWarmFirst } from "./fan-out";
  */
 export const ANSWER_ROUTES = ANSWER_ENGINE_ROUTES;
 
-/** UNIFIED_ANSWERS: the shorter spans the unified answer is shown beside the
- *  whole record, so "most games this year" needs no period from the model. */
+/** The shorter spans the unified answer is shown beside the whole record,
+ *  so "most games this year" needs no period from the model. */
 const UNIFIED_PERIODS: ReadonlyArray<readonly [string, StatsPeriod]> = [
   ["the last 30 days", { kind: "last", count: 30, unit: "day" }],
   ["this year", { kind: "this", unit: "year" }],
 ];
 
 /**
- * The question topics answered from the database, and nothing else.
+ * THE QUESTIONS THIS MODULE ANSWERS (2026-11-18). Three things code does
+ * itself, and everything else:
  *
- * §6 of the redesign says it in one sentence: *"squad/bench/phone
- * answers become deterministic and only free-form stats need a model
- * call."* This constant is that sentence.
+ *   squad         the squad list post (`composeSquadStatusPost`)
+ *   how_it_works  the help explainer for this club (`deps.helpReply`)
+ *   my_stats      the asker's own stats link, which the route DMs
+ *   other         THE UNIFIED ANSWER: one model call over the club's
+ *                 records, filtered by audience (`unified-answer.ts`)
  *
- * ─────────────────────────────────────────────────────────────────────
- * `stats` AND `options` JOINED THE LIST ON 2026-09-09, AND THE REASON
- * THEY WERE MISSING WAS NEVER THE ANSWER
- * ─────────────────────────────────────────────────────────────────────
- * Both have been fully implemented since §10 step 7: `engine.ts` emits
- * them, `compose.ts` renders them deterministically, `SquadState`
- * carries `appearances` and `smallerFormats`, and the format-switch
- * arithmetic is `format-switch.ts`'s rather than a model's. What kept
- * them out of this list was what happened to the answer AFTER it was
- * composed.
- *
- * Every reply this module produces reaches `results` with
- * `handledBy: "llm"` (`route.ts:2126` — the AUDIT field says
- * "answer-engine", the WIRE field says "llm"), and `route.ts:2480`
- * runs `composeSquadStateReply` over every such reply. Anything
- * `displaysSquadState` recognises is REPLACED by a squad post composed
- * from a fresh snapshot. Both answers were recognised:
- *
- *   • the stats answer rendered `1. Kemal Ediz (24)` lines — a numbered
- *     run of 2+ lines, which is rule (a). `isLeaderboardLine`
- *     (`group-copy.ts:129`) exempts a leaderboard, but only when it
- *     carries an em dash, a percentage, "wins/votes/matches" or an
- *     "N/M (" pattern, and that shape carried none of them. So "who's
- *     been most consistent this season?" would have come back as the
- *     upcoming-squad roster: the 2026-05-14 incident §3.2 S16 exists
- *     for, reproduced by the replacement for the code that caused it.
- *   • the options answer led with "We're 8/14, need 6 more" — an "N/M"
- *     beside squad vocabulary, which is rule (c). `composeSquadStateReply`
- *     keeps a lead only when it makes no claim of its own, so the whole
- *     answer including the format-switch arithmetic would have been
- *     dropped rather than appended to.
- *
- * That is a defect in the FORMAT of two answers, and it was fixed as
- * one: the stats rows now use the house leaderboard shape
- * (`1. Kemal Ediz — 24 matches`, `match-history.ts:336`) which carries
- * two of `isLeaderboardLine`'s four markers, and the options lead spells
- * its count out ("8 of 14") so there is no slash for rule (c) to find.
- * Both are pinned by `__tests__/answer-batch.test.ts` section 6 and
- * `__tests__/compose.test.ts`, which assert `displaysSquadState` is
- * FALSE for each — the tests fail the day the punctuation regresses,
- * which is the only warning this class of defect gives.
- *
- * WHAT THE DELAY COST. Between §10 step 8 (which deleted the analyzer)
- * and this change, a tagged stats or options question was answered by
- * NOBODY: silence in the group plus a line on the operator DM. The data
- * gap named in the old version of this comment — MoM winners, an
- * all-time leaderboard and Elo, which `SquadState.appearances` does not
- * hold — is real and unchanged: this answers "most consistent by
- * appearances" and not those. That is a narrower answer than the
- * mega-prompt gave, and a narrower answer that is always right is the
- * trade §6.4 asks for. (The deterministic stats-link and stats-blast
- * peels in `route.ts` are a separate path and were never affected.)
- *
- * SUPERSEDED FOR STATS (2026-09-23). Every `stats` question is now a
- * code-rendered TABLE (`stats-answer.ts`) read from the website's own
- * loaders, appearances included, on the club's full record and cut to
- * the period asked for; the 30-day `SquadState.appearances` and its
- * em-dash row are gone. The route skips those answers by intent
- * (`skipsSquadComposition`) and their rows still carry a marker.
- *
- * ─────────────────────────────────────────────────────────────────────
- * `score` JOINED ON 2026-09-09, AND IT COST NO NEW I/O
- * ─────────────────────────────────────────────────────────────────────
- * "@Match Time what was the score last week" landed on `other` and was
- * refused, while `SquadState.completedMatch` was already carrying
- * `redScore`, `yellowScore` and `status` for the score-REPORTING route.
- * The read cost a topic, a composer branch and one extra field on the
- * loader (`kickoffLabel`, so the answer names the night it is about).
- *
- * ⚠️ ADMITTING `stats` OPENED A WRONG ANSWER BEFORE `score` CLOSED IT,
- * and it is worth recording because only a live run could see it. With
- * `stats` newly answerable and no `score` topic to reach, "did we win
- * on tuesday?" extracted as `stats` 3/3 and was answered with an
- * appearances leaderboard — a confident non sequitur. While `stats` was
- * refused this was invisible: both topics went to silence. The
- * extractor's stats line now says what stats is NOT, and `score` gives
- * the result questions somewhere correct to go. Measured after: the four
- * unambiguous result phrasings answer 10/10, 10/10, 10/10 and 8/10 (the
- * two misses are the ROUTER calling "how did we get on last night"
- * banter, not the extractor).
- *
- * THE AMBIGUOUS ONE WAS SETTLED BY MEASUREMENT, NOT BY ARGUMENT.
- * "whats the score situation" is a real message and reads two ways. Ten
- * live runs BEFORE this topic existed: `count` 8/10, `other` 2/10, no
- * drift toward a result. Ten AFTER, with `score` on the menu so the
- * model had somewhere else to go: `count` 10/10. The model is
- * consistent, so this follows it rather than overriding it — "score
- * SITUATION" is the tally, "what was the score" is the result. See
- * `QuestionTopic`'s own note.
- *
- * ─────────────────────────────────────────────────────────────────────
- * `payments` JOINED ON 2026-09-09, AND IT IS THE ONLY TOPIC HERE THAT
- * READS SOMETHING `loadSquadState` DOES NOT LOAD
- * ─────────────────────────────────────────────────────────────────────
- * "@Match Time who hasn't paid" was the last question on the 2026-09-06
- * list with no data behind it. It is also the only one where being
- * WRONG costs a person something rather than costing MatchTime
- * credibility, so it has three refusals to its one answer and the whole
- * decision lives in `payment-answer.ts` — which flag really gates it
- * (not the one with "tracking" in its name), why the answer names
- * nobody, and why the match must be COMPLETED.
- *
- * The SHAPE of the extra read is in this file, at stage 2b: one
- * targeted load AFTER extraction, only when a `payments` topic survived
- * ownership, passed down as data. `loadSquadState` runs on every batch
- * including the 69% that are banter, and `compose.ts` cannot import
- * Prisma, so neither "put it in the loader" nor "make it a lazy
- * accessor" was available. Measured live: the four payment phrasings
- * answer 40/40, and the negative control "how much do we pay each"
- * (the FEE, which nothing here holds) stays on `other` 10/10.
- *
- * ─────────────────────────────────────────────────────────────────────
- * WHAT THE THREE ADDITIONS MOVED, MEASURED THE SAME WAY EACH TIME
- * ─────────────────────────────────────────────────────────────────────
- * The Q1-Q24 table, twice, against the live Sutton squad:
- *
- *   before   38 of 48 answered · 10 handed back · 0 silent
- *   after    46 of 48 answered ·  2 handed back · 0 silent
- *
- * Both remaining hand-backs are Q20, "is my mate down for tuesday" —
- * a `person_status` that names nobody, which nothing in the system can
- * answer and which SHOULD hand back. See §14.3 and `identity.ts`.
- *
- * ─────────────────────────────────────────────────────────────────────
- * `other` JOINED ON 2026-11-10: THE OPEN ANSWER
- * ─────────────────────────────────────────────────────────────────────
- * A topic the extractor could not place is exactly the case §14.3 calls
- * "the least designed part of this document", and until today it was
- * owned by nobody: the not-understood line in the players' group, HQ's
- * one line. Kemal: "a category where nothing fits in, but still MatchTime
- * uses the LLM to understand the question based on the messages that have
- * been going on in the group, and try to answer that message within the
- * context." It is answered by ONE grounded model call from the club's
- * context (`open-answer.ts`, stage 2g below). A failed or refused answer
- * composes nothing and is disowned, so the asker keeps today's line.
+ * The fifteen-topic list before it (count, bench, person_status, phones,
+ * fixture, payments, score, rating_progress, stats, options, club), each
+ * with its own composed answer and its own targeted read, ran only with
+ * UNIFIED_ANSWERS off and was deleted with that flag on 2026-11-18, after
+ * a week live (#595) with nothing harmful found. Kemal's rule: never add a
+ * topic; widen the data the one answer sees instead.
  */
-export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = [
-  "count",
-  "squad",
-  "bench",
-  "person_status",
-  "phones",
-  "fixture",
-  "payments",
-  "score",
-  "stats",
-  "options",
-  // 2026-09-11. The SECOND topic that reads something `loadSquadState`
-  // does not load, and it is on this list because a regex came off it:
-  // `looksLikeRatingProgressRequest` (a rating word AND a progress word,
-  // anywhere in the body) used to claim this ask in a clause-peeled fast
-  // path. Measured `question` 60/60 on the live router, which is why it
-  // is a topic here rather than an `admin_ops` action like the stats
-  // blast. See `lib/rating-progress-answer.ts`.
-  "rating_progress",
-  // 2026-09-17. Not a group answer at all: the engine flags the asker
-  // for a DM of their own stats link, which the analyze route sends.
-  // It replaced the English-only `STATS_REQUEST` regex. See
-  // `QuestionTopic.my_stats` and the ownership loop below.
-  "my_stats",
-  // 2026-10-16, FNF: "Bench? We do bench now?" in reply to MatchTime's own
-  // "the bench is open". Answered with the help explainer for the club's
-  // settings (`deps.helpReply`), not from the squad.
-  "how_it_works",
-  // 2026-10-16, FNF HQ: "MatchTime who are the admins?". The club's own
-  // setup, in both groups, from the roster and one targeted read
-  // (`loadClub`).
-  "club",
-  // 2026-11-10 (Kemal): anything else, answered by the grounded open
-  // answer (`open-answer.ts`). See the note above.
-  "other",
-];
-
-/**
- * `squad` AND `fixture` JOINED THAT LIST ON 2026-09-06, and both were
- * measured rather than argued for.
- *
- * Twelve tagged questions, replayed through the live pipeline against
- * the real Sutton squad (6/14, Tue 21:30, Goals North Cheam). The router
- * caught 12 of 12 — router recall was NOT the problem — and then:
- *
- *   • FOUR asked about the fixture ("what time is kickoff", "where are
- *     we playing", "are we playing tuesday?", "is the game still on")
- *     and every one of them landed on topic `other`, which reaches
- *     `engine.ts`'s `default:` branch and degrades. An operator note,
- *     and not one word to the group. The mega-prompt answers all four
- *     today (`message-analyzer.ts:455-457`), so leaving them here would
- *     have made the flag a regression on the most ordinary question a
- *     Sunday-league group asks. `fixture` is now a topic and
- *     `answer_fixture` reads `kickoffLabel` and `venue`.
- *   • THREE asked for the roster ("who's in?", "list the players",
- *     "show me the squad") and got "We're 6/14 for Tue 21:30, need 8
- *     more 🙏" — not one name in it. `engine.ts` sent `squad` and
- *     `count` to the same `answer_count` intent. It read correctly in
- *     production only because that string trips `displaysSquadState` and
- *     `route.ts:2393` swaps it for the roster post; lean on that and the
- *     answer degrades to a bare count on two real paths, the composition
- *     pass being inside a `try/catch` and its `if (nextMatchForReply)`
- *     guard using a different match selector from this module's. Relying
- *     on a regex in another module to turn a count into a roster is the
- *     opposite of §6.4, so `answer_squad` renders
- *     `composeSquadStatusPost` directly.
- *
- * The other three silences in that sweep were not one shape, and none of
- * them is fixed here:
- *
- *   • "who hasn't paid" routes `admin_ops`, not `question` — there is no
- *     payment data in `SquadState` at all, and none in the mega-prompt's
- *     Match Context either, so nothing is lost by leaving it.
- *   • "how many do we need?" and "whats the score situation" were TOPIC
- *     INSTABILITY rather than a missing topic: both extract as `count`
- *     on a re-run and both are answered. `stats` and `options` stayed
- *     handed back on that date for the composed-format reasons above;
- *     both were fixed and admitted on 2026-09-09, and the format defect
- *     that kept them out is written up on `ANSWERABLE_TOPICS`.
- *
- * WHAT THAT SWEEP'S CONCLUSION SAID, AND WHY IT NO LONGER HOLDS. It
- * ended: "Every non-answer here is a hand-back carrying a reason, never
- * silence: the analyzer is still standing beside this path and still
- * answers all of them." Nothing stands beside this path since §10 step 8.
- * Every non-answer here still carries a reason — the reason is what the
- * operator DM prints — but it IS silence in the group now, and the
- * measurement above is the reason `fixture` and `squad` were not left
- * for later: four fixture questions and three roster questions per
- * twelve is what "the bot got dumber" would have looked like on the most
- * ordinary thing a Sunday-league group asks.
- */
-
-/**
- * Could ANY other message in this batch change the squad before the
- * answer is read?
- *
- * Every answer this module composes is rendered from the state loaded at
- * the top of the batch. It used to say "and this module runs BEFORE
- * `analyzeBatch` and before `executeVerdict`" — both deleted in §10
- * step 8 — but the hazard is unchanged and so is the ordering that
- * creates it: the analyze route runs the owners in SEQUENCE
- * (`route.ts`: attendance, then this, then score, admin_ops, team_ops),
- * so a write from ANOTHER OWNER later in the same batch still lands
- * after this answer is composed. The neighbour that can contradict us
- * is now `score-engine-batch.ts` or `admin-ops-engine-batch.ts` rather
- * than `executeVerdict`; nothing else about the argument moves.
- * §3.2 S36's single-post rule stops two
- * SQUAD POSTS contradicting each other, and `composeSquadStateReply`
- * catches a reply that displays squad state. Neither catches
- * "Yes, Idris has a slot for Tue 21:30" sent in the same window as
- * Idris's own "sorry lads can't make it": it is a squad CLAIM, not a
- * squad post, and no shape in `MOVE_CLAIM_PATTERNS` matches it.
- *
- * So no question is owned in a batch that carries anything else. The
- * test is the ROUTE, not the content: anything not on one of step 7's
- * own routes might write, including a `none` the gate did not skip and
- * an id the router never mentioned. Conservative on purpose — and the
- * cost of that conservatism CHANGED on 2026-09-06. It used to cost one
- * extractor call on a mixed batch, because the analyzer answered the
- * question instead. With `analyzeBatch` deleted, a tagged question that
- * shares a window with an "I'm in" is not answered by anybody: it goes
- * silent and onto the operator note. The rule is still right — a wrong
- * answer about who has a slot is worse than a late one — but it is now
- * paid for in unanswered questions rather than in pennies, and this is
- * where that is recorded.
- *
- * It also used to say: "step 7 is designed to run BEHIND step 5: with
- * `ROUTER_GATE_ENABLED` off, ordinary banter counts as 'anything else'
- * and questions are rarely owned". That flag is DELETED (§10 step 8 —
- * `pipeline/gate.ts` carries the argument) and the router now ALWAYS
- * runs (`routerIsNeeded()` takes no arguments and returns true), so
- * banter reliably routes `none`, `gated` is reliably set, and this
- * predicate reliably ignores it. The pessimistic case the old sentence
- * warned about cannot occur any more.
- */
-function batchCarriesAnythingElse(messages: AnswerBatchMessage[]): boolean {
-  return messages.some(
-    (m) => !m.gated && m.route !== "question" && m.route !== "balancer",
-  );
-}
+export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = ["squad", "how_it_works", "my_stats", "other"];
 
 /**
  * The routes whose owner has ALREADY WRITTEN by the time this module
@@ -552,15 +277,18 @@ const ROUTES_THAT_WRITE_BEFORE_THIS_STEP: ReadonlyArray<Route> = [
 ];
 
 /**
- * The narrower question: could another message in this batch change the
- * squad AFTER this answer is composed?
+ * Could another message in this batch change the squad AFTER this answer
+ * is composed?
  *
- * `batchCarriesAnythingElse` asks whether anything else is in the batch
- * at all. This asks whether anything else is in the batch whose WRITES
- * HAVE NOT LANDED YET — `score` and `admin_ops` run after this module
- * (`route.ts:1528`, `:1540`), an ungated `none` has no owner, and an id
- * the router never mentioned is a coverage hole rather than a decision.
- * All of those still block. Attendance does not.
+ * Every answer here is rendered from the state loaded at the top of the
+ * batch, and the analyze route runs the owners in SEQUENCE, so a write
+ * from an owner that runs after this one (score, admin_ops) lands after
+ * the answer. "Yes, Idris has a slot" beside Idris's own "sorry lads
+ * can't make it" is a claim about a squad that no longer exists. So the
+ * question waits for any message whose WRITES HAVE NOT LANDED YET: score
+ * and admin_ops, an ungated `none` nobody owns, and an id the router never
+ * mentioned (a coverage hole rather than a decision). Attendance does not
+ * block: its writes land before this module loads its state.
  */
 function batchCarriesAnUnsettledWriter(messages: AnswerBatchMessage[]): boolean {
   return messages.some(
@@ -572,46 +300,9 @@ function batchCarriesAnUnsettledWriter(messages: AnswerBatchMessage[]): boolean 
   );
 }
 
-/**
- * The two topics the attendance engine used to answer BY ACCIDENT.
- *
- * Until 2026-09-09 `engine.ts` posted the whole roster on any batch that
- * moved a row, so a tagged "how many are we?" or "who's playing?" beside
- * an "I'm in" was answered — not by this module, which handed it back,
- * but by a post that happened to contain the count and the names. That
- * post is gone (it was overmessaging: one per IN), and with it the
- * accident. These two topics are carved out of the hand-back so the
- * questions keep their answer; every other topic keeps the behaviour it
- * has today, which for a mixed batch is silence plus an operator note.
- *
- * These are exactly the topics `engine.ts` defers into `squad_status`
- * (`deferredSquadQuestions`). The two lists are one decision and must
- * not drift apart.
- */
-const SQUAD_SHAPED_TOPICS: ReadonlySet<string> = new Set(["squad", "count"]);
-
-/** The topics the batch's squad post answers: it lists the playing squad,
- *  the count and the bench, by name (2026-10-30, `tagged-silence.ts`). */
-const SQUAD_POST_ANSWERS: ReadonlySet<string> = new Set(["squad", "count", "bench", "person_status"]);
-
-/**
- * THE ONLY TOPICS ANY OTHER TRAFFIC STILL HOLDS BACK (Vets sandbox,
- * 2026-11-03): the squad post's topics this module does not answer itself.
- * Beside an IN, "who's on the bench?" and "is Zair in?" are answered by the
- * batch's squad post, by name, when it goes out (`SQUAD_POST_ANSWERS`), so
- * an answer here would say it twice.
- *
- * Every other topic waits only for a writer that has NOT landed
- * (`batchCarriesAnUnsettledWriter`). It used to wait for any other traffic,
- * which was silence plus an operator note; since `tagged-silence.ts`
- * (2026-10-29) it is the not-understood line, and "@Match Time what happens
- * if 14 don't confirm?" (`options`) beside the morning's INs got "I didn't
- * catch what you'd like me to do" in 3 of 4 live runs. Attendance writes
- * land before this module loads its state, so they cannot contradict it.
- */
-const WAITS_FOR_THE_SQUAD_POST: ReadonlySet<string> = new Set(
-  [...SQUAD_POST_ANSWERS].filter((t) => !SQUAD_SHAPED_TOPICS.has(t)),
-);
+/** The topic the batch's squad post answers: when a squad change in this
+ *  batch posts the squad, it is the list asked for (`tagged-silence.ts`). */
+const SQUAD_POST_ANSWERS: ReadonlySet<string> = new Set(["squad"]);
 
 /**
  * Prefix on every degradation this module reports.
@@ -721,30 +412,25 @@ export interface AnswerBatchDeps {
   /** `SquadState.features` carries attendance / paymentTracking /
    *  statsQa; the team post needs `teamBalancing`, which lives here. */
   loadFeatures?: (orgId: string) => Promise<OrgFeatures>;
-  /** The one targeted read that does NOT happen on every batch. Injected
-   *  so a test can prove both that it is called for a `payments` topic
-   *  and that it is NOT called for anything else. */
+  /** The reads the unified answer's context is built from, made only when
+   *  a question it answers was owned (`loadUnifiedData`), each injected so a
+   *  test can drive it without a database. The payment counts of the last
+   *  settled match: read for the organisers only. */
   loadPayments?: (
     orgId: string,
     completedMatch: SquadState["completedMatch"],
   ) => Promise<PaymentSnapshot>;
-  /** The OTHER targeted read that does not happen on every batch (2026-
-   *  09-11). Injected for the same reason: a test must be able to prove
-   *  it is called for a `rating_progress` topic and for nothing else. */
+  /** Who has rated the last match: read when the organisers or an admin
+   *  ask. */
   loadRatingProgress?: (orgId: string, lang?: string) => Promise<RatingProgress>;
-  /** The THIRD targeted read (2026-09-23): the stats tables, only when a
-   *  `stats` question named one. Injected so a test can prove both. */
+  /** The stats tables, when the club has stats answers on. */
   loadStats?: (orgId: string, now: Date) => Promise<Omit<StatsSnapshot, "chemistry" | "generic" | "periods">>;
-  /** One named player's chemistry, only for a player a stats question
-   *  named and the roster resolved to exactly one member. */
+  /** One player's chemistry: the one the question names, else the asker. */
   loadChemistry?: (orgId: string, userId: string) => Promise<StatsChemistry | null>;
   /** The tables the data can cut (appearances, ratings, Man of the
-   *  Match), cut to the matches since `since` (2026-09-23). Once per
-   *  distinct period a question in the batch asked about. */
+   *  Match), cut to the matches since `since`: the shorter spans. */
   loadStatsPeriod?: (orgId: string, since: Date) => Promise<Omit<StatsPeriodTables, "since">>;
-  /** The FOURTH targeted read (2026-09-29): the club's recent scored
-   *  results, only when a `score` question asked for several results or
-   *  a period. Once per distinct span (`since` null is the whole record). */
+  /** The club's recent scored results (`since` null is the whole record). */
   loadResults?: (orgId: string, since: Date | null, now: Date, lang: string) => Promise<RecentResults>;
   /** Injected so a test can prove the write assertion and the
    *  throw-safety without a fabricated engine rule in the real engine. */
@@ -756,17 +442,16 @@ export interface AnswerBatchDeps {
    *  `asker.admin`: the sender is one of the club's organisers, who is
    *  told how to switch each thing (2026-10-28). */
   helpReply?: (req: HelpRequest, features: OrgFeatures, asker: { admin: boolean }) => Promise<string> | string;
-  /** The FIFTH targeted read (2026-10-16): the club's setup, only when a
-   *  `club` question survived ownership. `matchId` is the upcoming match
-   *  the fee is read from, or null. */
+  /** The club's setup (2026-10-16), for the unified answer's HOW THE CLUB
+   *  IS RUN. `matchId` is the upcoming match the fee is read from, or null. */
   loadClub?: (orgId: string, matchId: string | null) => Promise<ClubSnapshot>;
-  /** UNIFIED_ANSWERS only (2026-11-10): the pool and the partner clubs for
+  /** The pool and the partner clubs (2026-11-10), for
    *  the unified answer's context. Defaults to `loadHelpClubFacts`. */
   loadClubFacts?: (orgId: string) => Promise<HelpClubFacts>;
-  /** UNIFIED_ANSWERS, the organisers only (2026-11-11): the ratings each
+  /** The organisers only (2026-11-11): the ratings each
    *  player got in the last rated match. Defaults to `loadLastMatchRatings`. */
   loadLastMatchRatings?: (orgId: string, now: Date) => Promise<LastMatchRatings | null>;
-  /** UNIFIED_ANSWERS, the organisers only (2026-11-11): the asker's own
+  /** The organisers only (2026-11-11): the asker's own
    *  stats block, for "what is my rating?" in HQ. Defaults to
    *  `loadAskerOwnStats` (`unified-dm.ts`). Null: no stats for them. */
   loadOwnStats?: (orgId: string, userId: string) => Promise<string | null>;
@@ -801,13 +486,6 @@ export type AnswerAudience = "players" | "organisers";
  * MORE now, because those lines are `composeOperatorNote`'s only source
  * for the "why" clause it prints beside each lost message.
  */
-/** Is this message the rating-progress ask? Used twice: to decide
- *  whether the targeted read happens, and to keep the intent label the
- *  deleted fast path wrote. */
-function isRatingProgress(f: Facts | undefined): boolean {
-  return f?.kind === "question" && f.topic === "rating_progress";
-}
-
 /** The help reply for this club, in a group: public links only. An
  *  organiser is told how to switch each thing; anybody else gets the
  *  players' group's answer (help-answer.ts). */
@@ -856,14 +534,6 @@ export async function runAnswerBatch(args: {
    *  also knows about the test-only per-request override). */
   enabled: Set<Route>;
   deps: AnswerBatchDeps;
-  /**
-   * The "who do you mean?" questions MatchTime has open (2026-09-23),
-   * from `loadOpenStatsClarifications`. A reply from the person asked,
-   * that reads as a name, is the answer to the ORIGINAL question: the
-   * original is re-read and the reply's name put where the unclear one
-   * was. See the essay at the foot of `awaiting-answer.ts`.
-   */
-  clarifications?: StatsClarification[];
   /** See `AnswerAudience`. Absent is the players' group. */
   audience?: AnswerAudience;
   /**
@@ -889,13 +559,12 @@ export async function runAnswerBatch(args: {
   /**
    * A MONTHLY CLUB WHOSE MONTH IS NOT STARTED (`month-not-started.ts`, the
    * same fact the attendance engine is given). The squad starts from the
-   * month's list, so a count of whoever said IN is not the squad: an
-   * `options` question ("what if 14 don't confirm?") is answered with how
-   * the monthly squad works instead (Vets sandbox, 2026-11-03). Absent: false.
+   * month's list, so a count of whoever said IN is not the squad; the
+   * unified answer is told so (Vets sandbox, 2026-11-03). Absent: false.
    */
   monthNotStarted?: boolean;
   /**
-   * THE GROUP'S WEEK OF CHAT, for the open answer (Kemal, 2026-11-10:
+   * THE GROUP'S WEEK OF CHAT, for the unified answer (Kemal, 2026-11-10:
    * "recent chat should be all messages since last 1 week"). Read only
    * when an open question is owned, from THE GROUP THIS BATCH IS IN (the
    * caller's loader: `week-chat.ts` `playersWeekChat` or `hqWeekChat`), so
@@ -905,63 +574,44 @@ export async function runAnswerBatch(args: {
    */
   weekChat?: () => Promise<Array<{ author: string | null; body: string; at: Date | null }>>;
   /**
-   * UNIFIED_ANSWERS (Kemal, 2026-11-10, `unified-answers-flag.ts`). Absent:
-   * the environment's flag, which is OFF unless set. On: the small question
-   * extractor (list, help, the asker's own stats, anything else), and every
-   * "anything else" answered by ONE model call over the club's data
-   * (`unified-answer.ts`) in place of the set answers. Off: unchanged.
+   * DEAD ENDS (2026-11-17, `dead-end-answer.ts`): the TAGGED messages
+   * MatchTime took no action on (no handler for what was asked, or nothing
+   * came of it), each with why its path stopped when the path said
+   * (`DeadEndFacts.why`: the names a swap could not find, an action no path
+   * has). Each is read as a `question` whose topic is `other`, with NO
+   * extractor call (its owner's extractor already read it), and answered by
+   * the unified answer, told NOT DONE and why, and shown this group's help
+   * menu. A failed or refused answer is not owned, so the caller keeps its
+   * line.
    */
-  unified?: boolean;
+  deadEnds?: ReadonlyMap<string, { why: string | null }>;
   /**
-   * DEAD ENDS (2026-11-17, `dead-end-answer.ts`), UNIFIED_ANSWERS only: the
-   * ids of TAGGED messages MatchTime took no action on (no handler for what
-   * was asked, or nothing came of it). Each is read as a `question` whose
-   * topic is `other`, with NO extractor call (the owner's extractor already
-   * read it and found nothing to do), and answered by the unified answer,
-   * told NOT DONE and shown this group's help menu. A failed or refused
-   * answer is not owned, so the caller keeps its line. Ignored when off.
+   * WHAT THE OTHER PARTS OF THE SAME MESSAGE DID (2026-11-18, Sutton 17 Nov
+   * 12:53: "@Match Time switch the match to 7aside and tell us the current
+   * list" was switched, then its question was answered "I can't switch the
+   * match from this message"). For any message this batch answers that
+   * other owners also acted on: what each did, by reply, reaction or post,
+   * as done or as answered without doing (`also-done.ts`), by message id.
+   * The unified answer answers only what is left and never contradicts
+   * them. Absent: nothing else was done.
    */
-  deadEnds?: ReadonlySet<string>;
+  alsoDone?: ReadonlyMap<string, readonly AlsoDonePart[]>;
 }): Promise<AnswerBatchResult> {
   const { orgId, now, history, expectedMatchId, enabled, deps } = args;
-  const unified = args.unified ?? isUnifiedAnswersEnabled();
   const alsoAsks: ReadonlySet<string> = args.alsoAsks ?? new Set<string>();
-  const deadEnds: ReadonlySet<string> = unified ? (args.deadEnds ?? new Set<string>()) : new Set<string>();
+  const deadEnds: ReadonlyMap<string, { why: string | null }> = args.deadEnds ?? new Map();
   const messages: AnswerBatchMessage[] = args.messages.map((m) =>
     (alsoAsks.has(m.waMessageId) || deadEnds.has(m.waMessageId)) && !m.gated ? { ...m, route: "question" as Route } : m,
   );
   const organisers = args.audience === "organisers";
   const t0 = Date.now();
 
-  // ── A REPLY TO MATCHTIME'S OWN QUESTION ────────────────────────────
-  //
-  // Untagged, and owned anyway: the tag requirement below exists so
-  // MatchTime never acts on chatter it was not addressed in, and a
-  // direct answer to a question MatchTime put to this person IS
-  // addressed to it. Narrow by construction: the router only moves such
-  // a reply to `question` for the asker (`router.ts`), and this matches
-  // the resolved sender, not just the pushname, and only a reply that
-  // reads as a name.
-  // FACTS only (2026-10-30): the router routed it `question`, shown the
-  // open clarification above it, and it is from the person asked. Which
-  // person the reply names is the extractor's to read (`clarifiedBy`).
-  let clarificationFor = new Map<string, { c: StatsClarification }>();
-  for (const m of messages) {
-    if (m.gated || m.route !== "question" || alsoAsks.has(m.waMessageId)) continue;
-    // UNIFIED_ANSWERS: MatchTime asks no "who do you mean?" (the unified
-    // answer reads the roster itself), so no reply is read as one.
-    if (unified) continue;
-    // A "who is that?" about who plays is the attendance engine's to read.
-    const c = (args.clarifications ?? []).find((q) => q.about !== "attendance" && isFromAsker(q, m));
-    if (c) clarificationFor.set(m.waMessageId, { c });
-  }
-
   // ── Ownership, part 1: everything knowable without a model ─────────
   const candidates = messages.filter(
     (m) =>
       !m.gated &&
       (deadEnds.has(m.waMessageId) || stepSevenOwnsRoute(m.route, enabled, ANSWER_ROUTES)) &&
-      (asksMatchTime(m) || clarificationFor.has(m.waMessageId)),
+      asksMatchTime(m),
   );
   if (candidates.length === 0) return empty();
 
@@ -1093,17 +743,7 @@ export async function runAnswerBatch(args: {
 
   const matchId = state.matchId;
 
-  // See `batchCarriesAnythingElse`. Two batch runners each calling
-  // `decide()` cannot enforce §3.2 S36's single squad post between
-  // them, and — the sharper half — an answer composed here may be
-  // composed from a PRE-WRITE snapshot, so a question answered beside a
-  // squad change is a claim about a squad that no longer exists.
-  const otherTraffic = batchCarriesAnythingElse(messages);
-  // …and the narrower one, for the two SQUAD-SHAPED topics only. Both
-  // halves above are settled for attendance traffic: its writes have
-  // landed before this module loads its state, and since 2026-09-09
-  // `engine.ts` composes no unprompted squad post for them to collide
-  // with. See `batchCarriesAnUnsettledWriter` and `SQUAD_SHAPED_TOPICS`.
+  // See `batchCarriesAnUnsettledWriter`.
   const unsettledTraffic = batchCarriesAnUnsettledWriter(messages);
 
   const eligible = unblockedCandidates.filter((m) => {
@@ -1143,14 +783,9 @@ export async function runAnswerBatch(args: {
       // A dead end is not read again: its owner's extractor found nothing
       // to do, and the unified answer reads the message itself.
       if (deadEnds.has(m.waMessageId)) {
-        factsById.set(m.waMessageId, { kind: "question", topic: "other", personRef: null, statedCount: null });
+        factsById.set(m.waMessageId, { kind: "question", topic: "other", personRef: null });
         return;
       }
-      // A message from the person MatchTime asked "who do you mean?" is
-      // read AS IT IS, shown that earlier question (MATCHTIME ASKED); the
-      // extractor says whether it answers it (`answersClarification`) and
-      // only then returns the earlier question's fields (review of #476).
-      const clar = clarificationFor.get(m.waMessageId);
       const res = await extractForRouteTraced("answer", model, m.route as Route, {
         id: m.waMessageId,
         body: m.body,
@@ -1162,8 +797,6 @@ export async function runAnswerBatch(args: {
         // as it is; team-ops shows the same, so a balancer message's two
         // owners send one input and share one call (`trace.ts`, #340).
         reply: m.reply ?? null,
-        ...(clar ? { clarifying: clar.c.questionBody } : {}),
-        ...(unified ? { unified: true } : {}),
         now,
       });
       for (const d of res.degradations) {
@@ -1207,24 +840,6 @@ export async function runAnswerBatch(args: {
     },
   );
 
-  // ── A CLARIFICATION ONLY WHEN THE EXTRACTOR SAYS SO (review of #476) ─
-  // The asker's message is the answer to "who do you mean?" only when the
-  // extractor read it as one. Otherwise it is a question of its own,
-  // answered only when it is addressed to MatchTime like any other.
-  const unanswerable = new Set<string>();
-  const notClarifications = new Set<string>();
-  for (const id of [...clarificationFor.keys()]) {
-    const f = factsById.get(id);
-    if (f && f.kind === "question" && f.answersClarification === true) continue;
-    notClarifications.add(id);
-    const m = messages.find((x) => x.waMessageId === id);
-    if (m && !asksMatchTime(m)) {
-      unanswerable.add(id);
-      degradations.push(`${id}: from the person asked "who do you mean?", but not an answer to it and not addressed to MatchTime; not answered`);
-    }
-  }
-  clarificationFor = new Map([...clarificationFor].filter(([id]) => !notClarifications.has(id)));
-
   // ── WHO IS WHO (2026-11-09) ─────────────────────────────────────────
   // Every name the questions quote ("is Ali in?", "Sait's rating"), put
   // to the model in one call with the club's members
@@ -1248,33 +863,21 @@ export async function runAnswerBatch(args: {
   degradations.push(...identified.degradations);
   const peopleById = identified.people;
 
-  // ── `options` IN A MONTHLY CLUB WITH NO MONTH (2026-11-03) ──────────
-  // "We're 0 of 14, need 14 more" counts whoever said IN, which before the
-  // month exists is nobody by design (#501 holds every post that counts it).
-  // The question is about what happens when places are not filled, and the
-  // true answer here is how the monthly squad works: the availability help,
-  // for this club's settings. A fact from the database, not the words.
-  // UNIFIED_ANSWERS: the list asked for when there is no list to post (no
-  // match, a club with no squad, a match nobody vouched for) is answered by
-  // the unified answer, which says so, rather than by silence.
-  if (unified && squadBlock !== null) {
+  // The list asked for when there is no list to post (no match, a club
+  // with no squad, a match nobody vouched for) is answered by the unified
+  // answer, which says so, rather than by silence.
+  if (squadBlock !== null) {
     for (const [id, f] of factsById) {
       if (f.kind === "question" && f.topic === "squad") factsById.set(id, { ...f, topic: "other" });
     }
   }
-  // UNIFIED_ANSWERS in HQ (2026-11-11): "what is my rating?" asked by an
-  // organiser had no answer on either path (the stats link is a DM, and HQ
-  // sends none). It is answered in HQ by the unified answer, from the
-  // asker's own stats (`loadOwnStats`): HQ is the organisers, who see every
-  // rating already. The players' group keeps the private link.
-  if (unified && organisers) {
+  // "what is my rating?" in HQ (2026-11-11) is answered there by the
+  // unified answer, from the asker's own stats (`loadOwnStats`): HQ is the
+  // organisers, who see every rating already, and HQ sends no stats link.
+  // The players' group keeps the private link.
+  if (organisers) {
     for (const [id, f] of factsById) {
       if (f.kind === "question" && f.topic === "my_stats") factsById.set(id, { ...f, topic: "other", personRef: "me" });
-    }
-  }
-  if (args.monthNotStarted === true) {
-    for (const [id, f] of factsById) {
-      if (f.kind === "question" && f.topic === "options") factsById.set(id, { ...f, topic: "how_it_works", feature: "availability" });
     }
   }
 
@@ -1301,7 +904,7 @@ export async function runAnswerBatch(args: {
   // reason is already in `degradations` before the `continue` runs.
   const ownedIds = new Set<string>();
   for (const m of eligible) {
-    const facts = unanswerable.has(m.waMessageId) ? undefined : factsById.get(m.waMessageId);
+    const facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
     // NAMED `hand` FOR A HAND-BACK IT NO LONGER PERFORMS. The name is
     // kept because every call site below reads `hand("why")` and
@@ -1341,28 +944,6 @@ export async function runAnswerBatch(args: {
         ownedIds.add(m.waMessageId);
         continue;
       }
-      // ── A STATS TABLE (2026-09-23) ─────────────────────────────────
-      //
-      // Owned on the same argument as `my_stats` above, ahead of the
-      // match carve-outs and the mixed-batch hand-back: a club's ratings
-      // or its Team of the Season are not claims about the upcoming
-      // squad, so a neighbour's write cannot contradict them, no match
-      // is needed to answer, and a ratings-only club with attendance
-      // off is exactly who asks.
-      //
-      // EVERY stats question since the period change (2026-09-23),
-      // appearances and "no table named" included. Those two used to
-      // read the 30-day `SquadState.appearances` and so kept the squad
-      // rules; they read the club's completed-match record now, which no
-      // write in this batch can change (a write lands on the UPCOMING
-      // match), so the same argument covers them.
-      //
-      // ⚠️ TERMINAL BRANCH, like the one above: it skips no write, no
-      // send and no state mutation, only the checks that do not apply.
-      if (facts.topic === "stats") {
-        ownedIds.add(m.waMessageId);
-        continue;
-      }
       // ── HOW MATCHTIME WORKS (2026-10-16) ───────────────────────────
       //
       // Owned on the same argument again: the help explainer describes
@@ -1374,64 +955,26 @@ export async function runAnswerBatch(args: {
         ownedIds.add(m.waMessageId);
         continue;
       }
-      // ── THE CLUB'S SETUP (2026-10-16) ──────────────────────────────
-      //
-      // Who the admins are, who collects the money, the fee, the teams time:
-      // fine for players and organisers alike (no phone numbers, nothing
-      // private), so answered in both groups. Owned on the same argument as
-      // the three above: not a claim about the upcoming squad, so no match
-      // is needed and no neighbour's write can contradict it.
-      //
-      // ⚠️ TERMINAL BRANCH, like the three above.
-      if (facts.topic === "club") {
-        ownedIds.add(m.waMessageId);
-        continue;
-      }
-      // A reply to a clarification that did not re-read as a stats
-      // table is not something this module can answer.
-      if (clarificationFor.has(m.waMessageId)) {
-        hand("a reply to a stats clarification whose original question no longer reads as a stats table");
-        continue;
-      }
-      // A carve-out above fired: nothing but the stats link is owned.
-      // No `hand()`, so the degradations are the ones the early return
-      // that stood there produced.
-      //
-      // Except an open question (2026-11-10): it is not only about the
-      // upcoming squad, so it is answered with the squad left out of its
-      // context (`squadKnown` below), never from a squad nobody vouched for.
+      // A carve-out above fired: only the stats link, the help and the
+      // unified answer are owned. No `hand()`, so the degradations are the
+      // ones the early return that stood there produced. The unified answer
+      // is not only about the upcoming squad, so it is answered with the
+      // squad left out of its context (`squadKnown` below), never from a
+      // squad nobody vouched for.
       if (squadBlock !== null && facts.topic !== "other") continue;
-      // ── THE MIXED-BATCH HAND-BACK, AND ITS ONE CARVE-OUT ──────────
+      // ── THE MIXED-BATCH HAND-BACK ──────────────────────────────────
       //
-      // SINCE 2026-11-03 the carve-out below covers every topic but
-      // `bench` and `person_status` (`WAITS_FOR_THE_SQUAD_POST`, which
-      // says why); the history that follows is why it began with two.
+      // An answer here is composed from a snapshot that another owner's
+      // writes may land after (score, admin_ops, an ungated message nobody
+      // owns), and a claim about a squad that no longer exists is worse
+      // than no answer. Attendance traffic does not count: its writes have
+      // landed before this module loads its state.
       //
-      // For every topic but two: an answer here is composed from a
-      // snapshot that another owner's writes may land after, and "Yes,
-      // Idris has a slot for Tue 21:30" beside Idris's own "sorry lads
-      // can't make it" is a claim about a squad that no longer exists —
-      // invisible to `composeSquadStateReply`, which only recognises
-      // squad POSTS and the `MOVE_CLAIM_PATTERNS` phrasings.
-      //
-      // For `squad` and `count`, the same test is applied to a smaller
-      // set of neighbours: attendance traffic is EXCLUDED because its
-      // writes have already landed (`route.ts` awaits the attendance
-      // owner at `:1360`, this module runs at `:1512` and loads its own
-      // state) and because `engine.ts` no longer composes an unprompted
-      // roster post to collide with. That post is what used to answer
-      // these two questions in a mixed batch — by accident, at the price
-      // of one roster per IN — and removing it without this carve-out
-      // would turn a tagged "how many are we?" into silence, which is
-      // §9's signature failure wearing the other hat.
-      //
-      // ⚠️ TERMINAL BRANCH. The `continue` skips the `person_status`
-      // resolution guard below and `ownedIds.add`, which is the whole
-      // intent: an unowned message is answered by nobody. It skips no
-      // write, no send and no state mutation — there are none in this
-      // loop (see the `continue`s note above it) — and the reason is
-      // already on `degradations` before it runs.
-      if (WAITS_FOR_THE_SQUAD_POST.has(facts.topic) ? otherTraffic : unsettledTraffic) {
+      // ⚠️ TERMINAL BRANCH. The `continue` skips `ownedIds.add`, which is
+      // the whole intent. It skips no write, no send and no state mutation
+      // (there are none in this loop), and the reason is already on
+      // `degradations` before it runs.
+      if (unsettledTraffic) {
         hand(
           `the batch also carries messages this step does not own, which may change the ` +
             `squad after this answer is composed (S36, and the pre-write snapshot)`,
@@ -1440,18 +983,6 @@ export async function runAnswerBatch(args: {
         // and the bench: when it goes out it is this question's answer.
         if (SQUAD_POST_ANSWERS.has(facts.topic)) args.silence?.squadPostAnswers.add(m.waMessageId);
         continue;
-      }
-      if (facts.topic === "person_status") {
-        // "X isn't down for Tuesday yet" about somebody the roster
-        // cannot identify — or about either of two people with the same
-        // first name — is a confident claim about squad state that
-        // nothing checked. That is the §3.2 S16 failure class, and
-        // `identity.ts` already bails on exactly these two shapes.
-        const r = resolvePerson(facts.personRef ?? "", state.roster, peopleById.get(m.waMessageId));
-        if (r.kind !== "resolved") {
-          hand(`"${facts.personRef}" does not resolve to one member (${r.kind})`);
-          continue;
-        }
       }
       ownedIds.add(m.waMessageId);
       continue;
@@ -1512,240 +1043,17 @@ export async function runAnswerBatch(args: {
   }
   if (ownedIds.size === 0) return empty(degradations);
 
-  // ── Stage 2b: ONE TARGETED EXTRA READ, and only when asked ─────────
+  // ── Stage 2b: THE CLUB'S SETUP, for the unified answer ───────────
   //
-  // `loadSquadState` runs on every batch, including the 69% that are
-  // banter, so payment rows do not belong in it: nobody should pay two
-  // queries for a "haha". And a lazy accessor on state is not available
-  // either — `compose.ts` must stay free of Prisma (its header says
-  // why), so a function on `SquadState` that reaches the database would
-  // put Prisma back on the composer's path.
-  //
-  // This is where the third option lives. Ownership is settled by the
-  // line above, so the topics in this window are KNOWN; load once if one
-  // of them needs it, and hand it down as data. The engine stays a pure
-  // function of one value and the common path is unchanged.
-  //
-  // FAILS OPEN. A payment load that throws leaves `state.payments` null,
-  // the composer says nothing under `answer_payments`, and the silent-id
-  // check below disowns the message — a hand-back with a receipt. It does
-  // NOT take the rest of the batch down: a fixture question beside a
-  // payment question still gets its answer.
-  const wantsPayments = [...ownedIds].some(
-    (id) => {
-      const f = factsById.get(id);
-      return f?.kind === "question" && f.topic === "payments";
-    },
-  );
-  if (wantsPayments) {
-    try {
-      const load =
-        deps.loadPayments ??
-        (async (o: string, cm: SquadState["completedMatch"]) => {
-          const m = await import("./load-state");
-          return m.loadPaymentSnapshot(o, cm);
-        });
-      state = { ...state, payments: await load(orgId, state.completedMatch) };
-    } catch (err) {
-      const detail =
-        `${ANSWER_DEGRADED_PREFIX} the payment read failed (${
-          err instanceof Error ? err.message : String(err)
-        }); the payment question in this batch goes unanswered and onto this note`;
-      console.error("[answer-engine] payment load failed:", err);
-      degradations.push(detail);
-    }
-  }
-
-  // ── Stage 2c: the OTHER targeted read — rating progress ────────────
-  //
-  // Identical in every respect to the payment load above, including the
-  // fail-open: a rating read that throws leaves `state.ratingProgress`
-  // null, the composer says nothing under `answer_rating_progress`, and
-  // the silent-id check below disowns the message. A fixture question
-  // beside it still gets its answer.
-  //
-  // It is here because `looksLikeRatingProgressRequest` is deleted
-  // (2026-09-11). That regex was two keyword tests ANDed over a whole
-  // body — the shape that matched half a sentence on 2026-09-01 and
-  // queued 69 mass DMs on 2026-09-10 — and it sat in a clause-peeled
-  // fast path ahead of the router. Now the model says which messages are
-  // this ask, and this is the one place the data behind the answer is
-  // read.
-  const wantsRatingProgress = [...ownedIds].some((id) => {
+  // Not on every batch: `loadSquadState` runs on the 69% that are banter.
+  // Only when a question the unified answer answers was owned, and fails
+  // soft: a throw leaves `state.club` unloaded, and the answer's HOW THE
+  // CLUB IS RUN then has no money or teams lines.
+  const openIds = [...ownedIds].filter((id) => {
     const f = factsById.get(id);
-    return f?.kind === "question" && f.topic === "rating_progress";
+    return f?.kind === "question" && f.topic === "other";
   });
-  if (wantsRatingProgress) {
-    try {
-      const load =
-        deps.loadRatingProgress ??
-        (async (o: string, l?: string) => {
-          const m = await import("./load-state");
-          return m.loadRatingProgressSnapshot(o, l);
-        });
-      state = { ...state, ratingProgress: await load(orgId, state.features.language) };
-    } catch (err) {
-      const detail =
-        `${ANSWER_DEGRADED_PREFIX} the rating-progress read failed (${
-          err instanceof Error ? err.message : String(err)
-        }); the rating question in this batch goes unanswered and onto this note`;
-      console.error("[answer-engine] rating-progress load failed:", err);
-      degradations.push(detail);
-    }
-  }
-
-  // ── Stage 2d: THE STATS TABLES, and only when asked (2026-09-23) ──
-  //
-  // The third targeted read, the same shape as the two above and the
-  // same fail-open: a read that throws leaves `state.stats` null, the
-  // composer says nothing under the table intents, and the silent-id
-  // check below disowns the message with a receipt. A question back to
-  // the poster needs no tables and still goes out.
-  //
-  // `planStatsQuestion` is computed HERE as well as in the engine, from
-  // the same inputs, because this is where the chemistry read and the
-  // generic model call happen and both depend on the plan. It is pure,
-  // so the two cannot come out differently.
-  const statsPlans = new Map<string, StatsPlan>();
-  const statsIds = [...ownedIds].filter((id) => {
-    const f = factsById.get(id);
-    return f?.kind === "question" && f.topic === "stats";
-  });
-  if (statsIds.length > 0) {
-    const byId = new Map(messages.map((m) => [m.waMessageId, m]));
-    try {
-      const load =
-        deps.loadStats ??
-        (async (o: string, at: Date) => {
-          const mod = await import("./load-stats");
-          return mod.loadStatsTables(o, at);
-        });
-      const tables = await load(orgId, now);
-      const chemistry: Record<string, StatsChemistry> = {};
-      const generic: StatsSnapshot["generic"] = {};
-      const periods: StatsSnapshot["periods"] = {};
-      const snap: StatsSnapshot = { ...tables, chemistry, generic, periods };
-      for (const id of statsIds) {
-        const f = factsById.get(id);
-        if (f?.kind !== "question") continue;
-        statsPlans.set(id, planStatsQuestion(f, state.roster, peopleById.get(id), byId.get(id)?.senderUserId ?? null));
-      }
-      // THE PERIODS (2026-09-23). Only a table the data can cut, and only
-      // a period that cuts the record, is read again; each distinct period
-      // once. Its start is computed HERE, from this batch's clock, never
-      // by the model. A read that throws fails the whole stats read below,
-      // exactly like the tables themselves: never a silently different
-      // table.
-      const loadPeriod =
-        deps.loadStatsPeriod ??
-        (async (o: string, since: Date) => {
-          const mod = await import("./load-stats");
-          return mod.loadStatsPeriod(o, since);
-        });
-      for (const plan of statsPlans.values()) {
-        if (plan.kind !== "table" || !TABLES_CUT_BY_PERIOD.has(plan.table) || !cutsTheRecord(plan.period)) continue;
-        const key = periodKey(plan.period);
-        if (periods[key]) continue;
-        const since = periodSince(plan.period, now);
-        if (!since) continue;
-        periods[key] = { since, ...(await loadPeriod(orgId, since)) };
-      }
-      const loadChem =
-        deps.loadChemistry ??
-        (async (o: string, u: string) => {
-          const mod = await import("./load-stats");
-          return mod.loadStatsChemistry(o, u);
-        });
-      const people = new Set<string>();
-      for (const plan of statsPlans.values()) {
-        if ((plan.kind === "table" || plan.kind === "generic") && plan.personUserId) people.add(plan.personUserId);
-      }
-      for (const u of people) {
-        const c = await loadChem(orgId, u);
-        if (c) chemistry[u] = c;
-      }
-      for (const [id, plan] of statsPlans) {
-        if (plan.kind !== "generic") continue;
-        const g = await answerGenericStats({
-          model,
-          snapshot: snap,
-          lang: state.features.language,
-          question: clarificationFor.get(id)?.c.questionBody ?? byId.get(id)?.body ?? "",
-          personUserId: plan.personUserId,
-          self: plan.self,
-          roster: state.roster,
-        });
-        generic[id] = g.result;
-        if (g.called) cost = { usd: cost.usd + g.costUsd, calls: cost.calls + 1, ms: Math.max(cost.ms, g.ms) };
-        if ("rejected" in g.result) {
-          degradations.push(`${ANSWER_DEGRADED_PREFIX} ${id}: generic stats answer not used (${g.result.rejected}); the safe line was said instead`);
-        }
-      }
-      state = { ...state, stats: snap };
-    } catch (err) {
-      const detail =
-        `${ANSWER_DEGRADED_PREFIX} the stats read failed (${
-          err instanceof Error ? err.message : String(err)
-        }); the stats question in this batch goes unanswered and onto this note`;
-      console.error("[answer-engine] stats load failed:", err);
-      degradations.push(detail);
-      for (const id of statsIds) {
-        const f = factsById.get(id);
-        if (f?.kind !== "question" || statsPlans.has(id)) continue;
-        statsPlans.set(id, planStatsQuestion(f, state.roster, peopleById.get(id), byId.get(id)?.senderUserId ?? null));
-      }
-    }
-  }
-
-  // ── Stage 2e: RECENT RESULTS, and only when asked (2026-09-29) ────
-  //
-  // "@Match Time give us the scores of the last 5 matches" was answered
-  // with the last match only. A `score` question whose extractor fields
-  // name a count or a period plans a LIST (`planResultsQuestion`, pure,
-  // the same call the engine makes), and its results are read here, once
-  // per distinct span, from this club's matches. The period's start is
-  // computed from this batch's clock, never by the model. Fails open like
-  // the reads above: a throw leaves the span unloaded, the composer says
-  // nothing, and the silent-id check disowns the message with a receipt.
-  const resultSpans = new Map<string, Date | null>();
-  for (const id of ownedIds) {
-    const f = factsById.get(id);
-    if (f?.kind !== "question" || f.topic !== "score") continue;
-    const plan = planResultsQuestion(f);
-    if (plan.kind !== "list") continue;
-    resultSpans.set(resultsKey(plan.period), cutsTheRecord(plan.period) ? periodSince(plan.period, now) : null);
-  }
-  if (resultSpans.size > 0) {
-    try {
-      const load =
-        deps.loadResults ??
-        (async (o: string, since: Date | null, n: Date, lang: string) => {
-          const mod = await import("./load-results");
-          return mod.loadRecentResults(o, since, n, lang);
-        });
-      const results: Record<string, RecentResults> = {};
-      for (const [key, since] of resultSpans) results[key] = await load(orgId, since, now, state.features.language);
-      state = { ...state, results };
-    } catch (err) {
-      const detail =
-        `${ANSWER_DEGRADED_PREFIX} the results read failed (${
-          err instanceof Error ? err.message : String(err)
-        }); the results question in this batch goes unanswered and onto this note`;
-      console.error("[answer-engine] results load failed:", err);
-      degradations.push(detail);
-    }
-  }
-
-  // ── Stage 2f: THE CLUB'S SETUP, and only when asked (2026-10-16) ──
-  //
-  // The fifth targeted read, the same shape and the same fail-open as the
-  // four above: a throw leaves `state.club` unloaded, the composer says
-  // nothing, and the silent-id check disowns the message with a receipt.
-  // An open question is told the club's setup too (stage 2g).
-  const wantsClub = [...ownedIds].some((id) => {
-    const f = factsById.get(id);
-    return f?.kind === "question" && (f.topic === "club" || f.topic === "other");
-  });
+  const wantsClub = openIds.length > 0;
   if (wantsClub) {
     try {
       const load =
@@ -1759,28 +1067,21 @@ export async function runAnswerBatch(args: {
       const detail =
         `${ANSWER_DEGRADED_PREFIX} the club read failed (${
           err instanceof Error ? err.message : String(err)
-        }); the club question in this batch goes unanswered and onto this note`;
+        }); the unified answer goes without the club's setup`;
       console.error("[answer-engine] club load failed:", err);
       degradations.push(detail);
     }
   }
 
-  // ── Stage 2g: THE OPEN ANSWER, and only when asked (2026-11-10) ───
+  // ── Stage 2c: THE UNIFIED ANSWER (2026-11-10) ─────────────────────
   //
-  // A tagged question whose topic is `other`: ONE grounded model call per
-  // message (`open-answer.ts`), from the state above (the club's setup
-  // read in 2f), the stats tables (read here when stats Q&A is on and no
-  // stats question already read them) and the group's week of chat
-  // (`args.weekChat`, else the recent lines). Fails soft: a
-  // stats read that throws leaves the stats out of the context; a call
-  // that fails or a reply that is refused composes nothing, and the
-  // silent-id check below disowns the message, which keeps today's line.
-  const openIds = [...ownedIds].filter((id) => {
-    const f = factsById.get(id);
-    return f?.kind === "question" && f.topic === "other";
-  });
-  if (openIds.length > 0 && unified) {
-    // ── Stage 2g, UNIFIED_ANSWERS: everything the audience may see ──
+  // A tagged question whose topic is `other`: ONE model call per message
+  // (`unified-answer.ts`) over everything this audience may see, read once
+  // per batch (`loadUnifiedData`). Fails soft: a read that throws is left
+  // out of the context; a call that fails or a reply that is refused
+  // composes nothing, and the silent-id check below disowns the message,
+  // which keeps the caller's line.
+  if (openIds.length > 0) {
     const u = await loadUnifiedData();
     const byId = new Map(messages.map((m) => [m.waMessageId, m]));
     const openAnswers: NonNullable<SquadState["openAnswers"]> = {};
@@ -1815,22 +1116,34 @@ export async function runAnswerBatch(args: {
           console.error("[answer-engine] unified own stats read failed:", err);
         }
       }
-      // A dead end is shown this group's help menu, worded for who asks: what
-      // MatchTime CAN do instead. A menu that cannot be read is left out.
-      let deadEnd: { capabilities: string | null } | null = null;
-      if (deadEnds.has(id)) {
+      // A dead end is told why its path stopped, when the path said, and
+      // shown this group's help menu, worded for who asks: what MatchTime
+      // CAN do instead. A menu that cannot be read is left out.
+      // The sender's own role, in HQ too: HQ answers members as well as
+      // organisers (FNF, `admin-group-anyone`), and a member must not be
+      // described as an organiser (review of #626). HQ still shows its own
+      // menu, which is the organisers' menu.
+      const askerIsOrganiser = !!asker?.isAdmin;
+      let deadEnd: DeadEndFacts | null = null;
+      const stopped = deadEnds.get(id);
+      if (stopped) {
         let capabilities: string | null = null;
         try {
           const help = deps.helpReply ?? defaultHelpReply(orgId, args.poolEnv ?? (async () => ({})));
-          capabilities = await help({ topic: null }, features, { admin: organisers || !!asker?.isAdmin });
+          capabilities = await help({ topic: null }, features, { admin: organisers || askerIsOrganiser });
         } catch (err) {
           console.error(`[answer-engine] ${id}: the help menu for a dead end was not read:`, err);
         }
-        deadEnd = { capabilities };
+        deadEnd = { capabilities, why: stopped.why?.trim() || null, askerIsOrganiser };
       }
+      // What the other parts of this same message already did (an
+      // `alsoAsks` message): shown as done, so the answer never says it
+      // cannot do what was just done.
+      const done = (args.alsoDone?.get(id) ?? []).filter((p) => p.text.trim());
       const g = await answerUnified({
         model,
         ...(deadEnd ? { deadEnd } : {}),
+        ...(done.length ? { alsoDone: done } : {}),
         audience: organisers ? "organisers" : "players",
         state,
         squadKnown: squadBlock === null,
@@ -1862,80 +1175,15 @@ export async function runAnswerBatch(args: {
         `[answer-engine] ${id}: unified answer ${"text" in g.result ? "answered" : "rejected"}, ${g.inputTokens} input tokens, $${g.costUsd.toFixed(5)}, ${g.ms} ms`,
       );
       if ("rejected" in g.result) {
-        degradations.push(`${ANSWER_DEGRADED_PREFIX} ${id}: unified answer not used (${g.result.rejected}); today's line instead`);
-      }
-    }
-    state = { ...state, openAnswers };
-  } else if (openIds.length > 0) {
-    let stats: StatsSnapshot | null = state.stats ?? null;
-    if (!stats && state.features.statsQa) {
-      try {
-        const load =
-          deps.loadStats ??
-          (async (o: string, at: Date) => {
-            const mod = await import("./load-stats");
-            return mod.loadStatsTables(o, at);
-          });
-        stats = { ...(await load(orgId, now)), chemistry: {}, generic: {}, periods: {} };
-      } catch (err) {
-        console.error("[answer-engine] open-answer stats load failed:", err);
-        degradations.push(
-          `${ANSWER_DEGRADED_PREFIX} the stats read for the open answer failed (${
-            err instanceof Error ? err.message : String(err)
-          }); answered without the stats`,
-        );
-      }
-    }
-    // The group's week, once for every open question in the batch.
-    let chat: Array<{ author: string | null; body: string; at?: Date | null }> = history;
-    let chatWindow: "week" | "recent" = "recent";
-    if (args.weekChat) {
-      try {
-        chat = await args.weekChat();
-        chatWindow = "week";
-      } catch (err) {
-        console.error("[answer-engine] open-answer week of chat not read:", err);
-        degradations.push(
-          `${ANSWER_DEGRADED_PREFIX} the week of chat for the open answer was not read (${
-            err instanceof Error ? err.message : String(err)
-          }); answered from the recent lines`,
-        );
-      }
-    }
-    const byId = new Map(messages.map((m) => [m.waMessageId, m]));
-    const openAnswers: NonNullable<SquadState["openAnswers"]> = {};
-    for (const id of openIds) {
-      const m = byId.get(id);
-      const g = await answerOpenQuestion({
-        model,
-        state,
-        stats,
-        audience: organisers ? "organisers" : "players",
-        squadKnown: squadBlock === null,
-        history: chat,
-        chatWindow,
-        lastBotPost,
-        reply: m?.reply ?? null,
-        now,
-        question: m?.body ?? "",
-        askerName: m?.senderName ?? m?.authorName ?? null,
-      });
-      openAnswers[id] = g.result;
-      if (g.called) cost = { usd: cost.usd + g.costUsd, calls: cost.calls + 1, ms: Math.max(cost.ms, g.ms) };
-      // Ids and counts only (Kemal's logging rule): never the words.
-      console.log(
-        `[answer-engine] ${id}: open answer ${"text" in g.result ? "answered" : "rejected"}, $${g.costUsd.toFixed(5)}, ${g.ms} ms`,
-      );
-      if ("rejected" in g.result) {
-        degradations.push(`${ANSWER_DEGRADED_PREFIX} ${id}: open answer not used (${g.result.rejected}); today's line instead`);
+        degradations.push(`${ANSWER_DEGRADED_PREFIX} ${id}: unified answer not used (${g.result.rejected}); the caller's line instead`);
       }
     }
     state = { ...state, openAnswers };
   }
 
   /**
-   * UNIFIED_ANSWERS: every read the unified answer's context is built from,
-   * once per batch. Each fails soft: a read that throws is left out of the
+   * Every read the unified answer's context is built from, once per
+   * batch. Each fails soft: a read that throws is left out of the
    * context (the model then says it does not know) and noted here.
    */
   async function loadUnifiedData() {
@@ -2006,9 +1254,7 @@ export async function runAnswerBatch(args: {
     body: m.body,
     senderUserId: m.senderUserId,
     senderName: m.senderName ?? m.authorName,
-    // A reply to MatchTime's own clarification is addressed to it; see
-    // `clarificationFor` above.
-    tagged: asksMatchTime(m) || clarificationFor.has(m.waMessageId),
+    tagged: asksMatchTime(m),
     // A message this module does not own still carries its real route so
     // its outcome says why nothing happened. `none` is honest for an id
     // the router never mentioned.
@@ -2070,12 +1316,6 @@ export async function runAnswerBatch(args: {
   // ── Stage 4: composition ───────────────────────────────────────────
   const composed = compose(result);
   const utteranceByMessageId = new Map<string, string[]>();
-  // The organisers-mode space answer (`Utterance.organisersSafe`). A
-  // message is labelled `ORGANISERS_SPACE_INTENT` only when EVERY part of
-  // its reply is safe: anything else joined to it keeps the reply under
-  // the analyze route's organisers-mode net.
-  const organisersSafeIds = new Set<string>();
-  const notOrganisersSafeIds = new Set<string>();
   for (const u of composed.utterances) {
     // A batch-level post (`messageId: null`) is the squad post, which
     // only a squad CHANGE produces — and this path makes none. If one
@@ -2094,8 +1334,6 @@ export async function runAnswerBatch(args: {
     const list = utteranceByMessageId.get(u.messageId) ?? [];
     list.push(u.text);
     utteranceByMessageId.set(u.messageId, list);
-    if (u.organisersSafe) organisersSafeIds.add(u.messageId);
-    else notOrganisersSafeIds.add(u.messageId);
   }
   const reactByMessageId = new Map(composed.reacts.map((r) => [r.messageId, r.emoji]));
   // De-duplicated: `compose()` re-emits `result.degradations` verbatim
@@ -2208,14 +1446,9 @@ export async function runAnswerBatch(args: {
       route: m.route as Route,
       reply,
       react,
-      // `rating_progress` keeps the label the deleted fast path wrote,
-      // so the admin log's vocabulary — and every sweep over it,
-      // including `e2e/replay/router-recall.ts`'s severity map — is
-      // unchanged by the move from regex to model. Same decision #72
-      // took for `stats_blast`.
       // `stats_link` / `dm-stats-link`: the labels the deleted
-      // `STATS_REQUEST` fast path wrote (2026-09-17), kept for the same
-      // reason `rating_progress` keeps its own.
+      // `STATS_REQUEST` fast path wrote (2026-09-17), kept so the admin
+      // log's vocabulary is unchanged.
       // `help` (2026-10-16): the label the "@Match Time help" fast path
       // writes, and what keeps the organisers-mode net and the squad
       // composition pass off the explainer (`skipsSquadComposition`).
@@ -2226,11 +1459,7 @@ export async function runAnswerBatch(args: {
             ? "stats_link"
             : helpIds.has(m.waMessageId)
               ? "help"
-              : organisersSafeIds.has(m.waMessageId) && !notOrganisersSafeIds.has(m.waMessageId)
-                ? ORGANISERS_SPACE_INTENT
-                : isRatingProgress(factsById.get(m.waMessageId))
-                ? "rating_progress"
-                : statsIntent(m.waMessageId, engineOutcome?.statsClarificationAsked === true),
+              : questionIntent(m.waMessageId),
       // `AnalyzedMessage.action`, derived exactly as `route.ts:2197-2200`
       // derives it for a message with no attendance write. "none" would
       // make every step-7 answer look like a no-op to anything filtering
@@ -2241,24 +1470,12 @@ export async function runAnswerBatch(args: {
     });
   }
 
-  /**
-   * The stats intents (2026-09-23). They do two jobs: the route's
-   * squad-composition pass skips them (`skipsSquadComposition`), so a
-   * leaderboard is never replaced by the squad list; and
-   * `stats_clarification` / `stats_clarified` are the row that opens
-   * and closes a "who do you mean?" (`awaiting-answer.ts`). A stats
-   * question with no table named is the appearances TABLE since
-   * 2026-09-23, so it carries "stats_table" too and is skipped by the
-   * composition pass like every other.
-   */
-  function statsIntent(id: string, asked: boolean): string {
-    if (asked) return STATS_CLARIFICATION_INTENT;
-    if (clarificationFor.has(id)) return STATS_CLARIFIED_INTENT;
+  /** The unified answer's own intent (`UNIFIED_ANSWER_INTENT`): the route's
+   *  squad-composition pass and the organisers-mode net skip it by intent.
+   *  The squad list is "question", as it always was. */
+  function questionIntent(id: string): string {
     const f = factsById.get(id);
-    if (f?.kind === "question" && f.topic === "other") return unified ? UNIFIED_ANSWER_INTENT : OPEN_ANSWER_INTENT;
-    if (f?.kind !== "question" || f.topic !== "stats") return "question";
-    const plan = statsPlans.get(id);
-    return plan?.kind === "generic" ? "stats_generic" : "stats_table";
+    return f?.kind === "question" && f.topic === "other" ? UNIFIED_ANSWER_INTENT : "question";
   }
 
   // §3.2 S36/S37 — de-duplicate replies within a batch. Two people

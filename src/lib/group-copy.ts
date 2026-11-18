@@ -345,31 +345,13 @@ export const STATS_ANSWER_INTENTS: ReadonlySet<string> = new Set([
 const TEAM_POST_INTENTS: ReadonlySet<string> = new Set(["generate_teams_request", "show_teams_request"]);
 
 /**
- * The intent of the answer to "is there still space?" in a players' group
- * whose organisers announce the list (FNF 2026-10-20, `oa_space_answer`):
- * how many places are open and how to ask for one, composed from the
- * database with no name in it. It is not a squad post, so neither the
- * squad-composition pass nor the organisers-mode net (`passesOrganisersNet`)
- * replaces it.
- */
-export const ORGANISERS_SPACE_INTENT = "organisers_space";
-
-/**
- * The intent of the open answer (2026-11-10, `pipeline/open-answer.ts`): a
- * tagged question that fits no set answer, answered by one grounded model
- * call. Model-written, so a suggested line-up or a list of regulars would
- * read as a roster to the squad-composition pass and be swapped for the
- * real squad, which answers a different question: skipped by intent, like
- * the stats answers. NOT exempt from the organisers-mode net
- * (`passesOrganisersNet`): in a club whose organisers announce the list,
- * a reply that shows squad state still becomes their line.
- */
-export const OPEN_ANSWER_INTENT = "open_answer";
-
-/**
- * The intent of the UNIFIED answer (UNIFIED_ANSWERS, 2026-11-10,
- * `pipeline/unified-answer.ts`). Skipped by the squad-composition pass like
- * the open answer. Unlike it, EXEMPT from the organisers-mode net
+ * The intent of the UNIFIED answer (2026-11-10, `pipeline/unified-answer.ts`;
+ * the only answer to an "anything else" question since 2026-11-18, when the
+ * open answer's `open_answer` and the organisers-mode space answer's
+ * `organisers_space` went with the other question categories). Model-written,
+ * so a suggested line-up or a list of regulars would read as a roster to the
+ * squad-composition pass and be swapped for the real squad: skipped by
+ * intent. EXEMPT from the organisers-mode net
  * (`passesOrganisersNet`, 2026-11-11): in a club whose organisers post the
  * list its context names nobody in the squad or on the bench, and the
  * answer turns a reply that copies the squad from the chat into the
@@ -382,8 +364,6 @@ export const UNIFIED_ANSWER_INTENT = "unified_answer";
  *  `help` (2026-10-16): the help explainer, which a how-it-works question
  *  now reaches through the pipeline; its "Squad & availability" heading
  *  would otherwise be read as a squad post and replaced by the roster.
- *  `ORGANISERS_SPACE_INTENT` (2026-10-20): the organisers-mode space
- *  answer, which must not become the roster it exists instead of.
  *  The pitch set by words (2026-10-28, `VENUE_WORDS_OUTCOMES`): its
  *  numbered list of places is not a squad list. */
 export function skipsSquadComposition(intent: string | null | undefined): boolean {
@@ -392,8 +372,6 @@ export function skipsSquadComposition(intent: string | null | undefined): boolea
     TEAM_POST_INTENTS.has(intent) ||
     STATS_ANSWER_INTENTS.has(intent) ||
     intent === "help" ||
-    intent === ORGANISERS_SPACE_INTENT ||
-    intent === OPEN_ANSWER_INTENT ||
     intent === UNIFIED_ANSWER_INTENT ||
     (VENUE_WORDS_OUTCOMES as readonly string[]).includes(intent)
   );

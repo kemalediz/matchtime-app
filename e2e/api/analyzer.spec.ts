@@ -197,48 +197,27 @@ test("third-party BENCH demote: CONFIRMED → BENCH, slot freed, no duplicate", 
 });
 
 test("two squad questions in one batch: two answers, one roster, no contradiction", async ({ request, db }) => {
-  // ── THE COMMENT THAT USED TO BE HERE WAS A KNOWN-STALE COUNT ──────
-  //
-  // It described a world produced by a test that had already been
-  // deleted, said so, and asked the next person to fix it as part of the
-  // port. This is that fix: the counts are READ rather than hard-coded,
-  // so the case cannot go stale again and still says the thing that
-  // matters — the number in the post is the number in the table.
-  //
-  // ── AND THE COLLAPSE IS NARROWER THAN IT WAS. MEASURED. ──────────
-  //
-  // The old title was "multiple squad-state replies collapse into ONE
-  // batch-final status post", and the old body fed two CONTRADICTORY
-  // model-authored replies ("We're 5/5 — full squad", "Bench is empty")
-  // so the collapse could be seen silencing one and replacing the other.
-  //
-  // Neither can be authored now: both answers are composed from the same
-  // `SquadState` read out of the database, so they cannot disagree. What
-  // this batch actually produces is TWO sends — the roster post for the
-  // `count` question and a one-line "On the bench: …" for the `bench`
-  // one — because `composeSquadStateReply`'s collapse only claims replies
-  // that SHOW SQUAD STATE, and the bench line is not one.
-  //
-  // That is a real difference from the old behaviour and it is asserted
-  // rather than glossed: two people asked two different questions and
-  // both got a true answer, which is not the failure this file is named
-  // for. The failure it IS named for is two posts that contradict each
-  // other, and that is what the assertions below rule out.
+  // The list asked for is the roster post, composed from the database; the
+  // bench question is the unified answer's (2026-11-18: the old `count` and
+  // `bench` answers were deleted). Two people asked two things and both get
+  // an answer, and only ONE of them is a roster: two roster posts in one
+  // batch is §3.2 S36, the failure this file is named for.
   const idA = msgId();
   const idB = msgId();
+  const BENCH_ANSWER = "The bench is listed under the squad in the list.";
   engineOn({
-    "@Match Time are we full for tuesday?": {
+    "@Match Time what's the list for tuesday?": {
       route: "question",
-      facts: { topic: "count", personRef: null, statedCount: null },
+      facts: { kind: "list", personRef: "", feature: "none", badge: "none" },
     },
     "@Match Time who's on the bench?": {
       route: "question",
-      facts: { topic: "bench", personRef: null, statedCount: null },
+      facts: { kind: "other", personRef: "", feature: "none", badge: "none", answer: BENCH_ANSWER },
     },
   });
   const before = await confirmedCount(db);
   const res = await postAnalyze(request, [
-    { waMessageId: idA, body: "@Match Time are we full for tuesday?", authorPhone: "447700900001", authorName: "Alex Admin", botMentioned: true },
+    { waMessageId: idA, body: "@Match Time what's the list for tuesday?", authorPhone: "447700900001", authorName: "Alex Admin", botMentioned: true },
     { waMessageId: idB, body: "@Match Time who's on the bench?", authorPhone: "447700900002", authorName: "Colin Collector", botMentioned: true },
   ]);
   const spoke = res.results
@@ -246,20 +225,10 @@ test("two squad questions in one batch: two answers, one roster, no contradictio
     .filter((t: string) => t.length > 0);
   expect(spoke.length, "both questions are answered").toBe(2);
 
-  // Exactly ONE of them carries the roster block. Two roster posts in one
-  // batch is §3.2 S36 and is the thing the collapse exists to stop.
   const rosters = spoke.filter((t: string) => t.includes("*Playing:*"));
   expect(rosters, `one roster post per batch, got ${JSON.stringify(spoke)}`).toHaveLength(1);
   expect(rosters[0]).toContain(`${before}/5`);
-
-  // And they AGREE, because both are arithmetic over the same rows: the
-  // bench named in the short answer is the bench listed in the roster.
-  const bench = await db.all<{ name: string }>(
-    `SELECT u.name FROM "Attendance" a JOIN "User" u ON u.id = a."userId"
-      WHERE a."matchId" = $1 AND a.status = 'BENCH'`,
-    [MATCH.upcoming],
-  );
-  for (const b of bench) for (const t of spoke) expect(t).toContain(b.name);
+  expect(spoke).toContain(BENCH_ANSWER);
 
   // A question answers; it never writes.
   expect(await confirmedCount(db)).toBe(before);

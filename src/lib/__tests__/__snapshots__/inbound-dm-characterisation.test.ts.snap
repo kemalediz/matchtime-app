@@ -109,8 +109,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -252,8 +252,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -353,8 +353,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -447,8 +447,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1518,8 +1518,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1667,8 +1667,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1796,8 +1796,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -1867,8 +1867,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -1999,68 +1999,118 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
 what time is kick off?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Sutton FC
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Zed, a member, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Tuesday 7-a-side on Tue 10 Nov at 21:30 (UK time)
-- Venue: Goals Sutton
-- Squad: 12/14 confirmed, 2 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13, Player 14
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 31 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Kemal, Zed, Amir, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+ADMINS: Kemal
+
+HOW THE CLUB IS RUN:
+- Money collector: Kemal
+- Match fee: £6 a player
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Tue 10 Nov, 21:30 at Goals Sutton, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 2.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (2): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+  2. Player 14
+TEAMS: not made yet.
+
+LAST MATCH PLAYED: Tue 21:30, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Tue 3 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Tue 3 Nov 2026):
+1. Player 1: 1 matches
+2. Player 10: 1 matches
+3. Player 11: 1 matches
+4. Player 12: 1 matches
+5. Player 13: 1 matches
+6. Player 14: 1 matches
+7. Player 2: 1 matches
+8. Player 3: 1 matches
+9. Player 4: 1 matches
+10. Player 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Zed
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
 - Usual match fee: £6 per player
 - No played matches of yours to pay for.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 03 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 1 — 1/1 (100%)
-  2. Player 10 — 1/1 (100%)
-  3. Player 11 — 1/1 (100%)
-  4. Player 12 — 1/1 (100%)
-  5. Player 13 — 1/1 (100%)
-  6. Player 14 — 1/1 (100%)
-  7. Player 2 — 1/1 (100%)
-  8. Player 3 — 1/1 (100%)
-  9. Player 4 — 1/1 (100%)
-  10. Player 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Zed) asks:
-what time is kick off?
-
-Answer per your rules.",
+THE MESSAGE (from Zed):
+what time is kick off?",
       },
     ],
     "response": {
@@ -2076,7 +2126,7 @@ Answer per your rules.",
             "orgId": "org-sutton",
             "phone": "447700900311",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -2139,65 +2189,119 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
 how many have we got?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Sutton FC
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Kemal, an admin, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Tuesday 7-a-side on Tue 10 Nov at 21:30 (UK time)
-- Venue: Goals Sutton
-- Squad: 12/14 confirmed, 2 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13, Player 14
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 31 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Kemal, Zed, Amir, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+ADMINS: Kemal
+
+HOW THE CLUB IS RUN:
+- Money collector: Kemal
+- Match fee: £6 a player
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Tue 10 Nov, 21:30 at Goals Sutton, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 2.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (2): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+  2. Player 14
+TEAMS: not made yet.
+NO PHONE NUMBER ON RECORD (squad and bench): nobody
+
+LAST MATCH PLAYED: Tue 21:30, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Tue 3 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Tue 3 Nov 2026):
+1. Player 1: 1 matches
+2. Player 10: 1 matches
+3. Player 11: 1 matches
+4. Player 12: 1 matches
+5. Player 13: 1 matches
+6. Player 14: 1 matches
+7. Player 2: 1 matches
+8. Player 3: 1 matches
+9. Player 4: 1 matches
+10. Player 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Kemal
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+WHO HAS RATED THE LAST MATCH (Tuesday 7-a-side, Tue 3 Nov): 0 of 14 who played have rated, 0 have voted for Man of the Match.
+- Rated: 0 (their names are not listed)
+- Not rated yet: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - You collect this club's match fees, so you have nothing to pay.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 03 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 1 — 1/1 (100%)
-  2. Player 10 — 1/1 (100%)
-  3. Player 11 — 1/1 (100%)
-  4. Player 12 — 1/1 (100%)
-  5. Player 13 — 1/1 (100%)
-  6. Player 14 — 1/1 (100%)
-  7. Player 2 — 1/1 (100%)
-  8. Player 3 — 1/1 (100%)
-  9. Player 4 — 1/1 (100%)
-  10. Player 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Kemal) asks:
-how many have we got?
-
-Answer per your rules.",
+THE MESSAGE (from Kemal):
+how many have we got?",
       },
     ],
     "response": {
@@ -2213,7 +2317,7 @@ Answer per your rules.",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -2491,8 +2595,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2580,8 +2684,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2669,8 +2773,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -2768,8 +2872,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -2911,8 +3015,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -3011,8 +3115,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3106,8 +3210,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3398,8 +3502,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3545,8 +3649,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3673,8 +3777,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -3744,8 +3848,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -3825,8 +3929,8 @@ how many have rated so far?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -3895,47 +3999,97 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
 what time is kick off?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: FNF
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Smiler, a member, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Friday Night Football on Fri 6 Nov at 20:00 (UK time)
-- Venue: Powerleague
-- Squad: 12/14 confirmed, 1 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 16 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): (unnamed), Smiler, Rafi, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13
+ADMINS: Rafi
+
+HOW THE CLUB IS RUN:
+- Money collector: not set
+- Match fee: not set
+- Teams are made: at 10:00 on match day
+- Who posts the squad list: the organisers
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 to the organisers in HQ, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Fri 6 Nov, 20:00 at Powerleague, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 1.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (1): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+TEAMS: not made yet.
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game MatchTime has recorded for this club; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+LAST MAN OF THE MATCH: none decided yet.
+
+STATS, THE LAST 30 DAYS (since Mon 5 Oct 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Thu 1 Jan 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 0
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 0/0 (0% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player asks:
-what time is kick off?
-
-Answer per your rules.",
+THE MESSAGE (from a member):
+what time is kick off?",
       },
     ],
     "response": {
@@ -3951,7 +4105,7 @@ Answer per your rules.",
             "orgId": "org-fnf",
             "phone": "447700900311",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -4014,47 +4168,102 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
 how many have we got?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: FNF
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Rafi, an admin, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Friday Night Football on Fri 6 Nov at 20:00 (UK time)
-- Venue: Powerleague
-- Squad: 12/14 confirmed, 1 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 16 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): (unnamed), Smiler, Rafi, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13
+ADMINS: Rafi
+
+HOW THE CLUB IS RUN:
+- Money collector: not set
+- Match fee: not set
+- Teams are made: at 10:00 on match day
+- Who posts the squad list: the organisers
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 to the organisers in HQ, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Fri 6 Nov, 20:00 at Powerleague, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 1.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (1): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+TEAMS: not made yet.
+NO PHONE NUMBER ON RECORD (squad and bench): nobody
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game MatchTime has recorded for this club; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Rafi
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Mon 5 Oct 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Thu 1 Jan 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 0
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+WHO HAS RATED THE LAST MATCH: There's no recent completed match to check yet.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 0/0 (0% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Rafi) asks:
-how many have we got?
-
-Answer per your rules.",
+THE MESSAGE (from Rafi):
+how many have we got?",
       },
     ],
     "response": {
@@ -4070,7 +4279,7 @@ Answer per your rules.",
             "orgId": "org-fnf",
             "phone": "447700900312",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -4274,8 +4483,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4362,8 +4571,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4450,8 +4659,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4519,8 +4728,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4636,8 +4845,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -4711,8 +4920,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4781,8 +4990,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4849,8 +5058,8 @@ IN",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4894,8 +5103,8 @@ invite players for the next game",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -4949,8 +5158,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -4994,8 +5203,8 @@ can't make it this week, sorry",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5039,8 +5248,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5142,8 +5351,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5187,8 +5396,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -5242,8 +5451,8 @@ how many have rated so far?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
@@ -5287,47 +5496,80 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
 what time is kick off?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: FNF
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Smiler, a member, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Sat 7 Nov 2026, 10:00 (London)
 
-UPCOMING MATCH:
-- Friday Night Football on Fri 6 Nov at 20:00 (UK time)
-- Venue: Powerleague
-- Squad: 12/14 confirmed, 1 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 16 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): (unnamed), Smiler, Rafi, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13
+ADMINS: Rafi
+
+HOW THE CLUB IS RUN:
+- Money collector: not set
+- Match fee: not set
+- Teams are made: at 10:00 on match day
+- Who posts the squad list: the organisers
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 to the organisers in HQ, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: there is no upcoming match scheduled.
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game MatchTime has recorded for this club; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+LAST MAN OF THE MATCH: none decided yet.
+
+STATS, THE LAST 30 DAYS (since Thu 8 Oct 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Thu 1 Jan 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 0
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 0/0 (0% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Saturday 7 November 2026, 10:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player asks:
-what time is kick off?
-
-Answer per your rules.",
+THE MESSAGE (from a member):
+what time is kick off?",
       },
     ],
     "response": {
@@ -5343,7 +5585,7 @@ Answer per your rules.",
             "orgId": "org-fnf",
             "phone": "447700900311",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -5380,47 +5622,84 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Rafi, who tagged the bot):
 how many have we got?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: FNF
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Rafi, an admin, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Sat 7 Nov 2026, 10:00 (London)
 
-UPCOMING MATCH:
-- Friday Night Football on Fri 6 Nov at 20:00 (UK time)
-- Venue: Powerleague
-- Squad: 12/14 confirmed, 1 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 16 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): (unnamed), Smiler, Rafi, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13
+ADMINS: Rafi
+
+HOW THE CLUB IS RUN:
+- Money collector: not set
+- Match fee: not set
+- Teams are made: at 10:00 on match day
+- Who posts the squad list: the organisers
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 to the organisers in HQ, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: there is no upcoming match scheduled.
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game MatchTime has recorded for this club; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Rafi
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Thu 8 Oct 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Thu 1 Jan 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 0
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+WHO HAS RATED THE LAST MATCH: There's no recent completed match to check yet.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 0/0 (0% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Saturday 7 November 2026, 10:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Rafi) asks:
-how many have we got?
-
-Answer per your rules.",
+THE MESSAGE (from Rafi):
+how many have we got?",
       },
     ],
     "response": {
@@ -5436,7 +5715,7 @@ Answer per your rules.",
             "orgId": "org-fnf",
             "phone": "447700900312",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -5474,8 +5753,8 @@ yes",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5519,8 +5798,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5582,8 +5861,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5645,8 +5924,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from (unknown), who tagged the bot):
@@ -5695,8 +5974,8 @@ exports[`the DMs, per club shape (must not change in C3) > POST /api/whatsapp/dm
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5726,8 +6005,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -5747,8 +6026,8 @@ GO",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -5798,8 +6077,8 @@ Message me *help* and a topic to learn more, e.g. *help availability*
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5844,8 +6123,8 @@ Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the 
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5888,8 +6167,8 @@ You'll get the link the morning after the game. Ask me for yours any time, in yo
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5909,8 +6188,8 @@ IN",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -5940,8 +6219,8 @@ invite players for the next game",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5961,8 +6240,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -5982,8 +6261,8 @@ can't make it this week, sorry",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6003,8 +6282,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6024,8 +6303,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6045,8 +6324,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6076,8 +6355,8 @@ THE MESSAGE (from Owen, who tagged the bot):
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6097,8 +6376,8 @@ how many have rated so far?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6118,8 +6397,8 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6139,8 +6418,8 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6160,8 +6439,8 @@ yes",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6181,8 +6460,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6202,8 +6481,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6262,8 +6541,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6379,8 +6658,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6454,8 +6733,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6524,8 +6803,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6592,8 +6871,8 @@ IN",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6696,8 +6975,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6741,8 +7020,8 @@ can't make it this week, sorry",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6786,8 +7065,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6889,8 +7168,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -6934,8 +7213,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -6989,8 +7268,8 @@ how many have rated so far?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
@@ -7034,46 +7313,82 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
 what time is kick off?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Thursday Ratings
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Pete, a member, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Thursday 6-a-side on Thu 5 Nov at 19:00 (UK time)
-- Venue: Leisure Centre
-- Squad: 0/12 confirmed, 0 on the bench
-- You are currently: not signed up
-- Confirmed players: (none yet)
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 2 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Owen, Pete
+ADMINS: Owen
+
+HOW THE CLUB IS RUN:
+- Money collector: not set
+- Match fee: not set
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: MatchTime does not keep a squad for this club.
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game MatchTime has recorded for this club; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Pete
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Mon 5 Oct 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Thu 1 Jan 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 0
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 0/0 (0% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Pete) asks:
-what time is kick off?
-
-Answer per your rules.",
+THE MESSAGE (from Pete):
+what time is kick off?",
       },
     ],
     "response": {
@@ -7089,7 +7404,7 @@ Answer per your rules.",
             "orgId": "org-ratings",
             "phone": "447700900311",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -7126,46 +7441,83 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Owen, who tagged the bot):
 how many have we got?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Thursday Ratings
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Owen, an admin, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Thursday 6-a-side on Thu 5 Nov at 19:00 (UK time)
-- Venue: Leisure Centre
-- Squad: 0/12 confirmed, 0 on the bench
-- You are currently: not signed up
-- Confirmed players: (none yet)
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 2 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Owen, Pete
+ADMINS: Owen
+
+HOW THE CLUB IS RUN:
+- Money collector: not set
+- Match fee: not set
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: MatchTime does not keep a squad for this club.
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game MatchTime has recorded for this club; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Owen
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Mon 5 Oct 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Thu 1 Jan 2026):
+- Appearances: none recorded
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 0
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+WHO HAS RATED THE LAST MATCH: There's no recent completed match to check yet.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 0/0 (0% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Owen) asks:
-how many have we got?
-
-Answer per your rules.",
+THE MESSAGE (from Owen):
+how many have we got?",
       },
     ],
     "response": {
@@ -7181,7 +7533,7 @@ Answer per your rules.",
             "orgId": "org-ratings",
             "phone": "447700900310",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -7219,8 +7571,8 @@ yes",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7264,8 +7616,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7327,8 +7679,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7390,8 +7742,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Pete, who tagged the bot):
@@ -7490,8 +7842,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -7633,8 +7985,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -7734,8 +8086,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -7828,8 +8180,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -8899,8 +9251,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9048,8 +9400,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9177,8 +9529,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9248,8 +9600,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -9380,68 +9732,118 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
 what time is kick off?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Sutton FC
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Zed, a member, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Tuesday 7-a-side on Tue 10 Nov at 21:30 (UK time)
-- Venue: Goals Sutton
-- Squad: 12/14 confirmed, 2 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13, Player 14
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 31 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Kemal, Zed, Amir, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+ADMINS: Kemal
+
+HOW THE CLUB IS RUN:
+- Money collector: Kemal
+- Match fee: £6 a player
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Tue 10 Nov, 21:30 at Goals Sutton, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 2.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (2): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+  2. Player 14
+TEAMS: not made yet.
+
+LAST MATCH PLAYED: Tue 21:30, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Tue 3 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Tue 3 Nov 2026):
+1. Player 1: 1 matches
+2. Player 10: 1 matches
+3. Player 11: 1 matches
+4. Player 12: 1 matches
+5. Player 13: 1 matches
+6. Player 14: 1 matches
+7. Player 2: 1 matches
+8. Player 3: 1 matches
+9. Player 4: 1 matches
+10. Player 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Zed
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
 - Usual match fee: £6 per player
 - No played matches of yours to pay for.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 03 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 1 — 1/1 (100%)
-  2. Player 10 — 1/1 (100%)
-  3. Player 11 — 1/1 (100%)
-  4. Player 12 — 1/1 (100%)
-  5. Player 13 — 1/1 (100%)
-  6. Player 14 — 1/1 (100%)
-  7. Player 2 — 1/1 (100%)
-  8. Player 3 — 1/1 (100%)
-  9. Player 4 — 1/1 (100%)
-  10. Player 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Zed) asks:
-what time is kick off?
-
-Answer per your rules.",
+THE MESSAGE (from Zed):
+what time is kick off?",
       },
     ],
     "response": {
@@ -9457,7 +9859,7 @@ Answer per your rules.",
             "orgId": "org-sutton",
             "phone": "447700900311",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -9520,65 +9922,119 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
 how many have we got?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Sutton FC
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Kemal, an admin, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Tuesday 7-a-side on Tue 10 Nov at 21:30 (UK time)
-- Venue: Goals Sutton
-- Squad: 12/14 confirmed, 2 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13, Player 14
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 31 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Kemal, Zed, Amir, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+ADMINS: Kemal
+
+HOW THE CLUB IS RUN:
+- Money collector: Kemal
+- Match fee: £6 a player
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Tue 10 Nov, 21:30 at Goals Sutton, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 2.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (2): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+  2. Player 14
+TEAMS: not made yet.
+NO PHONE NUMBER ON RECORD (squad and bench): nobody
+
+LAST MATCH PLAYED: Tue 21:30, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Tue 3 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Tue 3 Nov 2026):
+1. Player 1: 1 matches
+2. Player 10: 1 matches
+3. Player 11: 1 matches
+4. Player 12: 1 matches
+5. Player 13: 1 matches
+6. Player 14: 1 matches
+7. Player 2: 1 matches
+8. Player 3: 1 matches
+9. Player 4: 1 matches
+10. Player 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Kemal
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+WHO HAS RATED THE LAST MATCH (Tuesday 7-a-side, Tue 3 Nov): 0 of 14 who played have rated, 0 have voted for Man of the Match.
+- Rated: 0 (their names are not listed)
+- Not rated yet: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - You collect this club's match fees, so you have nothing to pay.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 03 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 1 — 1/1 (100%)
-  2. Player 10 — 1/1 (100%)
-  3. Player 11 — 1/1 (100%)
-  4. Player 12 — 1/1 (100%)
-  5. Player 13 — 1/1 (100%)
-  6. Player 14 — 1/1 (100%)
-  7. Player 2 — 1/1 (100%)
-  8. Player 3 — 1/1 (100%)
-  9. Player 4 — 1/1 (100%)
-  10. Player 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Kemal) asks:
-how many have we got?
-
-Answer per your rules.",
+THE MESSAGE (from Kemal):
+how many have we got?",
       },
     ],
     "response": {
@@ -9594,7 +10050,7 @@ Answer per your rules.",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -9821,8 +10277,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9910,8 +10366,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -9999,8 +10455,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10094,8 +10550,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10237,8 +10693,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -10338,8 +10794,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -10432,8 +10888,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11503,8 +11959,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11652,8 +12108,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11781,8 +12237,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -11852,8 +12308,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -11984,68 +12440,118 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
 what time is kick off?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Sutton FC
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Zed, a member, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Tue 10 Nov 2026, 18:00 (London)
 
-UPCOMING MATCH:
-- Tuesday 7-a-side on Tue 10 Nov at 21:30 (UK time)
-- Venue: Goals Sutton
-- Squad: 12/14 confirmed, 2 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13, Player 14
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 31 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Kemal, Zed, Amir, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+ADMINS: Kemal
+
+HOW THE CLUB IS RUN:
+- Money collector: Kemal
+- Match fee: £6 a player
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Tue 10 Nov, 21:30 at Goals Sutton, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 2.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (2): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+  2. Player 14
+TEAMS: not made yet.
+
+LAST MATCH PLAYED: Tue 21:30, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Tue 3 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Tue 3 Nov 2026):
+1. Player 1: 1 matches
+2. Player 10: 1 matches
+3. Player 11: 1 matches
+4. Player 12: 1 matches
+5. Player 13: 1 matches
+6. Player 14: 1 matches
+7. Player 2: 1 matches
+8. Player 3: 1 matches
+9. Player 4: 1 matches
+10. Player 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Zed
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
 - Usual match fee: £6 per player
 - No played matches of yours to pay for.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 03 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 1 — 1/1 (100%)
-  2. Player 10 — 1/1 (100%)
-  3. Player 11 — 1/1 (100%)
-  4. Player 12 — 1/1 (100%)
-  5. Player 13 — 1/1 (100%)
-  6. Player 14 — 1/1 (100%)
-  7. Player 2 — 1/1 (100%)
-  8. Player 3 — 1/1 (100%)
-  9. Player 4 — 1/1 (100%)
-  10. Player 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Zed) asks:
-what time is kick off?
-
-Answer per your rules.",
+THE MESSAGE (from Zed):
+what time is kick off?",
       },
     ],
     "response": {
@@ -12061,7 +12567,7 @@ Answer per your rules.",
             "orgId": "org-sutton",
             "phone": "447700900311",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -12124,65 +12630,119 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
 how many have we got?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Sutton FC
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Kemal, an admin, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Tue 10 Nov 2026, 18:00 (London)
 
-UPCOMING MATCH:
-- Tuesday 7-a-side on Tue 10 Nov at 21:30 (UK time)
-- Venue: Goals Sutton
-- Squad: 12/14 confirmed, 2 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13, Player 14
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 31 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Kemal, Zed, Amir, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+ADMINS: Kemal
+
+HOW THE CLUB IS RUN:
+- Money collector: Kemal
+- Match fee: £6 a player
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Tue 10 Nov, 21:30 at Goals Sutton, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 2.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (2): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+  2. Player 14
+TEAMS: not made yet.
+NO PHONE NUMBER ON RECORD (squad and bench): nobody
+
+LAST MATCH PLAYED: Tue 21:30, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Tue 3 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Tue 3 Nov 2026):
+1. Player 1: 1 matches
+2. Player 10: 1 matches
+3. Player 11: 1 matches
+4. Player 12: 1 matches
+5. Player 13: 1 matches
+6. Player 14: 1 matches
+7. Player 2: 1 matches
+8. Player 3: 1 matches
+9. Player 4: 1 matches
+10. Player 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Kemal
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+WHO HAS RATED THE LAST MATCH (Tuesday 7-a-side, Tue 3 Nov): 0 of 14 who played have rated, 0 have voted for Man of the Match.
+- Rated: 0 (their names are not listed)
+- Not rated yet: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - You collect this club's match fees, so you have nothing to pay.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 03 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 1 — 1/1 (100%)
-  2. Player 10 — 1/1 (100%)
-  3. Player 11 — 1/1 (100%)
-  4. Player 12 — 1/1 (100%)
-  5. Player 13 — 1/1 (100%)
-  6. Player 14 — 1/1 (100%)
-  7. Player 2 — 1/1 (100%)
-  8. Player 3 — 1/1 (100%)
-  9. Player 4 — 1/1 (100%)
-  10. Player 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Kemal) asks:
-how many have we got?
-
-Answer per your rules.",
+THE MESSAGE (from Kemal):
+how many have we got?",
       },
     ],
     "response": {
@@ -12198,7 +12758,7 @@ Answer per your rules.",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -12425,8 +12985,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12514,8 +13074,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12603,8 +13163,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12703,8 +13263,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -12846,8 +13406,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -12947,8 +13507,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -13041,8 +13601,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14112,8 +14672,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14261,8 +14821,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14390,8 +14950,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -14461,8 +15021,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
@@ -14593,83 +15153,118 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
 what time is kick off?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Sutton FC
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Zed, a member, in a private message to MatchTime
+THE CLUB SPEAKS: Turkish
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Match: Tuesday 7-a-side
-- Day: Salı
-- Date: 10 Kasım
-- Kickoff: 21:30 (UK time)
-- Write this match as: "10 Kasım Salı 21:30"
-- Venue: Goals Sutton
-- Squad: 12/14 confirmed, 2 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13, Player 14
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 31 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Kemal, Zed, Amir, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+ADMINS: Kemal
+
+HOW THE CLUB IS RUN:
+- Money collector: Kemal
+- Match fee: £6 a player
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: 10 Kasım Salı 21:30 at Goals Sutton, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 2.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (2): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+  2. Player 14
+TEAMS: not made yet.
+
+LAST MATCH PLAYED: Salı 21:30, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Tue 3 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Tue 3 Nov 2026):
+1. Player 1: 1 matches
+2. Player 10: 1 matches
+3. Player 11: 1 matches
+4. Player 12: 1 matches
+5. Player 13: 1 matches
+6. Player 14: 1 matches
+7. Player 2: 1 matches
+8. Player 3: 1 matches
+9. Player 4: 1 matches
+10. Player 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Zed
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
 - Usual match fee: £6 per player
 - No played matches of yours to pay for.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 3 Kasım 2026 Salı: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 1 — 1/1 (100%)
-  2. Player 10 — 1/1 (100%)
-  3. Player 11 — 1/1 (100%)
-  4. Player 12 — 1/1 (100%)
-  5. Player 13 — 1/1 (100%)
-  6. Player 14 — 1/1 (100%)
-  7. Player 2 — 1/1 (100%)
-  8. Player 3 — 1/1 (100%)
-  9. Player 4 — 1/1 (100%)
-  10. Player 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Zed) asks:
-what time is kick off?
-
-LANGUAGE:
-This player's group speaks TURKISH. Write your whole answer in Turkish, whatever language the question is in.
-Address the player as "sen" (informal singular). No "abi", no "beyler", no greeting by time of day.
-Copy every player name and the group name exactly as the CONTEXT spells them.
-Every date, weekday and time in the CONTEXT is already written in Turkish. Copy them exactly; never translate a date and never work out a weekday yourself. The upcoming match is on the "Day" the CONTEXT gives; write it exactly as its "Write this match as" line. A past match is on the weekday written beside its date.
-Put a date, a time, a venue or a name where Turkish needs no suffix on it: after a colon, in brackets, or before "maçı" or "için". Write "Maç: <the match as written>, yer: <venue>" or "<the match as written> maçı için"; never glue a suffix onto a time or a venue (not "'de", "'da" or "'deki" after them).
-The CONTEXT labels are English; the answer is not. Say "maçın adamı" (never "Man of the Match" or "MoM"), "puan" (never "rating"), "form", "galibiyet / beraberlik / mağlubiyet", and for the asker status "kadrodasın" (CONFIRMED), "yedektesin" (BENCH), "kadroda değilsin" (anything else); never copy a status word in capitals. Talk about the squad as "we" ("kadroda 11 kişiyiz"), never "you" plural.
-If you decline, say it in Turkish, e.g. "Sadece Sutton FC maçlarıyla ilgili yardımcı olabilirim 🙂".
-The phone-number answers, when the context allows them, are "Kayıtlı numarası olmayanlar: Aaron, Idris." and "Herkesin kayıtlı numarası var 👍".
-WhatsApp formatting: bold is *single asterisks*. NEVER write an em dash (—) or an en dash (–); use a comma or a full stop.
-
-Answer per your rules.",
+THE MESSAGE (from Zed):
+what time is kick off?",
       },
     ],
     "response": {
@@ -14685,7 +15280,7 @@ Answer per your rules.",
             "orgId": "org-sutton",
             "phone": "447700900311",
             "priority": 1,
-            "text": "{}",
+            "text": "Kusura bakma, bunu çıkaramadım, bir daha sorar mısın? 🙂",
           },
         },
         "call": "botJob.create",
@@ -14748,80 +15343,119 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Kemal, who tagged the bot):
 how many have we got?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Sutton FC
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Kemal, an admin, in a private message to MatchTime
+THE CLUB SPEAKS: Turkish
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Match: Tuesday 7-a-side
-- Day: Salı
-- Date: 10 Kasım
-- Kickoff: 21:30 (UK time)
-- Write this match as: "10 Kasım Salı 21:30"
-- Venue: Goals Sutton
-- Squad: 12/14 confirmed, 2 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13, Player 14
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 31 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Kemal, Zed, Amir, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14, Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+ADMINS: Kemal
+
+HOW THE CLUB IS RUN:
+- Money collector: Kemal
+- Match fee: £6 a player
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- While places are open, MatchTime posts the squad with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: 10 Kasım Salı 21:30 at Goals Sutton, 14 players, 7 a side
+- In the squad: 12 of 14. Places left: 2. On the bench: 2.
+SQUAD (12 of 14), in the order they joined, each with their place:
+  1. Player 1
+  2. Player 2
+  3. Player 3
+  4. Player 4
+  5. Player 5
+  6. Player 6
+  7. Player 7
+  8. Player 8
+  9. Player 9
+  10. Player 10
+  11. Player 11
+  12. Player 12
+BENCH (2): the players waiting for a place in the squad, in order, each with their place:
+  1. Player 13
+  2. Player 14
+TEAMS: not made yet.
+NO PHONE NUMBER ON RECORD (squad and bench): nobody
+
+LAST MATCH PLAYED: Salı 21:30, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Tue 3 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Tue 3 Nov 2026):
+1. Player 1: 1 matches
+2. Player 10: 1 matches
+3. Player 11: 1 matches
+4. Player 12: 1 matches
+5. Player 13: 1 matches
+6. Player 14: 1 matches
+7. Player 2: 1 matches
+8. Player 3: 1 matches
+9. Player 4: 1 matches
+10. Player 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Kemal
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Tue 3 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 1 1, Player 10 1, Player 11 1, Player 12 1, Player 13 1, Player 14 1, Player 2 1, Player 3 1, Player 4 1, Player 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+WHO HAS RATED THE LAST MATCH (Tuesday 7-a-side, 3 Kasım Salı): 0 of 14 who played have rated, 0 have voted for Man of the Match.
+- Rated: 0 (their names are not listed)
+- Not rated yet: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12, Player 13, Player 14
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - You collect this club's match fees, so you have nothing to pay.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 3 Kasım 2026 Salı: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 1 — 1/1 (100%)
-  2. Player 10 — 1/1 (100%)
-  3. Player 11 — 1/1 (100%)
-  4. Player 12 — 1/1 (100%)
-  5. Player 13 — 1/1 (100%)
-  6. Player 14 — 1/1 (100%)
-  7. Player 2 — 1/1 (100%)
-  8. Player 3 — 1/1 (100%)
-  9. Player 4 — 1/1 (100%)
-  10. Player 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Kemal) asks:
-how many have we got?
-
-LANGUAGE:
-This player's group speaks TURKISH. Write your whole answer in Turkish, whatever language the question is in.
-Address the player as "sen" (informal singular). No "abi", no "beyler", no greeting by time of day.
-Copy every player name and the group name exactly as the CONTEXT spells them.
-Every date, weekday and time in the CONTEXT is already written in Turkish. Copy them exactly; never translate a date and never work out a weekday yourself. The upcoming match is on the "Day" the CONTEXT gives; write it exactly as its "Write this match as" line. A past match is on the weekday written beside its date.
-Put a date, a time, a venue or a name where Turkish needs no suffix on it: after a colon, in brackets, or before "maçı" or "için". Write "Maç: <the match as written>, yer: <venue>" or "<the match as written> maçı için"; never glue a suffix onto a time or a venue (not "'de", "'da" or "'deki" after them).
-The CONTEXT labels are English; the answer is not. Say "maçın adamı" (never "Man of the Match" or "MoM"), "puan" (never "rating"), "form", "galibiyet / beraberlik / mağlubiyet", and for the asker status "kadrodasın" (CONFIRMED), "yedektesin" (BENCH), "kadroda değilsin" (anything else); never copy a status word in capitals. Talk about the squad as "we" ("kadroda 11 kişiyiz"), never "you" plural.
-If you decline, say it in Turkish, e.g. "Sadece Sutton FC maçlarıyla ilgili yardımcı olabilirim 🙂".
-The phone-number answers, when the context allows them, are "Kayıtlı numarası olmayanlar: Aaron, Idris." and "Herkesin kayıtlı numarası var 👍".
-WhatsApp formatting: bold is *single asterisks*. NEVER write an em dash (—) or an en dash (–); use a comma or a full stop.
-
-Answer per your rules.",
+THE MESSAGE (from Kemal):
+how many have we got?",
       },
     ],
     "response": {
@@ -14837,7 +15471,7 @@ Answer per your rules.",
             "orgId": "org-sutton",
             "phone": "447700900310",
             "priority": 1,
-            "text": "{}",
+            "text": "Kusura bakma, bunu çıkaramadım, bir daha sorar mısın? 🙂",
           },
         },
         "call": "botJob.create",
@@ -15064,8 +15698,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -15153,8 +15787,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -15242,8 +15876,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Zed, who tagged the bot):
@@ -15342,8 +15976,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -15550,8 +16184,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -15651,8 +16285,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -15747,8 +16381,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16241,8 +16875,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16390,8 +17024,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16584,8 +17218,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -16720,8 +17354,8 @@ THE DM:
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -16917,64 +17551,119 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
 what time is kick off?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Vets MNF
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Nabz, a member, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Monday Night Football on Mon 9 Nov at 20:00 (UK time)
-- Venue: Vets Ground
-- Squad: 13/14 confirmed, 0 on the bench
-- You are currently: not signed up
-- Confirmed players: Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 16 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Davide, Nabz, Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13, Player 14
+ADMINS: Davide
+
+HOW THE CLUB IS RUN:
+- Money collector: Davide
+- Match fee: not set
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- The squad is a MONTHLY squad: the regulars who paid for the month are on the month's list and in every game of the month without saying anything, so nobody needs to confirm.
+- A regular who can't make a game says OUT, and their place opens for that game.
+- An open place goes to the bench first, then to the pay as you go players: one says IN to take it and pays for that game only.
+- The month's list starts from the list the organisers post for the month.
+- While places are open, MatchTime posts the month's list with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Mon 9 Nov, 20:00 at Vets Ground, 14 players, 7 a side
+- In the squad: 13 of 14. Places left: 1. On the bench: 0.
+SQUAD (13 of 14), in the order they joined, each with their place:
+  1. Regular 1
+  2. Regular 2
+  3. Regular 3
+  4. Regular 4
+  5. Regular 5
+  6. Regular 6
+  7. Regular 7
+  8. Regular 8
+  9. Regular 9
+  10. Regular 10
+  11. Regular 11
+  12. Regular 12
+  13. Regular 13
+BENCH (0): the players waiting for a place in the squad, in order, each with their place:
+  nobody
+TEAMS: not made yet.
+
+LAST MATCH PLAYED: Mon 20:00, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Mon 2 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Mon 2 Nov 2026):
+1. Player 14: 1 matches
+2. Regular 1: 1 matches
+3. Regular 10: 1 matches
+4. Regular 11: 1 matches
+5. Regular 12: 1 matches
+6. Regular 13: 1 matches
+7. Regular 2: 1 matches
+8. Regular 3: 1 matches
+9. Regular 4: 1 matches
+10. Regular 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Nabz
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Mon 2 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 14 1, Regular 1 1, Regular 10 1, Regular 11 1, Regular 12 1, Regular 13 1, Regular 2 1, Regular 3 1, Regular 4 1, Regular 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Mon 2 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 14 1, Regular 1 1, Regular 10 1, Regular 11 1, Regular 12 1, Regular 13 1, Regular 2 1, Regular 3 1, Regular 4 1, Regular 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 02 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 14 — 1/1 (100%)
-  2. Regular 1 — 1/1 (100%)
-  3. Regular 10 — 1/1 (100%)
-  4. Regular 11 — 1/1 (100%)
-  5. Regular 12 — 1/1 (100%)
-  6. Regular 13 — 1/1 (100%)
-  7. Regular 2 — 1/1 (100%)
-  8. Regular 3 — 1/1 (100%)
-  9. Regular 4 — 1/1 (100%)
-  10. Regular 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Nabz) asks:
-what time is kick off?
-
-Answer per your rules.",
+THE MESSAGE (from Nabz):
+what time is kick off?",
       },
     ],
     "response": {
@@ -16990,7 +17679,7 @@ Answer per your rules.",
             "orgId": "org-vets",
             "phone": "447700900311",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -17118,64 +17807,123 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
 how many have we got?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Vets MNF
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Davide, an admin, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Wed 4 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Monday Night Football on Mon 9 Nov at 20:00 (UK time)
-- Venue: Vets Ground
-- Squad: 13/14 confirmed, 0 on the bench
-- You are currently: not signed up
-- Confirmed players: Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 16 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Davide, Nabz, Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13, Player 14
+ADMINS: Davide
+
+HOW THE CLUB IS RUN:
+- Money collector: Davide
+- Match fee: not set
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- The squad is a MONTHLY squad: the regulars who paid for the month are on the month's list and in every game of the month without saying anything, so nobody needs to confirm.
+- A regular who can't make a game says OUT, and their place opens for that game.
+- An open place goes to the bench first, then to the pay as you go players: one says IN to take it and pays for that game only.
+- The month's list starts from the list the organisers post for the month.
+- While places are open, MatchTime posts the month's list with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: Mon 9 Nov, 20:00 at Vets Ground, 14 players, 7 a side
+- In the squad: 13 of 14. Places left: 1. On the bench: 0.
+SQUAD (13 of 14), in the order they joined, each with their place:
+  1. Regular 1
+  2. Regular 2
+  3. Regular 3
+  4. Regular 4
+  5. Regular 5
+  6. Regular 6
+  7. Regular 7
+  8. Regular 8
+  9. Regular 9
+  10. Regular 10
+  11. Regular 11
+  12. Regular 12
+  13. Regular 13
+BENCH (0): the players waiting for a place in the squad, in order, each with their place:
+  nobody
+TEAMS: not made yet.
+NO PHONE NUMBER ON RECORD (squad and bench): nobody
+
+LAST MATCH PLAYED: Mon 20:00, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Mon 2 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Mon 2 Nov 2026):
+1. Player 14: 1 matches
+2. Regular 1: 1 matches
+3. Regular 10: 1 matches
+4. Regular 11: 1 matches
+5. Regular 12: 1 matches
+6. Regular 13: 1 matches
+7. Regular 2: 1 matches
+8. Regular 3: 1 matches
+9. Regular 4: 1 matches
+10. Regular 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Davide
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Mon 2 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 14 1, Regular 1 1, Regular 10 1, Regular 11 1, Regular 12 1, Regular 13 1, Regular 2 1, Regular 3 1, Regular 4 1, Regular 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Mon 2 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 14 1, Regular 1 1, Regular 10 1, Regular 11 1, Regular 12 1, Regular 13 1, Regular 2 1, Regular 3 1, Regular 4 1, Regular 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+WHO HAS RATED THE LAST MATCH (Monday Night Football, Mon 2 Nov): 0 of 14 who played have rated, 0 have voted for Man of the Match.
+- Rated: 0 (their names are not listed)
+- Not rated yet: Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13, Player 14
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 02 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 14 — 1/1 (100%)
-  2. Regular 1 — 1/1 (100%)
-  3. Regular 10 — 1/1 (100%)
-  4. Regular 11 — 1/1 (100%)
-  5. Regular 12 — 1/1 (100%)
-  6. Regular 13 — 1/1 (100%)
-  7. Regular 2 — 1/1 (100%)
-  8. Regular 3 — 1/1 (100%)
-  9. Regular 4 — 1/1 (100%)
-  10. Regular 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Davide) asks:
-how many have we got?
-
-Answer per your rules.",
+THE MESSAGE (from Davide):
+how many have we got?",
       },
     ],
     "response": {
@@ -17191,7 +17939,7 @@ Answer per your rules.",
             "orgId": "org-vets",
             "phone": "447700900310",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -17478,8 +18226,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17567,8 +18315,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17656,8 +18404,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17725,8 +18473,8 @@ cheers mate",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -17907,8 +18655,8 @@ how does the bench work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -17982,8 +18730,8 @@ how do I pay?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -18052,8 +18800,8 @@ how do ratings work?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -18120,8 +18868,8 @@ IN",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19045,8 +19793,8 @@ might be late, probably in",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19090,8 +19838,8 @@ can't make it this week, sorry",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19135,8 +19883,8 @@ paid",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19303,8 +20051,8 @@ I'll give you cash on the night",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19413,8 +20161,8 @@ THE MESSAGE (from Davide, who tagged the bot):
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -19584,64 +20332,101 @@ what time is kick off?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
 what time is kick off?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Vets MNF
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Nabz, a member, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Fri 13 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Monday Night Football on Mon 9 Nov at 20:00 (UK time)
-- Venue: Vets Ground
-- Squad: 13/14 confirmed, 0 on the bench
-- You are currently: not signed up
-- Confirmed players: Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 16 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Davide, Nabz, Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13, Player 14
+ADMINS: Davide
+
+HOW THE CLUB IS RUN:
+- Money collector: Davide
+- Match fee: not set
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- The squad is a MONTHLY squad: the regulars who paid for the month are on the month's list and in every game of the month without saying anything, so nobody needs to confirm.
+- A regular who can't make a game says OUT, and their place opens for that game.
+- An open place goes to the bench first, then to the pay as you go players: one says IN to take it and pays for that game only.
+- The month's list starts from the list the organisers post for the month.
+- While places are open, MatchTime posts the month's list with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: there is no upcoming match scheduled.
+
+LAST MATCH PLAYED: Mon 20:00, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Mon 2 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Mon 2 Nov 2026):
+1. Player 14: 1 matches
+2. Regular 1: 1 matches
+3. Regular 10: 1 matches
+4. Regular 11: 1 matches
+5. Regular 12: 1 matches
+6. Regular 13: 1 matches
+7. Regular 2: 1 matches
+8. Regular 3: 1 matches
+9. Regular 4: 1 matches
+10. Regular 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Nabz
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Mon 2 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 14 1, Regular 1 1, Regular 10 1, Regular 11 1, Regular 12 1, Regular 13 1, Regular 2 1, Regular 3 1, Regular 4 1, Regular 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Mon 2 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 14 1, Regular 1 1, Regular 10 1, Regular 11 1, Regular 12 1, Regular 13 1, Regular 2 1, Regular 3 1, Regular 4 1, Regular 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 02 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 14 — 1/1 (100%)
-  2. Regular 1 — 1/1 (100%)
-  3. Regular 10 — 1/1 (100%)
-  4. Regular 11 — 1/1 (100%)
-  5. Regular 12 — 1/1 (100%)
-  6. Regular 13 — 1/1 (100%)
-  7. Regular 2 — 1/1 (100%)
-  8. Regular 3 — 1/1 (100%)
-  9. Regular 4 — 1/1 (100%)
-  10. Regular 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Friday 13 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Nabz) asks:
-what time is kick off?
-
-Answer per your rules.",
+THE MESSAGE (from Nabz):
+what time is kick off?",
       },
     ],
     "response": {
@@ -19657,7 +20442,7 @@ Answer per your rules.",
             "orgId": "org-vets",
             "phone": "447700900311",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -19759,64 +20544,104 @@ how many have we got?",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
 how many have we got?",
       },
       {
-        "label": "dm-qa",
+        "label": "unified-answer",
         "model": "claude-haiku-5-5",
-        "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
-        "user": "CONTEXT (everything you may use; nothing else exists for you):
-GROUP: Vets MNF
+        "schema": "8aa6b8e71d80a6b3",
+        "system": "1244f86cc68f5f20",
+        "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
+WHO IS ASKING: Davide, an admin, in a private message to MatchTime
+THE CLUB SPEAKS: English
+TODAY: Fri 13 Nov 2026, 12:00 (London)
 
-UPCOMING MATCH:
-- Monday Night Football on Mon 9 Nov at 20:00 (UK time)
-- Venue: Vets Ground
-- Squad: 13/14 confirmed, 0 on the bench
-- You are currently: not signed up
-- Confirmed players: Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13
+════ THE CLUB'S RECORDS (stored by MatchTime: true and up to date) ════
 
-YOUR STATS:
+REGISTERED MEMBERS: 16 players are registered with the club (everyone who is a member, whether or not they play this week; not the squad, the bench or the teams, which are below): Davide, Nabz, Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13, Player 14
+ADMINS: Davide
+
+HOW THE CLUB IS RUN:
+- Money collector: Davide
+- Match fee: not set
+- Teams are made: when an organiser asks
+- Who posts the squad list: MatchTime
+- Who fills an open place: the first on the bench moves up
+- Man of the Match is chosen by: the players' vote
+- Scores: a game's score is reported in the group, by someone who played in it or an admin tagging MatchTime after the game; never by private message.
+- The squad is a MONTHLY squad: the regulars who paid for the month are on the month's list and in every game of the month without saying anything, so nobody needs to confirm.
+- A regular who can't make a game says OUT, and their place opens for that game.
+- An open place goes to the bench first, then to the pay as you go players: one says IN to take it and pays for that game only.
+- The month's list starts from the list the organisers post for the month.
+- While places are open, MatchTime posts the month's list with a call for players at 17:00 in the players' group, until the drop-out deadline.
+- Partner clubs (clubs that lend each other players when short): none
+- MatchTime player pool (nearby players who joined it): off
+
+UPCOMING MATCH: there is no upcoming match scheduled.
+
+LAST MATCH PLAYED: Mon 20:00, no score recorded
+RECENT RESULTS: none recorded.
+
+STATS, THE WHOLE RECORD: every completed game from the first game MatchTime recorded for this club, on Mon 2 Nov 2026, less than a month before today; nothing older exists. MatchTime records appearances, results, ratings, Man of the Match and Elo; it does not record goals or assists.
+Here each table is its top 10, as many as MatchTime shares here; the full tables are on the stats page (the link below).
+CLUB RATINGS: nobody has 3 rated matches yet, so nobody is in the ratings table. A player needs 3 rated matches to be in it.
+
+APPEARANCES (top 10, completed matches played, every match since Mon 2 Nov 2026):
+1. Player 14: 1 matches
+2. Regular 1: 1 matches
+3. Regular 10: 1 matches
+4. Regular 11: 1 matches
+5. Regular 12: 1 matches
+6. Regular 13: 1 matches
+7. Regular 2: 1 matches
+8. Regular 3: 1 matches
+9. Regular 4: 1 matches
+10. Regular 5: 1 matches
+
+LAST MAN OF THE MATCH: none decided yet.
+
+THE PLAYER THE QUESTION IS ABOUT: Davide
+- club rating: none yet (fewer than 3 rated matches)
+
+STATS, THE LAST 30 DAYS (since Mon 2 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 14 1, Regular 1 1, Regular 10 1, Regular 11 1, Regular 12 1, Regular 13 1, Regular 2 1, Regular 3 1, Regular 4 1, Regular 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+STATS, THIS YEAR (since Mon 2 Nov 2026, the first game recorded: the record starts inside this span, so it is the whole record):
+- Appearances: Player 14 1, Regular 1 1, Regular 10 1, Regular 11 1, Regular 12 1, Regular 13 1, Regular 2 1, Regular 3 1, Regular 4 1, Regular 5 1
+- Ratings: nobody has 3 rated matches in this span
+
+Completed games MatchTime has recorded for this club: 1
+The full tables are on the stats page: https://matchtime.ai/profile/stats
+
+ONE MATCH'S RATINGS (what each player was given in a single match): the organisers see them in their own group; they are not shared in the players' group or in private messages. The club ratings above are shared with everyone.
+
+PAYMENTS: only the asker's own payments are known here (the asker's own block below, when present); nobody else's.
+WHO HAS RATED THE LAST MATCH (Monday Night Football, Mon 2 Nov): 0 of 14 who played have rated, 0 have voted for Man of the Match.
+- Rated: 0 (their names are not listed)
+- Not rated yet: Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13, Player 14
+
+THE ASKER'S OWN STATS (they asked about themselves):
 - Games played: 1/1 (100% attendance)
 - Average rating: — (squad avg —)
 - Man of the Match: 0
 - Record: 0W 0D 0L
 - Form (last 5): — (steady)
 
-YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
+THE ASKER'S OWN PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - This club does not run payments through MatchTime. For money questions, ask the organiser.
 
-## Recent History
-Completed matches: 1 total. Use this block as the source of truth for ANY historical question — MoM winners, scores, attendance, current form. Never invent numbers; if the answer isn't here, say "I don't have that one yet" rather than guessing.
-
-Completed matches (oldest first):
-  - 02 Nov 2026: no score recorded | MoM: no votes yet
-
-Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):
-  1. Player 14 — 1/1 (100%)
-  2. Regular 1 — 1/1 (100%)
-  3. Regular 10 — 1/1 (100%)
-  4. Regular 11 — 1/1 (100%)
-  5. Regular 12 — 1/1 (100%)
-  6. Regular 13 — 1/1 (100%)
-  7. Regular 2 — 1/1 (100%)
-  8. Regular 3 — 1/1 (100%)
-  9. Regular 4 — 1/1 (100%)
-  10. Regular 5 — 1/1 (100%)
-
-WHAT MATCHTIME SAID TO THEM:
+════ THE CHAT: what MatchTime said to them in private ════
 NOW: Friday 13 November 2026, 12:00 (club time, London)
 MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.
 
-The player (Davide) asks:
-how many have we got?
-
-Answer per your rules.",
+THE MESSAGE (from Davide):
+how many have we got?",
       },
     ],
     "response": {
@@ -19832,7 +20657,7 @@ Answer per your rules.",
             "orgId": "org-vets",
             "phone": "447700900310",
             "priority": 1,
-            "text": "{}",
+            "text": "Sorry, I couldn't work that one out. Try asking again? 🙂",
           },
         },
         "call": "botJob.create",
@@ -19870,8 +20695,8 @@ yes",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19915,8 +20740,8 @@ you can message me again",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -19978,8 +20803,8 @@ stop messaging me",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):
@@ -20041,8 +20866,8 @@ stop sending me rating messages",
       {
         "label": "extractor:question",
         "model": "claude-haiku-5-5",
-        "schema": "5794eae9d2842843",
-        "system": "b68ee67e5531a000",
+        "schema": "20c73ac98c5ec56b",
+        "system": "2b71ade499f6f875",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Nabz, who tagged the bot):

@@ -220,6 +220,7 @@
  *     the shipped "couldn't find … — ignored" wording rather than
  *     silently guessed.
  */
+import { swapNotDoneWhy } from "./team-slot-swap";
 import { type QuotedGroupMessage } from "./reply-context";
 import type { SilenceFacts } from "./tagged-silence";
 import type { OrgFeatures } from "./org-features";
@@ -268,6 +269,28 @@ export const TEAM_OPS_ROUTES = TEAM_OPS_ENGINE_ROUTES;
 /** The team ACTIONS this module owns, from the same file, so the split
  *  with `answer-batch.ts` lives in one place and cannot drift. */
 export const TEAM_OPS_ACTIONS = TEAM_OPS_TEAM_ACTIONS;
+
+/**
+ * PURE. Why a team request this path has no handler for was not done, in a
+ * plain sentence for the unified answer (review of #626: it was the raw
+ * action name in brackets).
+ */
+export function declinedTeamWhy(action: string | undefined): string {
+  switch (action) {
+    case "rename":
+      return "renaming the teams is not something MatchTime does from a message";
+    case "suggest":
+      return "suggesting teams without making them is not something MatchTime does from a message";
+    case "restore":
+      return "bringing back earlier teams is not something MatchTime does from a message";
+    case "set":
+      return "setting both teams by hand is not something MatchTime does from a message in this group";
+    case "swap":
+      return swapNotDoneWhy({ kind: "shape" });
+    default:
+      return "it asks for a change to the teams that MatchTime cannot make from a message";
+  }
+}
 
 /**
  * PURE. What this path does with the teams extractor's facts: build
@@ -345,6 +368,10 @@ export interface TeamOpsMessageOutcome {
   /** The reply is a team sheet a swap wrote (two numbered lists): the
    *  route must not recompose it as the squad post. */
   teamSheetPost?: boolean;
+  /** A dead end (`team_request_unsupported`): why this path made no
+   *  change, in plain words, for the unified answer that replaces the one
+   *  line (`dead-end-answer.ts`, 2026-11-18). */
+  deadEndWhy?: string;
 }
 
 export interface TeamOpsBatchResult {
@@ -1092,6 +1119,7 @@ export async function runTeamOpsBatch(args: {
         matchId: null,
         teamsGenerated: false,
         writeFailed: false,
+        deadEndWhy: declinedTeamWhy((factsById.get(m.waMessageId) as { action?: string } | undefined)?.action),
       });
       continue;
     }
@@ -1120,6 +1148,7 @@ export async function runTeamOpsBatch(args: {
         teamsGenerated: false,
         writeFailed: failedIds.has(m.waMessageId),
         teamSheetPost: applied,
+        ...(r?.kind === "unsupported" && r.why ? { deadEndWhy: r.why } : {}),
       });
       continue;
     }

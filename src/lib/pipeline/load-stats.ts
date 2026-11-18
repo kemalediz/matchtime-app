@@ -49,7 +49,7 @@ import {
   loadRatingLeaderboard,
   loadTeamOfSeason,
 } from "../player-stats";
-import { GROUP_RATINGS_MIN_GAMES } from "./stats-answer";
+import { GROUP_RATINGS_MIN_GAMES } from "./stats-limits";
 import { lastMomFacts, type LastMomFacts, type MomMatchRecord } from "./last-mom";
 import { matchRatingsFrom, type LastMatchRatings } from "./unified-answer";
 import { organisersPickMom } from "../mom-chooser";

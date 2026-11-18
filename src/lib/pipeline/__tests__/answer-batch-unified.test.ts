@@ -1,13 +1,13 @@
 /**
- * `runAnswerBatch` with UNIFIED_ANSWERS on (Kemal, 2026-11-10), and off.
+ * `runAnswerBatch` and the unified answer (Kemal, 2026-11-10; the only path
+ * since 2026-11-18).
  *
  * On: the small extractor says list, help, my_stats or anything else. The
  * list is the real squad post (people copy it), byte for byte what it is
  * today; the help is the help; "my stats" is the DM link; everything else is
  * ONE unified answer over the club's data, whose players' context never holds
  * payments (the payment read is not even made in the players' group).
- *
- * Off: the old extractor runs and the unified answer is never called.
+
  */
 import { describe, expect, it } from "vitest";
 import type { ModelRequest, ModelResponse, PipelineModel } from "../llm";
@@ -16,6 +16,7 @@ import type { OrgFeatures } from "../../org-features";
 import type { ClubSnapshot, Route, SquadState, StatsSnapshot } from "../types";
 import { NOW, fullName, world } from "./helpers";
 import { answerHqQuestion } from "../../admin-group-question";
+import { composeSquadStatusPost } from "../../group-copy";
 
 const FEATURES = {
   botEnabled: true,
@@ -70,7 +71,7 @@ function stubModel(opts: { kind?: string; feature?: string; personRef?: string; 
       reqs.push(req);
       let text: string;
       if (req.label === "unified-answer") text = JSON.stringify({ answer: opts.answer ?? "11 places left for Tue 21:30." });
-      else if (req.label === "extractor:question-unified")
+      else if (req.label === "extractor:question")
         text = JSON.stringify({ kind: opts.kind ?? "other", personRef: opts.personRef ?? "", feature: opts.feature ?? "none", badge: "none" });
       else text = JSON.stringify(opts.old ?? OLD_SQUAD);
       return {
@@ -98,7 +99,6 @@ const message = (body: string, over: Partial<AnswerBatchMessage> = {}): AnswerBa
 });
 
 async function ask(opts: {
-  unified: boolean;
   kind?: string;
   feature?: string;
   answer?: string;
@@ -119,7 +119,6 @@ async function ask(opts: {
     history: [],
     expectedMatchId: state.matchId,
     enabled: new Set<Route>(["question"]),
-    unified: opts.unified,
     ...(opts.audience ? { audience: opts.audience } : {}),
     deps: {
       model,
@@ -141,40 +140,38 @@ async function ask(opts: {
   return { res, reqs, loads, outcome: res.outcomes.get("wa-1") };
 }
 
-describe("UNIFIED_ANSWERS on", () => {
-  it("asking for the list posts the real squad list, exactly as the old path does", async () => {
-    const on = await ask({ unified: true, kind: "list" });
-    const off = await ask({ unified: false });
-    expect(on.outcome?.reply).toBeTruthy();
-    expect(on.outcome?.reply).toBe(off.outcome?.reply);
-    expect(on.reqs.map((r) => r.label)).toEqual(["extractor:question-unified"]);
-    expect(off.reqs.map((r) => r.label)).toEqual(["extractor:question"]);
+describe("the unified answer path", () => {
+  it("asking for the list posts the real squad list, composed by code with no answer call", async () => {
+    const on = await ask({ kind: "list" });
+    expect(on.outcome?.reply).toBe(composeSquadStatusPost({ confirmed: ["kemal", "sait", "idris"].map(fullName), bench: ["erdal", "zair"].map(fullName), maxPlayers: 14 }));
+    expect(on.outcome?.intent).toBe("question");
+    expect(on.reqs.map((r) => r.label)).toEqual(["extractor:question"]);
   });
 
   it("help is the help, with its topic", async () => {
-    const { outcome } = await ask({ unified: true, kind: "help", feature: "teams" });
+    const { outcome } = await ask({ kind: "help", feature: "teams" });
     expect(outcome?.reply).toBe("HELP:teams");
     expect(outcome?.intent).toBe("help");
   });
 
   it("'my stats' is the private DM link, no answer in the group", async () => {
-    const { outcome } = await ask({ unified: true, kind: "my_stats" });
+    const { outcome } = await ask({ kind: "my_stats" });
     expect(outcome?.statsLinkRequest).toBe(true);
     expect(outcome?.reply).toBeNull();
   });
 
   it("anything else is ONE unified answer over the club's data", async () => {
-    const { outcome, reqs, loads } = await ask({ unified: true, kind: "other" });
+    const { outcome, reqs, loads } = await ask({ kind: "other" });
     expect(outcome?.reply).toBe("11 places left for Tue 21:30.");
     // Its own intent (2026-11-11), so the organisers-mode net lets it pass.
     expect(outcome?.intent).toBe("unified_answer");
-    expect(reqs.map((r) => r.label)).toEqual(["extractor:question-unified", "unified-answer"]);
+    expect(reqs.map((r) => r.label)).toEqual(["extractor:question", "unified-answer"]);
     expect(reqs.some((r) => r.label === "open-answer" || r.label === "stats-generic")).toBe(false);
     expect(loads).toEqual(expect.arrayContaining(["stats", "period", "results", "clubFacts"]));
   });
 
   it("the players' group: the payment read is never made, and the context has no payments", async () => {
-    const { reqs, loads } = await ask({ unified: true, kind: "other", body: "@Match Time who hasn't paid?", answer: "I don't share payments in the group." });
+    const { reqs, loads } = await ask({ kind: "other", body: "@Match Time who hasn't paid?", answer: "I don't share payments in the group." });
     expect(loads).not.toContain("payments");
     const user = reqs.find((r) => r.label === "unified-answer")!.user;
     expect(user).not.toMatch(/4 of the 13/);
@@ -182,30 +179,30 @@ describe("UNIFIED_ANSWERS on", () => {
   });
 
   it("the players' group: who has rated is read only when an admin asks", async () => {
-    expect((await ask({ unified: true, kind: "other" })).loads).not.toContain("rating");
-    expect((await ask({ unified: true, kind: "other", senderUserId: "u-kemal" })).loads).toContain("rating");
+    expect((await ask({ kind: "other" })).loads).not.toContain("rating");
+    expect((await ask({ kind: "other", senderUserId: "u-kemal" })).loads).toContain("rating");
   });
 
   it("the organisers: payments and who has rated are in the context", async () => {
-    const { reqs, loads } = await ask({ unified: true, kind: "other", audience: "organisers", answer: "4 of the 13 still owe." });
+    const { reqs, loads } = await ask({ kind: "other", audience: "organisers", answer: "4 of the 13 still owe." });
     expect(loads).toEqual(expect.arrayContaining(["payments", "rating"]));
     expect(reqs.find((r) => r.label === "unified-answer")!.user).toMatch(/4 of the 13 who owe have not paid yet/);
   });
 
   it("the list with no match to post is answered, not silent", async () => {
-    const { outcome, reqs } = await ask({ unified: true, kind: "list", state: world({ noMatch: true }), answer: "There's no game scheduled yet." });
+    const { outcome, reqs } = await ask({ kind: "list", state: world({ noMatch: true }), answer: "There's no game scheduled yet." });
     expect(outcome?.reply).toBe("There's no game scheduled yet.");
     expect(reqs.find((r) => r.label === "unified-answer")!.user).toMatch(/no upcoming match/i);
   });
 
   it("a refused answer is disowned, so the asker keeps today's line", async () => {
-    const { outcome, res } = await ask({ unified: true, kind: "other", answer: "99 places left." });
+    const { outcome, res } = await ask({ kind: "other", answer: "99 places left." });
     expect(outcome).toBeUndefined();
     expect(res.degradations.join(" ")).toMatch(/unified answer not used/);
   });
 
   it("never writes", async () => {
-    expect((await ask({ unified: true, kind: "other" })).res.writes).toEqual([]);
+    expect((await ask({ kind: "other" })).res.writes).toEqual([]);
   });
 
   it("HQ goes through the same step, as the organisers", async () => {
@@ -223,7 +220,6 @@ describe("UNIFIED_ANSWERS on", () => {
       history: [],
       lastBotPost: null,
       gates: {} as never,
-      unified: true,
       deps: {
         model,
         loadState: async () => state,
@@ -243,24 +239,24 @@ describe("UNIFIED_ANSWERS on", () => {
   });
 });
 
-describe("UNIFIED_ANSWERS on: round 2 (2026-11-11)", () => {
+describe("round 2 (2026-11-11)", () => {
   it("a monthly club's context carries the monthly squad's rules; a weekly club's does not", async () => {
-    const monthly = await ask({ unified: true, kind: "other", features: { squadMode: "monthly" } as Partial<OrgFeatures> });
+    const monthly = await ask({ kind: "other", features: { squadMode: "monthly" } as Partial<OrgFeatures> });
     expect(monthly.reqs.find((r) => r.label === "unified-answer")!.user).toMatch(/MONTHLY squad/);
-    const weekly = await ask({ unified: true, kind: "other" });
+    const weekly = await ask({ kind: "other" });
     expect(weekly.reqs.find((r) => r.label === "unified-answer")!.user).not.toMatch(/MONTHLY squad/);
   });
 
   it("the ratings each player got in the last match are read for the organisers only", async () => {
-    const org = await ask({ unified: true, kind: "other", audience: "organisers", answer: `${fullName("sait")} 7.4.` });
+    const org = await ask({ kind: "other", audience: "organisers", answer: `${fullName("sait")} 7.4.` });
     expect(org.loads).toContain("lastMatchRatings");
     expect(org.reqs.find((r) => r.label === "unified-answer")!.user).toContain(`${fullName("sait")} 7.4 (6 ratings)`);
-    const players = await ask({ unified: true, kind: "other" });
+    const players = await ask({ kind: "other" });
     expect(players.loads).not.toContain("lastMatchRatings");
   });
 
   it("HQ 'what is my rating?': answered there from the asker's own stats, no DM link", async () => {
-    const { outcome, reqs, loads } = await ask({ unified: true, kind: "my_stats", audience: "organisers", senderUserId: "u-kemal", answer: "Your average rating is 6.8." });
+    const { outcome, reqs, loads } = await ask({ kind: "my_stats", audience: "organisers", senderUserId: "u-kemal", answer: "Your average rating is 6.8." });
     expect(outcome?.statsLinkRequest).toBe(false);
     expect(outcome?.reply).toBe("Your average rating is 6.8.");
     expect(loads).toContain("own:u-kemal");
@@ -268,61 +264,24 @@ describe("UNIFIED_ANSWERS on: round 2 (2026-11-11)", () => {
   });
 
   it("HQ, a question about the asker's own numbers (personRef me) gets them too", async () => {
-    const { loads } = await ask({ unified: true, kind: "other", personRef: "me", audience: "organisers", senderUserId: "u-kemal", answer: "6.8." });
+    const { loads } = await ask({ kind: "other", personRef: "me", audience: "organisers", senderUserId: "u-kemal", answer: "6.8." });
     expect(loads).toContain("own:u-kemal");
   });
 
   it("the players' group never reads the asker's own block (their stats go by DM)", async () => {
-    const { loads } = await ask({ unified: true, kind: "other", personRef: "me", senderUserId: "u-sait" });
+    const { loads } = await ask({ kind: "other", personRef: "me", senderUserId: "u-sait" });
     expect(loads.some((l) => l.startsWith("own:"))).toBe(false);
   });
 });
 
-describe("UNIFIED_ANSWERS off", () => {
-  it("the old extractor runs and nothing unified is called or read", async () => {
-    const { reqs, loads } = await ask({ unified: false });
-    expect(reqs.map((r) => r.label)).toEqual(["extractor:question"]);
-    expect(loads).toEqual([]);
-  });
-
-  it("an old 'anything else' still gets the open answer, not the unified one", async () => {
-    const reqs: string[] = [];
-    const state = world({ confirmed: ["kemal"] });
-    const model: PipelineModel = {
-      name: "stub",
-      async complete(req) {
-        reqs.push(req.label);
-        return {
-          text: JSON.stringify(req.label === "open-answer" ? { answer: "I can't tell that." } : { ...OLD_SQUAD, topic: "other" }),
-          stopReason: "end_turn",
-          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
-          costUsd: 0,
-          ms: 1,
-        };
-      },
-    };
-    const res = await runAnswerBatch({
-      orgId: "org-1",
-      now: NOW,
-      messages: [message("@Match Time anything")],
-      history: [],
-      expectedMatchId: state.matchId,
-      enabled: new Set<Route>(["question"]),
-      deps: { model, loadState: async () => state, loadFeatures: async () => FEATURES, loadClub: async () => CLUB, loadStats: async () => TABLES },
-    });
-    expect(res.outcomes.get("wa-1")?.reply).toBe("I can't tell that.");
-    expect(reqs).toEqual(["extractor:question", "open-answer"]);
-  });
-});
-
-describe("UNIFIED_ANSWERS on: round 3 (2026-11-12)", () => {
+describe("round 3 (2026-11-12)", () => {
   it("HQ of a club whose organisers post the list: the context says so, and that the 17:00 post comes to HQ", async () => {
     // Found tracing FNF HQ "what happens if 14 don't confirm?": the batch
     // reads the organisers' list as a MatchTime-announced one (for the list
     // post), and the context then told the organisers MatchTime posts it.
     const base = world({ confirmed: ["kemal", "sait", "idris"], bench: ["erdal", "zair"] });
     const state = { ...base, features: { ...base.features, listAnnouncer: "organisers" as const } };
-    const { reqs } = await ask({ unified: true, kind: "other", audience: "organisers", state, answer: "11 places left for Tue 21:30." });
+    const { reqs } = await ask({ kind: "other", audience: "organisers", state, answer: "11 places left for Tue 21:30." });
     const user = reqs.find((r) => r.label === "unified-answer")!.user;
     expect(user).toContain("- Who posts the squad list: the organisers");
     expect(user).toMatch(/While places are open[^\n]*17:00 to the organisers in HQ/);

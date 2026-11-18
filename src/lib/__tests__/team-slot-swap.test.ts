@@ -36,6 +36,7 @@ import {
   type SwapDecision,
   type SwapSide,
 } from "../team-slot-swap";
+import { swapNotDoneWhy } from "../team-slot-swap";
 import { refKey, stubPicks, type PersonPick } from "../pipeline/who-is-who";
 
 // ── WHO A NAME IS, IS WHO-IS-WHO'S (review of #574) ────────────────────
@@ -545,5 +546,22 @@ describe("planSwap", () => {
   it("'me' from an unresolved sender is not a side at all", () => {
     const p = planSwap({ a: "me", b: "zork" }, roster, { sender: null, teamsExist: true });
     expect(p).toEqual({ kind: "not-a-player-swap" });
+  });
+});
+
+describe("swapNotDoneWhy: why a swap was not made, in plain words for the unified answer (Sutton 17 Nov 19:23, 'swap Sam with Alex')", () => {
+  it("neither name is a player of the upcoming match: says which names, and that nobody was swapped", () => {
+    expect(swapNotDoneWhy({ kind: "no-player", a: "Sam", b: "Alex" })).toBe(
+      'neither "Sam" nor "Alex" is a name MatchTime can find among the players of the upcoming match (the squad, the bench and the team sheet), so nobody was swapped',
+    );
+  });
+
+  it("a swap that names the sender reads as giving up their own place", () => {
+    expect(swapNotDoneWhy({ kind: "self", a: "me", b: "Alex" })).toMatch(/names the sender[^]*OUT/);
+  });
+
+  it("another shape of change, and no upcoming match", () => {
+    expect(swapNotDoneWhy({ kind: "shape" })).toMatch(/swap two players, swap the two teams over, or keep players together or apart/);
+    expect(swapNotDoneWhy({ kind: "no-match" })).toBe("there is no upcoming match to change the teams of");
   });
 });

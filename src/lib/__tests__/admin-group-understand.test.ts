@@ -7,6 +7,8 @@
  * safe-YES rule wired to real proposals. No database, no real model.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ADMIN_NO_ACTION_WHY } from "../admin-ops-engine-batch";
+import { SCORE_NOT_READ_WHY } from "../admin-group-understand";
 import type { ModelRequest, PipelineModel } from "../pipeline/llm";
 import type { HqLogRow } from "../admin-group-log";
 import type { StoredAsk } from "../refused-ask-retry";
@@ -914,6 +916,15 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
       const r = await ask("@Match Time Tom out and the list?", "unsure");
       expect(r).toEqual({ route: "unsure", outcome: "squad-changed+hq-answered", replyText: `Done: Tom out.\n\n${LIST}` });
       expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
+      // The answer is told what the change part already did (review of #626).
+      expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ alsoDone: [{ text: "Done: Tom out.", done: true }] });
+    });
+
+    it("a change that did nothing is told as answered, not done (review of #626)", async () => {
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-not-on-list", replyText: NOT_ON, alsoAsks: true });
+      hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LIST });
+      await ask(TEXT, "other_att");
+      expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ alsoDone: [{ text: NOT_ON, done: false }] });
     });
   });
 
@@ -923,12 +934,14 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
-  it.each(["admin_ops"])("%s: clearly for MatchTime but not done from HQ: one line, never silent", async (route) => {
+  it.each(["admin_ops"])("%s: clearly for MatchTime but not done from HQ, and the unified answer gives nothing: one line, never silent", async (route) => {
     const deps = { routerModel: routeTo(route), extractorModel: adminFacts({ action: "other" }) };
     expect((await ask("@Match Time who has paid?", route, { deps }))?.replyText).toBe("I can't do that from this group.");
     expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
-    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    // The unified answer is asked first (a dead end, 2026-11-17); with no
+    // answer from it the one line stands.
+    expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
   });
 
   it("ask_group: the players' group is asked for a player, HQ hears one line (the extractor said the club's own group)", async () => {
@@ -2494,7 +2507,6 @@ describe("a monthly club's collector answering the paid-claims list, inside the 
   });
 });
 
-
 // ── 2026-10-30, Kemal: making or remaking teams needs the tag; the team
 //    sheet only when asked of MatchTime; an earlier set of teams back ─────
 describe("HQ teams by fact (2026-10-30, FNF HQ)", () => {
@@ -2806,57 +2818,49 @@ describe("several instructions in one HQ message", () => {
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
   });
 
-  it("no part did anything: the one line, once", async () => {
-    squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
-    switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-not-a-suggestion", replyText: null });
-    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: byExtractor } });
-    expect(r?.outcome).toBe("hq-not-understood");
-    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
-  });
-
   // Review of #617, item 1: a part with no action inside a several-
   // instruction message is not a dead end. The unified answer would say
   // NOT DONE beside "Done: Luca on the bench".
-  it("UNIFIED_ANSWERS on, an admin part read as 'other' beside a squad change: no unified answer, the squad reply", async () => {
+  it("an admin part read as 'other' beside a squad change: no unified answer, the squad reply", async () => {
     const otherAdmin = model((req) =>
       req.label === "extractor:admin"
         ? { action: "other", payerRef: "", count: 0, coveredRefs: [], phrase: "", note: "", lookbackMatches: 0, toMatchTime: true }
         : { action: "generate", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [], sides: { red: [], yellow: [] }, toMatchTime: true },
     );
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: "NOT DONE answer" });
-    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: otherAdmin }, unifiedAnswers: true });
+    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: otherAdmin } });
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
     expect(r?.replyText).not.toContain("NOT DONE answer");
     expect(r?.replyText).toContain("Done: Luca on the bench, Zak in.");
   });
 
-  it("UNIFIED_ANSWERS on, a score part that is not a score beside a squad change: no unified answer", async () => {
+  it("a score part that is not a score beside a squad change: no unified answer", async () => {
     hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-not-understood", replyText: "I didn't catch what you'd like me to do." });
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: "NOT DONE answer" });
-    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["score"]), extractorModel: byExtractor }, unifiedAnswers: true });
+    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["score"]), extractorModel: byExtractor } });
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
     expect(r?.replyText).toContain("Done: Luca on the bench, Zak in.");
   });
 
-  it("no part did anything, UNIFIED_ANSWERS on: the unified answer, once", async () => {
+  it("no part did anything: the unified answer, once", async () => {
     squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
     switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-not-a-suggestion", replyText: null });
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: "Which of those would you like first?" });
-    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: byExtractor }, unifiedAnswers: true });
+    const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: byExtractor } });
     expect(r?.replyText).toBe("Which of those would you like first?");
     expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
-    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: true });
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: { why: null } });
   });
 });
 
 // 2026-11-17: a tagged message HQ has no action for got a canned line ("I
 // can't do that from this group", "I didn't catch what you'd like me to
-// do"). With UNIFIED_ANSWERS on, it is handed to the unified answer
+// do"). It is handed to the unified answer
 // (`answerHqQuestion` with `deadEnd`), told NOT DONE and shown the HQ menu;
 // the canned line is only the fallback when that answer fails.
-describe("a dead end in HQ goes to the unified answer (UNIFIED_ANSWERS on)", () => {
+describe("a dead end in HQ goes to the unified answer", () => {
   const ANSWER = "I can't book pitches. I can cancel or move a game, or ask the partner clubs for players: tag me and say which.";
-  const on = { unifiedAnswers: true };
+  const on = {};
 
   it("admin_ops read as 'other': the unified answer, not the one line", async () => {
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: ANSWER });
@@ -2864,7 +2868,8 @@ describe("a dead end in HQ goes to the unified answer (UNIFIED_ANSWERS on)", () 
     const r = await ask("@Match Time book the pitch for Friday", "admin_ops", { deps, ...on });
     expect(r).toEqual({ route: "admin_ops", outcome: "hq-dead-end-answered", replyText: ANSWER });
     expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
-    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: true, messageId: "wa-9" });
+    // Why, as the players' group passes it (review of #626).
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: { why: ADMIN_NO_ACTION_WHY }, messageId: "wa-9" });
     expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
   });
 
@@ -2887,14 +2892,7 @@ describe("a dead end in HQ goes to the unified answer (UNIFIED_ANSWERS on)", () 
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: "There's no game waiting for a score." });
     const r = await ask("@Match Time bibs 9 no bibs 4", "score", on);
     expect(r?.replyText).toBe("There's no game waiting for a score.");
-    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: true });
-  });
-
-  it("with UNIFIED_ANSWERS off nothing changes: the one line, no answer asked", async () => {
-    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "other" }) };
-    const r = await ask("@Match Time book the pitch for Friday", "admin_ops", { deps, unifiedAnswers: false });
-    expect(r?.replyText).toBe("I can't do that from this group.");
-    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: { why: SCORE_NOT_READ_WHY } });
   });
 
   it("untagged: silent, nothing asked", async () => {

@@ -65,7 +65,7 @@ interface Case {
   /** Chat before it, oldest first (MatchTime's proposal is always last but these). */
   before?: Array<{ fromMatchTime: boolean; author: string | null; text: string }>;
   /** The command it must yield; a function for a set of acceptable ones. */
-  want: (c: TeamCommand | { kind: "unclear" } | null) => boolean;
+  want: (c: ReturnType<typeof teamCommandFromFacts> | { kind: "unclear" } | null) => boolean;
   /** Routes accepted. Default balancer. */
   routes?: string[];
   why: string;
@@ -123,7 +123,7 @@ async function main() {
     const route = r.routes[0]?.route ?? "nowhere";
     const routes = c.routes ?? ["balancer"];
     let ok = routes.includes(route);
-    let got: TeamCommand | { kind: "unclear" } | null = null;
+    let got: ReturnType<typeof teamCommandFromFacts> | { kind: "unclear" } | null = null;
     let facts = "";
     if (route === "balancer") {
       const ex = await extractForRoute(model, "balancer", {

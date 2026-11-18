@@ -57,10 +57,6 @@ import {
   STATS_BLAST_REQUIRES_TAG,
   STATS_BLAST_TAG_MUST_BE_EXPLICIT,
 } from "../stats-blast";
-import {
-  RATING_PROGRESS_IS_ADMIN_ONLY,
-  RATING_PROGRESS_TAG_MUST_BE_EXPLICIT,
-} from "../rating-progress-answer";
 import { RECRUIT_LOOKBACK_MAX, resolveLookbackMatches } from "../recruit-lookback";
 import { reminderInstant } from "../reminder-time";
 import { swapGuardFor, type SwapCandidate, type SwapGuardClaim } from "../team-slot-swap";
@@ -75,7 +71,6 @@ import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { isRawDigitName, resolvePerson } from "./identity";
 import { refKey } from "../person-ref-key";
 import { renderAttendanceAsk } from "./compose";
-import { planResultsQuestion } from "./results-answer";
 import {
   isScoreAnswer,
   isScoreAskOpen,
@@ -84,8 +79,6 @@ import {
 } from "./score-ask";
 import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { resolveScoreResult, resolveTeamRef, resolveWinnerSide, type TeamSide } from "./score-teams";
-import { planStatsQuestion } from "./stats-answer";
-import { periodKey } from "./stats-period";
 import type {
   AttendanceFacts,
   AttendanceRow,
@@ -100,7 +93,6 @@ import type {
   SpeechIntent,
   SquadState,
   PartnerAskView,
-  StatsPeriod,
 } from "./types";
 
 /** §3.2 S37. Applied PER FACT now, not as a blanket verdict-level gate. */
@@ -1828,181 +1820,18 @@ export function decide(input: EngineInput): EngineResult {
       out.disposition = "acted";
       switch (facts.topic) {
         case "squad":
-          // "who's in / list the players" wants NAMES. Until 2026-09-06
-          // this shared `answer_count` with the topic below and got
-          // "We're 6/14 for Tue 21:30, need 8 more 🙏" — the right
-          // answer to a different question. Deferred for the same reason
-          // `count` is: when the batch also changed the squad, the
-          // batch's own squad post IS this answer, and two rosters one
-          // line apart is the 2026-06-12 Sutton Lads shape (S36).
+          // The squad list, as it is posted. Deferred: when the batch also
+          // changed the squad, the batch's own squad post IS this answer,
+          // and two rosters one line apart is the 2026-06-12 Sutton Lads
+          // shape (S36).
           deferredSquadQuestions.push({ kind: "answer_squad", messageId: msg.id });
           out.reasons.push("roster question answered from the database");
           break;
-        case "count":
-          // §3.2 S24: the engine compares the stated number to the DB.
-          // Deferred so it collapses into the single squad post when the
-          // batch also changed the squad (S36).
-          deferredSquadQuestions.push({
-            kind: "answer_count",
-            messageId: msg.id,
-            statedCount: facts.statedCount,
-          });
-          out.reasons.push(
-            facts.statedCount === null
-              ? "squad-state question answered from the database"
-              : `stated ${facts.statedCount}, database says ${confirmedCount(w)}`,
-          );
-          break;
-        case "fixture":
-          // Kickoff and venue, straight off the state. NOT deferred:
-          // "what time is kickoff" is not a claim about the squad, so a
-          // squad post in the same batch neither answers it nor
-          // contradicts it.
-          speech.push({ kind: "answer_fixture", messageId: msg.id });
-          out.reasons.push("fixture question answered from the match");
-          break;
-        case "score":
-          // THE RESULT OF THE LAST MATCH PLAYED. Not deferred, for the
-          // same reason `fixture` is not: a result is not a claim about
-          // the upcoming squad, so a squad post in the same batch
-          // neither answers it nor contradicts it.
-          //
-          // NO BRANCH HERE ON WHETHER A SCORE EXISTS, deliberately.
-          // `state.completedMatch` has three shapes worth different
-          // sentences — a recorded result, an ended match nobody
-          // reported, and a group that has not played — and the
-          // composer renders all three from the same field it is about
-          // to read anyway. Splitting the decision across two modules
-          // is how one of them ends up printing a `null` as a number.
-          //
-          // SEVERAL RESULTS, OR A PERIOD (2026-09-29). "the scores of the
-          // last 5 matches" was answered with the last match only. The
-          // count and the period are the extractor's fields, never read
-          // from the text here; with neither, the answer is unchanged.
-          {
-            const plan = planResultsQuestion(facts);
-            if (plan.kind === "list") {
-              speech.push({ kind: "answer_results", messageId: msg.id, limit: plan.limit, asked: plan.asked, period: plan.period });
-              out.reasons.push(
-                `results question: the last ${plan.limit} results` +
-                  (plan.period ? `, period ${periodKey(plan.period)}` : "") +
-                  (plan.asked !== null && plan.asked > plan.limit ? ` (asked for ${plan.asked})` : ""),
-              );
-              break;
-            }
-          }
-          speech.push({ kind: "answer_score", messageId: msg.id });
-          out.reasons.push("result question answered from the last match played");
-          break;
-        case "payments":
-          // WHO HAS NOT PAID. Not deferred — a payment count is not a
-          // claim about the upcoming squad, so a squad post in the same
-          // batch neither answers it nor contradicts it.
-          //
-          // NO GATE HERE, and that is not an oversight. Every payment
-          // rule lives in `payment-answer.ts` and has already run by the
-          // time this executes: `state.payments` is a snapshot whose
-          // four shapes each carry their own sentence, including "this
-          // org does not track payments". A second gate on
-          // `state.features.paymentTracking` would be the WRONG gate
-          // (Sutton has it off and its `paidAt` rows are accurate — read
-          // that module's header) and would turn an honest "I don't
-          // know" into silence.
-          //
-          // The one thing worth recording is which shape came back, so
-          // an operator triaging "why did it say that" has it in the
-          // outcome rather than having to re-run the loader.
-          speech.push({ kind: "answer_payments", messageId: msg.id });
-          out.reasons.push(
-            `payment question answered from the last settled match (${state.payments?.kind ?? "not loaded"})`,
-          );
-          break;
-        case "rating_progress": {
-          // ═══════════════════════════════════════════════════════════
-          // HOW MANY HAVE RATED — 2026-09-11, and this branch IS the fix
-          // ═══════════════════════════════════════════════════════════
-          //
-          // Until today this ask was recognised by
-          // `looksLikeRatingProgressRequest` in `analyze/route.ts`: a
-          // rating word AND a progress word, anywhere in the body, in a
-          // clause-peeled fast path that route's own comment called "the
-          // WIDEST trigger of the six peels" — "I haven't rated yet and
-          // I'm out Thursday" satisfies both halves and addresses
-          // nobody. It is the same conjunction shape that matched half a
-          // sentence on 2026-09-01 and queued 69 mass DMs on 2026-09-10.
-          // The full argument is in `lib/rating-progress-answer.ts`.
-          //
-          // ── WHO MAY ASK. Admin-only, exactly as the deleted fast path
-          //    gated it. Unchanged deliberately: this is a fix to the
-          //    CLASSIFIER, not a re-litigation of the permission. It is
-          //    also the one place this answer differs from `payments`,
-          //    which argues at length that it needs no admin gate
-          //    because it names nobody. THIS ONE NAMES NAMES.
-          //
-          // ── THE TAG is the question route's own, checked at the top
-          //    of this function: `msg.tagged`, which is
-          //    `messageTagsBot`. Not the stricter
-          //    `piMentionsBot` (the Pi's mention flag) the two bulk-DM doors use
-          //    — this answer sends no DM, so the asymmetry that justifies
-          //    that gate does not exist here. See
-          //    `RATING_PROGRESS_TAG_MUST_BE_EXPLICIT`, which is the
-          //    named constant carrying that decision and is read below
-          //    so that flipping it actually changes behaviour.
-          const senderIsAdmin =
-            !!msg.senderUserId && !!w.roster.find((m2) => m2.userId === msg.senderUserId)?.isAdmin;
-          if (RATING_PROGRESS_IS_ADMIN_ONLY && !senderIsAdmin) {
-            // Silence, not a refusal sentence: who has and has not rated
-            // is admin-facing, and the deleted fast path stayed silent
-            // for a non-admin too (no react, no reply).
-            out.reasons.push("only an admin may see who has and has not rated");
-            out.refused = "admin_only";
-            out.disposition = "noop";
-            break;
-          }
-          if (
-            RATING_PROGRESS_TAG_MUST_BE_EXPLICIT &&
-            !(msg.taggedExplicitly === true)
-          ) {
-            out.reasons.push("a rating-progress answer requires an explicit @Match Time mention");
-            out.disposition = "noop";
-            break;
-          }
-          speech.push({ kind: "answer_rating_progress", messageId: msg.id });
-          out.reasons.push(
-            `rating-progress question answered from the last match played (${
-              state.ratingProgress ? (state.ratingProgress.ok ? "loaded" : "nothing to check") : "not loaded"
-            })`,
-          );
-          break;
-        }
         case "my_stats": {
-          // ═══════════════════════════════════════════════════════════
-          // THE ASKER'S OWN STATS LINK — 2026-09-17, and this IS the fix
-          // ═══════════════════════════════════════════════════════════
-          //
-          // Until today `STATS_REQUEST`, an English-only regex fast path
-          // in `analyze/route.ts`, recognised this ask; the Turkish help
-          // advertised "@Match Time istatistiklerim" and nothing read it.
-          //
-          // ── THE DECISION, AND ONLY THE DECISION. The link is a DM the
-          //    route sends; this branch says whether. It emits no write
-          //    (this route has no apply layer), no speech and no react.
-          //    Until 2026-09-23 the group saw a 📊 react and nothing
-          //    else, and an admin read that as nothing happening. The
-          //    group now hears "Erdal, I'm sending your stats to you
-          //    privately by DM", and the ROUTE posts it, because only the
-          //    route knows whether the DM was actually queued
-          //    (`sendOwnStatsLink` returns the line then and only then).
-          //
-          // ── NO RECIPIENT. `statsLinkRequested` is a boolean on THIS
-          //    message's outcome. The route DMs the sender of this
-          //    message and nobody else; no fact can name another person.
-          //
-          // ── THE GATES the fast path had, and no more: the tag (checked
-          //    at the top of this function) and a resolved sender. No
-          //    admin gate: it is the asker's own data. The phone gate is
-          //    the route's, which holds the phone. No match gate: the
-          //    link is not about the upcoming match.
+          // THE ASKER'S OWN STATS LINK (2026-09-17). The decision only: the
+          // route DMs the sender of THIS message and nobody else, and posts
+          // the group line once the DM is queued. The gates: the tag
+          // (above) and a resolved sender.
           if (!msg.senderUserId) {
             out.reasons.push("personal stats link: the sender is unresolved, so there is nobody to DM");
             out.disposition = "noop";
@@ -2012,134 +1841,28 @@ export function decide(input: EngineInput): EngineResult {
           out.reasons.push("personal stats request: DM the sender their own stats link");
           break;
         }
-        case "bench":
-          speech.push({ kind: "answer_bench", messageId: msg.id });
-          break;
-        case "person_status": {
-          const ref = facts.personRef ?? "";
-          const r = resolvePerson(ref, w.roster, msg.people);
-          speech.push({
-            kind: "answer_person_status",
-            messageId: msg.id,
-            personRef: ref,
-            userId: r.kind === "resolved" ? r.member.userId : null,
-          });
-          if (r.kind !== "resolved") out.reasons.push(`asked about "${ref}", who is not a member`);
-          break;
-        }
-        case "phones":
-          speech.push({ kind: "answer_phones", messageId: msg.id });
-          break;
-        case "stats": {
-          if (!state.features.statsQa) {
-            out.reasons.push("stats Q&A is off for this org");
-            out.disposition = "noop";
-            break;
-          }
-          // ── WHICH TABLE (2026-09-23) ─────────────────────────────────
-          // `planStatsQuestion` is the whole decision and it is shared
-          // with `answer-batch.ts`, which loaded the snapshot this reads
-          // and made the generic call on the same plan. See
-          // `stats-answer.ts` for every rule behind it. The engine only
-          // turns the plan into speech; the composer renders it.
-          const plan = planStatsQuestion(facts, w.roster, msg.people, msg.senderUserId);
-          // A period rides the speech; the reason names it, so a wrong
-          // period is visible in the log even when the reply reads well.
-          const periodNote = (p: StatsPeriod | null) => (p ? `, period ${periodKey(p)}` : "");
-          switch (plan.kind) {
-            case "bottom":
-              speech.push({ kind: "answer_stats_bottom", messageId: msg.id });
-              out.reasons.push("asked for the bottom of a table: nobody is named in the group");
-              break;
-            case "table":
-              speech.push({
-                kind: "answer_stats_table",
-                messageId: msg.id,
-                table: plan.table,
-                size: plan.size,
-                requested: plan.requested,
-                personUserId: plan.personUserId,
-                self: plan.self,
-                period: plan.period,
-              });
-              out.reasons.push(
-                (plan.table === "chemistry" || plan.table === "team_of_season"
-                  ? `${plan.table} table`
-                  : `${plan.table} table, ${plan.size} rows` +
-                    (plan.requested !== null && plan.requested > plan.size ? ` (asked for ${plan.requested})` : "")) +
-                  periodNote(plan.period),
-              );
-              break;
-            case "generic":
-              speech.push({ kind: "answer_stats_generic", messageId: msg.id, period: plan.period });
-              out.reasons.push(`no known table answers it: the grounded generic answer${periodNote(plan.period)}`);
-              break;
-            case "ask":
-              // ASK, DO NOT GUESS (Kemal, 2026-09-23). A wrong name in a
-              // public answer is a claim about a real person; a question
-              // back costs one message.
-              speech.push({
-                kind: "ask_stats_person",
-                messageId: msg.id,
-                askerName: msg.senderName,
-                ref: plan.ref,
-                candidates: plan.candidates,
-              });
-              out.statsClarificationAsked = true;
-              out.reasons.push(
-                plan.candidates.length > 0
-                  ? `"${plan.ref}" fits ${plan.candidates.length} members: asked which`
-                  : `"${plan.ref}" is not in the squad: asked who they mean`,
-              );
-              break;
-            case "none":
-              out.reasons.push(plan.why);
-              out.disposition = "noop";
-              break;
-          }
-          break;
-        }
-        case "options":
-          speech.push({ kind: "answer_options", messageId: msg.id });
-          break;
         case "how_it_works":
-          // HOW MATCHTIME WORKS HERE (2026-10-16, FNF's "Bench? We do bench
-          // now?"). The decision only: the words are the help explainer
-          // "@Match Time help <topic>" already sends, for this club's
-          // settings, and `answer-batch.ts` attaches them because only it
-          // holds the club's features. No write, no speech here.
+          // HOW MATCHTIME WORKS HERE (2026-10-16): the help explainer
+          // "@Match Time help <topic>" sends, for this club's settings,
+          // which `answer-batch.ts` attaches (only it holds the features).
           out.helpRequested = {
             topic: facts.feature ?? null,
             ...(facts.feature === "badges" && facts.badge ? { badge: facts.badge } : {}),
           };
           out.reasons.push(`how-it-works question: the help explainer for ${facts.feature ?? "MatchTime as a whole"}`);
           break;
-        case "club":
-          // THE CLUB'S SETUP (2026-10-16), for the organisers: who to ask
-          // is `answer-batch.ts`'s (`audience`), the facts are the roster's
-          // admins and `state.club`, rendered by the composer.
-          speech.push({ kind: "answer_club", messageId: msg.id });
-          out.reasons.push(`club question answered from the roster and the club's settings (${state.club ? "loaded" : "not loaded"})`);
-          break;
         case "other": {
-          // ANYTHING ELSE (Kemal, 2026-11-10): the grounded open answer,
-          // one model call `answer-batch.ts` made from the club's context
-          // (`open-answer.ts`). The decision only: a speech intent, no
-          // write. A rejected or missing answer composes nothing, and the
-          // batch disowns the message so it keeps today's line.
+          // ANYTHING ELSE: the unified answer `answer-batch.ts` made, one
+          // model call over the club's records (`unified-answer.ts`). A
+          // rejected or missing answer composes nothing, and the batch
+          // disowns the message so the caller keeps its line.
           const a = state.openAnswers?.[msg.id];
           speech.push({ kind: "answer_open", messageId: msg.id });
-          out.reasons.push(
-            `open question: the grounded open answer (${!a ? "not loaded" : "text" in a ? "answered" : "rejected"})`,
-          );
+          out.reasons.push(`the unified answer (${!a ? "not loaded" : "text" in a ? "answered" : "rejected"})`);
           break;
         }
         default:
-          // The `question` route is the least designed part of the
-          // proposal (§14.3) and this is where that shows. Saying so is
-          // the point: a silent shrug is the failure mode this design
-          // exists to remove.
-          degrade(`no deterministic answer for question topic "${facts.topic}"`);
+          degrade(`no answer for question topic "${(facts as { topic: string }).topic}"`);
       }
     }
 

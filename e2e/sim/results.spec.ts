@@ -1,43 +1,47 @@
 /**
- * Group-simulator scenario matrix — RECENT RESULTS (2026-09-29).
+ * Group-simulator scenario matrix — RECENT RESULTS (2026-09-29; the unified
+ * answer's since 2026-11-18).
  *
  * Sutton FC, 2026-09-29 22:18 UTC: "@Match Time give us the scores of the
- * last 5 matches" was answered with the last match only. The question
- * extractor now carries the count and the period on a `score` question
- * (`listSize`, `period`); the answer is read from the club's own scored
- * matches by `load-results.ts` and rendered in code.
+ * last 5 matches" was answered with the last match only. The composed
+ * results answer that fixed it was deleted with the other question
+ * categories: the question is the unified answer's, and what it is shown is
+ * the club's own scored matches, newest first, read by `load-results.ts`
+ * from the real test database.
  *
- * The extractor is STUBBED here with the raw JSON the live model returns,
- * so `parseFacts`, the engine, the targeted read against the real test
- * database, the composer and the analyze route all run for real.
+ * The router, the question extractor and the unified answer are STUBBED
+ * (what the model would say); the read, the context, the engine and the
+ * analyze route run for real. What is checked is what the answer is SHOWN:
  *
- *   the incident      five results, most recent first, from the database
+ *   the incident      the club's results, newest first, from the database
  *   club-scoped       another club's scored match never appears
  *   unscored skipped  an ended match with no score is not a result
- *   no count          still the last match, byte for byte as before
- *   Turkish           the same answer in a Turkish group
  */
+import { readFileSync } from "node:fs";
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { londonAt } from "../helpers/constants";
+import { E2E } from "../helpers/env";
 import { createGroup, SimGroup } from "./group";
 
-const scoreQ = (over: Record<string, unknown> = {}) => ({
+const ANSWER = "Here are the latest results.";
+const scoreQ = () => ({
   route: "question",
-  facts: {
-    topic: "score",
-    personRef: "",
-    statedCount: -1,
-    table: "none",
-    listSize: -1,
-    listEnd: "top",
-    period: "none",
-    periodCount: -1,
-    periodUnit: "none",
-    ...over,
-  },
+  facts: { kind: "other", personRef: "", feature: "none", badge: "none", answer: ANSWER },
 });
+
+/** The unified answer's turn for this body, as the stub was shown it. */
+function unifiedTurn(body: string): string {
+  return (
+    readFileSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { label: string; user: string })
+      .filter((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(body))
+      .pop()?.user ?? ""
+  );
+}
 
 test.describe.configure({ mode: "serial" });
 
@@ -78,45 +82,23 @@ const group = async (request: APIRequestContext, db: TestDb) => {
   return g.attach(request);
 };
 
-test("THE INCIDENT: the last 5 matches, from this club's scored matches", async ({ request, db }) => {
+test("THE INCIDENT: the answer is shown this club's scored matches, newest first, and no other club's", async ({ request, db }) => {
   const grp = await group(request, db);
-  const r = await grp.post("owner", "@Match Time give us the scores of the last 5 matches", { ...scoreQ({ listSize: 5 }), tag: true });
-  const lines = (r.reply ?? "").split("\n");
-  expect(lines[0], JSON.stringify(r)).toBe("⚽ Last 5 results:");
-  expect(lines.slice(1).map((l) => l.replace(/^• [^:]+: /, ""))).toEqual([
-    "Red 5 - 4 Yellow. Red won.",
-    "Red 2 - 6 Yellow. Yellow won.",
-    "Red 3 - 3 Yellow. A draw.",
-    "Red 7 - 1 Yellow. Red won.",
-    "Red 4 - 5 Yellow. Yellow won.",
+  const ASK = "@Match Time give us the scores of the last 5 matches";
+  const r = await grp.post("owner", ASK, { ...scoreQ(), tag: true });
+  expect(r.reply, JSON.stringify(r)).toBe(ANSWER);
+  const turn = unifiedTurn(ASK);
+  const block = turn.slice(turn.indexOf("RECENT RESULTS"), turn.indexOf("\n\n", turn.indexOf("RECENT RESULTS")));
+  expect(block).toMatch(/^RECENT RESULTS, newest first \(6\):/);
+  // Newest first, the unscored match left out.
+  expect(block.split("\n").slice(1).map((l) => l.replace(/^ {2}[^:]+: /, ""))).toEqual([
+    "Red 5, Yellow 4",
+    "Red 2, Yellow 6",
+    "Red 3, Yellow 3",
+    "Red 7, Yellow 1",
+    "Red 4, Yellow 5",
+    "Red 1, Yellow 0",
   ]);
-  // Club-scoped: the other club's 9 - 9 is nowhere.
-  expect(r.reply).not.toContain("9 - 9");
-});
-
-test("asked for more than the record holds, it says so", async ({ request, db }) => {
-  const grp = await group(request, db);
-  const r = await grp.post("owner", "@Match Time last 10 results", { ...scoreQ({ listSize: 10 }), tag: true });
-  expect(r.reply ?? "").toMatch(/^⚽ Last 6 results:/);
-  expect(r.reply ?? "").toContain("That's every scored match I have on record.");
-});
-
-test("no count and no period is still the last match, as before", async ({ request, db }) => {
-  const grp = await group(request, db);
-  const r = await grp.post("owner", "@Match Time what was the score", { ...scoreQ(), tag: true });
-  expect(r.reply ?? "").toMatch(/^⚽ \S+ \d\d:\d\d: Red 5 - 4 Yellow\. Red won\.$/);
-});
-
-test("a Turkish group hears it in Turkish", async ({ request, db }) => {
-  const grp = await group(request, db);
-  await grp.db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [grp.orgId]);
-  try {
-    const r = await grp.post("owner", "@Match Time son 3 maçın skorları", { ...scoreQ({ listSize: 3 }), tag: true });
-    const lines = (r.reply ?? "").split("\n");
-    expect(lines[0], JSON.stringify(r)).toBe("⚽ Son 3 sonuç:");
-    expect(lines[1]).toMatch(/^• \d+ \S+ \S+: Kırmızı 5 - 4 Sarı\. Kırmızı kazandı\.$/);
-    expect(lines[3]).toMatch(/Berabere\.$/);
-  } finally {
-    await grp.db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [grp.orgId]);
-  }
+  // Club-scoped: the other club's 9 to 9 is nowhere.
+  expect(block).not.toContain("Red 9, Yellow 9");
 });

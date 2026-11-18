@@ -15,16 +15,10 @@ const parse = (raw: Record<string, unknown>) =>
   parseFacts(
     "question",
     JSON.stringify({
-      topic: "how_it_works",
+      kind: "help",
       personRef: "",
-      statedCount: -1,
-      table: "none",
-      listSize: -1,
-      listEnd: "top",
-      period: "none",
-      periodCount: -1,
-      periodUnit: "none",
       feature: "none",
+      badge: "none",
       ...raw,
     }),
     "m1",
@@ -33,7 +27,7 @@ const parse = (raw: Record<string, unknown>) =>
 describe("a how-it-works question", () => {
   it("names the part of MatchTime it asks about", () => {
     const { facts, degradations } = parse({ feature: "availability" });
-    expect(facts).toEqual({ kind: "question", topic: "how_it_works", personRef: null, statedCount: null, feature: "availability" });
+    expect(facts).toEqual({ kind: "question", topic: "how_it_works", personRef: null, feature: "availability" });
     expect(degradations).toEqual([]);
   });
 
@@ -62,7 +56,7 @@ describe("a how-it-works question", () => {
   it("other topics never carry a feature", () => {
     const { facts } = parseFacts(
       "question",
-      JSON.stringify({ topic: "bench", personRef: "", statedCount: -1, feature: "availability" }),
+      JSON.stringify({ kind: "other", personRef: "", feature: "availability", badge: "none" }),
       "m1",
     );
     expect(facts).not.toHaveProperty("feature");
@@ -70,14 +64,16 @@ describe("a how-it-works question", () => {
 
   it("the schema and the prompt both know the topic and the field", () => {
     const schema = factsSchemaFor("question") as { properties: Record<string, { enum?: string[] }>; required: string[] };
-    expect(schema.properties.topic.enum).toContain("how_it_works");
+    // The extractor's kind is `help`; the facts carry it as the topic
+    // `how_it_works` (`unified-question.ts`).
+    expect(schema.properties.kind.enum).toContain("help");
     expect(schema.properties.feature.enum).toEqual([
       "availability", "friend", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges", "partners", "pool", "settings", "find_players", "graphics", "none",
     ]);
     expect(schema.properties.badge.enum).toEqual([...HELP_BADGES, "none"]);
     expect(schema.required).toContain("feature");
     expect(schema.required).toContain("badge");
-    expect(EXTRACTOR_PROMPTS.question).toMatch(/how_it_works/);
+    expect(EXTRACTOR_PROMPTS.question).toMatch(/\n  help {6}/);
     expect(EXTRACTOR_PROMPTS.question).toMatch(/\nfeature\n/);
     expect(EXTRACTOR_PROMPTS.question).toMatch(/\nbadge\n/);
     // Every topic and badge the schema allows is defined in the prompt.

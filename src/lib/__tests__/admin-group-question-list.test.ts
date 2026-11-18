@@ -26,10 +26,10 @@ import { runAnswerBatch } from "../pipeline/answer-batch";
 import { enabledStepSevenRoutes } from "../pipeline/route-flags";
 import { NOW, SUTTON, world } from "../pipeline/__tests__/helpers";
 
-/** The question extractor's raw output on both messages, captured live. */
-const RAW_BENCH =
-  '{"topic":"bench","personRef":"","statedCount":-1,"table":"none","listSize":-1,"listEnd":"top","period":"none","periodCount":-1,"periodUnit":"none","feature":"none"}';
-const RAW_SQUAD = RAW_BENCH.replace('"bench"', '"squad"');
+/** The question extractor's raw output for the list (`unified-question.ts`).
+ *  The old extractor's `bench` reading of the same message, which caused the
+ *  incident, no longer exists: the bench is the unified answer's. */
+const RAW_SQUAD = JSON.stringify({ kind: "list", personRef: "", feature: "none", badge: "none" });
 
 function stub(text: string, calls: ModelRequest[] = []): PipelineModel {
   return {
@@ -70,11 +70,6 @@ function hq(raw: string, body: string, over: Parameters<typeof fnf>[0] = {}) {
 }
 
 describe("HQ: show me the list (FNF 2026-10-20)", () => {
-  it("as it ran: the extractor said bench, so only the bench line came back", async () => {
-    const r = await hq(RAW_BENCH, "Anyone on the bench? Can you show me the list please");
-    expect(r).toEqual({ outcome: "hq-answered", replyText: "Nobody's on the bench right now." });
-  });
-
   it("the list in HQ shows the squad AND says the bench is empty", async () => {
     const r = await hq(RAW_SQUAD, "Anyone on the bench? Can you show me the list please");
     expect(r?.outcome).toBe("hq-answered");

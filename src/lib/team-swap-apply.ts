@@ -38,7 +38,7 @@ import {
   buildTeamSwapReply,
   teamSheetNames,
 } from "./group-copy";
-import { planSwap, type SwapCandidate } from "./team-slot-swap";
+import { isSwapSelfWord, planSwap, swapNotDoneWhy, type SwapCandidate } from "./team-slot-swap";
 import { decideKeepChange } from "./team-constraints";
 import { matchRatingsFor } from "./team-generation";
 import { DEFAULT_SEED_RATING } from "./default-seed";
@@ -80,7 +80,9 @@ export function playersSwapShape(facts: PlayersSwapFacts): PlayersSwapShape {
 export type PlayersSwapResult =
   | { kind: "applied"; reply: string; logReason: string }
   | { kind: "refused"; reply: string; logReason: string }
-  | { kind: "unsupported"; logReason: string };
+  /** `why`: what stopped it, in plain words, for the unified answer that
+   *  replaces the one line (`swapNotDoneWhy`, 2026-11-18). */
+  | { kind: "unsupported"; logReason: string; why?: string };
 
 const ACTIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -140,7 +142,11 @@ export async function applyPlayersGroupSwap(args: {
 }): Promise<PlayersSwapResult> {
   const shape = playersSwapShape(args.facts);
   if (shape.kind === "unsupported") {
-    return { kind: "unsupported", logReason: "a change to the teams the players' group does not support (only two players, or the whole teams)" };
+    return {
+      kind: "unsupported",
+      logReason: "a change to the teams the players' group does not support (only two players, or the whole teams)",
+      why: swapNotDoneWhy({ kind: "shape" }),
+    };
   }
   const match = await loadMatch(args.orgId);
   const lang = match?.activity.org.language ?? null;
@@ -152,7 +158,7 @@ export async function applyPlayersGroupSwap(args: {
     if (shape.kind === "swap-sides") {
       return { kind: "refused", reply: t(lang).swap_refused_teams_not_generated, logReason: "swap the teams over: no teams yet; nothing written" };
     }
-    if (!match) return { kind: "unsupported", logReason: "swap: no upcoming match" };
+    if (!match) return { kind: "unsupported", logReason: "swap: no upcoming match", why: swapNotDoneWhy({ kind: "no-match" }) };
   }
   const labels = resolveTeamLabels(match!, match!.activity.org, match!.activity.sport, lang);
   const sheet = async () => buildTeamSheet({ redLabel: labels[0], yellowLabel: labels[1], ...(await teamSheetNamesFor(match!.id, args.orgId, lang)) });
@@ -209,7 +215,12 @@ export async function applyPlayersGroupSwap(args: {
 
   const plan = planSwap({ a: shape.a, b: shape.b }, roster, { sender: args.sender, teamsExist: m.teamAssignments.length > 0, people: args.people });
   if (plan.kind === "not-a-player-swap") {
-    return { kind: "unsupported", logReason: `swap ${shape.a} and ${shape.b}: neither is a player of this match, or it is a substitution of the sender` };
+    const self = isSwapSelfWord(shape.a) || isSwapSelfWord(shape.b);
+    return {
+      kind: "unsupported",
+      logReason: `swap ${shape.a} and ${shape.b}: neither is a player of this match, or it is a substitution of the sender`,
+      why: swapNotDoneWhy({ kind: self ? "self" : "no-player", a: shape.a, b: shape.b }),
+    };
   }
   if (plan.kind === "refused") {
     return {

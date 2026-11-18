@@ -1,16 +1,16 @@
 /**
  * Group-simulator scenario matrix — Q&A + privacy.
  *
- * - "who's on the bench?" → the bench section is composed from the
- *   database (bench always shown, correctly).
- * - A `stats` question is answered from the club's completed-match
- *   record (2026-09-23), even in a batch that also carries a write: no
- *   write in the batch can change that record, and the write still lands.
- * - DM Q&A (scoped, no-leak): the context the model sees NEVER contains a
- *   raw phone number; the 📵 "no number on record" flags appear ONLY for
- *   admins (so "who's missing a number?" is admin-only in DMs). Asserted
- *   structurally via the test-only stub in dm-qa.ts, which returns the
- *   scoped context itself instead of calling Anthropic.
+ * - "who's on the bench?" → the unified answer, shown the DATABASE's bench
+ *   (2026-11-18: the composed bench answer was deleted with the other
+ *   question categories).
+ * - A stats question is answered in a batch that also carries a write,
+ *   and the write still lands.
+ * - DM Q&A (no-leak, the unified answer since 2026-11-18): the context the
+ *   model sees NEVER contains a raw phone number; who has no number on
+ *   record appears ONLY for admins. Asserted structurally via the test-only
+ *   stub in dm-qa.ts, which returns the context itself instead of calling
+ *   Anthropic.
  * - Group → DM ("dm me …") answers privately with 📩.
  * - "my stats" DMs a personal magic link and says so in the group (2026-09-23; it was a 📊 react).
  */
@@ -18,7 +18,21 @@ import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { createGroup, SimGroup } from "./group";
+import { readFileSync } from "node:fs";
 import { selfIn } from "../helpers/stub";
+import { E2E } from "../helpers/env";
+
+/** The unified answer's turn for this body, as the stub was shown it. */
+function unifiedTurn(body: string): string {
+  return (
+    readFileSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { label: string; user: string })
+      .filter((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(body))
+      .pop()?.user ?? ""
+  );
+}
 
 /* ── PORTED 2026-09-06, §10 STEP 8 ────────────────────────────────────
  *
@@ -35,7 +49,8 @@ import { selfIn } from "../helpers/stub";
  * variable being SET, never off the file's contents. The variable is now
  * called `MT_TEST_DM_QA_STUB` and does exactly that one job.
  */
-const askBench = { route: "question", facts: { topic: "bench", personRef: null, statedCount: null } };
+const BENCH_ANSWER = "On the bench: Greg Gale.";
+const askBench = { route: "question", facts: { kind: "other", personRef: "", feature: "none", badge: "none", answer: BENCH_ANSWER } };
 
 test.describe.configure({ mode: "serial" });
 
@@ -69,16 +84,13 @@ test('"who\'s on the bench?" → answered from the DB, not from anyone\'s claim'
     tag: true,
     ...askBench,
   });
-  // The COPY changed with the answerer. It used to be the batch-final
-  // squad post's "*Bench (1):*" block, because the only way to correct a
-  // wrong bench claim was to replace the whole reply with the squad
-  // post. The `bench` topic has its own composed answer now
-  // (`compose.ts`, "On the bench: …"), which is a narrower thing to say
-  // and the right one for the question asked. What is asserted is the
-  // same as before and is the point of the test: the answer is the
-  // DATABASE's bench, named.
-  expect(r.reply).toContain("Greg Gale");
-  expect(r.reply, "and nobody who is not on the bench").not.toContain("Pete Power");
+  // The answer is the stubbed model's; what is asserted is what it was
+  // SHOWN: the DATABASE's bench, by name, whatever anyone claimed.
+  expect(r.reply).toBe(BENCH_ANSWER);
+  const turn = unifiedTurn("@Match Time who's on the bench?");
+  const bench = turn.slice(turn.indexOf("BENCH ("), turn.indexOf("TEAMS"));
+  expect(bench).toContain("Greg Gale");
+  expect(bench, "and nobody who is not on the bench").not.toContain("Pete Power");
 });
 
 /* ── REPLACED 2026-09-06, §10 STEP 8. THE OLD CASE HAD NO SUBJECT. ────
@@ -116,39 +128,39 @@ test("a stats question in a writing batch is answered from the record, and the w
       body: "@Match Time who's top of the standings?",
       tag: true, // question → requires a tag under the interaction contract
       route: "question",
-      facts: { topic: "stats", personRef: null, statedCount: null },
+      facts: { kind: "other", personRef: "", feature: "none", badge: "none", answer: "The full table is on the stats page." },
     },
   ]);
   expect((await grp.attendanceOf("felix"))?.status).toBe("CONFIRMED");
   const reply = batch.results[1].reply ?? "";
-  // The appearances table or its honest empty line, never the roster.
-  expect(reply, "the stats question is answered").toMatch(/Most appearances|no completed matches/);
+  // The unified answer, never the roster.
+  expect(reply, "the stats question is answered").toBe("The full table is on the stats page.");
   expect(reply).not.toMatch(/Playing:/);
-  expect(reply).not.toMatch(/[—–]/);
 });
 
 test('DM "what\'s X\'s number?" — context physically contains NO phone digits and no 📵 flags for a non-admin', async ({ request, db }) => {
   const grp = await group(request, db);
   const r = await grp.dm("pete", "what's Gary's phone number?");
   expect(r.json.handled).toBe("dm-qa");
-  const answer = r.dms.find((d) => d.text.startsWith("[scoped-qa-stub]"));
+  const answer = r.dms.find((d) => d.text.startsWith("[unified-dm-stub]"));
   expect(answer).toBeTruthy();
-  expect(answer!.text).toContain("Confirmed players:");
+  expect(answer!.text).toMatch(/^SQUAD \(/m);
   // The no-leak guarantee, structurally: nothing to extract.
   expect(answer!.text).not.toContain(PHONE_MARKER);
-  expect(answer!.text).not.toContain("📵");
+  expect(answer!.text).not.toContain("NO PHONE NUMBER ON RECORD");
 });
 
 test('DM "who\'s missing a number?" — 📵 flags present for an ADMIN, still zero raw digits', async ({ request, db }) => {
   const grp = await group(request, db);
   const r = await grp.dm("alice", "who's missing a number on record?");
   expect(r.json.handled).toBe("dm-qa");
-  const answer = r.dms.find((d) => d.text.startsWith("[scoped-qa-stub]"));
+  const answer = r.dms.find((d) => d.text.startsWith("[unified-dm-stub]"));
   expect(answer).toBeTruthy();
-  // Exactly the phone-less squad members are flagged.
-  expect(answer!.text).toMatch(/Gary Guest 📵 no number on record/);
-  expect(answer!.text).toMatch(/Larry Lid 📵 no number on record/);
-  expect(answer!.text).not.toMatch(/Pete Power 📵/);
+  // Exactly the phone-less squad members are named, never a number.
+  const line = answer!.text.split("\n").find((l) => l.startsWith("NO PHONE NUMBER ON RECORD")) ?? "";
+  expect(line).toContain("Gary Guest");
+  expect(line).toContain("Larry Lid");
+  expect(line).not.toContain("Pete Power");
   expect(answer!.text).not.toContain(PHONE_MARKER);
 });
 
@@ -207,7 +219,7 @@ test("someone else's stats is a group question: no stats DM to anybody", async (
   const r = await grp.post("dan", "@Match Time what are Pete's stats", {
     tag: true,
     route: "question",
-    facts: { topic: "stats", personRef: "Pete", statedCount: -1 },
+    facts: { kind: "other", personRef: "Pete", feature: "none", badge: "none" },
   });
   expect(statsLinkDms(r.dms)).toEqual([]);
   expect(r.react).not.toBe("📊");

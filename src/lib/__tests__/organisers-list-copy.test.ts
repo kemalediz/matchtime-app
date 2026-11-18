@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { passesOrganisersNet } from "@/lib/organisers-list-copy";
-import { OPEN_ANSWER_INTENT, UNIFIED_ANSWER_INTENT, skipsSquadComposition } from "@/lib/group-copy";
+import { UNIFIED_ANSWER_INTENT, skipsSquadComposition } from "@/lib/group-copy";
 
 describe("the unified answer and the organisers-mode net", () => {
   it("passes by intent, and is skipped by the squad-composition pass", () => {
@@ -17,7 +17,4 @@ describe("the unified answer and the organisers-mode net", () => {
     expect(skipsSquadComposition(UNIFIED_ANSWER_INTENT)).toBe(true);
   });
 
-  it("the old open answer still goes through the net, as before", () => {
-    expect(passesOrganisersNet(OPEN_ANSWER_INTENT)).toBe(false);
-  });
 });

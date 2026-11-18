@@ -1,7 +1,7 @@
 /**
- * A DM QUESTION UNDER UNIFIED_ANSWERS (Kemal, 2026-11-10).
+ * A DM QUESTION (Kemal, 2026-11-10; the only DM answer since 2026-11-18).
  *
- * With the flag on, a private question is answered by the same answer step
+ * A private question is answered by the same answer step
  * as the players' group and HQ (`pipeline/unified-answer.ts`), over the same
  * context of the club's data, with the DM's audience: the squad and bench by
  * name (as the DM answer has always shown them), the asker's OWN stats and

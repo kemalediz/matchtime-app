@@ -21,7 +21,7 @@ const ask = (opts: { tagged?: boolean; feature?: "availability" | null } = {}) =
         tagged: opts.tagged ?? true,
         body: "Bench? We do bench now?",
         route: "question",
-        facts: { kind: "question", topic: "how_it_works", personRef: null, statedCount: null, feature: opts.feature === undefined ? "availability" : opts.feature },
+        facts: { kind: "question", topic: "how_it_works", personRef: null, feature: opts.feature === undefined ? "availability" : opts.feature },
       }),
     ],
   });

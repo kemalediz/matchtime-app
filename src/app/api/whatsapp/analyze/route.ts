@@ -321,6 +321,7 @@ import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageAddressesBot, messageTagsBot, piMentionsBot } from "@/lib/interaction-contract";
 import { alreadyThereLine, newSilenceFacts, taggedSilence } from "@/lib/tagged-silence";
 import { answerDeadEnds, isDeadEnd } from "@/lib/dead-end-answer";
+import { alsoDonePart, type AlsoDonePart } from "@/lib/also-done";
 import { offerCalloffIfCalled } from "@/lib/calloff-offer";
 import { mergeRecruitReply } from "@/lib/recruit-request";
 import {
@@ -363,7 +364,6 @@ import { recordVenueList } from "@/lib/venue-list-log";
 import { askWhichSource, nobodyLeftReply, sourcesAvailable } from "@/lib/ask-source";
 import { decideRecruitSource, type RecruitSource } from "@/lib/ask-source-rules";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
-import { unifiedAnswersEnabledForApiRequest } from "@/lib/unified-answers-flag";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 import { pastedListIds, type RoutedForListSignal } from "@/lib/pasted-list-signal";
 import type { MonthlyReading } from "@/lib/monthly-reader-prompt";
@@ -1850,11 +1850,11 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   //      `AnalyzedMessage.action`", and this is what makes "did the gate
   //      eat an IN?" a query. That row matters MORE now that it is the
   //      nightly `none`-bucket sweep's only input.
-  // The "who do you mean?" questions MatchTime has open about a stats
-  // question (2026-09-23). One indexed read, and an empty list on almost
+  // The "who is that?" questions MatchTime has open about a place in the
+  // squad (2026-11-17). One indexed read, and an empty list on almost
   // every batch. The router lets the asker's reply through as an answer
-  // and the answer owner reads it against the original question. See
-  // the essay at the foot of `pipeline/awaiting-answer.ts`.
+  // and the attendance engine reads it against the original message. See
+  // `pipeline/awaiting-answer.ts`.
   const statsClarifications =
     fresh.length > 0
       ? await loadOpenStatsClarifications(org.id).catch((err) => {
@@ -2758,50 +2758,6 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
             .map(([id]) => id),
         ],
   );
-  // This group's week of chat, for the open answer and the dead ends.
-  const playersWeekChat = async () =>
-    (await import("@/lib/week-chat")).playersWeekChat({
-      orgId: org.id,
-      groupId: body.groupId,
-      now,
-      batch: all.map((m) => ({
-        waMessageId: m.waMessageId,
-        author: senderLabel(m.waMessageId),
-        body: m.body,
-        timestamp: m.timestamp,
-        stored: seenMap.has(m.waMessageId),
-      })),
-    });
-  const answerBatch =
-    fresh.length > 0
-      ? await runAnswerBatch({
-          silence,
-          // The same fact the attendance engine was given above: an
-          // `options` question is then answered with how the month works.
-          monthNotStarted,
-          orgId: org.id,
-          now,
-          messages: ownerBase,
-          history: ownerHistory,
-          // The open answer reads THIS group's week of chat, MatchTime's
-          // lines included; read only when an open question is owned
-          // (Kemal, 2026-11-10, `lib/week-chat.ts`).
-          weekChat: playersWeekChat,
-          // Same contract as step 6: if the route's registration match
-          // and the owner's state load ever disagree, the owner takes
-          // nothing rather than answer about a different match.
-          expectedMatchId: activeMatchForReply?.id ?? null,
-          enabled: stepSevenEnabled,
-          deps: {},
-          clarifications: statsClarifications,
-          ...(alsoAsksIds.size > 0 ? { alsoAsks: alsoAsksIds } : {}),
-          // The help's pool answer reads the switch as this request does,
-          // only when a help question is answered.
-          poolEnv: () => poolEnvForApiRequest(request),
-          // UNIFIED_ANSWERS (Kemal, 2026-11-10): off unless set.
-          unified: unifiedAnswersEnabledForApiRequest(request),
-        })
-      : null;
 
   const scoreBatch =
     fresh.length > 0
@@ -2873,6 +2829,70 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
           // The teams extractor's reading the attendance engine already
           // made of those messages (its swap guard reads it): not read twice.
           alsoTeamsFacts: engineBatch?.teamsReadings,
+        })
+      : null;
+
+  // WHAT THE OTHER PARTS OF THE SAME MESSAGE ALREADY DID (Sutton 17 Nov
+  // 12:53: the size was switched, then the question part said "I can't
+  // switch the match from this message"; review of #626). The question
+  // answering now runs AFTER every other owner (the early admin pass, the
+  // attendance engine, score, admin_ops and the teams), so each part's
+  // outcome is known: what it said, or the reaction or squad post that
+  // acknowledged it, as done or as answered without doing
+  // (`also-done.ts`). For every message the question answering may answer
+  // that another owner also acted on: the also-asks, and any message with
+  // several instructions.
+  const alsoDone = new Map<string, AlsoDonePart[]>();
+  for (const id of new Set([...alsoAsksIds, ...alsoRoutesById.keys()])) {
+    const parts = [
+      earlyAdminBatch?.outcomes.get(id) ? alsoDonePart("admin", earlyAdminBatch.outcomes.get(id)!) : null,
+      engineBatch?.outcomes.get(id) ? alsoDonePart("attendance", engineBatch.outcomes.get(id)!) : null,
+      scoreBatch?.outcomes.get(id) ? alsoDonePart("score", scoreBatch.outcomes.get(id)!) : null,
+      adminOpsBatch?.outcomes.get(id) ? alsoDonePart("admin", adminOpsBatch.outcomes.get(id)!) : null,
+      ...[teamOpsBatch?.outcomes.get(id), teamOpsBatch?.alsoOutcomes.get(id)].map((o) => (o ? alsoDonePart("teams", o) : null)),
+    ].filter((p): p is AlsoDonePart => !!p);
+    if (parts.length > 0) alsoDone.set(id, parts);
+  }
+  // This group's week of chat, for the open answer and the dead ends.
+  const playersWeekChat = async () =>
+    (await import("@/lib/week-chat")).playersWeekChat({
+      orgId: org.id,
+      groupId: body.groupId,
+      now,
+      batch: all.map((m) => ({
+        waMessageId: m.waMessageId,
+        author: senderLabel(m.waMessageId),
+        body: m.body,
+        timestamp: m.timestamp,
+        stored: seenMap.has(m.waMessageId),
+      })),
+    });
+  const answerBatch =
+    fresh.length > 0
+      ? await runAnswerBatch({
+          silence,
+          // The same fact the attendance engine was given above: an
+          // `options` question is then answered with how the month works.
+          monthNotStarted,
+          orgId: org.id,
+          now,
+          messages: ownerBase,
+          history: ownerHistory,
+          // The open answer reads THIS group's week of chat, MatchTime's
+          // lines included; read only when an open question is owned
+          // (Kemal, 2026-11-10, `lib/week-chat.ts`).
+          weekChat: playersWeekChat,
+          // Same contract as step 6: if the route's registration match
+          // and the owner's state load ever disagree, the owner takes
+          // nothing rather than answer about a different match.
+          expectedMatchId: activeMatchForReply?.id ?? null,
+          enabled: stepSevenEnabled,
+          deps: {},
+          ...(alsoAsksIds.size > 0 ? { alsoAsks: alsoAsksIds } : {}),
+          ...(alsoDone.size > 0 ? { alsoDone } : {}),
+          // The help's pool answer reads the switch as this request does,
+          // only when a help question is answered.
+          poolEnv: () => poolEnvForApiRequest(request),
         })
       : null;
 
@@ -4800,10 +4820,12 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
   //   The canned "can't do that" and not-understood lines above are only
   //   the fallback: each tagged dead end (by its outcome's intent, never
   //   the words, `dead-end-answer.ts`) is answered by the unified answer,
-  //   which says what MatchTime can do instead. Not a message with several
-  //   instructions, a joined answer, or a reply carrying the composed squad
-  //   post: each carries more than the line.
-  if (unifiedAnswersEnabledForApiRequest(request) && !aiCapped) {
+  //   told why its path stopped (`deadEndWhy`, Sutton 17 Nov 19:23: "swap
+  //   Sam with Alex" named nobody in the squad, and the answer guessed "I
+  //   can't swap players from here"), and what MatchTime can do instead.
+  //   Not a message with several instructions, a joined answer, or a reply
+  //   carrying the composed squad post: each carries more than the line.
+  if (!aiCapped) {
     const deadEnds = fresh.filter((m) => {
       const r = results.find((x) => x.waMessageId === m.waMessageId);
       return (
@@ -4818,10 +4840,14 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
         !answerBatch?.alsoAnswered.has(m.waMessageId)
       );
     });
+    // Why each one's path stopped, when the path said: the team change's
+    // own outcome, else the admin owner's (never read from the words).
+    const why = (id: string): string | null =>
+      teamOpsBatch?.outcomes.get(id)?.deadEndWhy ?? adminOpsBatch?.outcomes.get(id)?.deadEndWhy ?? earlyAdminBatch?.outcomes.get(id)?.deadEndWhy ?? null;
     const answered = await answerDeadEnds({
       orgId: org.id,
       now,
-      messages: deadEnds.map(ownerMessageOf),
+      messages: deadEnds.map((m) => ({ ...ownerMessageOf(m), why: why(m.waMessageId) })),
       history: ownerHistory,
       weekChat: playersWeekChat,
       expectedMatchId: activeMatchForReply?.id ?? null,

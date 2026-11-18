@@ -92,6 +92,9 @@ export async function loadSquadState(
     where: { orgId, leftAt: null },
     select: {
       role: true,
+      // A guest stays on the roster (his game names and resolves him) and is
+      // marked, so he is never counted as a registered member (#626 review).
+      guestMatchId: true,
       user: { select: { id: true, name: true, phoneNumber: true } },
     },
   });
@@ -114,6 +117,7 @@ export async function loadSquadState(
       displayName: shownNames.get(m.user.id)?.display,
       isAdmin: m.role === "OWNER" || m.role === "ADMIN",
       hasPhone: !!m.user.phoneNumber,
+      ...(m.guestMatchId ? { guest: true as const } : {}),
     })),
   );
 

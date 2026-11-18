@@ -174,58 +174,19 @@ export function describeQuestion(q: AwaitingQuestion): string {
 
 
 // ═══════════════════════════════════════════════════════════════════════
-// A STATS CLARIFICATION IS AN OPEN QUESTION TOO (2026-09-23)
+// "WHO DO YOU MEAN?" IS AN OPEN QUESTION TOO
 // ═══════════════════════════════════════════════════════════════════════
 //
-// Kemal: "if it can't recognise a name or something, i think it should
-// honestly ask the person who posted that message in the group". When a
-// stats question names somebody who is not in the squad, or who could be
-// two members, MatchTime asks the poster instead of guessing
-// (`stats-answer.ts`, `ask_stats_person`). The poster's reply has to be
-// understood as the answer, and this is the mechanism that already knows
-// how: a ROW saying MatchTime asked, the one-hour TTL above, and the
-// router's override site with its `awaiting` source label.
+// When MatchTime asks a poster who someone in their message is, the
+// poster's reply has to be understood as the answer: a ROW saying
+// MatchTime asked, the one-hour TTL above, and the router's override site.
+// Only the person asked answers it, and the router decides whether the
+// reply does (`clarificationLine`). Kept apart from `AwaitingQuestion`s so
+// one never displaces a real bench offer as "the" open question.
 //
-// ── THE ROW. No new table. The asking message is recorded like every
-// owned message, as an `AnalyzedMessage`, with the intent
-// `stats_clarification`; its `body` IS the original question and its
-// `authorUserId` / `authorName` ARE the asker. The reply that answers it
-// is recorded with `stats_clarified`, which closes it. So "is a
-// clarification open?" is one indexed read (`[orgId, createdAt]`) of
-// rows the route writes anyway.
-//
-// ── TWO NARROWINGS against the bench-offer rescue, both deliberate:
-//
-//   1. ONLY THE ASKER. A bench offer is answered by whoever claims the
-//      slot, so it widens to the group. A "who do you mean?" is answered
-//      by the person it was put to, and anybody else's "Idris" is
-//      ordinary chat.
-//   2. THE ROUTER DECIDES WHETHER THE REPLY ANSWERS IT (2026-10-30). It is
-//      shown the open question above the asker's message
-//      (`clarificationLine`); the asker's "I'm in" an hour later is still
-//      attendance. Until today a word test (`clarificationSubject`) did
-//      this; "no string parsing" retired it.
-//
-// ── WHY THESE ARE NOT `AwaitingQuestion`s. `openQuestionAt` picks ONE
-// question for the whole group and rescues everybody's `none`. Folding a
-// clarification into that list would let the asker's question displace a
-// real bench offer (or the reverse) as "the" open question. Kept as a
-// separate list, both rescues run, and the bench behaviour is byte for
-// byte what it was.
-
-export const STATS_CLARIFICATION_INTENT = "stats_clarification";
-export const STATS_CLARIFIED_INTENT = "stats_clarified";
-
-/** The `AnalyzedMessage` columns a clarification is read from. */
-export interface StatsClarificationRow {
-  id: string;
-  orgId: string;
-  intent: string | null;
-  authorUserId: string | null;
-  authorName: string | null;
-  body: string | null;
-  createdAt: Date;
-}
+// The stats "who do you mean?" (2026-09-23, `AnalyzedMessage` rows with
+// intent `stats_clarification`) was deleted on 2026-11-18 with the stats
+// answers that asked it; the place in the squad (below) is the one left.
 
 /** One "who do you mean?" MatchTime is still waiting on. */
 export interface StatsClarification {
@@ -250,43 +211,6 @@ function askerKey(userId: string | null, name: string | null): string | null {
   if (userId) return `u:${userId}`;
   if (name) return `n:${name}`;
   return null;
-}
-
-/** PURE. The clarifications still open at `now`, at most one per asker
- *  (a newer question from the same person replaces the older one). */
-export function openStatsClarifications(
-  rows: StatsClarificationRow[],
-  orgId: string,
-  now: Date,
-): StatsClarification[] {
-  const latest = new Map<string, StatsClarificationRow>();
-  const answeredAt = new Map<string, number>();
-  for (const r of rows) {
-    if (r.orgId !== orgId) continue;
-    const key = askerKey(r.authorUserId, r.authorName);
-    if (!key) continue;
-    if (r.intent === STATS_CLARIFIED_INTENT) {
-      answeredAt.set(key, Math.max(answeredAt.get(key) ?? 0, r.createdAt.getTime()));
-    } else if (r.intent === STATS_CLARIFICATION_INTENT) {
-      const cur = latest.get(key);
-      if (!cur || r.createdAt.getTime() > cur.createdAt.getTime()) latest.set(key, r);
-    }
-  }
-  const out: StatsClarification[] = [];
-  for (const [key, r] of latest) {
-    const q = { id: r.id, orgId, kind: "tentative-followup" as const, askedAt: r.createdAt, closesAt: null };
-    if (!isAnswerWindowOpen(q, now)) continue;
-    if ((answeredAt.get(key) ?? 0) > r.createdAt.getTime()) continue;
-    out.push({
-      id: r.id,
-      orgId,
-      askerUserId: r.authorUserId,
-      askerName: r.authorName,
-      questionBody: r.body ?? "",
-      askedAt: r.createdAt,
-    });
-  }
-  return out.sort((a, b) => a.askedAt.getTime() - b.askedAt.getTime());
 }
 
 /** PURE. Is this message from the person the clarification was put to? */

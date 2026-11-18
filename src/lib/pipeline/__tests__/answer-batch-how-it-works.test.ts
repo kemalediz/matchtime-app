@@ -38,6 +38,7 @@ function stubModel(calls: ModelRequest[], feature = "availability", badge = "non
       calls.push(req);
       return {
         text: JSON.stringify({
+          kind: "help",
           topic: "how_it_works",
           personRef: "",
           statedCount: -1,

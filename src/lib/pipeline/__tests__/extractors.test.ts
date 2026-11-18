@@ -122,7 +122,7 @@ describe("the extractor prompts ask for facts, not outcomes", () => {
       // writes. So the reply-context vocabulary is set aside first.
       const ownReply = prompt
         .toLowerCase()
-        .replace(/whatsapp reply|they are replying to|replying to|replied to|replies to|reply line|a reply (?:that|about)/g, "");
+        .replace(/whatsapp reply|they are replying to|replying to|replied to|replies to|reply line|a reply (?:that|about)|matchtime's last reply/g, "");
       expect(ownReply, route).not.toContain("reply");
     }
   });
@@ -255,10 +255,10 @@ describe("parseFacts (other routes)", () => {
   it("question", () => {
     const { facts } = parseFacts(
       "question",
-      '{"topic":"count","personRef":null,"statedCount":9}',
+      '{"kind":"other","personRef":"Zair","feature":"none","badge":"none"}',
       "wa-1",
     );
-    expect(facts).toEqual({ kind: "question", topic: "count", personRef: null, statedCount: 9 });
+    expect(facts).toEqual({ kind: "question", topic: "other", personRef: "Zair" });
   });
 
   it("question with an unknown topic falls back to `other`, loudly", () => {

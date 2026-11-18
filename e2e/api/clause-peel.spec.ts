@@ -32,7 +32,9 @@
  *   one reply         the invariant "MatchTime replies once or not at
  *                     all" survives two owners writing for one message.
  */
+import { readFileSync } from "node:fs";
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
+import { E2E } from "../helpers/env";
 import { engineOn, selfOut, setTeamAlsoStub } from "../helpers/stub";
 import { U, PHONE, MATCH, NAME } from "../helpers/constants";
 import type { TestDb } from "../helpers/test-db";
@@ -334,22 +336,27 @@ test.describe("the answer peels keep the sender's OUT", () => {
   // ── THE RATING-PROGRESS PEEL IS GONE (2026-09-11) ─────────────────
   //
   //   It was `looksLikeRatingProgressRequest` — (a rating word) AND (a
-  //   progress word), anywhere in the body — and this file's own header
-  //   used to single it out as the widest of the six. It is the
-  //   conjunction shape behind 2026-09-01 and 2026-09-10, and it is
-  //   deleted. The ask is now `QuestionFacts.topic = "rating_progress"`
-  //   on the `question` route, which is a WHOLE-message route.
-  //
-  //   So these two tests pin the OPPOSITE of what they used to: the
-  //   compound form now loses its attendance half, and that is stated
-  //   in `lib/rating-progress-answer.ts` rather than discovered here.
+  //   progress word), anywhere in the body — the conjunction shape behind
+  //   2026-09-01 and 2026-09-10, and it is deleted. Since 2026-11-18 the
+  //   ask is the unified answer's (the question extractor's "other"), on
+  //   the `question` route, which is a WHOLE-message route: who has rated
+  //   is in the context of the organisers and of an admin asking, and
+  //   never of anybody else.
 
+  const RATED = "Most of the squad has rated already.";
   const RATING_Q = {
     route: "question",
-    facts: { topic: "rating_progress", personRef: "", statedCount: -1 },
+    facts: { kind: "other", personRef: "", feature: "none", badge: "none", answer: RATED },
   };
+  const turnFor = (body: string): string =>
+    readFileSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { label: string; user: string })
+      .filter((c) => c.label === "unified-answer" && c.user.trimEnd().endsWith(body))
+      .pop()?.user ?? "";
 
-  test("rating progress — the compound form now LOSES the sender's OUT", async ({
+  test("rating progress — the compound form LOSES the sender's OUT", async ({
     request,
     db,
   }) => {
@@ -373,8 +380,7 @@ test.describe("the answer peels keep the sender's OUT", () => {
     expect(speaks(res)).toHaveLength(1);
   });
 
-  test("rating progress — the single-purpose ask still answers", async ({ request, db }) => {
-    // The feature is not deleted, only its recogniser.
+  test("rating progress — the single-purpose ask is the unified answer", async ({ request, db }) => {
     engineOn({ "@Match Time who hasn't rated yet?": RATING_Q });
     const res = await postAnalyze(request, [
       {
@@ -386,19 +392,15 @@ test.describe("the answer peels keep the sender's OUT", () => {
       },
     ]);
     expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
-    // The intent label the deleted fast path wrote, kept on purpose so
-    // the admin log's vocabulary is unchanged by the move to the model.
-    expect(res.results.map((r: { intent: string | null }) => r.intent)).toContain(
-      "rating_progress",
-    );
-    expect(speaks(res)).toHaveLength(1);
+    expect(res.results.map((r: { intent: string | null }) => r.intent)).toContain("unified_answer");
+    expect(speaks(res).map((r) => r.reply)).toEqual([RATED]);
   });
 
-  test("rating progress — a non-admin is refused, and silently", async ({ request, db }) => {
-    // The answer NAMES the players who have not rated, which is why this
-    // gate survived the conversion unchanged.
+  test("rating progress — a non-admin's context never holds who has rated", async ({ request, db }) => {
+    // The names of who has not rated are for the organisers: what the
+    // model is not told it cannot leak.
     engineOn({ "@Match Time who hasn't rated yet please": RATING_Q });
-    const res = await postAnalyze(request, [
+    await postAnalyze(request, [
       {
         waMessageId: msgId(),
         body: "@Match Time who hasn't rated yet please",
@@ -408,6 +410,8 @@ test.describe("the answer peels keep the sender's OUT", () => {
       },
     ]);
     expect(await statusOf(db, U.collector)).toBe("CONFIRMED");
-    expect(speaks(res)).toHaveLength(0);
+    const turn = turnFor("@Match Time who hasn't rated yet please");
+    expect(turn).toContain("THE MESSAGE");
+    expect(turn).not.toMatch(/Not rated yet:/);
   });
 });

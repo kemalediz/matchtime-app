@@ -84,7 +84,7 @@ const ROOT = path.resolve(__dirname, "../../..");
 /** The seven files holding the eight call sites: five sites from the
  *  design, three (matches.ts x2, players.ts) found by the grep. */
 const FIXED_SITES = [
-  "src/lib/dm-qa.ts",
+  // src/lib/dm-qa.ts left the list on 2026-11-18: it renders no date now (the unified answer does, in London).
   "src/lib/match-completion.ts",
   "src/lib/player-stats.ts",
   "src/app/api/whatsapp/status/route.ts",

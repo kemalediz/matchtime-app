@@ -29,7 +29,6 @@ import {
   rosterSurveyBodyOf,
 } from "../roster-survey-classifier";
 import { DM_INTENT_SYSTEM_PROMPT, buildDmIntentUserTurn, classifyDmIntent, dmBodyOf } from "../dm-intent";
-import { DM_QA_SYSTEM_PROMPT, buildDmQaUserTurn, composeScopedAnswer, type DmQaCall } from "../dm-qa";
 import { noReplyContext, quoteForClubs, renderReplyContext, type QuotedBotMessage, type ReplyContext } from "../reply-context";
 import { HAIKU_MODEL } from "../models";
 import { MIN_CACHEABLE_TOKENS, estimateTokens } from "../pipeline/llm";
@@ -209,82 +208,6 @@ describe("dm-intent: an admin's DM is read against what MatchTime said", () => {
   it("no em or en dash, and over Haiku's cache floor", () => {
     expect(DM_INTENT_SYSTEM_PROMPT).not.toMatch(/[—–]/);
     expect(estimateTokens(DM_INTENT_SYSTEM_PROMPT)).toBeGreaterThanOrEqual(MIN_CACHEABLE_TOKENS[HAIKU_MODEL]);
-  });
-});
-
-// ── dm-qa ─────────────────────────────────────────────────────────────
-
-describe("dm-qa: a question is read against what MatchTime said", () => {
-  function recording() {
-    const seen: Array<{ system: string; user: string }> = [];
-    const call: DmQaCall = async (system, user) => {
-      seen.push({ system, user });
-      return { text: "Tuesday at 20:00", truncated: false };
-    };
-    return { call, seen };
-  }
-  const BASE = { context: "GROUP: Sutton FC", question: "what time?", askerName: "Ali Khan", orgName: "Sutton FC", lang: "en" as const };
-
-  it("the user turn: the CONTEXT, then what MatchTime said, then the question", async () => {
-    const { call, seen } = recording();
-    await composeScopedAnswer({ ...BASE, replyContext: QUOTING_RATING, call });
-    expect(seen[0].system).toBe(DM_QA_SYSTEM_PROMPT);
-    expect(seen[0].user).toBe(
-      [
-        "CONTEXT (everything you may use; nothing else exists for you):",
-        "GROUP: Sutton FC",
-        "",
-        "WHAT MATCHTIME SAID TO THEM:",
-        renderReplyContext(QUOTING_RATING),
-        "",
-        "The player (Ali) asks:",
-        "what time?",
-        "",
-        "Answer per your rules.",
-      ].join("\n"),
-    );
-    expect(buildDmQaUserTurn({ ...BASE, replyContext: QUOTING_RATING })).toBe(seen[0].user);
-  });
-
-  it("with no chat context known, the block says the time now and none", async () => {
-    const { call, seen } = recording();
-    await composeScopedAnswer({ ...BASE, call });
-    expect(seen[0].user).toContain("WHAT MATCHTIME SAID TO THEM:\nNOW: ");
-    expect(seen[0].user).toContain("MATCHTIME'S RECENT MESSAGES TO THEM: none");
-  });
-
-  it("the user turn carries no em or en dash", () => {
-    expect(buildDmQaUserTurn({ ...BASE, replyContext: QUOTING_RATING })).not.toMatch(/[—–]/);
-  });
-
-  describe("the system prompt", () => {
-    it("states the contact-detail rule once", () => {
-      expect(DM_QA_SYSTEM_PROMPT.split("\n").filter((l) => /contact detail/i.test(l))).toHaveLength(1);
-      expect(DM_QA_SYSTEM_PROMPT.match(/never write a phone number/gi)).toHaveLength(1);
-    });
-
-    it("hardcodes no match format: the CONTEXT has the club's", () => {
-      expect(DM_QA_SYSTEM_PROMPT).not.toMatch(/\d\s*-a-side|5\/7/);
-    });
-
-    it("answers the asker's OWN money and declines anyone else's, each said once (Kemal, 2026-10-20)", () => {
-      const own = DM_QA_SYSTEM_PROMPT.split("\n").filter((l) => /their own money/i.test(l));
-      expect(own).toHaveLength(1);
-      expect(own[0]).toMatch(/YOUR PAYMENTS/);
-      const others = DM_QA_SYSTEM_PROMPT.split("\n").filter((l) => /anyone else's payments/i.test(l));
-      expect(others).toHaveLength(1);
-      expect(others[0].startsWith("- ")).toBe(true);
-      // The old blanket refusal is gone.
-      expect(DM_QA_SYSTEM_PROMPT).not.toMatch(/money: fees, who owes/);
-    });
-
-    it("tells the model a short question refers to the message they replied to", () => {
-      expect(DM_QA_SYSTEM_PROMPT).toMatch(/swipe-replied to/);
-    });
-
-    it("carries no em or en dash", () => {
-      expect(DM_QA_SYSTEM_PROMPT).not.toMatch(/[—–]/);
-    });
   });
 });
 

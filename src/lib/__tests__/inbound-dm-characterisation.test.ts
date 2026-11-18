@@ -148,7 +148,9 @@ const SHAPES: Record<string, Shape> = {
 
 // ── The DMs ────────────────────────────────────────────────────────────
 
+const KIND_OF: Record<string, string> = { how_it_works: "help", squad: "list", my_stats: "my_stats" };
 const question = (topic: string) => ({
+  kind: KIND_OF[topic] ?? "other",
   topic,
   personRef: "",
   statedCount: -1,

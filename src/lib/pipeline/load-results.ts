@@ -23,8 +23,10 @@
 import { db } from "../db";
 import { dayLabel } from "../i18n/dates";
 import { resolveTeamLabels } from "../team-labels";
-import { RESULTS_MAX } from "./results-answer";
 import type { RecentResults } from "./types";
+
+/** The most results one read returns. */
+export const RESULTS_MAX = 10;
 
 const PLAYED_STATUSES = ["TEAMS_GENERATED", "TEAMS_PUBLISHED", "COMPLETED"] as const;
 

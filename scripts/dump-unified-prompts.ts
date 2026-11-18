@@ -1,45 +1,32 @@
 /**
- * Writes the UNIFIED_ANSWERS prompts to MDs/ as OLD vs NEW review files (no
- * model call, $0): the unified answer's system prompt and the question
- * extractor's prompt with the flag on. Prints each size.
+ * Writes the unified answer's prompt to MDs/ as an OLD vs NEW review file
+ * (no model call, $0), with each size.
  *
- * Round 3 (2026-11-12): both were rewritten whole again. The OLD side is the
- * round 2 text saved in MDs/prompt-*-2026-11-11.txt; the NEW side is the
- * prompt in the code now. Each file says what changed in meaning, then the
- * two texts one after the other.
+ * 2026-11-18 (the cleanup PR): the unified answer's system prompt was
+ * rewritten whole. The OLD side is the prompt live on main before it, saved
+ * in MDs/prompt-unified-answer-2026-11-17.txt; the NEW side is the prompt in
+ * the code now. The question extractor's prompt did not change (it became
+ * the only one, `EXTRACTOR_PROMPTS.question`).
  *
  *   ./node_modules/.bin/tsx scripts/dump-unified-prompts.ts
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { UNIFIED_QUESTION_PROMPT } from "../src/lib/pipeline/unified-question.ts";
 import { UNIFIED_ANSWER_SYSTEM } from "../src/lib/pipeline/unified-answer.ts";
 
 const tokens = (s: string) => Math.round(s.length / 2.6);
 
 const files: Array<{ out: string; old: string; title: string; now: string; meaning: string[] }> = [
   {
-    out: "MDs/prompt-unified-answer-2026-11-12.txt",
-    old: "MDs/prompt-unified-answer-2026-11-11.txt",
+    out: "MDs/prompt-unified-answer-2026-11-18.txt",
+    old: "MDs/prompt-unified-answer-2026-11-17.txt",
     title: "THE UNIFIED ANSWER, system prompt (src/lib/pipeline/unified-answer.ts, UNIFIED_ANSWER_SYSTEM)",
     now: UNIFIED_ANSWER_SYSTEM,
     meaning: [
-      "A new part, \"What THE MESSAGE asks\", says how to read the message before answering: \"the list\" is the squad list (moved here from its own line); a correction is answered for what it now names, never the earlier question again; a message with no subject of its own follows on from the chat just before it, most often MatchTime's own latest reply, while a tag with nothing after it is answered by asking what they would like to know; \"what happens if\" at the club is answered from how the club is run, this club's own rules first, even when the question takes something else for granted.",
-      "\"Where the facts come from\" is now its own part, and adds two things: each stats table says its span, and the whole record starts at the first game MatchTime recorded, so a longer span (the last year, all time) is answered from the whole record, saying once where it starts; and when the records hold only part of what is asked (the top 10 when 50 are asked for), that part is given with where the rest is.",
-      "What you are given: the members are \"the players registered with the club\", how the club is run includes what MatchTime does while places are open, and the stats tables are each headed with their span. The chat includes MatchTime's own messages.",
-      "The reply rules are unchanged.",
-      "Examples: a new group \"Corrections and follow-ups\" (\"no, I meant the bench, not the squad\"; \"why?\" after MatchTime said there is no ratings table), and new examples for \"what happens if someone drops out on the day?\", \"what happens if not enough confirm?\" at a club with a monthly squad, \"who has played most in the last year?\" and \"top 20 ratings\" in the players' group. Every round 2 example is kept.",
-    ],
-  },
-  {
-    out: "MDs/prompt-question-unified-2026-11-12.txt",
-    old: "MDs/prompt-question-unified-2026-11-11.txt",
-    title: "THE QUESTION EXTRACTOR with UNIFIED_ANSWERS on (src/lib/pipeline/unified-question.ts, UNIFIED_QUESTION_PROMPT)",
-    now: UNIFIED_QUESTION_PROMPT,
-    meaning: [
-      "The opening says what the four kinds are for: the first three are fixed posts sent as they are (the list, a help text, the asker's stats link); everything else is answered from the club's own records, including how this club is run.",
-      "help is now how to USE MatchTime (what to type, how to bring a friend, how to pay, a setting, a badge), and never a question about what happens or will happen at this club (the squad not filling, a place opening, someone dropping out, a game in doubt). FNF HQ \"what happens if 14 don't confirm?\" was read as help and got the squad help text.",
-      "other now names \"what happens at this club if something does or does not happen\" and \"a follow-up or a correction to MatchTime's last reply\".",
-      "One example added under Everything else: \"what happens if we don't fill the squad?\" | \"kadro dolmazsa ne olur?\" -> other.",
+      "What you are given names two new parts of the turn, each said once: ALREADY DONE (other parts of MatchTime acted on THE MESSAGE itself, and what they said) and NOT DONE with its Why and whether the asker is an organiser. The records now open with how many players are registered with the club.",
+      "What THE MESSAGE asks defines two words once: the bench is the players waiting for a place, whatever the message calls it; the members are everyone registered with the club, whether or not they play this week, while the squad, the bench and the teams are this week's. A correction is now said to be a new question: a message that corrects MatchTime, or corrects or narrows what was asked before it, is answered for what it names now, from the records, never the earlier question again.",
+      "The reply's 'changes nothing' rule now says, in the same place: what ALREADY DONE says is done, so answer only what is left and never say it was not done or cannot be done; with NOT DONE, say what went wrong from its Why before what can be done instead, and never tell an organiser to ask an organiser.",
+      "Examples: the bench example asks about 'the reserves'; a new correction example, 'I meant the registered players, not the teams', answered with the registered count; two new request examples, 'switch the match to 7 a side and tell us the list' with ALREADY DONE, and 'swap Sam with Alex' with NOT DONE and its Why. Every other example is kept.",
+      "Unchanged: where the facts come from, the reply's other rules, the Turkish rules.",
     ],
   },
 ];
@@ -49,8 +36,8 @@ for (const f of files) {
   const body = [
     f.title,
     "",
-    `OLD (round 2, ${f.old}): ${old.length} characters, about ${tokens(old)} tokens at 2.6 a token`,
-    `NEW (round 3, 2026-11-12): ${f.now.length} characters, about ${tokens(f.now)} tokens at 2.6 a token`,
+    `OLD (live on main, ${f.old}): ${old.length} characters, about ${tokens(old)} tokens at 2.6 a token`,
+    `NEW (2026-11-18): ${f.now.length} characters, about ${tokens(f.now)} tokens at 2.6 a token`,
     "Both are well above Haiku 5.5's 512-token cache floor.",
     "",
     "WHAT CHANGED IN MEANING",

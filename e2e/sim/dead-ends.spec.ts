@@ -8,10 +8,12 @@
  * tagged message nothing came of, and HQ's "I can't do that from this
  * group".
  *
- * Now, with UNIFIED_ANSWERS on, each tagged dead end is handed to the
- * unified answer (`dead-end-answer.ts`), told NOT DONE and shown the
- * group's help menu: it answers what was asked, says what MatchTime can do
- * instead, or asks one short question. The canned line is only the fallback
+ * Now each tagged dead end is handed to the unified answer
+ * (`dead-end-answer.ts`), told NOT DONE, why its path stopped when the path
+ * said (2026-11-18, Sutton "swap Sam with Alex"), whether the asker is an
+ * organiser, and shown the group's help menu: it answers what was asked,
+ * says what went wrong and what MatchTime can do instead, or asks one short
+ * question. The canned line is only the fallback
  * when that answer fails. Untagged messages stay silent; handled actions are
  * untouched.
  *
@@ -22,12 +24,10 @@
 import { readFileSync } from "node:fs";
 import { test, expect, resetDb } from "../fixtures";
 import { createGroup, type SimGroup, type SimPlayerSpec } from "./group";
-import { clearExtractorStub, clearRouterStub, setExtractorStub, setRouterStub } from "../helpers/stub";
+import { clearExtractorStub, clearRouterStub, setExtractorStub, setRouterStub, teamsFacts } from "../helpers/stub";
 import { E2E } from "../helpers/env";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
-const UNIFIED = { "x-mt-test-unified-answers": "1" };
-const UNIFIED_OFF = { "x-mt-test-unified-answers": "0" };
 
 let phoneSeq = 0;
 const drama = () => `+447700900${String(400 + phoneSeq++).padStart(3, "0")}`;
@@ -94,7 +94,7 @@ async function club(request: Parameters<typeof createGroup>[0], db: Parameters<t
     const grp = (await club(request, db)).attach(request);
     arm({ routes: { [BOOK]: "admin_ops" }, admin: { [BOOK]: OTHER }, answers: { [BOOK]: BOOK_ANSWER } });
 
-    const res = await grp.postBatch([{ player: "noor", body: BOOK, tag: true }], { headers: UNIFIED });
+    const res = await grp.postBatch([{ player: "noor", body: BOOK, tag: true }]);
 
     expect(res.results).toHaveLength(1);
     expect(res.results[0].reply).toBe(BOOK_ANSWER);
@@ -113,7 +113,7 @@ async function club(request: Parameters<typeof createGroup>[0], db: Parameters<t
     const grp = (await club(request, db)).attach(request);
     arm({ routes: { [VAGUE]: "unsure" }, answers: { [VAGUE]: VAGUE_ANSWER } });
 
-    const res = await grp.postBatch([{ player: "olly", body: VAGUE, tag: true }], { headers: UNIFIED });
+    const res = await grp.postBatch([{ player: "olly", body: VAGUE, tag: true }]);
 
     expect(res.results[0].reply).toBe(VAGUE_ANSWER);
     expect(res.results[0].intent).toBe("unified_answer");
@@ -129,7 +129,6 @@ async function club(request: Parameters<typeof createGroup>[0], db: Parameters<t
         { player: "noor", body: BOOK, tag: true },
         { player: "olly", body: VAGUE, tag: true },
       ],
-      { headers: UNIFIED },
     );
 
     expect(res.results[0].reply).toBe("Sorry, I can't do that one yet.");
@@ -143,7 +142,7 @@ async function club(request: Parameters<typeof createGroup>[0], db: Parameters<t
     arm({ routes: { [body]: "admin_ops" }, admin: { [body]: OTHER }, answers: { [body]: BOOK_ANSWER } });
     const before = calls().filter((l) => l === "unified-answer").length;
 
-    const res = await grp.postBatch([{ player: "noor", body, tag: false }], { headers: UNIFIED });
+    const res = await grp.postBatch([{ player: "noor", body, tag: false }]);
 
     expect(res.results[0].reply ?? null).toBeNull();
     expect(res.groupPosts).toEqual([]);
@@ -165,7 +164,7 @@ async function club(request: Parameters<typeof createGroup>[0], db: Parameters<t
     });
     const before = calls().filter((l) => l === "unified-answer").length;
 
-    const res = await grp.postBatch([{ player: "pip", body, tag: true }], { headers: UNIFIED });
+    const res = await grp.postBatch([{ player: "pip", body, tag: true }]);
 
     expect(res.results[0].intent).toBe("in");
     const row = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [grp.matchId!, grp.player("pip").userId]);
@@ -199,7 +198,6 @@ async function club(request: Parameters<typeof createGroup>[0], db: Parameters<t
         { player: "ava", body: putIn, tag: true },
         { player: "noor", body: BOOK, tag: true },
       ],
-      { headers: UNIFIED },
     );
 
     // The squad post went out, on the last result speaking: the dead end.
@@ -209,13 +207,24 @@ async function club(request: Parameters<typeof createGroup>[0], db: Parameters<t
     expect(res.results.some((r) => (r.reply ?? "").includes(BOOK_ANSWER))).toBe(false);
   });
 
-  test("with UNIFIED_ANSWERS off nothing changes: the canned line", async ({ request, db }) => {
+  test("a tagged swap naming nobody in the squad (Sutton 17 Nov 19:23): the answer is told why, and that an organiser asked", async ({ request, db }) => {
+    // Admin Elvin copied the help's own example. Neither name is a player
+    // of the match, so the teams path made no change; told only "nothing
+    // done", the answer guessed "I can't swap players from here", which is
+    // false. It is now told the reason the path gave, and who is asking.
     const grp = (await club(request, db)).attach(request);
-    arm({ routes: { [BOOK]: "admin_ops" }, admin: { [BOOK]: OTHER }, answers: { [BOOK]: BOOK_ANSWER } });
+    const SWAP = "@Match Time swap Sam with Alex";
+    const SWAP_ANSWER = "Sam and Alex aren't in this week's squad. Tag me with two players who are and I'll swap them.";
+    setRouterStub({ floor: false, bodies: { [SWAP]: "balancer" } });
+    setExtractorStub({ byExtractor: { teams: { [SWAP]: teamsFacts("swap", ["Sam", "Alex"]) }, "unified-answer": { [SWAP]: { answer: SWAP_ANSWER } } } });
 
-    const res = await grp.postBatch([{ player: "noor", body: BOOK, tag: true }], { headers: UNIFIED_OFF });
+    const res = await grp.postBatch([{ player: "ava", body: SWAP, tag: true }]);
 
-    expect(res.results[0].reply).toBe("Sorry, I can't do that one yet.");
+    expect(res.results[0].reply).toBe(SWAP_ANSWER);
+    expect(res.results[0].intent).toBe("unified_answer");
+    const turn = turns().filter((c) => c.label === "unified-answer").pop()!.user;
+    expect(turn).toContain('- Why: neither "Sam" nor "Alex" is a name MatchTime can find among the players of the upcoming match');
+    expect(turn).toContain("- The asker is one of the club's organisers");
   });
 
   test("HQ: a tagged admin request with no action gets the unified answer; failing, the one line", async ({ request, db }) => {
@@ -226,7 +235,7 @@ async function club(request: Parameters<typeof createGroup>[0], db: Parameters<t
     let seq = 0;
     const say = async (text: string) => {
       const res = await request.post("/api/whatsapp/admin-group", {
-        headers: { "x-api-key": E2E.WHATSAPP_API_KEY, ...UNIFIED },
+        headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
         data: { channel: "admin-group", botMentioned: true, groupId: hq, messageId: `sim-dead-end-hq-${Date.now()}-${++seq}`, text, senderPhone: ava, timestamp: String(Math.floor(Date.now() / 1000)) },
       });
       expect(res.status(), await res.text()).toBe(200);

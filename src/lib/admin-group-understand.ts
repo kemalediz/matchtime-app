@@ -141,7 +141,8 @@ import { piMentionsBot } from "./interaction-contract";
 import { answerClosedPartnerAskYes, answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
-import { isUnifiedAnswersEnabled } from "./unified-answers-flag";
+import { hqAlsoDonePart, type AlsoDonePart } from "./also-done";
+import { ADMIN_NO_ACTION_WHY } from "./admin-ops-engine-batch";
 import { joinAdminNames } from "./seed-nudge-rules";
 import { answerFeeProposalYes, feeProposalsAwaiting, proposeFeeFreeInHq } from "./fee-waiver";
 import { parseFeeAskRef } from "./fee-waiver-rules";
@@ -180,6 +181,11 @@ const GAME_MOVE_LINE_PREFIX = "mt:said:game-move:";
 const RECENT_MS = 30 * 60 * 1000;
 const RECENT_MAX = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Why a tagged HQ score message that is not a score was not done, for the
+ *  unified answer (review of #626: HQ passes its reason as the players'
+ *  group does). */
+export const SCORE_NOT_READ_WHY = "it reads as a score, but MatchTime could not read a score from it (two numbers, and which side each is)";
+
 /** "I can't do that from this group" is said once in this long, per group
  *  (2026-10-22, Kemal: the repeated help advert was noise). */
 export const NOT_HERE_QUIET_MS = 6 * 60 * 60 * 1000;
@@ -225,8 +231,6 @@ export interface UnderstandInput {
   /** The pool switch as the request read it (`pool/switch-env.ts`):
    *  the platform switch row, or the e2e seam under MT_TEST_MODE=1. */
   poolEnv?: Record<string, string | undefined>;
-  /** UNIFIED_ANSWERS as the route read it (`unified-answers-flag.ts`). */
-  unifiedAnswers?: boolean;
   /** Injected in tests only. */
   deps?: {
     routerModel?: PipelineModel;
@@ -690,9 +694,18 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // one answer instead of asking again.
     let questionAnswered: ReturnType<typeof answerQuestionOnce> | null = null;
     const answerQuestion = () => (questionAnswered ??= answerQuestionOnce());
-    const answerQuestionOnce = (deadEnd = false) =>
+    // What the other parts of this message already did, in the order they
+    // ran, for the unified answer (review of #626, as the players' group):
+    // done, or answered without doing.
+    const doneSoFar: AlsoDonePart[] = [];
+    const noteDone = (u: { outcome: string; replyText: string | null } | null) => {
+      const p = u ? hqAlsoDonePart(u) : null;
+      if (p && !doneSoFar.some((d) => d.text === p.text)) doneSoFar.push(p);
+    };
+    const answerQuestionOnce = (deadEnd: { why: string | null } | null = null) =>
       answerHqQuestion({
-        ...(deadEnd ? { deadEnd: true } : {}),
+        ...(deadEnd ? { deadEnd } : {}),
+        ...(doneSoFar.length ? { alsoDone: [...doneSoFar] } : {}),
         orgId: org.id,
         lang,
         messageId,
@@ -707,19 +720,15 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         reply: replyShown,
         gates: hqGates,
         ...(input.poolEnv ? { poolEnv: input.poolEnv } : {}),
-        ...(input.unifiedAnswers !== undefined ? { unified: input.unifiedAnswers } : {}),
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
     // A DEAD END (2026-11-17, `dead-end-answer.ts`): a tagged message HQ has
     // no action for is handed to the unified answer, told NOT DONE and shown
     // the HQ menu, instead of a canned line. The line (`fallback`) is said
-    // only when that answer fails, or with UNIFIED_ANSWERS off.
-    const unifiedOn = input.unifiedAnswers ?? isUnifiedAnswersEnabled();
-    const deadEnd = async (fallback: () => Promise<Understood | null> | Understood | null): Promise<Understood | null> => {
-      if (unifiedOn) {
-        const r = await answerQuestionOnce(true);
-        if (r) return said(r.outcome, r.replyText);
-      }
+    // only when that answer fails.
+    const deadEnd = async (fallback: () => Promise<Understood | null> | Understood | null, why: string | null = null): Promise<Understood | null> => {
+      const r = await answerQuestionOnce({ why });
+      if (r) return said(r.outcome, r.replyText);
       return fallback();
     };
 
@@ -730,6 +739,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // way of keeping a second fact); the question answering above answers it,
     // AFTER the change so the list is the new one, in the same reply.
     const withItsQuestion = async (change: AdminSquadChangeResult): Promise<Understood | null> => {
+      if (change.alsoAsks === true && change.handled) noteDone({ outcome: change.outcome, replyText: change.replyText });
       const answered = change.alsoAsks === true ? await answerQuestion() : null;
       if (change.alsoAsks === true) console.log(`[admin-group] ${messageId}: also asks MatchTime: ${answered ? answered.outcome : "nothing answered"}`);
       if (!change.handled) return answered ? said(answered.outcome, answered.replyText) : null;
@@ -1385,14 +1395,16 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // end. A known action done elsewhere keeps "not from this group".
         // One part of several is not a dead end: the message's other parts
         // speak for it, and "no part did anything" is decided below.
-        if (!several && (facts.kind !== "admin" || facts.action === "other")) return deadEnd(notHere);
+        if (!several && (facts.kind !== "admin" || facts.action === "other")) {
+          return deadEnd(notHere, facts.kind === "admin" ? ADMIN_NO_ACTION_WHY : "MatchTime could not read what it asks");
+        }
         return notHere();
       }
       case "score": {
         // Tagged, and not a score after all: a dead end (2026-11-17), but
         // never one part of several (review of #617).
         const r = await scoreHere();
-        return !several && r?.outcome === "hq-not-understood" ? deadEnd(() => r) : r;
+        return !several && r?.outcome === "hq-not-understood" ? deadEnd(() => r, SCORE_NOT_READ_WHY) : r;
       }
       case "unsure": {
         // While MatchTime waits for the score, a message the router could
@@ -1438,7 +1450,10 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     if (also.length === 0) return byRoute(route);
     const parts: Array<{ part: Route; result: Understood | null }> = [];
     for (const part of orderedRoutes({ route: route ?? "none", alsoRoutes: also })) {
-      parts.push({ part, result: await byRoute(part, { several: true, squadPartDone: parts.some((p) => isAttendanceRoute(p.part)) }) });
+      const result = await byRoute(part, { several: true, squadPartDone: parts.some((p) => isAttendanceRoute(p.part)) });
+      parts.push({ part, result });
+      // A later question part is told what this one did (review of #626).
+      if (part !== "question" && part !== "help") noteDone(result);
     }
     // No part did anything: the one line a tagged message gets, once.
     if (parts.every((p) => !p.result)) return deadEnd(() => said("hq-not-understood", s.hq_not_understood));

@@ -28,13 +28,9 @@ const truth = { confirmed: ["Kemal Ediz", "Elvin Aliyev"], bench: [], maxPlayers
 
 describe("isLeaderboardLine knows the Turkish stats nouns", () => {
   it("a Turkish stats answer is not squad state", () => {
-    const tr = t("tr");
-    const text = [
-      tr.stats_apps_head({ when: "son 1 ay" }),
-      tr.stats_apps_row({ rank: 1, name: "Kemal Ediz", matches: 4 }),
-      tr.stats_apps_row({ rank: 2, name: "Elvin Aliyev", matches: 3 }),
-      tr.stats_apps_row({ rank: 3, name: "Çağrı Yılmaz", matches: 1 }),
-    ].join("\n");
+    // The shape the deleted stats table rendered, and a unified answer's
+    // table still takes (2026-11-18).
+    const text = ["En çok maça çıkanlar (son 1 ay):", "1. Kemal Ediz: 4 maç", "2. Elvin Aliyev: 3 maç", "3. Çağrı Yılmaz: 1 maç"].join("\n");
     expect(displaysSquadState(text)).toBe(false);
     expect(composeSquadStateReply(text, truth, "tr")).toEqual({ text, composed: false });
   });
@@ -51,12 +47,7 @@ describe("isLeaderboardLine knows the Turkish stats nouns", () => {
   });
 
   it("the English stats answer relies on the word 'matches', not a dash", () => {
-    const en = t("en");
-    const text = [
-      en.stats_apps_head({ when: "in the last month" }),
-      en.stats_apps_row({ rank: 1, name: "Kemal Ediz", matches: 4 }),
-      en.stats_apps_row({ rank: 2, name: "Elvin Aliyev", matches: 1 }),
-    ].join("\n");
+    const text = ["Most appearances in the last month:", "1. Kemal Ediz: 4 matches", "2. Elvin Aliyev: 1 match"].join("\n");
     expect(text).not.toMatch(/[—–]/);
     expect(displaysSquadState(text)).toBe(false);
   });

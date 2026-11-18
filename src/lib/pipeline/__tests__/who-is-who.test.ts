@@ -214,7 +214,7 @@ describe("which names the facts quote (structured fields only)", () => {
     expect(personRefsIn(teams, (r) => r === "me")).toEqual(["Ali", "Can", "Sait", "Tom"]);
     const admin = { kind: "admin", action: "bulk_payment", payerRef: "Amir", coveredRefs: ["me", "Adam"] } as AdminFacts;
     expect(personRefsIn(admin, (r) => r === "me")).toEqual(["Amir", "Adam"]);
-    expect(personRefsIn({ kind: "question", topic: "person_status", personRef: "Zair", statedCount: null } as Facts)).toEqual(["Zair"]);
+    expect(personRefsIn({ kind: "question", topic: "other", personRef: "Zair" } as Facts)).toEqual(["Zair"]);
   });
   it("a form note's players (2026-11-10), the sender passed over", () => {
     const form = {

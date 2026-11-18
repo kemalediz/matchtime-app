@@ -1,81 +1,21 @@
 /**
- * THE PERIOD OF A STATS QUESTION, FROM WORDS TO A DATE (2026-09-23).
+ * WHERE A STATS PERIOD STARTS (2026-09-23).
  *
- * "@Match Time who has played most matches in the last 1 year?" was
- * answered "Most appearances in the last 30 days": the period was
- * discarded because nothing could hold it. The question extractor now
- * names it (`period`, `periodCount`, `periodUnit`), and this module is
- * the only place it becomes a date. The model never does arithmetic on
- * the calendar.
+ * The unified answer is shown its shorter spans of the tables (the last 30
+ * days, this year) beside the whole record, and this module is the only
+ * place a period becomes a date. The model never does arithmetic on the
+ * calendar. (The extractor's period fields, and the parsing and keys that
+ * served the stats answers, were deleted with them on 2026-11-18.)
  *
  * Calendar periods ("this month") start at London midnight, the zone
  * every club this product serves plays in (`london-time.ts`). Rolling
  * periods ("the last 3 months") count back from the instant.
  *
- * PURE. No clock (`now` is passed in), no Prisma: `stats-answer.ts` and
- * `compose.ts` import this.
+ * PURE. No clock (`now` is passed in), no Prisma.
  */
 import { subDays, subMonths, subWeeks, subYears } from "date-fns";
 import { formatLondon, londonDateTimeToUtc } from "../london-time";
-import type { StatsPeriod, StatsPeriodUnit } from "./types";
-
-/** The largest count a rolling period keeps. "The last 5000 days" is
- *  the whole record either way; a cap keeps the date arithmetic sane. */
-export const PERIOD_MAX_COUNT = 100;
-
-const UNITS: readonly StatsPeriodUnit[] = ["day", "week", "month", "year"];
-const CALENDAR_UNITS = ["week", "month", "year"] as const;
-
-/**
- * PURE. The extractor's three fields, as a `StatsPeriod`. A period that
- * cannot be read is `null` with a `problem` the caller logs as a
- * degradation: dropped loudly, never guessed, and the question is still
- * answered (for the whole record, which the answer then says).
- */
-export function parsePeriodFields(raw: { period?: unknown; periodCount?: unknown; periodUnit?: unknown }): {
-  period: StatsPeriod | null;
-  problem: string | null;
-} {
-  const kind = typeof raw.period === "string" ? raw.period.toLowerCase() : "";
-  const unit = typeof raw.periodUnit === "string" ? raw.periodUnit.toLowerCase() : "";
-  if (!kind || kind === "none") return { period: null, problem: null };
-  if (kind === "season") return { period: { kind: "season" }, problem: null };
-  if (kind === "all_time") return { period: { kind: "all_time" }, problem: null };
-  if (kind === "last") {
-    if (!UNITS.includes(unit as StatsPeriodUnit)) {
-      return { period: null, problem: `a "last" period with no usable unit ("${String(raw.periodUnit)}"); answered for the whole record` };
-    }
-    const n = typeof raw.periodCount === "number" && Number.isFinite(raw.periodCount) && raw.periodCount >= 1 ? Math.floor(raw.periodCount) : 1;
-    return { period: { kind: "last", count: Math.min(n, PERIOD_MAX_COUNT), unit: unit as StatsPeriodUnit }, problem: null };
-  }
-  if (kind === "this") {
-    if (!(CALENDAR_UNITS as readonly string[]).includes(unit)) {
-      return { period: null, problem: `a "this" period with no calendar unit ("${String(raw.periodUnit)}"); answered for the whole record` };
-    }
-    return { period: { kind: "this", unit: unit as (typeof CALENDAR_UNITS)[number] }, problem: null };
-  }
-  return { period: null, problem: `unknown stats period "${String(raw.period)}"; answered for the whole record` };
-}
-
-/** PURE. Does this period cut the club's record, or is it the whole of
- *  it? The season, all time and no period at all are the whole record. */
-export function cutsTheRecord(
-  p: StatsPeriod | null | undefined,
-): p is Extract<StatsPeriod, { kind: "last" | "this" }> {
-  return !!p && (p.kind === "last" || p.kind === "this");
-}
-
-/** PURE. The key a cut period's tables are loaded and looked up under. */
-export function periodKey(p: StatsPeriod): string {
-  switch (p.kind) {
-    case "last":
-      return `last:${p.count}:${p.unit}`;
-    case "this":
-      return `this:${p.unit}`;
-    default:
-      return p.kind;
-  }
-}
+import type { StatsPeriod } from "./types";
 
 /** A London calendar date ("yyyy-MM-dd") at London midnight, as an instant. */
 function londonMidnight(ymd: string): Date {

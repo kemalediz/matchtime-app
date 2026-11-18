@@ -138,7 +138,7 @@ scenarios("an organiser brings a guest by sharing his contact card", () => {
     await fnf.hq.say("owner", "add him for tonight", { tag: true });
 
     addDmIntentBodies({ "what time is it and where?": "question" });
-    const r = await abu.dm("what time is it and where?", { headers: { "x-mt-test-unified-answers": "1" } });
+    const r = await abu.dm("what time is it and where?");
     expect(r.json.handled).toBe("dm-qa");
     expect(r.sent).toHaveLength(1);
     expect(r.sent[0].to).toBe("abu");
@@ -462,8 +462,8 @@ scenarios("an organiser brings a guest by sharing his contact card", () => {
     await fnf.hq.say("owner", ABU_CARD, { tagged: false });
     await fnf.hq.say("owner", "add him for tonight", { tag: true });
     addDmIntentBodies({ "who else is playing?": "question" });
-    // The flag OFF: a guest is still answered by the cut-down unified step.
-    const r = await abu.dm("who else is playing?", { headers: { "x-mt-test-unified-answers": "0" } });
+    // A guest is answered by the unified step, cut down to his game.
+    const r = await abu.dm("who else is playing?");
     const ctx = r.sent[0].text;
     expect(ctx).toContain("[unified-dm-stub]");
     expect(ctx).toContain("THE ASKER IS A GUEST");

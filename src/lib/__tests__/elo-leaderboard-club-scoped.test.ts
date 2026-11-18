@@ -38,7 +38,7 @@ vi.mock("@/lib/mom", () => ({ getMomSummaries: async () => new Map() }));
 vi.mock("@/lib/team-labels", () => ({ resolveTeamLabels: () => ["Reds", "Yellows"] }));
 
 import { ELO_TOP_MIN_MATCHES, loadRecentHistory } from "@/lib/match-history";
-import { ELO_TOP_MIN_MATCHES_SHOWN } from "@/lib/pipeline/stats-answer";
+import { ELO_TOP_MIN_MATCHES_SHOWN } from "@/lib/pipeline/stats-limits";
 
 const ORG = "org-sutton-fc";
 const OTHER_ORG = "org-sutton-lads";

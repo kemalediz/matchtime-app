@@ -194,10 +194,13 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
       [id],
     );
     expect(row!.pipelineTrace.extractions).toHaveLength(1);
+    // Still ONE call. Since the review of #626 the question answering runs
+    // after the teams (so it knows what they did), so team_ops extracts and
+    // the answer owner reuses its facts.
     expect(row!.pipelineTrace.extractions[0]).toMatchObject({
-      owner: "answer",
+      owner: "team_ops",
       extractor: "teams",
-      sharedWith: ["team_ops"],
+      sharedWith: ["answer"],
       facts: { kind: "teams", action: "generate" },
     });
   });

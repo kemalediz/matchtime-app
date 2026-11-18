@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { normaliseListAnnouncer, organisersAnnounce } from "@/lib/list-announcer";
 import { buildOrganiserListUpdate, organisersGroupReply, passesOrganisersNet } from "@/lib/organisers-list-copy";
-import { ORGANISERS_SPACE_INTENT, skipsSquadComposition } from "@/lib/group-copy";
+import { skipsSquadComposition } from "@/lib/group-copy";
 import { t } from "@/lib/i18n/t";
 
 describe("normaliseListAnnouncer / organisersAnnounce", () => {
@@ -177,19 +177,19 @@ describe("organisersGroupReply: the analyze route's last pass when the organiser
 
 // "Is there still space?" (FNF 2026-10-20). Which replies the net leaves
 // alone is decided by the reply's INTENT, never by reading its words: the
-// help explainer, and the space answer, which carries no names.
+// help explainer, and the unified answer (which answers the space question
+// since 2026-11-18, its context naming nobody in the squad here).
 describe("passesOrganisersNet: which replies the net leaves alone", () => {
-  it("the help explainer and the space answer pass", () => {
-    expect(ORGANISERS_SPACE_INTENT).toBe("organisers_space");
+  it("the help explainer and the unified answer pass", () => {
     expect(passesOrganisersNet("help")).toBe(true);
-    expect(passesOrganisersNet(ORGANISERS_SPACE_INTENT)).toBe(true);
+    expect(passesOrganisersNet("unified_answer")).toBe(true);
   });
   it("everything else is netted, the list answers included", () => {
     for (const i of ["question", "show_teams_request", "generate_teams_request", "self_att", "stats_table", null, undefined]) {
       expect(passesOrganisersNet(i), String(i)).toBe(false);
     }
   });
-  it("the squad-composition pass skips the space answer too", () => {
-    expect(skipsSquadComposition(ORGANISERS_SPACE_INTENT)).toBe(true);
+  it("the squad-composition pass skips the unified answer too", () => {
+    expect(skipsSquadComposition("unified_answer")).toBe(true);
   });
 });

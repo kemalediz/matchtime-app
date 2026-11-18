@@ -57,6 +57,9 @@ const FEATURES_ON: OrgFeatures = {
   squadFromList: false,
 } as OrgFeatures;
 
+/** What the stubbed unified answer says when a test gives it nothing. */
+const UNIFIED_LINE = "There's no squad list to show right now.";
+
 /** A model that answers from a table keyed on `extractor:<kind>` plus
  *  the message body, and COUNTS its calls — "the flags are off so
  *  nothing was spent" is only true if nobody called it. */
@@ -68,7 +71,9 @@ function stubModel(table: Record<string, unknown>, opts: { throwOn?: string } = 
       const body = req.user.split("\n").slice(-1)[0];
       calls.push(`${req.label}|${body}`);
       if (opts.throwOn && body.includes(opts.throwOn)) throw new Error("529 Overloaded");
-      const payload = table[body];
+      // The unified answer's turn ends with the same message: its reply is
+      // keyed "answer:<body>", or a fixed line.
+      const payload = req.label === "unified-answer" ? (table[`answer:${body}`] ?? { answer: UNIFIED_LINE }) : table[body];
       if (payload === undefined) throw new Error(`no stub for "${body}"`);
       return {
         text: JSON.stringify(payload),
@@ -151,8 +156,11 @@ async function run(args: {
   });
 }
 
-const COUNT_Q = "@Match Time how many are we?";
-const COUNT_FACTS = { topic: "count", personRef: "", statedCount: -1 };
+// The squad list post: a question code answers itself from the database,
+// so a test of ownership needs no answer model (2026-11-18: the counted
+// answer it used to be was deleted with the other question categories).
+const COUNT_Q = "@Match Time what's the list?";
+const COUNT_FACTS = { kind: "list", personRef: "", feature: "none", badge: "none" };
 const SHOW_TEAMS = "@Match Time show the teams again";
 const SHOW_FACTS = { action: "show", includeRefs: [], teamNames: [], swaps: [] };
 
@@ -251,7 +259,7 @@ describe("shapes that stay with the analyzer", () => {
     expect(res.degradations.join(" ")).toMatch(/state load/i);
   });
 
-  it("owns nothing when there is no active registration match", async () => {
+  it("no active registration match: the list asked for is the unified answer, never a squad post", async () => {
     const { model, calls } = stubModel({ [COUNT_Q]: COUNT_FACTS });
     const res = await run({
       messages: [msg({ body: COUNT_Q, route: "question" })],
@@ -259,35 +267,31 @@ describe("shapes that stay with the analyzer", () => {
       worldOpts: { noMatch: true },
       expectedMatchId: null,
     });
-    expect([...res.ownedIds]).toEqual([]);
-    // ONE extractor call, since 2026-09-17: a blocked window still asks
-    // whether a question is the asker's own stats link (`my_stats`),
-    // which none of these carve-outs is about. It found a count, so
-    // nothing is owned, exactly as before.
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toContain(COUNT_Q);
-    expect(res.outcomes.size).toBe(0);
+    // Since UNIFIED_ANSWERS (live 2026-11-11, the only path 2026-11-18):
+    // the list asked for with no list to post is answered by the unified
+    // answer, told there is no squad, never posted from a squad nobody
+    // vouched for.
+    expect(res.outcomes.get(`wa-${COUNT_Q.slice(0, 12)}`)?.reply).toBe(UNIFIED_LINE);
+    expect(calls.map((c) => c.split("|")[0])).toEqual(["extractor:question", "unified-answer"]);
   });
 
-  it("owns nothing when the route and the engine disagree about the match", async () => {
+  it("the route and the engine disagree about the match: the unified answer, never a squad post", async () => {
     const { model, calls } = stubModel({ [COUNT_Q]: COUNT_FACTS });
     const res = await run({
       messages: [msg({ body: COUNT_Q, route: "question" })],
       model,
       expectedMatchId: "some-other-match",
     });
-    expect([...res.ownedIds]).toEqual([]);
-    // ONE extractor call, since 2026-09-17: a blocked window still asks
-    // whether a question is the asker's own stats link (`my_stats`),
-    // which none of these carve-outs is about. It found a count, so
-    // nothing is owned, exactly as before.
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toContain(COUNT_Q);
-    expect(res.outcomes.size).toBe(0);
+    // Since UNIFIED_ANSWERS (live 2026-11-11, the only path 2026-11-18):
+    // the list asked for with no list to post is answered by the unified
+    // answer, told there is no squad, never posted from a squad nobody
+    // vouched for.
+    expect(res.outcomes.get(`wa-${COUNT_Q.slice(0, 12)}`)?.reply).toBe(UNIFIED_LINE);
+    expect(calls.map((c) => c.split("|")[0])).toEqual(["extractor:question", "unified-answer"]);
     expect(res.degradations.join(" ")).toMatch(/disagree/i);
   });
 
-  it("owns nothing for an org that does not track attendance (the MoM-only shape)", async () => {
+  it("an org that does not track attendance (the MoM-only shape): the unified answer, never a squad post", async () => {
     // ATTENDANCE_OFF_OVERRIDE (`message-analyzer.ts:923`) makes the
     // mega-prompt stay SILENT on every squad question for these orgs.
     // A composer that answered "0/0" would be the 2026-06-08 Sutton Lads
@@ -299,17 +303,15 @@ describe("shapes that stay with the analyzer", () => {
       model,
       worldOpts: { confirmed: ELEVEN, features: { attendance: false } },
     });
-    expect([...res.ownedIds]).toEqual([]);
-    // ONE extractor call, since 2026-09-17: a blocked window still asks
-    // whether a question is the asker's own stats link (`my_stats`),
-    // which none of these carve-outs is about. It found a count, so
-    // nothing is owned, exactly as before.
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toContain(COUNT_Q);
-    expect(res.outcomes.size).toBe(0);
+    // Since UNIFIED_ANSWERS (live 2026-11-11, the only path 2026-11-18):
+    // the list asked for with no list to post is answered by the unified
+    // answer, told there is no squad, never posted from a squad nobody
+    // vouched for.
+    expect(res.outcomes.get(`wa-${COUNT_Q.slice(0, 12)}`)?.reply).toBe(UNIFIED_LINE);
+    expect(calls.map((c) => c.split("|")[0])).toEqual(["extractor:question", "unified-answer"]);
   });
 
-  it("owns nothing when the match has no capacity to divide by", async () => {
+  it("a match with no capacity to divide by: the unified answer, never a squad post", async () => {
     // "We're 11/0, need 0 more" is the 2026-06-08 "0/14" shape reached
     // from the other direction. It should be impossible; the answer to
     // an impossible state is the path that already handles it.
@@ -319,14 +321,12 @@ describe("shapes that stay with the analyzer", () => {
       model,
       worldOpts: { confirmed: ELEVEN, maxPlayers: 0 },
     });
-    expect([...res.ownedIds]).toEqual([]);
-    // ONE extractor call, since 2026-09-17: a blocked window still asks
-    // whether a question is the asker's own stats link (`my_stats`),
-    // which none of these carve-outs is about. It found a count, so
-    // nothing is owned, exactly as before.
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toContain(COUNT_Q);
-    expect(res.outcomes.size).toBe(0);
+    // Since UNIFIED_ANSWERS (live 2026-11-11, the only path 2026-11-18):
+    // the list asked for with no list to post is answered by the unified
+    // answer, told there is no squad, never posted from a squad nobody
+    // vouched for.
+    expect(res.outcomes.get(`wa-${COUNT_Q.slice(0, 12)}`)?.reply).toBe(UNIFIED_LINE);
+    expect(calls.map((c) => c.split("|")[0])).toEqual(["extractor:question", "unified-answer"]);
     expect(res.degradations.join(" ")).toMatch(/maxPlayers=0/);
   });
 
@@ -359,51 +359,6 @@ describe("shapes that stay with the analyzer", () => {
 // ── 3. Per-shape refusals, decided AFTER extraction ───────────────────
 
 describe("a shape the composer cannot answer well is answered by nobody", () => {
-  it.each([
-    ["other", { topic: "other", personRef: "", statedCount: -1 }],
-  ])("question topic %s, when the open answer is not usable", async (_topic, facts) => {
-    // SINCE 2026-11-10 `other` is answered by the grounded open answer
-    // (`open-answer.ts`, `answer-batch-open.test.ts`). This stub returns the
-    // extractor's facts to the open-answer call too, which carry no
-    // `answer`: the answer is refused, composes nothing, and the message is
-    // disowned, so it is still answered by nobody here (today's line).
-    //
-    // This describe block was titled "…goes to the analyzer" and
-    // asserted /analyzer/i, which was true until §10 step 8 deleted
-    // `analyzeBatch` and the 19,850-token `SYSTEM_PROMPT`. `other` is
-    // now answered by NOBODY: silence in the group plus one line on the
-    // operator DM.
-    //
-    // `stats` and `options` USED TO BE IN THIS LIST. They were removed
-    // when their composed FORMAT was fixed — the refusal was never about
-    // the answers, which have been correct since the day they were
-    // written, but about `composeSquadStateReply` replacing them with
-    // the squad roster on the way out. See section 6 below.
-    const body = "@Match Time what do you reckon?";
-    const { model } = stubModel({ [body]: facts });
-    const res = await run({ messages: [msg({ body, route: "question" })], model });
-    expect([...res.ownedIds]).toEqual([]);
-    expect(res.outcomes.size).toBe(0);
-    expect(res.degradations.join(" ")).toMatch(/open answer not used/i);
-    expect(res.degradations.join(" ")).toMatch(/disowned so it reaches the operator note/i);
-    expect(res.degradations.join(" ")).not.toMatch(/analyzer/i);
-  });
-
-  it("owns the topics answered from the database", async () => {
-    for (const topic of ["count", "bench", "phones", "squad", "fixture", "stats", "options"]) {
-      const body = `@Match Time ${topic}?`;
-      const { model } = stubModel({ [body]: { topic, personRef: "", statedCount: -1 } });
-      const res = await run({ messages: [msg({ body, route: "question" })], model });
-      expect([...res.ownedIds], topic).toHaveLength(1);
-    }
-    const body = "@Match Time is Faris in?";
-    const { model } = stubModel({
-      [body]: { topic: "person_status", personRef: "Faris", statedCount: -1 },
-    });
-    const res = await run({ messages: [msg({ body, route: "question" })], model });
-    expect([...res.ownedIds]).toHaveLength(1);
-  });
-
   it("answers `who's playing?` with the ROSTER, not with a count", async () => {
     // This was a hand-back until 2026-09-06, because `engine.ts` sent
     // topic `squad` to the same `answer_count` speech intent as topic
@@ -415,7 +370,7 @@ describe("a shape the composer cannot answer well is answered by nobody", () => 
     // `composeSquadStatusPost` directly instead.
     const body = "@Match Time who's playing?";
     const { model } = stubModel({
-      [body]: { topic: "squad", personRef: "", statedCount: -1 },
+      [body]: { kind: "list", personRef: "", feature: "none", badge: "none" },
     });
     const res = await run({ messages: [msg({ body, route: "question" })], model });
     expect([...res.ownedIds]).toHaveLength(1);
@@ -426,51 +381,9 @@ describe("a shape the composer cannot answer well is answered by nobody", () => 
     expect(reply).toContain(fullName("kemal"));
   });
 
-  it("answers a fixture question from the match, with no count in it", async () => {
-    // Four of the twelve tagged questions in the 2026-09-06 live sweep
-    // were fixture questions — "what time is kickoff", "where are we
-    // playing", "are we playing tuesday", "is the game still on". Every
-    // one of them landed on topic `other` and produced SILENCE, which is
-    // §9's signature failure. They are answered from `kickoffLabel` and
-    // `venue`, and from nothing else.
-    const body = "@Match Time what time is kickoff";
-    const { model } = stubModel({ [body]: { topic: "fixture", personRef: "", statedCount: -1 } });
-    const res = await run({ messages: [msg({ body, route: "question" })], model });
-    expect([...res.ownedIds]).toHaveLength(1);
-    const reply = [...res.outcomes.values()][0].reply!;
-    expect(reply).toContain("Tue 21:30");
-    expect(reply).toContain("Goals North Cheam");
-    // A count would make `composeSquadStateReply` swap the whole answer
-    // for the roster, and the asker would get no time at all.
-    expect(displaysSquadState(reply)).toBe(false);
-  });
-
-  it("hands back a person question whose name does not resolve", async () => {
-    // "X isn't down yet" about somebody the roster cannot identify is
-    // the S16 failure class in miniature: a confident claim about squad
-    // state that nothing checked.
-    const body = "@Match Time is Nobody McNobody in?";
-    const { model } = stubModel({
-      [body]: { topic: "person_status", personRef: "Nobody McNobody", statedCount: -1 },
-    });
-    const res = await run({ messages: [msg({ body, route: "question" })], model });
-    expect([...res.ownedIds]).toEqual([]);
-    expect(res.degradations.join(" ")).toMatch(/did not resolve|does not resolve/i);
-  });
-
-  it("hands back an ambiguous person question", async () => {
-    const body = "@Match Time is Ahmadi in?";
-    const { model } = stubModel({
-      [body]: { topic: "person_status", personRef: "Ahmadi", statedCount: -1 },
-    });
-    // Two Ahmadis on the roster — `resolvePerson` bails ambiguous.
-    const res = await run({ messages: [msg({ body, route: "question" })], model });
-    expect([...res.ownedIds]).toEqual([]);
-  });
-
   it.each([
-    ["count", COUNT_Q, COUNT_FACTS],
-    ["squad", "@Match Time who's playing?", { topic: "squad", personRef: "", statedCount: -1 }],
+    ["list", COUNT_Q, COUNT_FACTS],
+    ["list", "@Match Time who's playing?", { kind: "list", personRef: "", feature: "none", badge: "none" }],
   ])(
     "STILL ANSWERS a %s question when the rest of the batch is attendance (2026-09-09)",
     async (_topic, body, facts) => {
@@ -529,46 +442,6 @@ describe("a shape the composer cannot answer well is answered by nobody", () => 
     // one small call; the alternative costs the group a contradiction.
     expect(calls).toHaveLength(1);
   });
-
-  it.each([
-    ["bench", { topic: "bench", personRef: "", statedCount: -1 }],
-    ["person_status", { topic: "person_status", personRef: "Zair", statedCount: -1 }],
-    // `phones` LEFT THIS LIST on 2026-11-03 (Vets sandbox): a hand-back now
-    // ends in the not-understood line, not silence, and attendance writes
-    // have landed. Only the two the batch's squad post answers by name stay
-    // (`WAITS_FOR_THE_SQUAD_POST`); see answer-batch-mixed-batch.test.ts.
-  ])(
-    "hands back a %s question too when the batch may also change the squad",
-    async (_topic, facts) => {
-      // THESE THREE ARE UNCHANGED BY THE 2026-09-09 CARVE-OUT, AND THAT
-      // IS A CHOICE RATHER THAN AN OVERSIGHT.
-      //
-      // The roster post that vanished had been answering exactly two
-      // topics by accident — `squad` and `count`, the two `engine.ts`
-      // defers into it. Restoring an answer for those is a repair.
-      // `bench`, `person_status` and `phones` never got one from it: a
-      // batch with an "in" and "who's on the bench?" has always ended in
-      // a roster post that does not answer the question asked. Widening
-      // the carve-out to them would ADD replies MatchTime does not make
-      // today, on a change whose whole point is to make it quieter, so
-      // it is left for a separate decision with its own evidence.
-      //
-      // What is NOT the reason any more: "composed from a PRE-WRITE
-      // snapshot". `route.ts` awaits the attendance owner and its writes
-      // before this module loads its state.
-      const body = "@Match Time question?";
-      const { model } = stubModel({ [body]: facts });
-      const res = await run({
-        messages: [
-          msg({ body, route: "question" }),
-          msg({ body: "sorry lads can't make it", route: "self_att", waMessageId: "wa-out" }),
-        ],
-        model,
-        worldOpts: { confirmed: ELEVEN, bench: ["zair"] },
-      });
-      expect([...res.ownedIds]).toEqual([]);
-    },
-  );
 
   it("counts a banter or unrouted message as `anything else` too", async () => {
     // With the gate OFF a `none`-routed message still reaches the
@@ -698,99 +571,6 @@ describe("a shape the composer cannot answer well is answered by nobody", () => 
 // ── 4. What it says, composed from the database ──────────────────────
 
 describe("the answers are composed from state, never authored", () => {
-  it("answers a count question with the database's number", async () => {
-    const { model } = stubModel({ [COUNT_Q]: COUNT_FACTS });
-    const res = await run({ messages: [msg({ body: COUNT_Q, route: "question" })], model });
-    const out = [...res.outcomes.values()][0];
-    expect(out.reply).toContain("11/14");
-    expect(out.reply).toContain("need 3 more");
-    expect(out.intent).toBe("question");
-    // The shipped vocabulary for a message MatchTime answered without
-    // writing (`route.ts:2197-2200`), so the admin log and the nightly
-    // `none`-bucket sweep read a step-7 answer as an answer.
-    expect(out.action).toBe("reply");
-    expect(out.react).toBeNull();
-    expect(res.cost.calls).toBe(1);
-    expect(res.cost.usd).toBeCloseTo(0.0021, 6);
-  });
-
-  it("corrects a wrong stated count (§3.2 S24) rather than agreeing with it", async () => {
-    const body = "@Match Time we're 9/14 right?";
-    const { model } = stubModel({ [body]: { topic: "count", personRef: "", statedCount: 9 } });
-    const res = await run({ messages: [msg({ body, route: "question" })], model });
-    const out = [...res.outcomes.values()][0];
-    expect(out.reply).toMatch(/not quite/i);
-    expect(out.reply).toContain("11/14");
-    expect(out.reasoning).toContain("stated 9");
-  });
-
-  it("answers a bench question with names only and no speculation (§3.2 S16c)", async () => {
-    const body = "@Match Time who's on the bench?";
-    const { model } = stubModel({ [body]: { topic: "bench", personRef: "", statedCount: -1 } });
-    const res = await run({
-      messages: [msg({ body, route: "question" })],
-      model,
-      worldOpts: { confirmed: ELEVEN, bench: ["zair", "wasim"] },
-    });
-    const out = [...res.outcomes.values()][0];
-    expect(out.reply).toContain("Zair Malik");
-    expect(out.reply).toContain("Wasim Akhtar");
-    expect(out.reply).not.toMatch(/5-a-side|downgrade|if we/i);
-  });
-
-  it("never prints a raw phone number in a phones answer (§3.2 S32)", async () => {
-    const body = "@Match Time who has no number?";
-    const { model } = stubModel({ [body]: { topic: "phones", personRef: "", statedCount: -1 } });
-    const res = await run({
-      messages: [msg({ body, route: "question" })],
-      model,
-      worldOpts: { confirmed: ELEVEN, noPhone: ["idris"] },
-    });
-    const out = [...res.outcomes.values()][0];
-    expect(out.reply).toContain("Idris Bello");
-    expect(out.reply).not.toMatch(/\+?\d[\d\s().-]{8,}\d/);
-  });
-
-  it("the phones answer is about the SQUAD, not every member the org has ever had", async () => {
-    // `state.roster` is every active membership. A club that has been
-    // provisioning named guests for months would get a wall of names
-    // about people who are not playing — and nothing downstream would
-    // catch it, because a list of names is not squad state and
-    // `composeSquadStateReply` never looks at it. The shipped rule
-    // answers from "the Confirmed and Bench lists in the Match Context".
-    const body = "@Match Time who has no number?";
-    const { model } = stubModel({ [body]: { topic: "phones", personRef: "", statedCount: -1 } });
-    const res = await run({
-      messages: [msg({ body, route: "question" })],
-      model,
-      worldOpts: {
-        confirmed: ELEVEN,
-        bench: ["zair"],
-        // Idris is playing, Zair is benched, the other three are on the
-        // roster and nowhere near this match.
-        noPhone: ["idris", "zair", "mojib", "erdal", "zeeshan"],
-      },
-    });
-    const out = [...res.outcomes.values()][0]!;
-    expect(out.reply).toContain("Idris Bello");
-    expect(out.reply).toContain("Zair Malik");
-    for (const absent of ["Mojib", "Erdal", "Zeeshan"]) {
-      expect(out.reply, `${absent} is not in the squad`).not.toContain(absent);
-    }
-  });
-
-  it("says so plainly when the whole squad has a number", async () => {
-    const body = "@Match Time who has no number?";
-    const { model } = stubModel({ [body]: { topic: "phones", personRef: "", statedCount: -1 } });
-    const res = await run({
-      messages: [msg({ body, route: "question" })],
-      model,
-      // Somebody on the ROSTER has no number, but nobody playing does.
-      worldOpts: { confirmed: ELEVEN, noPhone: ["zeeshan"] },
-    });
-    expect([...res.outcomes.values()][0]!.reply).toMatch(/everyone in the squad/i);
-  });
-
   it("re-posts the EXISTING teams and proposes no write (§3.2 S19)", async () => {
     const { model } = stubModel({ [SHOW_TEAMS]: SHOW_FACTS });
     const state = world({
@@ -996,193 +776,6 @@ describe("zero writes, structurally", () => {
   });
 });
 
-// ── 6. Why `stats` and `options` ARE owned now — measured, not asserted ──
-
-describe("the format fix that let the last two built answers speak", () => {
-  /**
-   * The strings under test are produced by the REAL composer, not typed
-   * out here. A hand-written approximation would keep passing after
-   * `compose.ts` changed format, which is the "test that would still
-   * pass if the implementation were deleted" trap — and the whole point
-   * of these two is that they must FAIL the day the format is fixed, so
-   * the carve-out is revisited rather than forgotten.
-   */
-  function say(
-    speech: SpeechIntent,
-    state: SquadState,
-  ): string {
-    const out = compose({
-      outcomes: [],
-      writes: [],
-      nextState: state,
-      speech: [speech],
-      degradations: [],
-    });
-    expect(out.utterances).toHaveLength(1);
-    return out.utterances[0].text;
-  }
-
-  const APPEARANCES: SquadState = {
-    ...world({ confirmed: ELEVEN }),
-    stats: {
-      fullTableUrl: "https://matchtime.ai/profile/stats",
-      ratings: [],
-      mom: [],
-      elo: [],
-      teamOfSeason: null,
-      mrReliable: [],
-      aliases: [],
-      chemistry: {},
-      generic: {},
-      appearances: [
-        { userId: "u-kemal", name: fullName("kemal"), matches: 24 },
-        { userId: "u-elvin", name: fullName("elvin"), matches: 22 },
-        { userId: "u-sait", name: fullName("sait"), matches: 21 },
-      ],
-      recordsStart: { matches: new Date("2026-04-14T20:00:00.000Z"), mom: null },
-      periods: {},
-    },
-  };
-
-  it("the composed STATS answer reads as a LEADERBOARD, not as squad state (2026-05-14)", () => {
-    // THE FIX, AND WHAT IT REPLACED. `compose.ts`'s `answer_stats` used
-    // to render "1. Kemal Ediz (24)" lines. `isLeaderboardLine`
-    // (`group-copy.ts`) recognises a leaderboard by an em dash, a
-    // percentage, "wins/votes/matches" or an "N/M (" pattern, and that
-    // shape carried NONE of them — so `displaysSquadState` saw a
-    // numbered run of 2+ lines and said yes, and `route.ts` would have
-    // swapped a "most consistent" answer for the upcoming-squad roster.
-    // That is the exact incident §3.2 S16 cites for 2026-05-14.
-    //
-    // 2026-09-23: the appearances answer is a stats TABLE now, on the
-    // full record, and its row is "1. Name: 24 matches" (the house style
-    // bans the em dash it used to carry). The word "matches" is still a
-    // leaderboard marker, and the route skips the answer by intent as
-    // well (`skipsSquadComposition`). This test fails the day the row
-    // loses its marker.
-    const text = say(
-      { kind: "answer_stats_table", messageId: "wa-1", table: "appearances", size: 10, requested: null, personUserId: null, self: false, period: null },
-      APPEARANCES,
-    );
-    expect(text).toContain("1. Kemal Ediz: 24 matches");
-    expect(text).toContain("since my records began in April 2026");
-    expect(text).not.toMatch(/[—–]/);
-    expect(displaysSquadState(text)).toBe(false);
-  });
-
-  it("the composed OPTIONS answer carries no N/M, so nothing replaces it", () => {
-    // The lead used to read "We're 8/14, need 6 more 🙏" — an "N/M"
-    // beside squad vocabulary, which is rule (c) of
-    // `displaysSquadState`. `composeSquadStateReply` keeps a lead only
-    // when it makes no claim of its own, so the WHOLE answer — including
-    // the arithmetic `format-switch.ts` computed — was dropped rather
-    // than appended to.
-    //
-    // The count is now spelled out ("8 of 14") instead of fractioned.
-    // Same fact, same words to a human, invisible to rule (c).
-    const state = world({
-      confirmed: ELEVEN.slice(0, 8),
-      smallerFormats: [{ sportName: "5-a-side", totalPlayers: 10 }],
-    });
-    const text = say({ kind: "answer_options", messageId: "wa-1" }, state);
-    expect(text).toContain("8 of 14");
-    expect(text).not.toMatch(/\d+\/\d+/);
-    expect(displaysSquadState(text)).toBe(false);
-  });
-
-  it("the OPTIONS answer still names exactly who a switch would bench, from the format TOTAL", () => {
-    // The 2026-08-30 incident, from the other side: the model computed
-    // 8 − 5 (players per TEAM) instead of 8 − 10 (the format TOTAL) and
-    // named three real people as losing their place when a switch would
-    // have benched nobody. `benchedOnFormatSwitch` takes the total, so
-    // twelve confirmed dropping to a ten-player format benches the LAST
-    // TWO by position and nobody else.
-    const state = world({
-      confirmed: ELEVEN.concat(["wasim"]),
-      smallerFormats: [{ sportName: "5-a-side", totalPlayers: 10 }],
-    });
-    const text = say({ kind: "answer_options", messageId: "wa-1" }, state);
-    expect(text).toContain(fullName("amir"));
-    expect(text).toContain(fullName("wasim"));
-    // …and NOT the eight who keep their place.
-    expect(text).not.toContain(fullName("kemal"));
-    expect(displaysSquadState(text)).toBe(false);
-  });
-
-  it("the composed BENCH, PHONES and PERSON answers survive untouched", () => {
-    const benched = world({ confirmed: ELEVEN, bench: ["zair", "wasim"], noPhone: ["idris"] });
-    expect(displaysSquadState(say({ kind: "answer_bench", messageId: "m" }, benched))).toBe(false);
-    expect(displaysSquadState(say({ kind: "answer_phones", messageId: "m" }, benched))).toBe(false);
-    expect(
-      displaysSquadState(
-        say(
-          { kind: "answer_person_status", messageId: "m", personRef: "Faris", userId: "u-faris" },
-          benched,
-        ),
-      ),
-    ).toBe(false);
-    // …and the same answer about somebody with no row at all.
-    expect(
-      displaysSquadState(
-        say(
-          { kind: "answer_person_status", messageId: "m", personRef: "Zeeshan", userId: "u-zeeshan" },
-          benched,
-        ),
-      ),
-    ).toBe(false);
-  });
-
-  it("the composed FIXTURE answer survives untouched", () => {
-    // The whole reason the fixture answer carries no count. A "21:30 at
-    // Goals North Cheam" that tripped `displaysSquadState` would be
-    // replaced by the squad roster, and the person who asked what time
-    // kickoff is would get a list of names and no time.
-    const text = say({ kind: "answer_fixture", messageId: "m" }, world({ confirmed: ELEVEN }));
-    expect(text).toContain("Tue 21:30");
-    expect(displaysSquadState(text)).toBe(false);
-  });
-
-  it("the composed TEAMS-NOT-GENERATED answer survives untouched", () => {
-    const text = say({ kind: "teams_not_generated", messageId: "m" }, world({ confirmed: ELEVEN }));
-    expect(displaysSquadState(text)).toBe(false);
-  });
-
-  it("the composed SQUAD answer IS replaced — by a byte-identical post", () => {
-    // `answer_squad` renders `composeSquadStatusPost` and so trips
-    // `displaysSquadState` by construction. That is harmless in a way
-    // the STATS and OPTIONS answers are not: `composeSquadStateReply`
-    // replaces it with `composeSquadStatusPost` over the same truth, so
-    // the group reads the same characters either way. Asserted rather
-    // than reasoned about, because "it gets replaced by an identical
-    // string" is exactly the kind of claim that silently stops being
-    // true when one of the two composers is edited.
-    const state = world({ confirmed: ELEVEN, bench: ["zair"] });
-    const text = say({ kind: "answer_squad", messageId: "m" }, state);
-    expect(displaysSquadState(text)).toBe(true);
-    expect(text).toBe(
-      composeSquadStatusPost({
-        confirmed: ELEVEN.map(fullName),
-        bench: [fullName("zair")],
-        maxPlayers: 14,
-      }),
-    );
-  });
-
-  it("the composed COUNT answer IS replaced — which is today's behaviour, not a regression", () => {
-    // Owned deliberately. "How many are we?" already gets the composed
-    // squad post today, because the model's answer displays squad state
-    // and `composeSquadStateReply` replaces it. The engine's version
-    // lands in exactly the same place, and S24's `\b11\b` is satisfied
-    // by the post's own `*11/14*`.
-    const text = say({ kind: "answer_count", messageId: "m", statedCount: 9 }, world({ confirmed: ELEVEN }));
-    expect(text).toMatch(/not quite/i);
-    expect(displaysSquadState(text)).toBe(true);
-    expect(
-      composeSquadStatusPost({ confirmed: ELEVEN.map(fullName), bench: [], maxPlayers: 14 }),
-    ).toMatch(/\b11\b/);
-  });
-});
-
 // ── 7. The module must stay loadable where there is no Prisma ────────
 
 describe("nothing that reaches Prisma is imported statically", () => {
@@ -1220,213 +813,9 @@ describe("nothing that reaches Prisma is imported statically", () => {
   });
 });
 
-// ── 7. THE ONE TARGETED EXTRA READ ───────────────────────────────────
-//
-// `loadSquadState` runs on EVERY batch, including the 69% that are
-// banter, so the payment rows are not in it. They are loaded here, AFTER
-// extraction, and only when a `payments` topic survived ownership. These
-// four tests are the whole contract: it fires when it must, it does not
-// fire otherwise, a failure costs one answer rather than the batch, and
-// nothing on this path can print a name.
-
-describe("payments are read only when a payment question is in the window", () => {
-  const PAY_Q = "@Match Time who hasn't paid";
-  const PAY_FACTS = { topic: "payments", personRef: "", statedCount: -1 };
-
-  function spyLoader(snapshot: PaymentSnapshot) {
-    const calls: string[] = [];
-    const loadPayments: AnswerBatchDeps["loadPayments"] = async (orgId) => {
-      calls.push(orgId);
-      return snapshot;
-    };
-    return { calls, loadPayments };
-  }
-
-  it("does NOT read payments for an ordinary count question — the common path stays cheap", async () => {
-    const { model } = stubModel({ [COUNT_Q]: COUNT_FACTS });
-    const { calls, loadPayments } = spyLoader({ kind: "not_tracked" });
-    const res = await run({
-      messages: [msg({ body: COUNT_Q, route: "question" })],
-      model,
-      loadPayments,
-    });
-    expect([...res.ownedIds]).toHaveLength(1);
-    expect(calls).toEqual([]);
-  });
-
-  it("reads payments exactly once for a payment question", async () => {
-    const { model } = stubModel({ [PAY_Q]: PAY_FACTS });
-    const { calls, loadPayments } = spyLoader({
-      kind: "counted",
-      chargeable: 9,
-      unpaid: 5,
-      kickoffLabel: "Tue 21:15",
-    });
-    const res = await run({
-      messages: [msg({ body: PAY_Q, route: "question" })],
-      model,
-      worldOpts: { confirmed: ELEVEN, completedMatch: { id: "m-old" } },
-      loadPayments,
-    });
-    expect(calls).toEqual(["org-1"]);
-    const reply = [...res.outcomes.values()][0]?.reply ?? "";
-    expect(reply).toContain("5 of 9");
-    // NOT ONE NAME. `PaymentSnapshot` has no field a name could come out
-    // of; this asserts the consequence rather than the shape.
-    expect(reply).not.toMatch(/Kemal|Elvin|Sait|Mustafa|Abid|Idris|Faris|Shaz|Adam|Efat|Amir/);
-  });
-
-  it("a payment read that throws costs that answer, not the batch", async () => {
-    const { model } = stubModel({ [PAY_Q]: PAY_FACTS, [COUNT_Q]: COUNT_FACTS });
-    const res = await run({
-      messages: [
-        msg({ waMessageId: "wa-pay", body: PAY_Q, route: "question" }),
-        msg({ waMessageId: "wa-count", body: COUNT_Q, route: "question" }),
-      ],
-      model,
-      worldOpts: { confirmed: ELEVEN, completedMatch: { id: "m-old" } },
-      loadPayments: async () => {
-        throw new Error("db is on fire");
-      },
-    });
-    // The count question is still answered…
-    expect([...res.ownedIds]).toEqual(["wa-count"]);
-    // …and the payment question hands back with a reason, never a silent
-    // empty answer.
-    expect(res.outcomes.has("wa-pay")).toBe(false);
-    expect(res.degradations.join(" ")).toMatch(/payment read failed/i);
-    expect(res.degradations.join(" ")).toMatch(/db is on fire/);
-  });
-
-  it("owns the payments topic, and says MatchTime does not know when it does not", async () => {
-    const { model } = stubModel({ [PAY_Q]: PAY_FACTS });
-    const { loadPayments } = spyLoader({ kind: "not_tracked" });
-    const res = await run({
-      messages: [msg({ body: PAY_Q, route: "question" })],
-      model,
-      loadPayments,
-    });
-    expect([...res.ownedIds]).toHaveLength(1);
-    expect([...res.outcomes.values()][0].reply).toMatch(/don't track/i);
-  });
-});
-
-// ── THE SECOND TARGETED READ — RATING PROGRESS (2026-09-11) ──────────
-//
-// Same contract as `payments` above, and it is on this path for the same
-// kind of reason `stats_blast` moved to the engine: the regex that used
-// to claim this ask — `looksLikeRatingProgressRequest`, (a rating word)
-// AND (a progress word) anywhere in a body — is the conjunction shape
-// behind the 2026-09-01 and 2026-09-10 incidents, and it is deleted.
-//
-// Three cases, the same three that matter for any read behind a topic:
-// it fires when it must, it does not fire otherwise, and a failure costs
-// one answer rather than the batch.
-
-describe("rating progress is read only when a rating question is in the window", () => {
-  const RATE_Q = "@Match Time who hasn't rated yet?";
-  const RATE_FACTS = { topic: "rating_progress", personRef: "", statedCount: -1 };
-
-  const PROGRESS = {
-    ok: true,
-    matchName: "Tuesday 7-a-side",
-    matchWhen: "Tue 2 Sep",
-    confirmed: 10,
-    ratedCount: 6,
-    momCount: 5,
-    notRated: ["Zair Malik"],
-    ratedNoMom: [],
-  };
-
-  function spyLoader() {
-    const calls: string[] = [];
-    const loadRatingProgress: AnswerBatchDeps["loadRatingProgress"] = async (orgId) => {
-      calls.push(orgId);
-      return PROGRESS;
-    };
-    return { calls, loadRatingProgress };
-  }
-
-  it("does NOT read it for an ordinary count question — the common path stays cheap", async () => {
-    const { model } = stubModel({ [COUNT_Q]: COUNT_FACTS });
-    const { calls, loadRatingProgress } = spyLoader();
-    const res = await run({
-      messages: [msg({ body: COUNT_Q, route: "question" })],
-      model,
-      loadRatingProgress,
-    });
-    expect([...res.ownedIds]).toHaveLength(1);
-    expect(calls).toEqual([]);
-  });
-
-  it("reads it exactly once for a rating question, and answers from what came back", async () => {
-    const { model } = stubModel({ [RATE_Q]: RATE_FACTS });
-    const { calls, loadRatingProgress } = spyLoader();
-    const res = await run({
-      messages: [msg({ body: RATE_Q, route: "question", senderUserId: "u-kemal", tagged: true })],
-      model,
-      loadRatingProgress,
-    });
-    expect(calls).toEqual(["org-1"]);
-    const reply = [...res.outcomes.values()][0]?.reply ?? "";
-    expect(reply).toContain("Rated: 6/10");
-    // UNLIKE `payments`, THIS ANSWER NAMES NAMES — which is exactly why
-    // the engine keeps the deleted fast path's admin gate on it.
-    expect(reply).toContain("Zair Malik");
-  });
-
-  it("keeps the intent label the deleted fast path wrote", async () => {
-    // So the admin log's vocabulary, and every sweep over it, is
-    // unchanged by the move from regex to model.
-    const { model } = stubModel({ [RATE_Q]: RATE_FACTS });
-    const { loadRatingProgress } = spyLoader();
-    const res = await run({
-      messages: [msg({ body: RATE_Q, route: "question", senderUserId: "u-kemal", tagged: true })],
-      model,
-      loadRatingProgress,
-    });
-    expect([...res.outcomes.values()][0]?.intent).toBe("rating_progress");
-  });
-
-  it("a rating read that throws costs that answer, not the batch", async () => {
-    const { model } = stubModel({ [RATE_Q]: RATE_FACTS, [COUNT_Q]: COUNT_FACTS });
-    const res = await run({
-      messages: [
-        msg({ waMessageId: "wa-rate", body: RATE_Q, route: "question", senderUserId: "u-kemal", tagged: true }),
-        msg({ waMessageId: "wa-count", body: COUNT_Q, route: "question" }),
-      ],
-      model,
-      loadRatingProgress: async () => {
-        throw new Error("db down");
-      },
-    });
-    // The count question still gets its answer.
-    expect(res.outcomes.get("wa-count")?.reply ?? "").toBeTruthy();
-    // The rating question is disowned rather than answered emptily — a
-    // hand-back with a receipt.
-    expect(res.outcomes.has("wa-rate")).toBe(false);
-    expect(res.degradations.join(" ")).toMatch(/rating-progress read failed/i);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════
-// THE PERSONAL STATS LINK (2026-09-17)
-// ═══════════════════════════════════════════════════════════════════════
-//
-// `STATS_REQUEST`, an English-only regex fast path in `analyze/route.ts`,
-// is deleted. The ask is `QuestionFacts.topic = "my_stats"`: this module
-// owns it, the engine decides it, and the outcome carries
-// `statsLinkRequest` for the route to perform. The outcome carries NO
-// recipient: the route DMs the sender of the flagged message, and only
-// that sender (`e2e/sim/qa.spec.ts` asserts the BotJob's phone).
-//
-// The old fast path answered this before any of the carve-outs below
-// existed for it: no upcoming match, attendance off, a busy batch. None
-// of them is about a stats link, so none of them may silence it.
-
 describe("the personal stats link (topic my_stats)", () => {
   const MY_Q = "@Match Time my stats";
-  const MY_FACTS = { topic: "my_stats", personRef: "", statedCount: -1 };
+  const MY_FACTS = { kind: "my_stats", personRef: "", feature: "none", badge: "none" };
   const TR_Q = "@Match Time istatistiklerim";
   const IN = "in";
 
@@ -1501,8 +890,8 @@ describe("the personal stats link (topic my_stats)", () => {
       expectedMatchId: null,
     });
     expect(res.outcomes.get("wa-my")?.statsLinkRequest).toBe(true);
-    // Everything else keeps the no-match carve-out exactly as before.
-    expect(res.outcomes.has("wa-count")).toBe(false);
+    // The list asked for with no match is the unified answer, never a post.
+    expect(res.outcomes.get("wa-count")?.reply).toBe(UNIFIED_LINE);
   });
 
   it("is still sent when attendance tracking is off", async () => {
@@ -1537,18 +926,17 @@ describe("the personal stats link (topic my_stats)", () => {
     expect(res.outcomes.get("wa-my")?.statsLinkRequest).toBe(true);
   });
 
-  it("with no match, a batch with no stats ask is decided exactly as before: nothing, no reason", async () => {
-    const { model, calls } = stubModel({ [COUNT_Q]: COUNT_FACTS });
+  it("with no match, a team question alone is decided exactly as before: nothing, no reason, no call", async () => {
+    const { model, calls } = stubModel({});
     const res = await run({
-      messages: [msg({ body: COUNT_Q, route: "question" })],
+      messages: [msg({ body: SHOW_TEAMS, route: "balancer" })],
       model,
       worldOpts: { confirmed: ELEVEN, noMatch: true },
       expectedMatchId: null,
     });
     expect(res.outcomes.size).toBe(0);
     expect(res.degradations).toEqual([]);
-    // One extractor call to find out whether it was a stats ask; no more.
-    expect(calls.length).toBeLessThanOrEqual(1);
+    expect(calls).toEqual([]);
   });
 });
 
@@ -1583,90 +971,10 @@ describe("two questions in one batch: the first warms the cache, the second read
   });
 });
 
-// ── INCIDENT, SUTTON FC, 2026-10-21 ──────────────────────────────────
-//
-// Elvin, untagged, the morning after Tuesday's match: "Who do we pay for
-// yesterday?". Production row `cmvhr3y5a000708lesizbc15i`: router route
-// `question` (Haiku 5.5, source model), `extractions: []`, recorded by
-// `analyze/route.ts` as `no owner: route=question`. Kemal answered by hand.
-//
-// The cause is the interaction contract, on purpose: a question in the
-// players' group needs an @Match Time tag (`interaction-contract.ts`,
-// `ACTIONY_INTENTS` has "question"; decided 2026-06-18 after the Sutton
-// Lads banter incident). This module enforces it before any model call,
-// so no extractor runs and nothing owns the message. These tests pin that
-// path with the real sender, the real words and a completed match, and
-// pin that the same words WITH a tag are owned and read the payments.
-describe("incident 2026-10-21: an untagged payment question the day after a match", () => {
-  const ELVIN_Q = "Who do we pay for yesterday?";
-  const STATE = { confirmed: ELEVEN, completedMatch: { id: "m-tue" } };
-  const elvin = { authorName: fullName("elvin"), senderUserId: "u-elvin", senderName: fullName("elvin") };
-
-  function paymentSpy() {
-    const calls: string[] = [];
-    const loadPayments: AnswerBatchDeps["loadPayments"] = async (orgId) => {
-      calls.push(orgId);
-      return { kind: "no_signal", kickoffLabel: "Tue 21:30" };
-    };
-    return { calls, loadPayments };
-  }
-
-  it("untagged: owned by nobody, no extractor call, no payment read (the shipped tag rule)", async () => {
-    const { model, calls } = stubModel({});
-    const pay = paymentSpy();
-    const res = await run({
-      messages: [msg({ ...elvin, body: ELVIN_Q, route: "question", tagged: false })],
-      model,
-      worldOpts: STATE,
-      loadPayments: pay.loadPayments,
-    });
-    expect([...res.ownedIds]).toEqual([]);
-    expect(calls).toEqual([]);
-    expect(pay.calls).toEqual([]);
-  });
-
-  it("tagged: the same words are owned and answered from the payment read", async () => {
-    const tagged = `@Match Time ${ELVIN_Q}`;
-    const { model } = stubModel({ [tagged]: { topic: "payments", personRef: "", statedCount: -1 } });
-    const pay = paymentSpy();
-    const res = await run({
-      messages: [msg({ ...elvin, body: tagged, route: "question", tagged: true })],
-      model,
-      worldOpts: STATE,
-      loadPayments: pay.loadPayments,
-    });
-    expect([...res.ownedIds]).toHaveLength(1);
-    expect(pay.calls).toEqual(["org-1"]);
-    expect([...res.outcomes.values()][0]?.reply ?? "").toMatch(/No payments have reached me/);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════
-// WHY A TAGGED QUESTION WENT UNANSWERED, TYPED FOR THE ROUTE (2026-10-30)
-// ═══════════════════════════════════════════════════════════════════════
-//
-// The analyze route says "I didn't catch what you'd like me to do" to a
-// tagged message that came to nothing (#455). Three silences here are not
-// that, and the route can only tell them apart if this module says which.
-
 describe("the silences the route must not call 'not understood'", () => {
-  const RATE_Q = "@Match Time who hasn't rated yet please";
-  const RATE_FACTS = { topic: "rating_progress", personRef: "", statedCount: -1 };
-  const BENCH_Q = "@Match Time who's on the bench?";
-
-  it("a player's rating-progress ask refused by the admin gate is recorded as refused", async () => {
-    const silence = newSilenceFacts();
-    const { model } = stubModel({ [RATE_Q]: RATE_FACTS });
-    const res = await run({
-      messages: [msg({ waMessageId: "wa-rate", body: RATE_Q, route: "question", senderUserId: "u-zair", senderName: fullName("zair") })],
-      model,
-      loadRatingProgress: async () => ({ ok: true, matchName: "T", matchWhen: "Tue", confirmed: 1, ratedCount: 0, momCount: 0, notRated: [], ratedNoMom: [] }),
-      silence,
-    });
-    expect(res.outcomes.has("wa-rate")).toBe(false);
-    expect([...silence.refused]).toEqual(["wa-rate"]);
-    expect(silence.readFailed.size + silence.squadPostAnswers.size).toBe(0);
-  });
+  const OTHER_Q = "@Match Time who's on the bench?";
+  const OTHER_FACTS = { kind: "other", personRef: "", feature: "none", badge: "none" };
+  const SCORE = { waMessageId: "wa-score", body: "5-3 to us", route: "score" as Route, tagged: false };
 
   it("a question whose read failed is recorded as a failed read", async () => {
     const silence = newSilenceFacts();
@@ -1676,34 +984,29 @@ describe("the silences the route must not call 'not understood'", () => {
     expect(silence.refused.size).toBe(0);
   });
 
-  it("a bench question held back beside somebody's IN is one the squad post answers", async () => {
+  it("the list asked for beside a writer that lands later is one the squad post answers", async () => {
     const silence = newSilenceFacts();
-    const { model } = stubModel({ [BENCH_Q]: { topic: "bench", personRef: "", statedCount: -1 } });
+    const { model } = stubModel({ [COUNT_Q]: COUNT_FACTS });
     const res = await run({
-      messages: [
-        msg({ waMessageId: "wa-in", body: "in", route: "self_att", tagged: false }),
-        msg({ waMessageId: "wa-bench", body: BENCH_Q, route: "question" }),
-      ],
+      messages: [msg(SCORE), msg({ waMessageId: "wa-list", body: COUNT_Q, route: "question" })],
       model,
-      worldOpts: { confirmed: ELEVEN, bench: ["zair"] },
+      enabled: ["question", "balancer", "score"],
       silence,
     });
-    expect(res.outcomes.has("wa-bench")).toBe(false);
-    expect([...silence.squadPostAnswers]).toEqual(["wa-bench"]);
+    expect(res.outcomes.has("wa-list")).toBe(false);
+    expect([...silence.squadPostAnswers]).toEqual(["wa-list"]);
   });
 
-  it("a payments question held back the same way is NOT one the squad post answers", async () => {
+  it("any other question held back the same way is NOT one the squad post answers", async () => {
     const silence = newSilenceFacts();
-    const PAY_Q = "@Match Time who hasn't paid?";
-    const { model } = stubModel({ [PAY_Q]: { topic: "payments", personRef: "", statedCount: -1 } });
-    await run({
-      messages: [
-        msg({ waMessageId: "wa-in", body: "in", route: "self_att", tagged: false }),
-        msg({ waMessageId: "wa-pay", body: PAY_Q, route: "question" }),
-      ],
+    const { model } = stubModel({ [OTHER_Q]: OTHER_FACTS });
+    const res = await run({
+      messages: [msg(SCORE), msg({ waMessageId: "wa-other", body: OTHER_Q, route: "question" })],
       model,
+      enabled: ["question", "balancer", "score"],
       silence,
     });
+    expect(res.outcomes.has("wa-other")).toBe(false);
     expect(silence.squadPostAnswers.size).toBe(0);
   });
 });

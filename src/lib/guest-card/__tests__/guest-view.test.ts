@@ -75,7 +75,10 @@ describe("guestView", () => {
     const { text } = buildUnifiedContext(guestView(input(), BLOCK));
     // The money collector stays named: a guest pays him.
     for (const k of ["habib", "najib", "zair"]) expect(text, k).not.toContain(fullName(k));
-    expect(text).toMatch(/MEMBERS, the players registered with the club \(3\)/);
+    // The registered count is the club's, not the few names a guest sees:
+    // it is not given to him at all (2026-11-18), never as "3 registered".
+    expect(text).toMatch(/REGISTERED MEMBERS: not shared with a guest of the club/);
+    expect(text).not.toMatch(/players are registered with the club/);
     expect(text).not.toContain("club rating");
     expect(text).not.toContain("LAST MATCH PLAYED");
     expect(text).not.toContain("Tue 25 Aug");
