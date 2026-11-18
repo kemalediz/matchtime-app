@@ -1310,7 +1310,7 @@ export const tr: Strings = {
     [
       `👥 *Oyuncular aylık kadronuza nasıl katılır*:`,
       `📋 *"@Match Time Tom'u Kasım listesine ekle, ödedi"*: ayın düzenli oyuncusu olur ve bir sonraki maçın kadrosuna girer. Ay başladıysa ayın tamamını mı yoksa kalan maçları mı kapsadığını söyle, örneğin *"@Match Time Tom'u Kasım listesine ekle, ayın tamamını ödedi"*. Söylemezsen sorarım: ayın tamamı mı, yoksa sadece kalan maçlar mı?`,
-      `🧾 *"@Match Time Dan ayın tamamını kapsıyor"*, *"@Match Time Dan sadece kalan maçları ödüyor"*: düzenli bir oyuncunun kapsadığını ayın tamamına kadar değiştirir, katıldığından beri oynadığı maçlar, kredi aldığı iptal haftaları ve kalan maçların altına inmez; borcu da buna göre değişir. Ya da aylar sayfasından.`,
+      `🧾 *"@Match Time Dan ayın tamamını kapsıyor"*, *"@Match Time Dan sadece kalan maçları ödüyor"*: düzenli bir oyuncunun kapsadığını maç başı ödediği maçlar hariç ayın tamamına kadar değiştirir, katıldığından beri oynadığı maçlar, kredi aldığı iptal haftaları ve kalan maçların altına inmez; borcu da buna göre değişir. Ya da aylar sayfasından.`,
       `💷 Ayın fiyatı belirlenmeden önce bir oyuncunun kapsadığını düzeltmek borcunu değiştirmez. Fiyat belirlendikten sonra ödediği ya da ödediğini söylediği tutar aynı kalır: kapsamını artırırsan aylar sayfası farkı borç olarak, azaltırsan geri verilecek para olarak gösterir. Cevabımda da bunu söylerim. Kapsamı değiştirmek onu ödemiş olarak işaretlemez.`,
       ...(p.attendance
         ? p.openSquad

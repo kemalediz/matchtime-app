@@ -589,7 +589,8 @@ export default async function AdminGuidePage() {
         the weeks called off he was credited for, and the games left (a
         player on the list you started the month from covers every game the
         month had when you started it, and a week called off since is
-        credited back to him), and what he owes follows. The games are
+        credited back to him; taken off and added back, he covers from when he is back), and what he owes follows. The
+        games he already paid as pay as you go are never counted again. The games are
         counted as played: &quot;4 of 4&quot; after a week is called off
         means every game that is on. MatchTime never confirms a
         payment for you. Players added any other way (your list posted

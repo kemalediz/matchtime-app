@@ -124,18 +124,28 @@ export function memberCoverageBounds(
     /** His live "cancelled-week" credits on this month: weeks called off
      *  that he is credited for (review round 2, item 1). */
     creditedCancelled?: number;
+    /** When the month was counted (`startedMidMonthAt ?? listOpenedAt ??
+     *  createdAt`). A seed-list row counts from the first game only while
+     *  he has been on it since then (review 2 of #611, item 1): one taken
+     *  off and added back counts from when he is back. Null: not known,
+     *  the row's source decides, as before. */
+    countedAt?: Date | null;
+    /** Games of this month he already paid for as pay as you go (review 2
+     *  of #611, item 4): never in the most he can cover, so they are not
+     *  charged twice. */
+    paidPayg?: number;
   },
 ): CoverageBounds {
   // A seeded regular counts from the month's first game: every game it
   // scheduled, a called-off week included (the seed's rule). He is never lowered.
-  if (seededSource(p.source)) return { min: m.whole, max: m.whole };
+  if (seededSource(p.source) && (!p.countedAt || p.joinedAt.getTime() <= p.countedAt.getTime())) return { min: m.whole, max: m.whole };
   const played = p.kickoffs.filter((k) => k.getTime() <= p.now.getTime() && k.getTime() > p.joinedAt.getTime()).length;
   // A called-off week is in none of the month's games (`kickoffs` leave it
   // out), so a week he holds a credit for is added back: lowering must
   // never remove a week he is credited for, or he is credited twice.
   const credited = Math.max(0, p.creditedCancelled ?? 0);
   const min = Math.min(m.whole, Math.max(played + credited + m.gamesLeft, Math.min(1, m.whole)));
-  return { min, max: m.whole };
+  return { min, max: Math.max(min, m.whole - Math.max(0, p.paidPayg ?? 0)) };
 }
 
 /** The games a coverage names. */
