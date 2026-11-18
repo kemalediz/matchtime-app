@@ -113,7 +113,8 @@ export interface AdminOpsApplyDeps {
   /** A future-dated `kind: "dm"` BotJob. The scheduler emits it when
    *  `sendAfter` has passed, which is what makes a reminder land on the
    *  right day without a second timer. */
-  queueReminderDm: (args: { phone: string; text: string; sendAt: Date }) => Promise<void>;
+  /** `sourceMessageId`: the message that asked for it, so a delete of it cancels the DM (`message-change.ts`; an edit never does). */
+  queueReminderDm: (args: { phone: string; text: string; sendAt: Date; sourceMessageId?: string }) => Promise<void>;
 }
 
 export interface PaymentApplyResult {
@@ -297,6 +298,7 @@ export async function applyReminder(args: {
       phone: phone.replace(/^\+/, ""),
       text: composeReminderDm({ name: args.name, note: args.note, lang: args.lang }),
       sendAt: write.sendAt,
+      sourceMessageId: write.sourceMessageId,
     });
     return { write, ok: true };
   } catch (err) {

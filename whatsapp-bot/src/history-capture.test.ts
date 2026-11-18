@@ -143,3 +143,26 @@ describe("with a driver that cannot (whatsapp-web.js): exactly as before", () =>
     ]);
   });
 });
+
+describe("a message deleted or edited in the live buffer is never captured (2026-11-15)", () => {
+  it("the Pi's delete record is checked for every buffered message", async () => {
+    const buffer = [[live(1), live(2, { body: "my door code is 4321", id: { _serialized: `false_${GROUP}_DELETED000001_447700900123@c.us` } }), live(3), live(4), live(5), live(6)]];
+    const driver: Partial<WaDriver> = { async fetchRecentGroupMessages() { return buffer[0] as never; } };
+    const asked: string[] = [];
+    const collect = createHistoryCollector({
+      driver: driver as WaDriver,
+      log: () => {},
+      warn: () => {},
+      sleep: async () => {},
+      isDeleted: (groupId, msg) => {
+        const id = (msg as { id?: { _serialized?: string } }).id?._serialized ?? "";
+        asked.push(groupId);
+        return id.includes("DELETED000001");
+      },
+    });
+    const out = await collect(GROUP, SELF);
+    expect(out.map((m) => m.text)).toEqual(["live 1", "live 3", "live 4", "live 5", "live 6"]);
+    expect(JSON.stringify(out)).not.toContain("4321");
+    expect(asked.length).toBeGreaterThanOrEqual(6);
+  });
+});

@@ -66,6 +66,39 @@ export interface InboundMessage {
   mentionedIds?: string[];
 }
 
+/**
+ * A delete for everyone, or an edit, of a message in a chat (2026-11-15).
+ * `messageId` is the BARE WhatsApp id of the message deleted or edited
+ * (not the notice's own id). The sender fields name whoever sent the
+ * notice: for a delete in a group that can be an admin, not the author.
+ * An edit's new words are never carried: an edit is never analysed again.
+ */
+export interface MessageChangeEvent {
+  kind: "revoke" | "edit";
+  /** The chat, spelled as `InboundMessage.from` is: a group JID, or a DM's `@c.us`/`@lid`. */
+  chatId: string;
+  isGroup: boolean;
+  messageId: string;
+  /** Every spelling of the notice's sender we know, `@c.us`/`@lid`. */
+  senderJids: string[];
+  senderPhone: string | null;
+  /**
+   * The sender is an admin of the group. A delete applies to somebody else's
+   * message only then: WhatsApp's own clients let a group admin delete
+   * anyone's message, and anyone else only their own. Always false from the
+   * Baileys driver, which never reads the roster on its message queue
+   * (round 8): a group delete comes with `adminUnknown`, and the change
+   * handler asks `isGroupAdmin`. Always false for an edit (only its author
+   * may edit).
+   */
+  byAdmin: boolean;
+  /** Whether the sender is an admin is not known yet: the change handler
+   *  reads it (`isGroupAdmin`), and the outbox checks again on its retries
+   *  while it cannot be read. Never taken as "no" for good. */
+  adminUnknown?: boolean;
+  fromMe: boolean;
+}
+
 /** A group this account is a member of. */
 export interface GroupSummary {
   /** The group JID, e.g. "447525334985-1607872139@g.us". */
@@ -273,6 +306,25 @@ export interface WaDriver {
   onUndecryptable?(
     handler: (event: { id: string; chat: string; sender: string | null; reason: string }) => void | Promise<void>,
   ): void;
+
+  /**
+   * A message was deleted for everyone, or edited (2026-11-15). The notice
+   * itself is never handed to `onMessage`, so an edit is never analysed
+   * again (a message Baileys merged its edit into is handed up as the
+   * message it arrived as, AND here). `index.ts` uses it to take the words
+   * out of what MatchTime stored (`message-change.ts`). Optional because
+   * only Baileys implements it.
+   */
+  onMessageChange?(handler: (change: MessageChangeEvent) => void | Promise<void>): void;
+
+  /**
+   * Is one of these spellings an admin of the group? Null when the group's
+   * metadata cannot be read. Used to check a delete again (2026-11-15).
+   */
+  isGroupAdmin?(groupId: string, jids: string[]): Promise<boolean | null>;
+
+  /** The phone for a LID from the Pi's own local map, or null. Never a WhatsApp lookup. */
+  phoneForLid?(lidJid: string): Promise<string | null>;
 
   /**
    * Somebody (possibly the bot) was added to a group.

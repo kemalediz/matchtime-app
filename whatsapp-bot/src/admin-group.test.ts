@@ -202,6 +202,31 @@ describe("routeAdminGroupInbound", () => {
     });
   });
 
+  it("DELETED while the server answered (2026-11-15): no tick on it, but the reply (it may carry the squad or the teams) still goes", async () => {
+    const sendReaction = vi.fn(async () => ({ ok: true as const }));
+    let deleted = false;
+    const { d, replies } = deps(
+      {
+        postAdminGroupMessage: vi.fn(async () => {
+          deleted = true; // the delete lands while the server is answering
+          return { replyText: "Teams for Tuesday: ...", react: "👍", replyKey: "hqreply:org:1" };
+        }),
+        sendReaction,
+        isDeleted: (id: string) => deleted && id === "m1",
+      },
+      [HQ],
+    );
+    expect(await routeAdminGroupInbound(d, { from: HQ, body: "x" })).toBe("admin-group");
+    expect(sendReaction).not.toHaveBeenCalled();
+    expect(replies).toEqual(["Teams for Tuesday: ..."]);
+  });
+
+  it("a message deleted before it was read is not forwarded at all (read gives nothing)", async () => {
+    const { d, forwarded } = deps({ read: vi.fn(async () => null) }, [HQ]);
+    expect(await routeAdminGroupInbound(d, { from: HQ, body: "x" })).toBe("admin-group");
+    expect(forwarded).toEqual([]);
+  });
+
   it("a DM is never handled here", async () => {
     const { d } = deps({}, [HQ]);
     expect(await routeAdminGroupInbound(d, { from: "447700900102@c.us", body: "@Match Time admin group K7P3QX" })).toBe("not-handled");

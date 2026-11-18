@@ -122,6 +122,8 @@ export async function loadWeekChat(args: {
               createdAt: { gte: since },
               ...NOT_GROUP_ROWS,
               ...(args.includeMatchTime ? {} : { fromMatchTime: false }),
+              // A line whose author edited it keeps its row with no words (`message-change.ts`): nothing to show.
+              text: { not: "" },
               ...exclude,
             },
             orderBy: { createdAt: "desc" },

@@ -321,6 +321,24 @@ describe("refuseServerWriteInShadow never logs a group description", () => {
   });
 });
 
+describe("refuseServerWriteInShadow never logs a deleted or edited message's words (2026-11-15)", () => {
+  it("a message change is previewed by ids only", () => {
+    process.env[SHADOW_ENV] = "1";
+    _test_resetShadow();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const body = JSON.stringify({ kind: "edit", chatId: "1@g.us", messageId: "3EB0AAAA0001", text: "my door code is 4321", mentions: ["447700900456@c.us"], mentionNames: [{ jid: "447700900456@c.us", name: "Ali" }], senderJids: ["447700900123@c.us"], senderPhone: "447700900123" });
+    refuseServerWriteInShadow("https://x/api/whatsapp/message-change", body);
+    const line = warn.mock.calls.flat().join(" ");
+    expect(line).toContain("3EB0AAAA0001");
+    expect(line).toContain("1@g.us");
+    expect(line).not.toContain("4321");
+    expect(line).not.toContain("Ali");
+    refuseServerWriteInShadow("https://x/api/whatsapp/message-change", "{not json 4321");
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("4321");
+    warn.mockRestore();
+  });
+});
+
 describe("shadowPreview", () => {
   it("flattens newlines and truncates, so one send is one log line", () => {
     expect(shadowPreview("a\nb")).toBe("a\\nb");

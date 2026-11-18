@@ -3517,6 +3517,8 @@ export const en = {
   ag_paste_confirm: "Say *@Match Time YES* to apply.",
   ag_paste_same: "That matches the squad, nothing to change.",
   ag_paste_expired: "That list is more than 30 minutes old, so I haven't applied it. Paste it again if it still stands.",
+  /** A YES to a pasted list whose message was then deleted for everyone (2026-11-15): the list was dropped. */
+  ag_paste_source_changed: "That list was changed, so I've dropped it. Paste it again and I'll read it.",
   /** A pasted list with no game to put it on (2026-10-15): the club has a
    *  weekly game, and the nightly cron makes the next one at `time`
    *  (London wall clock of 00:00 UTC). */

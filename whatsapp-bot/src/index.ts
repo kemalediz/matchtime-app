@@ -58,6 +58,7 @@ import {
   postBotRemoved,
   postAdminGroupMessage,
   postAdminGroupLink,
+  postMessageChange,
 } from "./api.js";
 import {
   ackReply,
@@ -69,7 +70,16 @@ import {
   isRecoverySweepRunning,
   startBatchFlushTimer,
   stopBatchFlushTimer,
+  applyMessageChangeLocally,
+  adjustForServer,
+  restoreMessageChanges,
+  isRevokedLocally,
+  isChangedLocally,
+  whenFlushIdle,
 } from "./smart-analysis.js";
+import { bodyForServer, handleMessageChange } from "./message-change.js";
+import { createMessageChangeOutbox, outboxPath } from "./message-change-outbox.js";
+import { jsonFileIO } from "./baileys/json-file.js";
 import { config } from "./config.js";
 import { resolveWaMessageId } from "./message-id.js";
 import { dmSenderExtras, type DmSenderExtras } from "./dm-identity.js";
@@ -540,7 +550,36 @@ async function main() {
   // / noise / unclear. The server executes side effects (attendance,
   // scoring, Elo, replies) and hands back the WhatsApp-side actions
   // (react, reply) for the bot to perform.
+  // Deletes and edits the server has not taken yet, and the Pi's own record
+  // of the last day's, read back BEFORE any message is handled: a replay
+  // after this restart is held to them (2026-11-15, message-change-outbox.ts).
+  const changesPath = outboxPath(process.env);
+  const messageChanges = createMessageChangeOutbox({
+    io: changesPath ? jsonFileIO(changesPath) : null,
+    now: () => Date.now(),
+    post: async (c) => {
+      const r = await postMessageChange(bodyForServer(c));
+      // Shadow mode refuses every write here: nothing to retry.
+      return !!r && (r.ok === true || r.shadowMode === true);
+    },
+    // A delete whose sender's admin status could not be read is checked
+    // again on each retry; once known to be an admin's, the Pi's own
+    // record takes it too (2026-11-15).
+    recheckAdmin: async (c) => (driver.isGroupAdmin ? driver.isGroupAdmin(c.groupId, c.senderJids) : null),
+    onResolved: (c) => {
+      applyMessageChangeLocally(c);
+    },
+    log: (l) => console.log(l),
+    error: (l) => console.error(l),
+  });
+  restoreMessageChanges(messageChanges.load());
+  messageChanges.start();
+  console.log(`[message-change] outbox read back: ${messageChanges.pending()} change(s) waiting for the server`);
+
   driver.onMessage(async (msg) => {
+    await handleInbound(msg);
+  });
+  async function handleInbound(msg: Parameters<Parameters<typeof driver.onMessage>[0]>[0]): Promise<void> {
     try {
       // Read EVERY headline field through one total helper.
       //
@@ -683,7 +722,16 @@ async function main() {
         {
           isAdminGroup,
           addAdminGroup,
-          read: () => readGroupMessageForServer(driver, msg),
+          // Held to the Pi's record of deletes and edits (2026-11-15): a
+          // deleted message is not forwarded (an edited one goes as read);
+          // a quote of one its author or an admin took back goes without
+          // its words.
+          read: async () => {
+            const m = await readGroupMessageForServer(driver, msg);
+            return m ? adjustForServer(m) : null;
+          },
+          // Only a DELETE takes the ✅ away; an edit keeps it.
+          isDeleted: (id, phone) => isRevokedLocally(head.from, id, phone),
           postAdminGroupMessage,
           postAdminGroupLink,
           reply: (text) => driver.sendText(head.from, text),
@@ -763,17 +811,22 @@ async function main() {
       }
 
       // Context buffer the analyser reads for nuanced classification.
-      recordHistory(head.from, {
-        authorName: authorName ?? null,
-        body: effectiveBody,
-        timestamp: new Date(head.timestampSec * 1000).toISOString(),
-      });
+      recordHistory(
+        head.from,
+        {
+          authorName: authorName ?? null,
+          body: effectiveBody,
+          timestamp: new Date(head.timestampSec * 1000).toISOString(),
+        },
+        // So a delete or an edit can find this line (2026-11-15).
+        resolveWaMessageId(msg).waMessageId,
+      );
 
       await enqueueForAnalysis(driver, msg);
     } catch (err) {
       console.error("message handler failed:", err);
     }
-  });
+  }
 
   // A message that could not be decrypted and never came back (Baileys
   // only). The driver has already logged the CRITICAL line with the id,
@@ -781,6 +834,26 @@ async function main() {
   // /admin/health. Never a DM: it is a routine ops alert.
   driver.onUndecryptable?.(() => {
     recordDegradedCapability("message-decryption");
+  });
+
+  // A message deleted for everyone, or edited (2026-11-15, Baileys only).
+  // HOUSEKEEPING ONLY: a delete takes the message out of the Pi's batch and
+  // recent chat; a delete or an author's edit takes its words out of every
+  // store the server keeps. An edit never changes what is analysed. Nothing
+  // is sent, replied to or reacted to here (message-change.ts).
+  driver.onMessageChange?.(async (change) => {
+    await handleMessageChange(change, {
+      phoneForLid: driver.phoneForLid ? (lid) => driver.phoneForLid!(lid) : undefined,
+      // A delete's admin check, off the driver's serial message queue (round 8).
+      isGroupAdmin: driver.isGroupAdmin ? (groupId, jids) => driver.isGroupAdmin!(groupId, jids) : undefined,
+      applyLocally: applyMessageChangeLocally,
+      record: (c) => messageChanges.record(c),
+      update: (key, c) => messageChanges.update(key, c),
+      attempt: (key) => messageChanges.attempt(key),
+      whenFlushIdle: (groupId) => whenFlushIdle(groupId),
+      log: (l) => console.log(l),
+      error: (l) => console.error(l),
+    });
   });
 
   // Reactions on any tracked message (bench-prompt 👍/👎). Forward to server
@@ -898,7 +971,15 @@ async function main() {
   // the join when the adder's switch was on, else what the live buffer
   // holds. Best-effort: any failure returns [] and the intro still goes
   // out. See history-capture.ts.
-  const collectHistoryForServer = createHistoryCollector({ driver });
+  const collectHistoryForServer = createHistoryCollector({
+    driver,
+    // A message deleted or edited in the buffer is never captured (2026-11-15).
+    isDeleted: (groupId, m) => {
+      const author = asString(safeRead(m, "author")) ?? "";
+      const phone = author.endsWith("@c.us") ? author.replace("@c.us", "") : null;
+      return isChangedLocally(groupId, resolveWaMessageId(m).waMessageId, phone);
+    },
+  });
   // A club's own group never has shared history read, even on a re-add:
   // the same check the bot-added flow answers "already monitored" with.
   driver.ignoreJoinHistoryWhen?.(isMonitoredGroup);

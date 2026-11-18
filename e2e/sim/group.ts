@@ -480,7 +480,16 @@ export interface BatchItem {
    * id, words and author); otherwise give the quoted message's own `id`,
    * `text` and whether it was MatchTime's.
    */
-  quote?: { of?: number; id?: string; text?: string; fromMatchTime?: boolean };
+  quote?: {
+    of?: number;
+    id?: string;
+    text?: string;
+    fromMatchTime?: boolean;
+    /** Who wrote the quoted message, as the Pi forwards it (2026-11-15): the
+     *  quote's participant JID (`@c.us` or `@lid`) and, when known, the phone. */
+    authorJid?: string;
+    authorPhone?: string;
+  };
   /** Reuse this WhatsApp message id: the same message delivered again (a
    *  Pi retry or restart replay). Default: a fresh id. */
   waMessageId?: string;
@@ -500,6 +509,8 @@ export interface BatchItem {
 export interface SimHistoryEntry {
   authorName: string | null;
   body: string;
+  /** The line's own message id (the Pi sends it since 2026-11-15). */
+  waMessageId?: string;
   /** Default: 10 minutes before now, in list order. */
   timestamp?: string;
 }
@@ -622,7 +633,9 @@ export class SimGroup {
         quotedMessageId: of ? ids[q.of!] : q.id,
         quotedBody: of ? of.body : q.text,
         quotedFromMatchTime: of ? false : q.fromMatchTime === true,
-        ...(ofPlayer ? { quotedAuthorName: ofPlayer.name, ...(ofPlayer.phone ? { quotedAuthorPhone: ofPlayer.phone.replace(/^\+/, "") } : {}) } : {}),
+        ...(ofPlayer ? { quotedAuthorName: ofPlayer.name, ...(ofPlayer.phone ? { quotedAuthorPhone: ofPlayer.phone.replace(/^\+/, ""), quotedAuthorJid: `${ofPlayer.phone.replace(/^\+/, "")}@c.us` } : {}) } : {}),
+        ...(!of && q.authorJid ? { quotedAuthorJid: q.authorJid } : {}),
+        ...(!of && q.authorPhone ? { quotedAuthorPhone: q.authorPhone } : {}),
       };
     };
     const messages = items.map((it) => {
@@ -698,6 +711,8 @@ export class SimGroup {
       body: h.body,
       timestamp:
         h.timestamp ?? new Date(Date.now() - (arr.length - i) * 60_000).toISOString(),
+      // The line's own message id, as the Pi sends it since 2026-11-15.
+      ...(h.waMessageId ? { waMessageId: h.waMessageId } : {}),
     }));
     const res = await this.request.post("/api/whatsapp/analyze", {
       headers: { ...HEADERS, ...(opts.headers ?? {}) },

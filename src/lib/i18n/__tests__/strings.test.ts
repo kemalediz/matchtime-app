@@ -840,6 +840,7 @@ const SAMPLES: SampleArgs = {
   ag_paste_confirm: null,
   ag_paste_same: null,
   ag_paste_expired: null,
+  ag_paste_source_changed: null,
   ag_paste_no_game: { time: "01:00" },
   ag_paste_no_weekly_game: null,
   tp_header_proposed: { kickoff: "20:15", venue: "Goals Wimbledon" },

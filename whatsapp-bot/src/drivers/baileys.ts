@@ -161,6 +161,7 @@ import type {
   InboundMessage,
   InboundPollVote,
   JoinHistoryMessage,
+  MessageChangeEvent,
   WaDriver,
 } from "../driver.js";
 import type { ReactionOutcome } from "../react-with-id.js";
@@ -197,6 +198,7 @@ import {
 import { createRetryCounterCache } from "../baileys/retry-cache.js";
 import { createReplayBuffer, type ReplayBuffer } from "../baileys/replay.js";
 import { mapInboundMessage, skipReason, toNumber } from "../baileys/inbound.js";
+import { isMergedEdit, readMessageChange } from "../baileys/message-change.js";
 import {
   JOIN_WATCH_MS,
   createJoinWatch,
@@ -225,6 +227,7 @@ import {
   authorLid,
   createGroupCache,
   handedUpId,
+  isAdminParticipant,
   legacyIdsOf,
   lidPnPairs,
   membershipEvent,
@@ -627,6 +630,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   const joinHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
   const leaveHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
   const undecryptableHandlers: Array<(e: UndecryptableEvent) => void | Promise<void>> = [];
+  const changeHandlers: Array<(c: MessageChangeEvent) => void | Promise<void>> = [];
   // Slice L5a: account warnings for the DM pacer. Fired synchronously.
   const warningHandlers: Array<(w: AccountWarning) => void> = [];
   const fireWarning = (w: AccountWarning | null) => {
@@ -848,6 +852,23 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   function selfLegacy(): Set<string> {
     const self = me();
     return new Set([self.pn, self.lid].filter((s): s is string => !!s));
+  }
+
+  /**
+   * Is one of these spellings an admin of the group (2026-11-15)? Its
+   * roster from the cache, else ONE `groupMetadata` read, as every roster
+   * read here is. NULL when it cannot be read: the delete is then kept and
+   * checked again on its retry, never taken as "not an admin" for good.
+   */
+  async function senderIsGroupAdmin(groupJid: string, senderJids: string[]): Promise<boolean | null> {
+    if (senderJids.length === 0) return false;
+    try {
+      const meta = await readRoster(groupJid, "onMessageChange");
+      return (meta.participants ?? []).some((p) => isAdminParticipant(p) && legacyIdsOf(p).some((id) => senderJids.includes(id)));
+    } catch (err) {
+      log(`[baileys][msg] could not read ${groupJid}'s admins for a delete (checked again later): ${errorText(err)}`);
+      return null;
+    }
   }
 
   function pollMessage(id: string): proto.IMessage | undefined {
@@ -1225,6 +1246,59 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       await receivePollVote(m);
       return;
     }
+    // A delete for everyone, or an edit (2026-11-15): handed up on its own
+    // event so the words can leave what MatchTime stored, and NEVER as a
+    // chat message, so an edit is not analysed again. Our own edits are not
+    // a member's words; our own deletes may be (an admin on the bot's
+    // phone), so they go up. The log line carries ids, never the text.
+    // An original Baileys merged its edit into (after a reconnect) is not a
+    // change: it is handed up below as the message, as it arrived, plus an
+    // edit (ids only), so the server forgets its stored words.
+    const change = readMessageChange(m);
+    if (change) {
+      const what = change.kind === "revoke" ? "a delete for everyone" : "an edit";
+      if (change.kind === "edit" && key.fromMe) {
+        log(`${line} ${what} of ${change.targetId} by MatchTime itself, not handed up`);
+        tally(`${what} (ours)`);
+        return;
+      }
+      const isGroup = isGroupJid(change.chatJid);
+      // Who sent it, every spelling: MatchTime's own number for our own
+      // device's delete (an admin deleting from the bot's phone).
+      const senderJids = key.fromMe
+        ? [...selfLegacy()]
+        : [
+            ...new Set(
+              (isGroup ? [key.participant, key.participantAlt] : [key.remoteJid, key.remoteJidAlt])
+                .map((j) => legacyJid(j))
+                .filter((j): j is string => !!j),
+            ),
+          ];
+      let senderPhone: string | null = null;
+      if (!key.fromMe) {
+        const who = await senderPhoneOf(key);
+        senderPhone = who.phone;
+      }
+      const event: MessageChangeEvent = {
+        kind: change.kind,
+        chatId: isGroup ? change.chatJid : (legacyJid(change.chatJid) ?? change.chatJid),
+        isGroup,
+        messageId: change.targetId,
+        senderJids,
+        senderPhone,
+        byAdmin: false,
+        fromMe: key.fromMe === true,
+      };
+      // Only a delete may come from an admin; an edit is its author's or
+      // nothing. Whether the sender IS an admin is read by the change
+      // handler (`isGroupAdmin`), never here: a roster read on this serial
+      // queue would hold up every club's messages behind it (round 8).
+      if (isGroup && change.kind === "revoke") event.adminUnknown = true;
+      log(`${line} ${what} of ${change.targetId} group=${isGroup} fromMe=${event.fromMe} adminUnknown=${event.adminUnknown === true} handed up as a change`);
+      tally(what);
+      hand(changeHandlers, event, "onMessageChange");
+      return;
+    }
     const mapped = mapInboundMessage(m);
     if (!mapped) {
       stats.skipped++;
@@ -1275,6 +1349,16 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         `media=${mapped.hasMedia} mentions=${mapped.mentionedJids.length}`,
     );
     tally(`handed up (${mapped.type})`);
+    // A message Baileys merged its author's edit into (after a reconnect):
+    // handed up as it arrived, as any message is, and ALSO as an edit by its
+    // author (ids only), so the server forgets its stored words. Nothing
+    // else about it changes (2026-11-15).
+    if (mapped.isGroup && !mapped.fromMe && isMergedEdit(m)) {
+      const senderJids = [...new Set([key.participant, key.participantAlt].map((j) => legacyJid(j)).filter((j): j is string => !!j))];
+      log(`${line} a merged edit of ${mapped.id}: handed up as the message, and as an edit`);
+      tally("a merged edit");
+      hand(changeHandlers, { kind: "edit", chatId: mapped.chatJid, isGroup: true, messageId: mapped.id, senderJids, senderPhone, byAdmin: false, fromMe: false }, "onMessageChange");
+    }
     // Picture reading: handed up by the reader, once, after it is read.
     if (deps.pictures?.wants(view as InboundMessage)) {
       deps.pictures.handle(view as InboundMessage, m, (v) => hand(messageHandlers, v, "onMessage"));
@@ -1804,6 +1888,23 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
 
     onUndecryptable(handler) {
       undecryptableHandlers.push(handler);
+    },
+
+    onMessageChange(handler) {
+      requireConnection("onMessageChange");
+      changeHandlers.push(handler);
+    },
+
+    isGroupAdmin(groupId, jids) {
+      return senderIsGroupAdmin(groupId, jids);
+    },
+
+    async phoneForLid(lidJid) {
+      try {
+        return await phoneForLid(lidJid);
+      } catch {
+        return null;
+      }
     },
 
     onGroupJoin(handler) {

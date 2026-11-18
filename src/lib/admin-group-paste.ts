@@ -32,6 +32,8 @@
  * The YES takes out exactly who the preview said. Logs carry ids and
  * counts only.
  */
+import { hqReplyKey } from "./reply-context";
+import { sameWhatsAppMessage } from "./quoted-message";
 import { db } from "./db";
 import { t } from "./i18n/t";
 import { loadOrganiserNames } from "./organiser-names";
@@ -63,7 +65,7 @@ import {
 import type { PersonPicker } from "./pipeline/who-is-who";
 
 export interface PasteReply {
-  outcome: "paste-proposed" | "paste-same" | "paste-held" | "paste-applied" | "paste-expired" | "paste-no-match" | "month-seed-applied" | "month-seed-failed";
+  outcome: "paste-proposed" | "paste-same" | "paste-held" | "paste-applied" | "paste-expired" | "paste-no-match" | "month-seed-applied" | "month-seed-failed" | "paste-source-changed";
   replyText: string;
 }
 
@@ -302,6 +304,62 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
  * list that member pasted (a member who is not an organiser confirms their
  * own list only, 2026-10-20).
  */
+/**
+ * A YES to a pasted list that was CANCELLED because its message was
+ * DELETED (`message-change.ts`, outcome "source-deleted"; an edit never
+ * cancels one), within a day: said ONCE ("That list was changed, so I've
+ * dropped it..."), but only when the YES is clearly about that list:
+ *
+ *   - it QUOTES MatchTime's proposal message for it (the HQ reply claimed
+ *     for the paste): by the quoted id, or, only when the quote carries no
+ *     id, by its words (the delete clears those words, so after it only
+ *     the id matches); or
+ *   - it quotes NOTHING, comes from the organiser who pasted it, and no
+ *     newer list has been proposed or applied in that club since.
+ *
+ * A YES quoting any other message never counts, and the paster rule never
+ * overrides it. Any other YES gets null, and the caller behaves exactly as
+ * before. The claim on the row (outcome "source-deleted-told") makes it
+ * said once.
+ */
+export async function changedListNotice(args: {
+  orgId: string;
+  lang: string | null | undefined;
+  now: Date;
+  senderUserId: string | null;
+  quoted?: { fromMatchTime?: boolean; text?: string | null; messageId?: string | null } | null;
+}): Promise<PasteReply | null> {
+  // Every list dropped by a delete in the last day, newest first: a quote
+  // may be of an older one's question.
+  const dropped = await db.adminSquadProposal.findMany({
+    where: { orgId: args.orgId, outcome: "source-deleted", resolvedAt: { gte: new Date(args.now.getTime() - EXPIRED_ANSWER_WINDOW_MS) } },
+    orderBy: { resolvedAt: "desc" },
+    take: 10,
+    select: { id: true, waMessageId: true, proposedByUserId: true, createdAt: true },
+  });
+  if (dropped.length === 0) return null;
+  let p = dropped[0];
+  const qid = args.quoted?.messageId?.trim() || null;
+  const qtext = args.quoted?.text?.trim() || "";
+  if (qid || qtext) {
+    // A quote: about a dropped list only if it is MatchTime's question for it.
+    if (!args.quoted?.fromMatchTime) return null;
+    const asked = await db.sentNotification.findMany({ where: { key: { in: dropped.map((d) => hqReplyKey(args.orgId, d.waMessageId)) } }, select: { key: true, text: true, waMessageId: true } });
+    const quotes = (a: { text: string | null; waMessageId: string | null }) => (qid ? !!a.waMessageId && sameWhatsAppMessage(qid, a.waMessageId) : !!a.text && a.text.trim() === qtext);
+    const hit = dropped.find((d) => asked.some((a) => a.key === hqReplyKey(args.orgId, d.waMessageId) && quotes(a)));
+    if (!hit) return null;
+    p = hit;
+  } else {
+    // No quote: the paster's own YES, with no newer list since.
+    if (!args.senderUserId || args.senderUserId !== p.proposedByUserId) return null;
+    const newer = await db.adminSquadProposal.findFirst({ where: { orgId: args.orgId, createdAt: { gt: p.createdAt } }, select: { id: true } });
+    if (newer) return null;
+  }
+  const claimed = await db.adminSquadProposal.updateMany({ where: { id: p.id, outcome: "source-deleted" }, data: { outcome: "source-deleted-told" } });
+  if (claimed.count === 0) return null;
+  return { outcome: "paste-source-changed", replyText: t(args.lang).ag_paste_source_changed };
+}
+
 export async function answerSquadPasteYes(args: {
   orgId: string;
   lang: string | null | undefined;

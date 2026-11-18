@@ -2669,6 +2669,16 @@ model FormNote {
   setByUserId     String?
   /// The WhatsApp message that set it last.
   sourceMessageId String?
+  /// The WhatsApp message that wrote `reason` (2026-11-16, PR #606): a later
+  /// message that only changes the amount moves `sourceMessageId` on, not
+  /// this. A delete or an edit of either message clears the reason.
+  reasonSourceMessageId String?
+  /// EVERY message whose words were ever in this note or MatchTime's
+  /// acknowledgement of it: each message that saved the note while it had a
+  /// reason (2026-11-16, PR #606). A delete or an edit of any of them clears
+  /// the copies (the rating adjustment's, the acks), found by these ids,
+  /// never by the current text.
+  reasonMessageIds String[] @default([])
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -2745,8 +2755,59 @@ model GroupMessage {
   createdAt      DateTime     @default(now())
 
   @@index([orgId, timestamp])
+  @@index([waChatId, createdAt])
 }
 
+
+/// A WhatsApp message deleted for everyone, or edited by its author
+/// (2026-11-15, the tombstone). Either makes MatchTime forget the stored
+/// words; only a delete also cancels what it was about to do because of the
+/// message (a proposal, a reminder). One row per message: its
+/// chat (group JID), its BARE WhatsApp id, and who sent the delete or edit.
+/// Every writer of a member's words clears again AFTER writing
+/// (`src/lib/message-change.ts` `enforceDeletes`), and the hourly
+/// /api/cron/bot-health sweep enforces every recent row, so it wins in
+/// whatever order things arrive. It applies to a copy only when it came
+/// from a group admin (`byAdmin`, a delete only, read by the Pi from the
+/// group's metadata) or from the message's own author (one of `senderJids` /
+/// `senderPhones`). Recorded only for a group linked to a club. Holds ids
+/// and phones, never words. RETENTION 14 days from `lastChangeAt`, pruned
+/// by the sweep. Migration 20261116120000_deleted_messages.
+model DeletedMessage {
+  id           String   @id @default(cuid())
+  chatId       String
+  /// The bare WhatsApp id (the `<id>` of `<fromMe>_<chat>_<id>_<participant>`).
+  waMessageId  String
+  byAdmin      Boolean  @default(false)
+  /// "deleted" once any delete for everyone was seen, else "edited".
+  reason       String   @default("deleted")
+  /// Every spelling of the deleters seen, `<digits>@c.us` / `<digits>@lid`.
+  senderJids   String[] @default([])
+  /// The deleters' phones, digits only.
+  senderPhones String[] @default([])
+  /// EACH change on its own, the source of truth for who may do what
+  /// (round 6): [{ reason: "deleted" | "edited", byAdmin, senderJids,
+  /// senderPhones, at }], appended atomically, the same change only once
+  /// (whatever its `at`), at most 20. A forged delete and the author's real
+  /// edit stay two changes: neither counts as the other. The merged columns
+  /// above are a summary for logs only.
+  changes      Json     @default("[]")
+  /// The FIRST change: the start of the 14 days of copies looked at.
+  deletedAt    DateTime @default(now())
+  /// The LATEST change: the sweep re-checks late writers for 48 hours after
+  /// it, and the row is kept 14 days after it.
+  lastChangeAt DateTime @default(now())
+  /// When every copy was last cleared for it (the live clear or the sweep).
+  /// NULL: never yet, a NEW change since (the same change again leaves it),
+  /// or a held clarification question still waiting for its hour. The sweep
+  /// takes the NULL ones first, then re-checks the rest for 48 hours, moving
+  /// this to now each time; a re-check never makes it NULL again.
+  enforcedAt   DateTime?
+
+  @@unique([chatId, waMessageId])
+  @@index([lastChangeAt])
+  @@index([enforcedAt, lastChangeAt])
+}
 /// THE PEOPLE A GROUP MESSAGE TAGGED (2026-11-09, Vets MNF: "@Match Time DM
 /// these people"). One row per message MatchTime was shown, in the players'
 /// group or HQ, that @-mentioned anyone but MatchTime, so a later "DM the

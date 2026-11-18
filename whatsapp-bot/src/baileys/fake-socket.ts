@@ -62,6 +62,8 @@ export class FakeSocket {
    */
   participatingOmitsPhones = true;
   readonly metadataCalls: string[] = [];
+  /** When set, `groupMetadata` waits for it first: a slow roster read. */
+  metadataHold: Promise<void> | null = null;
   fetchAllCalls = 0;
   /** Every `groupLeave`, in order. */
   readonly leftGroups: string[] = [];
@@ -97,6 +99,7 @@ export class FakeSocket {
 
   async groupMetadata(jid: string): Promise<GroupMetadata> {
     this.metadataCalls.push(jid);
+    if (this.metadataHold) await this.metadataHold;
     if (this.groupError) throw this.groupError;
     const g = this.groups[jid];
     if (!g) throw Object.assign(new Error("item-not-found"), { output: { statusCode: 404 } });
