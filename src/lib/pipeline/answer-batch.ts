@@ -184,6 +184,7 @@ import type { PersonPicker } from "./who-is-who";
 import { anthropicModel, type PipelineModel } from "./llm";
 import { periodSince } from "./stats-period";
 import { answerUnified, type DeadEndFacts, type LastMatchRatings, type UnifiedPeriod } from "./unified-answer";
+import type { AlsoDonePart } from "../also-done";
 import type { HelpClubFacts } from "../help-club-facts";
 import {
   ANSWER_ENGINE_ROUTES,
@@ -588,12 +589,13 @@ export async function runAnswerBatch(args: {
    * WHAT THE OTHER PARTS OF THE SAME MESSAGE DID (2026-11-18, Sutton 17 Nov
    * 12:53: "@Match Time switch the match to 7aside and tell us the current
    * list" was switched, then its question was answered "I can't switch the
-   * match from this message"). For an `alsoAsks` message: the replies the
-   * other owners already sent for it, by message id. The unified answer is
-   * shown them as done, answers only the question, and never contradicts
+   * match from this message"). For any message this batch answers that
+   * other owners also acted on: what each did, by reply, reaction or post,
+   * as done or as answered without doing (`also-done.ts`), by message id.
+   * The unified answer answers only what is left and never contradicts
    * them. Absent: nothing else was done.
    */
-  alsoDone?: ReadonlyMap<string, readonly string[]>;
+  alsoDone?: ReadonlyMap<string, readonly AlsoDonePart[]>;
 }): Promise<AnswerBatchResult> {
   const { orgId, now, history, expectedMatchId, enabled, deps } = args;
   const alsoAsks: ReadonlySet<string> = args.alsoAsks ?? new Set<string>();
@@ -1117,14 +1119,18 @@ export async function runAnswerBatch(args: {
       // A dead end is told why its path stopped, when the path said, and
       // shown this group's help menu, worded for who asks: what MatchTime
       // CAN do instead. A menu that cannot be read is left out.
-      const askerIsOrganiser = organisers || !!asker?.isAdmin;
+      // The sender's own role, in HQ too: HQ answers members as well as
+      // organisers (FNF, `admin-group-anyone`), and a member must not be
+      // described as an organiser (review of #626). HQ still shows its own
+      // menu, which is the organisers' menu.
+      const askerIsOrganiser = !!asker?.isAdmin;
       let deadEnd: DeadEndFacts | null = null;
       const stopped = deadEnds.get(id);
       if (stopped) {
         let capabilities: string | null = null;
         try {
           const help = deps.helpReply ?? defaultHelpReply(orgId, args.poolEnv ?? (async () => ({})));
-          capabilities = await help({ topic: null }, features, { admin: askerIsOrganiser });
+          capabilities = await help({ topic: null }, features, { admin: organisers || askerIsOrganiser });
         } catch (err) {
           console.error(`[answer-engine] ${id}: the help menu for a dead end was not read:`, err);
         }
@@ -1133,7 +1139,7 @@ export async function runAnswerBatch(args: {
       // What the other parts of this same message already did (an
       // `alsoAsks` message): shown as done, so the answer never says it
       // cannot do what was just done.
-      const done = (args.alsoDone?.get(id) ?? []).map((r) => r.trim()).filter(Boolean);
+      const done = (args.alsoDone?.get(id) ?? []).filter((p) => p.text.trim());
       const g = await answerUnified({
         model,
         ...(deadEnd ? { deadEnd } : {}),

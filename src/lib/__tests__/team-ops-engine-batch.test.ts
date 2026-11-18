@@ -668,7 +668,8 @@ describe("actions this module does not own are handed on, with a reason", () => 
     // A dead end the analyze route hands to the unified answer (2026-11-17).
     expect([...res.outcomes.values()][0].intent).toBe("team_request_unsupported");
     // Why, for the unified answer that replaces the line (2026-11-18).
-    expect([...res.outcomes.values()][0].deadEndWhy).toMatch(/team change MatchTime cannot make from a message \(rename\)/);
+    // A plain sentence, never a raw action name (review of #626).
+    expect([...res.outcomes.values()][0].deadEndWhy).toBe("renaming the teams is not something MatchTime does from a message");
     expect(r.generated).toEqual([]);
   });
 

@@ -669,7 +669,7 @@ describe("the bench, never 'waiting list' (12 Nov: 'There is no waiting list on 
       input({ state: open }),
       input({ monthNotStarted: true, squadMode: "monthly" }),
       input({ deadEnd: { capabilities: MENU, why: 'neither "Sam" nor "Alex" is a player in the upcoming match', askerIsOrganiser: true } }),
-      input({ alsoDone: ["Switched to 7 a side."] }),
+      input({ alsoDone: [{ text: "Switched to 7 a side.", done: true }, { text: "Only Alex can make the teams.", done: false }] }),
       input({ clubFacts: { pool: { open: true, platformOpen: true, clubFlag: true }, partners: { active: 2 } } }),
     ];
   };
@@ -690,9 +690,11 @@ describe("the bench, never 'waiting list' (12 Nov: 'There is no waiting list on 
     expect(text).toMatch(/BENCH \(2\): the players waiting for a place in the squad, in order, each with their place:/);
   });
 
-  it("the prompt: the bench is whatever the message calls it, and the reply always calls it the bench (yedek in Turkish)", () => {
-    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/whatever THE MESSAGE calls it/);
-    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/always "the bench"/);
+  it("the prompt defines the bench ONCE: whatever the message calls it, the reply calls it the bench (yedek in Turkish) (review of #626)", () => {
+    const defs = UNIFIED_ANSWER_SYSTEM.split("\n").filter((l) => /^- The bench /.test(l) || /The bench is always/.test(l));
+    expect(defs).toHaveLength(1);
+    expect(defs[0]).toMatch(/whatever THE MESSAGE calls it[^\n]*always calls it "the bench"/);
+    expect(UNIFIED_ANSWER_SYSTEM).not.toMatch(/The bench is always "the bench"/);
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/"yedek" for the bench/);
   });
 });
@@ -700,7 +702,7 @@ describe("the bench, never 'waiting list' (12 Nov: 'There is no waiting list on 
 describe("what the other parts of the same message did (Sutton 17 Nov 12:53: 'switch the match to 7aside and tell us the current list' was switched, then answered 'I can't switch the match from this message')", () => {
   it("the context says what was already done with THE MESSAGE, with the replies sent, just before it", () => {
     const { text } = buildUnifiedContext(
-      input({ question: "@Match Time switch the match to 7aside and tell us the current list", alsoDone: ["Switched Tue 21:30 to 7 a side (14 players)."] }),
+      input({ question: "@Match Time switch the match to 7aside and tell us the current list", alsoDone: [{ text: "Switched Tue 21:30 to 7 a side (14 players).", done: true }] }),
     );
     const done = text.indexOf("ALREADY DONE:");
     expect(done).toBeGreaterThan(text.indexOf("THE CHAT"));
@@ -710,11 +712,35 @@ describe("what the other parts of the same message did (Sutton 17 Nov 12:53: 'sw
 
   it("an ordinary question has no such block", () => {
     expect(buildUnifiedContext(input()).text).not.toContain("ALREADY DONE");
+    expect(buildUnifiedContext(input()).text).not.toContain("ANSWERED, NOT DONE");
   });
 
-  it("the prompt: what is ALREADY DONE is done; the reply answers only what is left and never says it was not or cannot be done", () => {
+  it("a refusal is never under the done header: it is ANSWERED, NOT DONE (review of #626)", () => {
+    const { text } = buildUnifiedContext(
+      input({ alsoDone: [{ text: "✅ Done: Tuesday is 7-a-side now.", done: true }, { text: "Only Alex can make the teams.", done: false }] }),
+    );
+    const done = text.slice(text.indexOf("ALREADY DONE:"), text.indexOf("ANSWERED, NOT DONE:"));
+    expect(done).toContain("Tuesday is 7-a-side now");
+    expect(done).not.toContain("Only Alex");
+    const notDone = text.slice(text.indexOf("ANSWERED, NOT DONE:"), text.indexOf("THE MESSAGE (from"));
+    expect(notDone).toContain("Only Alex can make the teams.");
+    // Only refusals: no done header at all.
+    const only = buildUnifiedContext(input({ alsoDone: [{ text: "Only Alex can make the teams.", done: false }] })).text;
+    expect(only).not.toContain("ALREADY DONE");
+    expect(only).toContain("ANSWERED, NOT DONE");
+  });
+
+  it("a phone number in another part's reply is scrubbed, like the chat", () => {
+    const { text } = buildUnifiedContext(input({ alsoDone: [{ text: "Pay Colin on 07700 900456.", done: true }] }));
+    expect(text).toContain("Pay Colin on [number hidden].");
+    expect(text).not.toMatch(/07700\s?900456/);
+  });
+
+  it("the prompt: what is ALREADY DONE is done, what is ANSWERED, NOT DONE was not; answer only what is left", () => {
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/Sometimes ALREADY DONE/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/ANSWERED, NOT DONE/);
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/answer only what is left[^\n]*never say it was not done or cannot be done/);
+    expect(UNIFIED_ANSWER_SYSTEM).toMatch(/never say a part under ANSWERED, NOT DONE was done/);
     expect(UNIFIED_ANSWER_SYSTEM).toContain('"switch the match to 7 a side and tell us the list" / "maçı 7\'li yap ve listeyi söyle"');
   });
 });
@@ -745,5 +771,17 @@ describe("a dead end says why it stopped and who is asking (Sutton 17 Nov 19:23:
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/say what went wrong, from its Why/);
     expect(UNIFIED_ANSWER_SYSTEM).toMatch(/never tell an organiser to ask an organiser/);
     expect(UNIFIED_ANSWER_SYSTEM).toContain('"swap Sam with Alex" / "Sam ile Alex\'i değiştir"');
+  });
+});
+
+describe("guests are not registered members (review of #626)", () => {
+  it("a guest membership is left out of the registered count and names", () => {
+    const base = input();
+    const named = base.state.roster.length;
+    const st = { ...base.state, roster: [...base.state.roster, { userId: "u-guest", name: "Gus Guest", isAdmin: false, hasPhone: true, guest: true as const }] };
+    const { text } = buildUnifiedContext(input({ state: st }));
+    const line = text.split("\n").find((l) => l.startsWith("REGISTERED MEMBERS:"))!;
+    expect(line).toContain(`${named} players are registered with the club`);
+    expect(line).not.toContain("Gus Guest");
   });
 });

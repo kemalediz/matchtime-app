@@ -865,6 +865,10 @@ export interface Member {
   aliases?: readonly string[];
   isAdmin: boolean;
   hasPhone: boolean;
+  /** A guest membership (`guestMatchId` set: a partner club's player, a
+   *  pool or friend-link guest), on the roster for their game but never a
+   *  registered member of the club (review of #626). Absent: a member. */
+  guest?: true;
 }
 
 export interface AttendanceRow {

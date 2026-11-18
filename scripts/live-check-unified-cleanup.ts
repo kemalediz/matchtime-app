@@ -19,8 +19,14 @@
  *      the ratings again. TWO calls.
  *   D. A bench question in the words "waiting list": the reply says "the
  *      bench" ("yedek"), never "waiting list". TWO calls.
+ *   E. Review of #626: "make the teams and tell us the list", the teams
+ *      made by the teams part first and shown as ALREADY DONE: never "I
+ *      haven't made the teams". TWO calls.
+ *   F. Review of #626: a member's "switch to 7 a side and tell us the list",
+ *      the switch REFUSED by its part and shown as ANSWERED, NOT DONE: the
+ *      list, never a word saying the switch was done. TWO calls.
  *
- * Each in English and Turkish: 14 model calls, about $0.01 (the unified
+ * Each in English and Turkish: 22 model calls, about $0.02 (the unified
  * answer measured $0.00111 a question with its extractor, PR #595).
  *
  *   node --env-file=/path/to/repo/.env ./node_modules/.bin/tsx scripts/live-check-unified-cleanup.ts
@@ -104,7 +110,7 @@ function state(lang: "en" | "tr"): SquadState {
       participantUserIds: [],
     },
     lastBotPost: null,
-    features: { attendance: true, paymentTracking: false, statsQa: true, reminders: true, language: lang, benchPickMode: "first_come", listAnnouncer: "matchtime" },
+    features: { attendance: true, paymentTracking: false, statsQa: true, reminders: true, language: lang, benchPickMode: "first-come", listAnnouncer: "matchtime" },
     smallerFormats: [{ sportName: "Football 5-a-side", totalPlayers: 10 }],
     guestAskedUserIds: [],
     payments: null,
@@ -145,7 +151,7 @@ const features = (lang: "en" | "tr") =>
     squadFromList: false,
     language: lang,
     squadMode: "weekly",
-    benchPickMode: "first_come",
+    benchPickMode: "first-come",
   }) as unknown as OrgFeatures;
 
 const at = (iso: string) => new Date(iso);
@@ -161,16 +167,23 @@ const HQ_CHAT = (lang: "en" | "tr") => [
 const SWITCHED = (lang: "en" | "tr") =>
   lang === "tr" ? "🔁 *Maç değişti*: artık *Football 7-a-side* (14 oyuncu)." : "🔁 *Match switched*: now *Football 7-a-side* (14 players).";
 
+const TEAMS_MADE = (lang: "en" | "tr") =>
+  lang === "tr" ? "⚽ *Bu akşamın takımları*\n🔴 Kırmızı: Ava Stone, Ben Cole\n🟡 Sarı: Cal Dunn, Dan Eve" : "⚽ *Teams for tonight*\n🔴 Red: Ava Stone, Ben Cole\n🟡 Yellow: Cal Dunn, Dan Eve";
+const ONLY_ORGANISERS = (lang: "en" | "tr") =>
+  lang === "tr" ? "Maçı yalnızca organizatörler değiştirebilir: Ava Stone." : "Only the organisers can change the game: Ava Stone.";
+
 interface Case {
-  item: "A" | "B" | "C" | "D";
+  item: "A" | "B" | "C" | "D" | "E" | "F";
   where: "players" | "organisers";
   lang: "en" | "tr";
   asker: string;
   body: string;
   /** A: a dead end, with why its path stopped. */
   why?: string;
-  /** B: the message also asked; what the other part already did. */
+  /** B, E: the message also asked; what the other part already did. */
   alsoDone?: string;
+  /** F: what the other part replied without doing it (a refusal). */
+  refused?: string;
   good: string;
 }
 const ADMIN = "Ava Stone";
@@ -184,6 +197,10 @@ const CASES: Case[] = [
   { item: "C", where: "organisers", lang: "tr", asker: ADMIN, body: "@Match Time kayıtlı oyuncuları kastettim, takımları sormuyorum", good: "15 kayıtlı oyuncu; never the ratings again" },
   { item: "D", where: "players", lang: "en", asker: MEMBER, body: "@Match Time who's on the waiting list?", good: "On the bench: 1. Max Penn, 2. Ned Rowe; says 'the bench', never 'waiting list'" },
   { item: "D", where: "players", lang: "tr", asker: MEMBER, body: "@Match Time bekleme listesinde kim var?", good: "Yedekte: 1. Max Penn, 2. Ned Rowe; 'yedek', never 'bekleme listesi'" },
+  { item: "E", where: "players", lang: "en", asker: ADMIN, body: "@Match Time make the teams and tell us the list", alsoDone: TEAMS_MADE("en"), good: "the list from the records; never 'I haven't made the teams' or any word that the teams were not made" },
+  { item: "E", where: "players", lang: "tr", asker: ADMIN, body: "@Match Time takımları kur ve listeyi söyle", alsoDone: TEAMS_MADE("tr"), good: "the same, in Turkish" },
+  { item: "F", where: "players", lang: "en", asker: MEMBER, body: "@Match Time switch to 7 a side and tell us the list", refused: ONLY_ORGANISERS("en"), good: "the list from the records; never says the switch was done, and does not repeat the refusal" },
+  { item: "F", where: "players", lang: "tr", asker: MEMBER, body: "@Match Time 7'li yap ve listeyi söyle", refused: ONLY_ORGANISERS("tr"), good: "the same, in Turkish" },
 ];
 
 const only = (process.env.ONLY ?? "").split(",").map((s) => Number(s.trim())).filter((n) => n > 0);
@@ -212,7 +229,7 @@ async function main() {
           addressed: true,
           // A: the team path's dead end. B: the admin owner's message, which
           // also asks. C and D: a question.
-          route: (c.item === "A" ? "balancer" : c.item === "B" ? "admin_ops" : "question") as Route,
+          route: (c.item === "A" || c.item === "E" ? "balancer" : c.item === "B" || c.item === "F" ? "admin_ops" : "question") as Route,
           gated: false,
         },
       ],
@@ -221,7 +238,12 @@ async function main() {
       expectedMatchId: st.matchId,
       enabled: new Set<Route>(["question", "balancer", "admin_ops"]),
       ...(c.why !== undefined ? { deadEnds: new Map([[wa, { why: c.why }]]) } : {}),
-      ...(c.alsoDone ? { alsoAsks: new Set([wa]), alsoDone: new Map([[wa, [c.alsoDone]]]) } : {}),
+      ...(c.alsoDone || c.refused
+        ? {
+            alsoAsks: new Set([wa]),
+            alsoDone: new Map([[wa, [...(c.alsoDone ? [{ text: c.alsoDone, done: true }] : []), ...(c.refused ? [{ text: c.refused, done: false }] : [])]]]),
+          }
+        : {}),
       ...(organisers ? { audience: "organisers" as const } : {}),
       deps: {
         model,

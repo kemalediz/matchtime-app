@@ -2010,7 +2010,7 @@ what time is kick off?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Zed, a member, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -2200,7 +2200,7 @@ how many have we got?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Kemal, an admin, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -4010,7 +4010,7 @@ what time is kick off?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Smiler, a member, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -4179,7 +4179,7 @@ how many have we got?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Rafi, an admin, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -5507,7 +5507,7 @@ what time is kick off?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Smiler, a member, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -5633,7 +5633,7 @@ how many have we got?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Rafi, an admin, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -7324,7 +7324,7 @@ what time is kick off?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Pete, a member, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -7452,7 +7452,7 @@ how many have we got?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Owen, an admin, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -9743,7 +9743,7 @@ what time is kick off?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Zed, a member, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -9933,7 +9933,7 @@ how many have we got?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Kemal, an admin, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -12451,7 +12451,7 @@ what time is kick off?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Zed, a member, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -12641,7 +12641,7 @@ how many have we got?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Kemal, an admin, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -15164,7 +15164,7 @@ what time is kick off?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Zed, a member, in a private message to MatchTime
 THE CLUB SPEAKS: Turkish
@@ -15354,7 +15354,7 @@ how many have we got?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Kemal, an admin, in a private message to MatchTime
 THE CLUB SPEAKS: Turkish
@@ -17562,7 +17562,7 @@ what time is kick off?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Nabz, a member, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -17818,7 +17818,7 @@ how many have we got?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Davide, an admin, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -20343,7 +20343,7 @@ what time is kick off?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Nabz, a member, in a private message to MatchTime
 THE CLUB SPEAKS: English
@@ -20555,7 +20555,7 @@ how many have we got?",
         "label": "unified-answer",
         "model": "claude-haiku-5-5",
         "schema": "8aa6b8e71d80a6b3",
-        "system": "b0bac554b29d6313",
+        "system": "1244f86cc68f5f20",
         "user": "ABOUT YOU: You are MatchTime, the club's assistant in its WhatsApp groups and private messages. You are not a person and not a player: you never play, never come to a match, and are never in the squad or on the bench.
 WHO IS ASKING: Davide, an admin, in a private message to MatchTime
 THE CLUB SPEAKS: English

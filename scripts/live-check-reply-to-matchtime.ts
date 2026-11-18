@@ -28,6 +28,11 @@
  * sends nothing. Prints each case, the calls made and the cost. Stops at
  * MAX_USD. WHAT ONE PASS CANNOT PROVE: an occasional miss can pass once
  * and fail live.
+ *
+ * 2026-11-18 (cleanup of #626): the question extractor reads four kinds
+ * only (squad, how_it_works, my_stats, other); every old topic it used to
+ * name (bench, count, club, payments, stats and the rest) is now "other",
+ * answered by the unified answer. The expectations below say so.
  */
 import { quoteFromPi } from "../src/lib/reply-context.ts";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
@@ -122,21 +127,21 @@ const Q: QCase[] = [
   { text: "@Match Time how do the ratings work?", check: (f) => f.topic === "how_it_works" && f.feature === "ratings", why: "held out, another part" },
   { text: "@Match Time how do I pay?", check: (f) => f.topic === "how_it_works" && f.feature === "payments", why: "held out, another part" },
   // Every topic it already classified: the regression.
-  { text: "@Match Time who's on the bench?", check: (f) => f.topic === "bench", why: "bench is WHO (in the prompt)" },
-  { text: "@Match Time anyone waiting on the bench this week?", check: (f) => f.topic === "bench", why: "bench is WHO, held out" },
+  { text: "@Match Time who's on the bench?", check: (f) => f.topic === "other", why: "bench is WHO (in the prompt)" },
+  { text: "@Match Time anyone waiting on the bench this week?", check: (f) => f.topic === "other", why: "bench is WHO, held out" },
   { text: "@Match Time who's in?", check: (f) => f.topic === "squad", why: "squad" },
-  { text: "@Match Time how many spots left?", check: (f) => f.topic === "count", why: "count" },
-  { text: "@Match Time we're 9/14 right?", check: (f) => f.topic === "count" && f.statedCount === 9, why: "count, stated" },
-  { text: "@Match Time is Zair in?", check: (f) => f.topic === "person_status" && /zair/i.test(f.personRef ?? ""), why: "person_status" },
-  { text: "@Match Time anyone in the squad without a number?", check: (f) => f.topic === "phones", why: "phones" },
-  { text: "@Match Time maç kaçta?", check: (f) => f.topic === "fixture", why: "fixture, TR" },
-  { text: "@Match Time give us the scores of the last 5 matches", check: (f) => f.topic === "score" && f.listSize === 5, why: "score, list" },
-  { text: "@Match Time kim ödemedi?", check: (f) => f.topic === "payments", why: "payments, TR" },
-  { text: "@Match Time who hasn't rated yet?", check: (f) => f.topic === "rating_progress", why: "rating_progress" },
+  { text: "@Match Time how many spots left?", check: (f) => f.topic === "other", why: "count" },
+  { text: "@Match Time we're 9/14 right?", check: (f) => f.topic === "other", why: "count, stated" },
+  { text: "@Match Time is Zair in?", check: (f) => f.topic === "other" && /zair/i.test(f.personRef ?? ""), why: "person_status" },
+  { text: "@Match Time anyone in the squad without a number?", check: (f) => f.topic === "other", why: "phones" },
+  { text: "@Match Time maç kaçta?", check: (f) => f.topic === "other", why: "fixture, TR" },
+  { text: "@Match Time give us the scores of the last 5 matches", check: (f) => f.topic === "other", why: "score, list" },
+  { text: "@Match Time kim ödemedi?", check: (f) => f.topic === "other", why: "payments, TR" },
+  { text: "@Match Time who hasn't rated yet?", check: (f) => f.topic === "other", why: "rating_progress" },
   { text: "@Match Time istatistiklerim", check: (f) => f.topic === "my_stats", why: "my_stats, TR" },
-  { text: "@Match Time top 5 ratings in the last month", check: (f) => f.topic === "stats" && f.table === "ratings" && f.listSize === 5 && f.period?.kind === "last", why: "stats, table, size, period" },
-  { text: "@Match Time we're short, what are our options?", check: (f) => f.topic === "options", why: "options" },
-  { text: "@Match Time how much do we pay each?", check: (f) => f.topic === "club", why: "the fee is club since 2026-10-16 (in the prompt)" },
+  { text: "@Match Time top 5 ratings in the last month", check: (f) => f.topic === "other", why: "stats, table, size, period" },
+  { text: "@Match Time we're short, what are our options?", check: (f) => f.topic === "other", why: "options" },
+  { text: "@Match Time how much do we pay each?", check: (f) => f.topic === "other", why: "the fee is club since 2026-10-16 (in the prompt)" },
 ];
 
 async function main() {
@@ -171,7 +176,7 @@ async function main() {
     const reply = c.lastBotPost ? quoteFromPi({ id: null, text: c.lastBotPost, fromMatchTime: true }) : null;
     const ex = await extractForRoute(model, "question", { id: `q${i}`, body: c.text, authorName: "Can", tagged: true, history: [], lastBotPost: null, reply });
     const f = ex.facts.kind === "question" ? ex.facts : null;
-    console.log(`${mark(!!f && c.check(f))}  ${JSON.stringify(c.text)}  ${JSON.stringify(f && { topic: f.topic, feature: f.feature, personRef: f.personRef, statedCount: f.statedCount, table: f.table, listSize: f.listSize, period: f.period })}   (${c.why})`);
+    console.log(`${mark(!!f && c.check(f))}  ${JSON.stringify(c.text)}  ${JSON.stringify(f && { topic: f.topic, feature: f.feature, personRef: f.personRef })}   (${c.why})`);
   }
 
   console.log(`\n${pass} passed, ${fail} failed. Model calls: ${calls}. Cost: $${usd.toFixed(4)} (dev key).`);

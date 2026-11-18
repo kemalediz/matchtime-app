@@ -28,6 +28,7 @@ import { enabledStepSevenRoutes } from "./pipeline/route-flags";
 import type { SquadState } from "./pipeline/types";
 import { hqHelpMenu, hqHelpTopicReply, type HqHelpGates } from "./admin-group-help";
 import type { HelpClubFacts } from "./help-club-facts";
+import type { AlsoDonePart } from "./also-done";
 
 export interface HqQuestionInput {
   orgId: string;
@@ -58,9 +59,13 @@ export interface HqQuestionInput {
   poolEnv?: Record<string, string | undefined>;
   /** A DEAD END (2026-11-17, `dead-end-answer.ts`): HQ took no action on
    *  this tagged message. It is answered by the unified answer, with no
-   *  extractor call, told NOT DONE and shown the HQ menu; null when that
-   *  answer fails, so the caller keeps its line. */
-  deadEnd?: boolean;
+   *  extractor call, told NOT DONE, why its path stopped when it said, and
+   *  shown the HQ menu; null when that answer fails, so the caller keeps its
+   *  line. */
+  deadEnd?: { why: string | null };
+  /** What the other parts of this same message already did (review of
+   *  #626, `also-done.ts`): done, or answered without doing. */
+  alsoDone?: AlsoDonePart[];
   deps?: Pick<
     AnswerBatchDeps,
     "model" | "loadFeatures" | "loadClub" | "loadStats" | "loadStatsPeriod" | "loadChemistry" | "loadResults" | "loadPayments" | "loadRatingProgress"
@@ -108,7 +113,8 @@ export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcom
     expectedMatchId: state.matchId,
     enabled: enabledStepSevenRoutes(process.env),
     audience: "organisers",
-    ...(input.deadEnd ? { deadEnds: new Map([[messageId, { why: null }]]) } : {}),
+    ...(input.deadEnd ? { deadEnds: new Map([[messageId, { why: input.deadEnd.why }]]) } : {}),
+    ...(input.alsoDone?.length ? { alsoDone: new Map([[messageId, input.alsoDone]]) } : {}),
     // Read by the unified answer's pool facts only; the help below is HQ's own.
     ...(input.poolEnv ? { poolEnv: async () => input.poolEnv! } : {}),
     deps: {

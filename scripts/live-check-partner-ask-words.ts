@@ -110,7 +110,7 @@ const CASES: Case[] = [
 
 function asksFor(facts: AdminFacts | null): Want | "nobody" {
   if (!facts || facts.action !== "recruit" || !facts.partnerClubs) return "nobody";
-  const r = resolvePartnerRef({ clubRef: facts.clubRef ?? null, partners: PARTNERS, askWhen: "on-request" });
+  const r = resolvePartnerRef({ clubRef: facts.clubRef ?? null, partners: PARTNERS});
   if (r.kind !== "ask") return "nobody";
   return r.partners.length === PARTNERS.length && !facts.clubRef ? "all" : (r.partners[0].name as Want);
 }

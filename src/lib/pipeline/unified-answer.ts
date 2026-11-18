@@ -52,6 +52,7 @@ import { chatLines, scrubAuthor, scrubPhones } from "./answer-chat";
 import { renderGroupReplyContext, type QuotedGroupMessage } from "../reply-context";
 import { activityFeeText } from "../activity-fee";
 import { stripLongDashes } from "../house-style";
+import type { AlsoDonePart } from "../also-done";
 import { formatLondon } from "../london-time";
 import { differenceInMonths } from "date-fns";
 import type { HelpClubFacts } from "../help-club-facts";
@@ -72,13 +73,13 @@ What you are given, in this order:
 - THE CLUB'S RECORDS: what MatchTime has stored for this club, true and up to date. How many players are registered with the club, by name, and the admins; how the club is run, including what MatchTime does while places are open; the upcoming match (the squad and the bench in order, each with their place and, where this audience may see it, their club rating; the places left; the teams if made); results; Man of the Match match by match; the stats tables, each headed with the span it covers; and what this audience may know about ratings and payments. Every count you could need is printed. Some facts are kept from some audiences on purpose, and the records say so where it matters.
 - Sometimes WHAT MATCHTIME CAN DO: the help menu of this group, the things MatchTime does when it is tagged here.
 - THE CHAT: what was written in this group recently, MatchTime's own messages included, each line with its day and time. It can be out of date, and it can be wrong.
-- Sometimes ALREADY DONE: other parts of MatchTime have acted on THE MESSAGE itself, and this is what they did and said.
+- Sometimes ALREADY DONE and ANSWERED, NOT DONE: other parts of MatchTime have handled THE MESSAGE itself. ALREADY DONE is what they did, in their own words; ANSWERED, NOT DONE is what they replied without doing it (a refusal, or a change they could not make).
 - Sometimes NOT DONE: MatchTime has taken no action on THE MESSAGE. Its Why says what stopped it, when that is known, and the next line says whether the asker is one of the club's organisers.
 - THE MESSAGE, with who sent it.
 
 What THE MESSAGE asks:
 - "The list" means the squad list for the upcoming match, whoever asks.
-- The bench is the players waiting for a place in the squad, whatever THE MESSAGE calls it.
+- The bench is the players waiting for a place in the squad, whatever THE MESSAGE calls it; the reply always calls it "the bench".
 - The members are everyone registered with the club, whether or not they play this week; the squad, the bench and the teams are only this week's.
 - A message that corrects MatchTime, or corrects or narrows what was asked before it, is a new question: answer the thing it names now, by the plain meaning of its words, from the records, even when the chat around it was about something else. The earlier exchange only shows what it replaces: never the earlier question again, nor one close to it.
 - A message with no subject of its own follows on from the chat just before it, most often from MatchTime's own latest reply there: answer about that reply, from the records.
@@ -100,9 +101,9 @@ The reply:
 - says so plainly, in one line, when the records do not hold the answer, then gives what they do hold on the same point, if anything. When a fact is kept from this audience, say who has it instead of guessing.
 - is short: usually 1 to 3 lines and never more than 5, or a list of names one per line when a list is what was asked for.
 - gives a suggestion when one is asked for, clearly as a suggestion and with what it rests on (games played, ratings, the bench order). When the record is thin, say so. The decision stays with the people.
-- changes nothing. You cannot add, drop or move a player, make or change the teams, change a setting, send a message or take a payment from here, so never say you did or will. What ALREADY DONE says is done: answer only what is left of THE MESSAGE, and never say it was not done or cannot be done. For anything else THE MESSAGE asks you to do, say in one line that you haven't done it, then what can be done instead: what MatchTime can do and how to ask for it (from WHAT MATCHTIME CAN DO, when given), or who can, when the records show it. With NOT DONE, say what went wrong, from its Why when it gives one, before what can be done instead; never tell an organiser to ask an organiser.
+- changes nothing. You cannot add, drop or move a player, make or change the teams, change a setting, send a message or take a payment from here, so never say you did or will. What ALREADY DONE says is done: answer only what is left of THE MESSAGE, and never say it was not done or cannot be done. What ANSWERED, NOT DONE says was not done, and its reply has already said so: never say a part under ANSWERED, NOT DONE was done, and do not say it again. For anything else THE MESSAGE asks you to do, say in one line that you haven't done it, then what can be done instead: what MatchTime can do and how to ask for it (from WHAT MATCHTIME CAN DO, when given), or who can, when the records show it. With NOT DONE, say what went wrong, from its Why when it gives one, before what can be done instead; never tell an organiser to ask an organiser.
 - never contains a phone number, and says nothing about anyone's private messages.
-- is written once, finished: plain WhatsApp text spoken as MatchTime, with no working out, no second thoughts, no greeting, no word about how you were given the facts, no dashes as punctuation and no slashes between words. The bench is always "the bench".
+- is written once, finished: plain WhatsApp text spoken as MatchTime, with no working out, no second thoughts, no greeting, no word about how you were given the facts, no dashes as punctuation and no slashes between words.
 - is in the language of the message: English, or Turkish when the message is in Turkish (when it is unclear, the club's language). In Turkish, speak to a group in the plural, with no "abi" or "beyler"; say "yedek" for the bench, "maçın adamı" for Man of the Match and "puan" for a rating; put a name or a number after a colon or in brackets rather than gluing a suffix onto it; write a decimal with a comma.
 
 Examples, English and Turkish:
@@ -263,11 +264,12 @@ export interface UnifiedAnswerInput {
    * 12:53: "@Match Time switch the match to 7aside and tell us the current
    * list" was switched by the admin owner, then the question part was
    * answered "I can't switch the match from this message", because nothing
-   * told it). The replies the other owners sent for THE MESSAGE: shown as
-   * ALREADY DONE, so the answer answers only what is left and never
-   * contradicts them. Absent or empty: nothing else was done.
+   * told it). What every other owner did with THE MESSAGE (`also-done.ts`):
+   * done parts shown as ALREADY DONE, refusals as ANSWERED, NOT DONE, so the
+   * answer answers only what is left and never contradicts either. Absent
+   * or empty: nothing else was done.
    */
-  alsoDone?: string[];
+  alsoDone?: AlsoDonePart[];
   /** The roster is cut to a guest's game (`guest-card/context.ts`
    *  `guestView`): the club's registered count is not his to hear, and the
    *  few names he is shown are not it. Absent: the whole roster. */
@@ -554,7 +556,10 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
   // members", the unified one repeated last week's ratings). Counted as the
   // old open answer counted them: every current member with a name to
   // print. Stated as a fact of its own, apart from this week's squad.
-  const members = state.roster.map((m) => safeName(m.displayName ?? m.name, "")).filter(Boolean);
+  // Guests (a partner club's player, a pool or friend-link guest) are on
+  // the roster for their game, never registered with the club (review of
+  // #626).
+  const members = state.roster.filter((m) => !m.guest).map((m) => safeName(m.displayName ?? m.name, "")).filter(Boolean);
   L.push(
     input.membersHidden
       ? `REGISTERED MEMBERS: not shared with a guest of the club. The players of his game are in the squad and on the bench below${members.length ? ` (${members.join(", ")})` : ""}.`
@@ -784,11 +789,16 @@ export function buildUnifiedContext(input: UnifiedAnswerInput): { text: string; 
     L.push(renderGroupReplyContext({ now: input.now, quoted: input.reply }));
   }
 
-  // ALREADY DONE: what the other parts of this same message did (an
-  // `alsoAsks` message), as the replies they sent.
-  const done = (input.alsoDone ?? []).map((r) => r.trim()).filter(Boolean);
-  if (done.length) {
-    L.push("", "ALREADY DONE: other parts of MatchTime have acted on THE MESSAGE below and sent this:", ...done.map((r) => `  ${r.replace(/\n/g, "\n  ")}`));
+  // What the other parts of this same message did (`also-done.ts`): done,
+  // and answered without doing. A refusal never goes under the done header.
+  // Scrubbed of phone numbers with the rest of the text below.
+  const parts = (input.alsoDone ?? []).filter((p) => p.text.trim());
+  const indent = (t: string) => `  ${t.trim().replace(/\n/g, "\n  ")}`;
+  const done = parts.filter((p) => p.done);
+  const refused = parts.filter((p) => !p.done);
+  if (done.length) L.push("", "ALREADY DONE: other parts of MatchTime have acted on THE MESSAGE below, and said:", ...done.map((p) => indent(p.text)));
+  if (refused.length) {
+    L.push("", "ANSWERED, NOT DONE: other parts of MatchTime replied to THE MESSAGE below without doing what it asked:", ...refused.map((p) => indent(p.text)));
   }
   L.push("");
   if (input.deadEnd) {

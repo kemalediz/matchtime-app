@@ -238,8 +238,31 @@ async function teamSheet(grp: SimGroup): Promise<string[]> {
     // Sutton 17 Nov 12:53: the answer is told the switch is ALREADY DONE,
     // with the line that said so, and is read from the squad after it.
     const turn = unifiedTurn(body);
-    expect(turn).toMatch(/ALREADY DONE: other parts of MatchTime have acted on THE MESSAGE below and sent this:\n {2}✅ Done: \w+ is 7-a-side now, 14 places\./);
+    expect(turn).toMatch(/ALREADY DONE: other parts of MatchTime have acted on THE MESSAGE below, and said:\n {2}✅ Done: \w+ is 7-a-side now, 14 places\./);
     expect(turn).toMatch(/14 players/);
+  });
+
+  test("make the teams and tell us the list: the answer is told the teams are made, never 'I haven't made the teams' (review of #626)", async ({ request, db }) => {
+    const grp = (await vetsWorld(request, db)).attach(request);
+    const body = "@Match Time make the teams and tell us the list";
+    const LIST_ANSWER = "In the squad: 14 of 16.";
+    setRouterStub({ floor: false, bodies: { [body]: ["question", "balancer"] } });
+    setExtractorStub({
+      byExtractor: { teams: { [body]: GENERATE }, question: { [body]: COUNT }, "unified-answer": { [body]: { answer: LIST_ANSWER } } },
+    });
+
+    const res = await grp.postBatch([{ player: "ava", body, tag: true }]);
+
+    expect(await teamSheet(grp)).toHaveLength(14);
+    const reply = res.results[0].reply ?? "";
+    console.log(`[multi-instruction] teams and the list:\n${reply}`);
+    expect(reply).not.toMatch(/haven.t made the teams|couldn.t do/);
+    // The teams part ran BEFORE the answer, and the answer was told it as
+    // done: never as not done, never as a dead end.
+    const turn = unifiedTurn(body);
+    expect(turn).toContain("ALREADY DONE:");
+    expect(turn).toMatch(/ALREADY DONE: [^\n]*\n {2}[^\n]*(Teams|teams were made)/);
+    expect(turn).not.toContain("NOT DONE");
   });
 
   test("a club whose organisers announce the list: an unanswered bundled question adds no line", async ({ request, db }) => {

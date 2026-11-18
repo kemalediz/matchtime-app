@@ -181,16 +181,18 @@ describe("why the path stopped, and who is asking (Sutton 17 Nov 19:23: 'swap Sa
     expect(member.reqs[0].user).toContain("- The asker is not an organiser.");
   });
 
-  it("everyone asking in HQ is an organiser", async () => {
-    const { reqs } = await run({ audience: "organisers", deadEnds: [["wa-1", null]] });
-    expect(reqs[0].user).toContain("- The asker is one of the club's organisers");
+  it("in HQ the asker is described by their own role: HQ answers members too (review of #626)", async () => {
+    const member = await run({ audience: "organisers", deadEnds: [["wa-1", null]] });
+    expect(member.reqs[0].user).toContain("- The asker is not an organiser.");
+    const admin = await run({ audience: "organisers", deadEnds: [["wa-1", null]], senderUserId: "u-kemal" });
+    expect(admin.reqs[0].user).toContain("- The asker is one of the club's organisers");
   });
 });
 
 describe("what the other parts of the same message already did (Sutton 17 Nov 12:53: 'switch the match to 7aside and tell us the current list')", () => {
   const BODY = "@Match Time switch the match to 7aside and tell us the current list";
 
-  async function also(done: string[] | null) {
+  async function also(done: Array<{ text: string; done: boolean }> | null) {
     const state = world({ confirmed: ["kemal", "sait", "idris"], bench: ["erdal"] });
     const reqs: ModelRequest[] = [];
     const model: PipelineModel = {
@@ -222,7 +224,7 @@ describe("what the other parts of the same message already did (Sutton 17 Nov 12
   }
 
   it("the replies already sent for THE MESSAGE are in the answer's context as ALREADY DONE, and the answer comes back as the also-answer", async () => {
-    const { res, user } = await also(["Switched Tue 21:30 to 7 a side (14 players)."]);
+    const { res, user } = await also([{ text: "Switched Tue 21:30 to 7 a side (14 players).", done: true }]);
     expect(user).toContain("ALREADY DONE:");
     expect(user).toContain("Switched Tue 21:30 to 7 a side (14 players).");
     expect(res.alsoAnswered.get("wa-1")?.reply).toBe("In the squad: 3.");

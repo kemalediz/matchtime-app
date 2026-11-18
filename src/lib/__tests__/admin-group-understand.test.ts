@@ -7,6 +7,8 @@
  * safe-YES rule wired to real proposals. No database, no real model.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ADMIN_NO_ACTION_WHY } from "../admin-ops-engine-batch";
+import { SCORE_NOT_READ_WHY } from "../admin-group-understand";
 import type { ModelRequest, PipelineModel } from "../pipeline/llm";
 import type { HqLogRow } from "../admin-group-log";
 import type { StoredAsk } from "../refused-ask-retry";
@@ -914,6 +916,15 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
       const r = await ask("@Match Time Tom out and the list?", "unsure");
       expect(r).toEqual({ route: "unsure", outcome: "squad-changed+hq-answered", replyText: `Done: Tom out.\n\n${LIST}` });
       expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
+      // The answer is told what the change part already did (review of #626).
+      expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ alsoDone: [{ text: "Done: Tom out.", done: true }] });
+    });
+
+    it("a change that did nothing is told as answered, not done (review of #626)", async () => {
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-not-on-list", replyText: NOT_ON, alsoAsks: true });
+      hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LIST });
+      await ask(TEXT, "other_att");
+      expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ alsoDone: [{ text: NOT_ON, done: false }] });
     });
   });
 
@@ -2838,7 +2849,7 @@ describe("several instructions in one HQ message", () => {
     const r = await ask(INCIDENT, "other_att", { deps: { routerModel: routeWithAlso("other_att", ["admin_ops"]), extractorModel: byExtractor } });
     expect(r?.replyText).toBe("Which of those would you like first?");
     expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
-    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: true });
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: { why: null } });
   });
 });
 
@@ -2857,7 +2868,8 @@ describe("a dead end in HQ goes to the unified answer", () => {
     const r = await ask("@Match Time book the pitch for Friday", "admin_ops", { deps, ...on });
     expect(r).toEqual({ route: "admin_ops", outcome: "hq-dead-end-answered", replyText: ANSWER });
     expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
-    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: true, messageId: "wa-9" });
+    // Why, as the players' group passes it (review of #626).
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: { why: ADMIN_NO_ACTION_WHY }, messageId: "wa-9" });
     expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
   });
 
@@ -2880,7 +2892,7 @@ describe("a dead end in HQ goes to the unified answer", () => {
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-dead-end-answered", replyText: "There's no game waiting for a score." });
     const r = await ask("@Match Time bibs 9 no bibs 4", "score", on);
     expect(r?.replyText).toBe("There's no game waiting for a score.");
-    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: true });
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0]).toMatchObject({ deadEnd: { why: SCORE_NOT_READ_WHY } });
   });
 
   it("untagged: silent, nothing asked", async () => {

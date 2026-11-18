@@ -53,12 +53,7 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
-import {
-  isScoreAnswer,
-  isScoreCorrectionText,
-  scoreAnswerSide,
-  scorePairAnswerSide,
-} from "../src/lib/pipeline/score-ask.ts";
+import { isScoreAnswer } from "../src/lib/pipeline/score-ask.ts";
 import {
   SCORE_LIVE_CASES,
   describeOutcome,
@@ -103,15 +98,14 @@ async function main() {
 
     let route = "";
     if (withRouter) {
-      // As the analyze route does: decide, without a model, whether
-      // this message answers the open question, and hand the router
-      // its id if so.
+      // As the analyze route does (`scoreRouteOverrides`, facts only since
+      // #476, 2026-10-30): whether this sender may answer the open
+      // question, from who sent it and when, never from its words; the
+      // router is shown that fact and routes on what the message says.
       const senderUserId = c.sender === "yellow" ? "u-najib" : "u-kemal";
       const isAnswer =
         !!c.pending &&
         !c.recorded &&
-        (scoreAnswerSide(c.body, c.labels ?? ["Red", "Yellow"]) !== null ||
-          scorePairAnswerSide(c.body, c.pending, c.labels ?? ["Red", "Yellow"]) !== null) &&
         isScoreAnswer({
           body: c.body,
           tagged: c.tagged ?? false,
@@ -123,14 +117,10 @@ async function main() {
           },
           now: new Date(),
         });
-      // And, as the analyze route does, whether it is a tagged
-      // correction of a recorded result by its words alone
-      // (`isScoreCorrectionText`). The first run of this script
-      // (2026-10-07, 94 calls, $0.4118, 45 of 47) failed X2 and T6 on
-      // exactly this: the router sent them to `unsure` and `other_att`.
-      // They no longer depend on the router at all.
-      const isCorrection =
-        (c.tagged ?? false) && !!c.recorded && isScoreCorrectionText(c.body, c.labels ?? ["Red", "Yellow"]);
+      // And whether it is a tagged message while a recorded result may
+      // still be corrected: a fact the router is shown, not a word test
+      // (the word test `isScoreCorrectionText` was retired in #476).
+      const isCorrection = (c.tagged ?? false) && !!c.recorded;
       const rr = await routeBatch(model, [{ id: c.id, authorName: author, body: c.body }], {
         scoreAnswerIds: new Set(isAnswer ? [c.id] : []),
         scoreCorrectionIds: new Set(isCorrection ? [c.id] : []),

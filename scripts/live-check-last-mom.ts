@@ -9,8 +9,9 @@
  * answered with the all-time Man of the Match top 10. This drives the REAL
  * path for that message and its variants, once each, against a seeded club
  * (no database, nothing sent): the router, then `runAnswerBatch` (the real
- * question extractor, who-is-who, and the grounded generic stats answer
- * given the club's stats context, `last-mom.ts` included).
+ * question extractor, who-is-who, and the unified answer given the club's
+ * records, `last-mom.ts` included; since 2026-11-18 it is the only answer:
+ * no code-built ranking table).
  *
  * The seeded last Man of the Match is Sutton FC's real one, read read-only
  * from production on 2026-11-10: Tue 20 Oct, Red 7 Yellow 9, shared between
@@ -41,7 +42,9 @@ let calls = 0;
 let usd = 0;
 const byLabel = new Map<string, { calls: number; usd: number }>();
 const facts: string[] = [];
-let lastGenericRaw: string | null = null;
+// Set inside the model wrapper; typed wide so the read below is not
+// narrowed to null.
+let lastAnswerRaw = null as string | null;
 const inner = anthropicModel();
 const model: PipelineModel = {
   name: "metered",
@@ -51,7 +54,7 @@ const model: PipelineModel = {
     calls++;
     usd += r.costUsd ?? 0;
     if (req.label.startsWith("extract")) facts.push(r.text);
-    if (req.label === "stats-generic") lastGenericRaw = r.text;
+    if (req.label === "unified-answer") lastAnswerRaw = r.text;
     const l = byLabel.get(req.label) ?? { calls: 0, usd: 0 };
     byLabel.set(req.label, { calls: l.calls + 1, usd: l.usd + (r.costUsd ?? 0) });
     return r;
@@ -171,8 +174,8 @@ const CASES: Case[] = [
   { text: "@Match Time who came second in the last MoM vote?", lang: "en", lastMom: SUTTON_LAST, good: "a tie at the top (Habib, Mojib 2 each), then Burak Yildiz, Ozgur, Sait 1 each" },
   { text: "@Match Time geçen haftanın maçın adamı kim?", lang: "tr", lastMom: SUTTON_LAST, good: "Turkish: 20 Ekim, Habib ve Mojib paylaştı, 2'şer oy (7 oydan)" },
   { text: "@Match Time son maçta maçın adamı kaç oyla seçildi?", lang: "tr", lastMom: SUTTON_LAST, good: "Turkish: 2 oy, 7 oydan, Habib ve Mojib" },
-  { text: "@Match Time who has the most MoM?", lang: "en", lastMom: SUTTON_LAST, good: "the ranking table (code), Mojib 6 first" },
-  { text: "@Match Time top 5 MoM", lang: "en", lastMom: SUTTON_LAST, good: "the ranking table, 5 rows" },
+  { text: "@Match Time who has the most MoM?", lang: "en", lastMom: SUTTON_LAST, good: "Mojib first with 6, from the Man of the Match table in the records; nothing invented" },
+  { text: "@Match Time top 5 MoM", lang: "en", lastMom: SUTTON_LAST, good: "the top 5 from the Man of the Match table, as printed; no more than 5 names" },
   { text: "@Match Time son maçın adamı kimdi?", lang: "tr", lastMom: PICKED, good: "Turkish: Mojib, picked by the organisers, no vote count" },
   { text: "@Match Time who was the last man of the match?", lang: "en", lastMom: { last: null, openVoteDate: null }, good: "none decided yet; no name invented" },
 ];
@@ -186,7 +189,7 @@ async function main() {
     const before = calls;
     const beforeUsd = usd;
     facts.length = 0;
-    lastGenericRaw = null;
+    lastAnswerRaw = null;
     console.log(`\n── ${i + 1}. [${c.lang}] ${JSON.stringify(c.text)}`);
     console.log(`   good: ${c.good}`);
     const r = await routeBatch(model, [{ id: `p${i}`, authorName: "Kemal Ediz", body: c.text }], { floor: false, awaiting: null });
@@ -224,7 +227,8 @@ async function main() {
     const o = res.outcomes.get(`p-${i}`);
     console.log(`   intent: ${o?.intent ?? "(unowned)"}`);
     if (res.degradations.length) console.log(`   degradations: ${res.degradations.join(" | ").slice(0, 400)}`);
-    if (lastGenericRaw) console.log(`   generic raw: ${lastGenericRaw.replace(/\s+/g, " ").slice(0, 300)}`);
+    const raw = lastAnswerRaw as string | null;
+    if (raw) console.log(`   answer raw: ${raw.replace(/\s+/g, " ").slice(0, 300)}`);
     console.log(`   reply:\n${(o?.reply ?? "(none)").split("\n").map((l) => `     | ${l}`).join("\n")}`);
     console.log(`   calls: ${calls - before}, $${(usd - beforeUsd).toFixed(5)}`);
   }

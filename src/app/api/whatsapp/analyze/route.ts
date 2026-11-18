@@ -321,6 +321,7 @@ import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageAddressesBot, messageTagsBot, piMentionsBot } from "@/lib/interaction-contract";
 import { alreadyThereLine, newSilenceFacts, taggedSilence } from "@/lib/tagged-silence";
 import { answerDeadEnds, isDeadEnd } from "@/lib/dead-end-answer";
+import { alsoDonePart, type AlsoDonePart } from "@/lib/also-done";
 import { offerCalloffIfCalled } from "@/lib/calloff-offer";
 import { mergeRecruitReply } from "@/lib/recruit-request";
 import {
@@ -2757,61 +2758,6 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
             .map(([id]) => id),
         ],
   );
-  // WHAT THE OTHER PARTS OF THE SAME MESSAGE ALREADY DID (Sutton 17 Nov
-  // 12:53: the size was switched, then the question part said "I can't
-  // switch the match from this message"). The replies the early admin pass
-  // and the attendance engine sent for each message that also asks
-  // MatchTime something: the answer is shown them as done, and answers only
-  // the question. A part whose write threw said nothing, so it is not here.
-  const alsoDone = new Map<string, string[]>();
-  for (const id of alsoAsksIds) {
-    const admin = earlyAdminBatch?.outcomes.get(id);
-    const engine = engineBatch?.outcomes.get(id);
-    const done = [admin && !admin.writeFailed ? admin.reply : null, engine?.reply ?? null].filter((r): r is string => !!r?.trim());
-    if (done.length > 0) alsoDone.set(id, done);
-  }
-  // This group's week of chat, for the open answer and the dead ends.
-  const playersWeekChat = async () =>
-    (await import("@/lib/week-chat")).playersWeekChat({
-      orgId: org.id,
-      groupId: body.groupId,
-      now,
-      batch: all.map((m) => ({
-        waMessageId: m.waMessageId,
-        author: senderLabel(m.waMessageId),
-        body: m.body,
-        timestamp: m.timestamp,
-        stored: seenMap.has(m.waMessageId),
-      })),
-    });
-  const answerBatch =
-    fresh.length > 0
-      ? await runAnswerBatch({
-          silence,
-          // The same fact the attendance engine was given above: an
-          // `options` question is then answered with how the month works.
-          monthNotStarted,
-          orgId: org.id,
-          now,
-          messages: ownerBase,
-          history: ownerHistory,
-          // The open answer reads THIS group's week of chat, MatchTime's
-          // lines included; read only when an open question is owned
-          // (Kemal, 2026-11-10, `lib/week-chat.ts`).
-          weekChat: playersWeekChat,
-          // Same contract as step 6: if the route's registration match
-          // and the owner's state load ever disagree, the owner takes
-          // nothing rather than answer about a different match.
-          expectedMatchId: activeMatchForReply?.id ?? null,
-          enabled: stepSevenEnabled,
-          deps: {},
-          ...(alsoAsksIds.size > 0 ? { alsoAsks: alsoAsksIds } : {}),
-          ...(alsoDone.size > 0 ? { alsoDone } : {}),
-          // The help's pool answer reads the switch as this request does,
-          // only when a help question is answered.
-          poolEnv: () => poolEnvForApiRequest(request),
-        })
-      : null;
 
   const scoreBatch =
     fresh.length > 0
@@ -2883,6 +2829,70 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
           // The teams extractor's reading the attendance engine already
           // made of those messages (its swap guard reads it): not read twice.
           alsoTeamsFacts: engineBatch?.teamsReadings,
+        })
+      : null;
+
+  // WHAT THE OTHER PARTS OF THE SAME MESSAGE ALREADY DID (Sutton 17 Nov
+  // 12:53: the size was switched, then the question part said "I can't
+  // switch the match from this message"; review of #626). The question
+  // answering now runs AFTER every other owner (the early admin pass, the
+  // attendance engine, score, admin_ops and the teams), so each part's
+  // outcome is known: what it said, or the reaction or squad post that
+  // acknowledged it, as done or as answered without doing
+  // (`also-done.ts`). For every message the question answering may answer
+  // that another owner also acted on: the also-asks, and any message with
+  // several instructions.
+  const alsoDone = new Map<string, AlsoDonePart[]>();
+  for (const id of new Set([...alsoAsksIds, ...alsoRoutesById.keys()])) {
+    const parts = [
+      earlyAdminBatch?.outcomes.get(id) ? alsoDonePart("admin", earlyAdminBatch.outcomes.get(id)!) : null,
+      engineBatch?.outcomes.get(id) ? alsoDonePart("attendance", engineBatch.outcomes.get(id)!) : null,
+      scoreBatch?.outcomes.get(id) ? alsoDonePart("score", scoreBatch.outcomes.get(id)!) : null,
+      adminOpsBatch?.outcomes.get(id) ? alsoDonePart("admin", adminOpsBatch.outcomes.get(id)!) : null,
+      ...[teamOpsBatch?.outcomes.get(id), teamOpsBatch?.alsoOutcomes.get(id)].map((o) => (o ? alsoDonePart("teams", o) : null)),
+    ].filter((p): p is AlsoDonePart => !!p);
+    if (parts.length > 0) alsoDone.set(id, parts);
+  }
+  // This group's week of chat, for the open answer and the dead ends.
+  const playersWeekChat = async () =>
+    (await import("@/lib/week-chat")).playersWeekChat({
+      orgId: org.id,
+      groupId: body.groupId,
+      now,
+      batch: all.map((m) => ({
+        waMessageId: m.waMessageId,
+        author: senderLabel(m.waMessageId),
+        body: m.body,
+        timestamp: m.timestamp,
+        stored: seenMap.has(m.waMessageId),
+      })),
+    });
+  const answerBatch =
+    fresh.length > 0
+      ? await runAnswerBatch({
+          silence,
+          // The same fact the attendance engine was given above: an
+          // `options` question is then answered with how the month works.
+          monthNotStarted,
+          orgId: org.id,
+          now,
+          messages: ownerBase,
+          history: ownerHistory,
+          // The open answer reads THIS group's week of chat, MatchTime's
+          // lines included; read only when an open question is owned
+          // (Kemal, 2026-11-10, `lib/week-chat.ts`).
+          weekChat: playersWeekChat,
+          // Same contract as step 6: if the route's registration match
+          // and the owner's state load ever disagree, the owner takes
+          // nothing rather than answer about a different match.
+          expectedMatchId: activeMatchForReply?.id ?? null,
+          enabled: stepSevenEnabled,
+          deps: {},
+          ...(alsoAsksIds.size > 0 ? { alsoAsks: alsoAsksIds } : {}),
+          ...(alsoDone.size > 0 ? { alsoDone } : {}),
+          // The help's pool answer reads the switch as this request does,
+          // only when a help question is answered.
+          poolEnv: () => poolEnvForApiRequest(request),
         })
       : null;
 

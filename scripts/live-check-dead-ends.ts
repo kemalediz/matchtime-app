@@ -94,7 +94,7 @@ function state(opts: { lang: "en" | "tr"; scored: boolean }): SquadState {
       participantUserIds: [],
     },
     lastBotPost: null,
-    features: { attendance: true, paymentTracking: false, statsQa: true, reminders: true, language: opts.lang, benchPickMode: "first_come", listAnnouncer: "matchtime" },
+    features: { attendance: true, paymentTracking: false, statsQa: true, reminders: true, language: opts.lang, benchPickMode: "first-come", listAnnouncer: "matchtime" },
     smallerFormats: [],
     guestAskedUserIds: [],
     payments: null,
@@ -131,7 +131,7 @@ const features = (lang: "en" | "tr") =>
     squadFromList: false,
     language: lang,
     squadMode: "weekly",
-    benchPickMode: "first_come",
+    benchPickMode: "first-come",
   }) as unknown as OrgFeatures;
 
 const HISTORY_EN = [
