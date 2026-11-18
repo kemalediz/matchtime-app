@@ -52,6 +52,12 @@ export interface MonthlyReaderContext {
   /** One block per live month: what it is, its games, and its list as
    *  MatchTime has it. Already written. */
   months: string[];
+  /** Per live month (2026-11-16): its label ("November 2026"), its games
+   *  (written, those played marked) and each REGULAR's games covered. The
+   *  reader is told what the SENDER covers (THE SENDER COVERS), which is
+   *  what every games count is counted against (HOW MANY GAMES): a
+   *  regular's row's games, anybody else's the games still to play. */
+  cover?: Array<{ label: string; games: Array<{ day: string; played: boolean }>; regulars: Array<{ userId: string; covered: number }> }>;
   /** The next game's list as MatchTime has it, with the game's date. Null
    *  when no week of a month is live. */
   week: { game: string; text: string } | null;
@@ -110,12 +116,12 @@ export const MONTHLY_READER_SYSTEM = `You read one message from a football club'
 THE CONTEXT comes first, and it does most of the work:
 - NOW: the date and time at the club.
 - MEMBERS: everybody in the club, each with a ref (p1, p2 ...). A member MatchTime knows by name has his name, any nicknames, and whether he is an organiser. A member shown as "no name yet" was added from the group by his phone number; beside him is what MatchTime does know of him: the WhatsApp name he posts under, and his number on a month's list.
-- MONTHS: the months open or under way, their games, and each month's list as MatchTime has it.
+- MONTHS: the months open or under way: their games (those already played are marked), how many are still to play with their dates, each month's list as MatchTime has it, and the games each regular on it covers.
 - THE WEEK'S LIST: the next game's list as MatchTime has it.
 - RECENT CHAT, and the message replied to if any.
-Then who sent THE MESSAGE, and the message itself. Read it as a member of the group would, with all of that in mind.
+Then who sent THE MESSAGE, THE SENDER COVERS (for each month, the games he covers, with their dates), and the message itself. Read it as a member of the group would, with all of that in mind.
 
-WHO A NAME IS, for a list line and a sign-up alike. Match the name against MEMBERS: a member's name, first name or nickname, or an obvious spelling of one ("smiler" is the member known as Smiler; "Dan" is Jordan Daniels if he goes by Dan). A member with no name yet is that name only when a fact beside him points to him: he posts under that WhatsApp name, or he holds that number on the month's list and the line sits at that number ("2. Nabz" when he is number 2). Never pick a member with no name yet for a name nothing ties to him. A name two members could be is nobody in particular. A name that is nobody on MEMBERS is not a member.
+WHO A NAME IS, for a list line and a sign-up alike. Match the name against MEMBERS: a member's name, first name or nickname, or an obvious spelling of one ("smiler" is the member known as Smiler; "Dan" is Jordan Daniels if he goes by Dan). A member with no name yet is that name only when a fact beside him points to him: he posts under that WhatsApp name, or he holds that number on the month's list and the line sits at that number ("2. Nabz" when he is number 2). Never pick a member with no name yet for a name nothing ties to him. A name two members could be is nobody in particular. A member is on one line of a list only: a name that is close to a member who has his own line elsewhere in the same list is somebody else ("16. Dani" while Daniel is under Can't play | "16. Ali" while Alican is under Gelemeyenler). A name that is nobody on MEMBERS is not a member.
 
 kind: what THE MESSAGE is.
 - "signup": somebody joins a month, leaves it, or plays it pay-as-you-go, in any words: "IN FOR NOVEMBER", "November good for me", "I can play most weeks in November", "Kasım varım", "Kasım'da yokum", "PAYG for November 9th", a bare "IN" replying to MatchTime's own month sign-up list, or somebody asking for another person to be put on a month's list ("add Tom to the November list, he's paid", "Tom'u Kasım listesine ekle").
@@ -127,7 +133,7 @@ A SIGN-UP.
 - signupWho and signupName, for "other": who it is. signupWho is his ref when the name is a member (WHO A NAME IS), else "". signupName is his name as written ("Tom"), or "" when the message names nobody ("my son").
 - choice: "in" (a regular for the month, for all its games or for a number of them: "4 games" is in), "out" (not playing the month), "payg" (only when it says pay as you go: "PAYG", "pay as you go", "maç başı").
 - signupMonth: the month (1 to 12), from the message, the chat or the list it replies to.
-- days: the days named for PAYG. games: the games committed when fewer than all ("except the last week" of five is 4; "4 games" is 4), else 0.
+- days: the days named for PAYG. games: HOW MANY GAMES, for "in".
 - signupPaid: true when the message says that person has paid ("he's paid", "ödedi"); signupPaidPence: the amount with it, in pence (3000 for £30), else 0.
 
 A LIST.
@@ -147,10 +153,12 @@ A list is in parts, each under its heading, and a line belongs to the part it si
   member: the ref of the member the line is (WHO A NAME IS); "" when it is nobody, or a name two members could be.
   guest: true when the line is somebody who is not a member: a name that is nobody on MEMBERS, or somebody brought along ("Jon extra" is an extra player Jon brings, not Jon; "David (my son)"; "Ali'nin arkadaşı"). Keep the name as written. A line that is a member is never a guest.
   host: for a guest, the ref of the member who brings him when the line or the chat says so ("Jon extra" is Jon's; "David (my son)" from the sender is "sender"); "" when nothing says anybody brings him, as for a plain new name.
-  games: the month's games the person commits to, when the line says ("4 only" is 4; "except the last week" of a five-game month is 4); 0 otherwise.
+  games: HOW MANY GAMES, when the line says ("4 only" is 4); 0 otherwise.
   payg: true for pay-per-game ("(PAYG)", "PAYG 5th only"); paygDays: the days named for it ([5] for "5th only"), else [].
   paid: true when the line says they have paid ("paid", "(Paid £22.50)", "ödedi"; "not paid" is false); paidPence: the amount with it, in pence (2250), else 0.
   concession: true for a reduced rate ("pensioners rate", "OAP", "emekli"). newbie: true when it says they are new ("newbie", "first time", "yeni").
+
+HOW MANY GAMES (games, for a sign-up "in" and for a list line): the games that person commits to, counted against the games HE covers, and only when that is fewer than all of them; 0 when he plays them all or says nothing about it. What the sender covers is under THE SENDER COVERS: a regular on the month covers the games on his row (a late joiner only those left when he joined); anybody else would cover the games still to play. For a list line about somebody else, use what "Games each regular on it covers" gives for him, else the games still to play. "except the last week" is one fewer than he covers; "not the 23rd" is one fewer when the 23rd is one of his; "just two games" is 2; "4 only" is 4; a count that comes to all of his games ("all of them", "the rest of the month", "just the one" when he covers one) is 0.
 
 Fields that do not apply: "", 0, false or [].
 
@@ -162,11 +170,15 @@ Who a name is:
 - "13. Jon extra" | "13. Emre'nin oğlu Can": a guest, host Jon's ref | a guest, host Emre's ref.
 - From Kemal, "4. David (my son)" | "4. Oğlum Can": a guest, host "sender".
 Sign-ups:
-- "November good for me", "I'm in for November except the last week" | "Kasım bana uyar", "Kasım varım son hafta hariç": signup in, month 11, signupFor "sender"; games 4 for the second when November has five games.
+- "November good for me" | "Kasım bana uyar": signup in, month 11, signupFor "sender".
 - "@Match Time add Tom to the November list, he's paid" | "@Match Time Tom'u Kasım listesine ekle, ödedi": signup in, month 11, signupFor "other", signupWho Tom's ref, signupName "Tom", signupPaid true.
 - "put Zak on November, 4 games" with no Zak among the members | "Zak'ı Kasım'a ekle, 4 hafta": signup in, signupFor "other", signupWho "", signupName "Zak", games 4.
 - From Dean, "Lucas is out for November", "my son is in for November" | "Ali de Kasım'da var": signup, signupFor "other".
 - From Dean, "Luca Rossi is IN" | "Can bu hafta var": none, a plain IN for this week (and somebody else's).
+How many games:
+- The sender covers November's five (a regular for the whole month, or November not started yet): "I'm in for November except the last week" | "Kasım varım son hafta hariç": signup in, month 11, games 4.
+- The sender covers the three still to play (a newcomer, a pay-as-you-go player becoming a regular, or a regular who joined late): the same words, or his own line "9. Will except the last week" | "9. Burak son hafta hariç": games 2, never 4; "just two games", "not the 23rd" | "sadece iki maç", "23'ü hariç": games 2; "the rest of November" | "Kasım'ın kalanı": games 0.
+- An organiser's line about a regular who covers 3: "4. Lee except the last week" | "4. Lee son hafta hariç": games 2, never 4.
 Lists:
 - "List for November\\n1. Davide\\n7. smiler 4 only" | "Kasım listesi\\n1. Erdal\\n2. Mehmet sadece 3 hafta": list, month 11, listOf month; smiler is the member Smiler, games 4 | Mehmet games 3.
 - "8. Andrew (PAYG 5th only)\\n4. Steff (paid pensioners rate)" | "8. Burak (PAYG sadece 9'u)\\n4. Kemal (ödedi emekli)": Andrew payg, paygDays [5]; Steff paid, concession | Burak payg [9]; Kemal paid, concession.
@@ -228,6 +240,18 @@ export const MONTHLY_READER_SCHEMA = {
 
 // ── The user turn ─────────────────────────────────────────────────────
 
+/**
+ * PURE. A month's first line under MONTHS: what it is, its games (those
+ * played marked) and the games still to play WITH THEIR DATES, which is
+ * what a late joiner's games are counted against (2026-11-16).
+ */
+export function monthHeadLine(p: { label: string; monthNumber: number; state: string; games: Array<{ day: string; played: boolean }> }): string {
+  const all = p.games.map((g) => `${g.day}${g.played ? " (played)" : ""}`);
+  const left = p.games.filter((g) => !g.played).map((g) => g.day);
+  const toPlay = left.length === 0 ? "none still to play" : `${left.length} still to play: ${left.join(", ")}`;
+  return `  ${p.label} (month ${p.monthNumber}): ${p.state}. ${p.games.length} ${p.games.length === 1 ? "game" : "games"}: ${all.join(", ")}; ${toPlay}.`;
+}
+
 function memberLine(m: ReaderMember): string {
   if (m.nameless) {
     const facts = [
@@ -256,8 +280,53 @@ export function buildMonthlyReaderUserTurn(input: MonthlyReaderInput, ctx: Month
   const who = senderRef
     ? `${input.sender.name ?? "a member"} (${senderRef}${input.sender.organiser ? ", an organiser" : ""})`
     : `${input.sender.name ?? "somebody"} (not on the MEMBERS list)`;
-  lines.push(`From ${who}.`, MONTHLY_READER_MESSAGE_HEADER, input.body.trim());
+  lines.push(`From ${who}.`);
+  if (senderRef) lines.push(...senderCoversLines(input.sender.userId!, ctx));
+  lines.push(MONTHLY_READER_MESSAGE_HEADER, input.body.trim());
   return lines.join("\n");
+}
+
+/**
+ * PURE. Under a month's list (2026-11-16): the games each REGULAR on it
+ * covers, by ref, so a list line about somebody else ("Lee except the
+ * last week") is counted against HIS games. Null with no regular.
+ */
+export function monthCoversLine(regulars: Array<{ name: string; ref: string; covered: number }>): string | null {
+  if (regulars.length === 0) return null;
+  return `  Games each regular on it covers: ${regulars.map((r) => `${r.name} (${r.ref}) ${r.covered}`).join(", ")}.`;
+}
+
+const written = (games: Array<{ day: string; played: boolean }>) => games.map((g) => `${g.day}${g.played ? " (played)" : ""}`).join(", ");
+const gamesWord = (n: number) => `${n} ${n === 1 ? "game" : "games"}`;
+
+/**
+ * PURE. THE SENDER COVERS, per live month (2026-11-16): the games his count
+ * is counted against. A regular on the month covers his row's games (the
+ * month's last N: a late joiner covers the games that were left when he
+ * joined); anybody else, a pay-as-you-go or bench player or a leaver
+ * coming back included, would cover the games still to play.
+ */
+export function senderCoversLines(userId: string, ctx: MonthlyReaderContext): string[] {
+  const out: string[] = [];
+  for (const m of ctx.cover ?? []) {
+    const head = `THE SENDER COVERS in ${m.label}:`;
+    const regular = m.regulars.find((r) => r.userId === userId);
+    if (regular) {
+      // His row's games are the month's last N; none for a row covering 0,
+      // and only the games there are when he covers more (a week cancelled).
+      const n = Math.min(Math.max(0, regular.covered), m.games.length);
+      const games = n === 0 ? [] : m.games.slice(-n);
+      out.push(games.length === 0 ? `${head} no game (a regular on its list).` : `${head} ${gamesWord(games.length)}, ${written(games)} (a regular on its list).`);
+      continue;
+    }
+    const left = m.games.filter((g) => !g.played);
+    out.push(
+      left.length === 0
+        ? `${head} no game (not a regular on its list yet, and no game is left to play).`
+        : `${head} ${gamesWord(left.length)}, ${written(left)} (not a regular on its list yet: joining now, the games still to play).`,
+    );
+  }
+  return out;
 }
 
 // ── The answer, checked ───────────────────────────────────────────────

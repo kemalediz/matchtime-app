@@ -14,7 +14,7 @@ import { buildMonthSummaryLines } from "@/lib/month-close-copy";
 import { pounds } from "@/lib/month-payment-copy";
 import { monthStartToDate } from "@/lib/squad-month-rules";
 import { RefundForm, ShareChangeForm } from "./money-forms";
-import { normaliseSquadMode } from "@/lib/squad-month-rules";
+import { normaliseSquadMode, shownCommitted } from "@/lib/squad-month-rules";
 import { AddMember, MemberActions } from "./member-actions";
 import { PaidButton, PriceForm } from "./price-form";
 import { planPricePence } from "@/lib/club-billing-rules";
@@ -265,7 +265,7 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
                             userId={m.userId}
                             lang={lang}
                             covered={m.gamesCovered}
-                            committed={m.gamesCommitted}
+                            committed={shownCommitted(m)}
                             readOnly={mo.status === "closed"}
                           />
                         )}

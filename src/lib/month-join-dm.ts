@@ -11,6 +11,7 @@
  * quoted one, or MatchTime's newest DM to him); one delivery is read once.
  */
 import { db } from "./db";
+import { joinAskRecount } from "./month-signup-rules";
 import { MONTH_JOIN_ASK_KIND } from "./month-signup";
 
 const OPEN_MS = 48 * 3600 * 1000;
@@ -21,7 +22,7 @@ export async function handleMonthJoinDmReply(input: {
   waMessageId: string;
   answering: () => Promise<string | null>;
   now: Date;
-}): Promise<{ handled: "month-join-yes" | "month-join-no"; monthId: string } | null> {
+}): Promise<{ handled: "month-join-yes" | "month-join-no" | "month-join-asked"; monthId: string } | null> {
   try {
     const ask = await db.sentNotification.findFirst({
       where: { kind: MONTH_JOIN_ASK_KIND, targetUser: input.userId, createdAt: { gte: new Date(input.now.getTime() - OPEN_MS) } },
@@ -56,21 +57,43 @@ export async function handleMonthJoinDmReply(input: {
       );
     });
     if (reading.kind !== "signup") return null;
-    const { loadSignupMonth, applySignup } = await import("./month-signup");
+    const { loadSignupMonth, applySignup, askToJoinMonth, noteJoinLapsed, readJoinAskGames, retireJoinAsk } = await import("./month-signup");
     const month = await loadSignupMonth(monthId);
     if (!month || reading.month !== month.monthNumber) return null;
     // Answered either way: the ask is closed.
     await db.sentNotification.updateMany({ where: { id: ask.id, kind: MONTH_JOIN_ASK_KIND }, data: { kind: `${MONTH_JOIN_ASK_KIND}-closed` } });
     if (reading.choice !== "in") return { handled: "month-join-no", monthId };
-    const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, now: input.now });
     // "yes but only 3 games": the games he commits to, when FEWER than the
     // games left (a plain "yes" can come back with the question's own "3
     // games left", which is what he is joining for anyway: nothing to set).
+    // Given to applySignup (2026-11-16): through the one fit rule, and
+    // recorded before he and the organisers are told what he owes. (A
+    // leaver who paid: his count of the games left is made a total there.)
     const left = month.kickoffs.filter((k) => k.getTime() > input.now.getTime()).length;
-    if (res.ok && res.outcome === "regular" && reading.games !== null && reading.games < left) {
-      const { commitMonthGames } = await import("./month-signup");
-      await commitMonthGames(monthId, input.userId, reading.games);
+    // A count of his own in the answer wins; a plain yes is for the games
+    // the question said (the count from the message that led to it,
+    // 2026-11-18), else every game left.
+    const said = await readJoinAskGames(ask.key);
+    // A count of his own at or above the games left is every game left
+    // (review of #610, item 6: "yes, all 3" to "2 of the 3").
+    const ownAll = reading.games !== null && reading.games >= left;
+    const own = reading.games !== null && reading.games < left ? reading.games : null;
+    const count = ownAll ? null : (own ?? said?.games ?? null);
+    const words = own !== null || ownAll ? input.text : (said?.words ?? input.text);
+    // The games left changed since the question was asked (item 2): his
+    // count was of those games, so he is asked again with today's numbers.
+    const recount = joinAskRecount({ count, askedLeft: said?.left ?? null, left });
+    if (recount.kind !== "same") {
+      await retireJoinAsk(ask.id, ask.key);
+      if (recount.kind === "lapsed") {
+        await noteJoinLapsed({ monthId, userId: input.userId, now: input.now });
+        return { handled: "month-join-no", monthId };
+      }
+      await askToJoinMonth({ month, userId: input.userId, games: recount.of, words, now: input.now });
+      return { handled: "month-join-asked", monthId };
     }
+    const games = count;
+    const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games, words, now: input.now });
     return res.ok ? { handled: "month-join-yes", monthId } : null;
   } catch (err) {
     console.error("[month-join-dm] failed:", err instanceof Error ? err.message : "failed");

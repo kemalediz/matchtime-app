@@ -677,3 +677,62 @@ export function heldNudgeDue(p: { now: Date; firstKickoff: Date; firstNoticeAt: 
   const t = p.now.getTime();
   return t >= p.firstKickoff.getTime() - DAY_MS && t < p.firstKickoff.getTime() && t - p.firstNoticeAt.getTime() >= HELD_NUDGE_GAP_MS;
 }
+
+/**
+ * PURE. The games a join question says he will play (2026-11-18): the
+ * count he gave, read against the games left, when it is a whole number
+ * from 1 to fewer than them; else none (every game left).
+ */
+export function joinAskGames(games: number | null | undefined, left: number): number | null {
+  return typeof games === "number" && Number.isInteger(games) && games >= 1 && games < left ? games : null;
+}
+
+/**
+ * PURE. A join question answered after the games left changed (review of
+ * #610, item 2). `count`: the games it said he will play (of the games left
+ * then, `askedLeft`), or null for every game left. "same": the question
+ * still stands. "ask": ask again with today's numbers, the games played
+ * since taken off his count (null: every game left now). "lapsed": every
+ * game he said has been played. `askedLeft` null (a question from before
+ * this was stored): as asked.
+ */
+export function joinAskRecount(p: { count: number | null; askedLeft: number | null; left: number }): { kind: "same" } | { kind: "ask"; of: number | null } | { kind: "lapsed" } {
+  if (p.askedLeft === null || p.askedLeft === p.left) return { kind: "same" };
+  if (p.count === null) return { kind: "ask", of: null };
+  const of = p.count - Math.max(0, p.askedLeft - p.left);
+  if (of < 1) return { kind: "lapsed" };
+  return { kind: "ask", of: of >= p.left ? null : of };
+}
+
+/**
+ * PURE. A bench player's kept count when an organiser gives him a place
+ * (review of #610, item 3). Kept as stored only while the games left are
+ * what they were when it was stored (`storedLeft`). Otherwise the games
+ * played since come off it (it counted those), it is fitted against the
+ * games left now, and `changed`: the organisers are told once. At least 1:
+ * the organiser placed him to play. `storedLeft` null: not known, fitted
+ * and told.
+ */
+export function benchCountOnPlace(p: { count: number; storedLeft: number | null; left: number }): { games: number | null; changed: boolean } {
+  if (p.storedLeft !== null && p.storedLeft === p.left) return { games: p.count, changed: false };
+  const adjusted = Math.max(1, p.count - Math.max(0, (p.storedLeft ?? p.left) - p.left));
+  return { games: adjusted >= p.left ? null : adjusted, changed: true };
+}
+
+/** PURE. A REGULAR on the month: on its list as one, not out, not waiting
+ *  for a place. A pay-as-you-go or bench row is not (2026-11-16). */
+export function isRegularMember(m: { kind: string; out: boolean; waiting: boolean }): boolean {
+  return m.kind === "regular" && !m.out && !m.waiting;
+}
+
+/**
+ * PURE. The line of a pasted list that is his (2026-11-16): what the
+ * organisers' line about his games quotes, never the whole list. Found by
+ * the name the reader read on it, as written; the name itself when no line
+ * has it. For display only: nothing is read from it.
+ */
+export function pastedLineOf(body: string | null, entry: { name: string } | null | undefined): string | null {
+  if (!entry?.name) return body;
+  const name = entry.name.toLocaleLowerCase("en");
+  return (body ?? "").split("\n").map((l) => l.trim()).find((l) => l.toLocaleLowerCase("en").includes(name)) ?? entry.name;
+}

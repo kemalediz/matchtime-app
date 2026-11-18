@@ -250,29 +250,86 @@ test("B3: somebody not on the running month adds himself to the MONTH's list: he
   expect(await monthRow(db, P.will)).toMatchObject({ kind: "regular", out: false });
 });
 
-test("B4: 'in for <month> except the last week' joins the month with the games committed", async ({ request, db }) => {
-  // Tom joins a month under way, so he covers the games still to play
-  // (the calendar's, `loadLiveMonths`). The stub commits him to one fewer,
-  // the server's side of "except the last week": what this test pins is
-  // that a number below the games he covers is recorded. (What the MODEL
-  // answers for a late joiner is not settled here: its prompt counts
-  // against the month's total, "except the last week of five is 4".) A
-  // fixed 2 was all of them once only two were left (Mon 16 Nov 2026),
-  // which is recorded as no commitment (null), rightly.
-  //
-  // The analyze route has no test clock (the rehearsal clock shim is for a
-  // whole rehearsal run, not one spec), so this reads the real date. KICKOFF
-  // is three days out; with it in the last week of its month only one game
-  // is left, and there is nothing below "all" to commit to. That is London
-  // days lastDay-9 to lastDay-3 of each month, 7 days a month, when B4 skips.
-  const gamesLeft = monthKickoffs(MONTH_START, WEEKDAY, "20:00").filter((k) => k.getTime() > Date.now()).length;
-  test.skip(gamesLeft < 2, `one game left in ${MONTH_NAME} (London days lastDay-9 to lastDay-3): nothing below "all" to commit to`);
-  const games = gamesLeft - 1;
-  const body = `I'm in for ${MONTH_NAME} except the last week`;
-  setMonthlyReaderStub({ bodies: { [body]: { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER, signupFor: "sender", games } } });
-  const res = await say(request, P.tom, body);
-  expect(res).toMatchObject({ handledBy: "fast-path", intent: "month_signup", react: "✅" });
-  expect(await monthRow(db, P.tom)).toMatchObject({ kind: "regular", gamesCommitted: games });
+test("B4: 'in for <month> except the last week' for a late joiner: one fewer than the games left is recorded with ✅; a count of all his games is every game, never more", async ({ request, db }) => {
+  // A FIXED scenario (2026-11-16, PR #610): its own club on NEXT calendar
+  // month, started part-way, with all but its last three weeks cancelled,
+  // so exactly 3 games are left whatever today's date. (The analyze route
+  // has no test clock; the main club's month moves with the real date.)
+  const B4 = { org: "e2e-mr-b4", group: "e2e-monthly-reader-b4@g.us", act: "e2e-mr-b4-act", month: "e2e-mr-b4-month" };
+  const next = nextMonthStart(`${formatInTimeZone(new Date(), LONDON, "yyyy-MM")}-01`);
+  const calendar = monthKickoffs(next, 1, "20:00");
+  const left = calendar.slice(-3);
+  const monthName = formatInTimeZone(left[0], LONDON, "MMMM");
+  const monthNumber = Number(next.slice(5, 7));
+  const amy = { id: "e2e-mr-b4-amy", name: "Amy Owner", phone: "+447700930101" };
+  const tess = { id: "e2e-mr-b4-tess", name: "Tess Two", phone: "+447700930102" };
+  const theo = { id: "e2e-mr-b4-theo", name: "Theo Three", phone: "+447700930103" };
+  await db.run(
+    `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "squadMode", "paygPricePence", "adminChannelMode", language, "updatedAt")
+     VALUES ($1, 'Vets B4', $1, $2, $3, true, 'monthly', 800, 'each-admin', 'en', now())`,
+    [B4.org, `${B4.org}-invite`, B4.group],
+  );
+  await db.run(
+    `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt") VALUES ($1, $2, 'Football', 6, ARRAY['GK','DEF','MID','FWD'], ARRAY['Bibs','Shirts'], now())`,
+    [`${B4.org}-sport`, B4.org],
+  );
+  await db.run(
+    `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "deadlineHours", "updatedAt") VALUES ($1, $2, $3, 'Monday 6-a-side', 1, '20:00', 'Goals B4', 5, now())`,
+    [B4.act, B4.org, `${B4.org}-sport`],
+  );
+  for (const [i, k] of calendar.slice(0, -3).entries()) {
+    await db.run(`INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt") VALUES ($1, $2, $3, 12, 'CANCELLED', $3, now())`, [
+      `${B4.org}-cancelled-${i}`,
+      B4.act,
+      k.toISOString(),
+    ]);
+  }
+  await db.run(`INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt") VALUES ($1, $2, $3, 12, 'UPCOMING', $3, now())`, [
+    `${B4.org}-match`,
+    B4.act,
+    left[0].toISOString(),
+  ]);
+  await db.run(
+    `INSERT INTO "SquadMonth" (id, "orgId", "activityId", "monthStart", status, "gamesScheduled", "gamesPlayedBeforeStart", "startedMidMonthAt", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4::date, 'running', 3, 0, now() - interval '1 hour', now() - interval '1 hour', now())`,
+    [B4.month, B4.org, B4.act, next],
+  );
+  for (const [p, role] of [[amy, "OWNER"], [tess, "PLAYER"], [theo, "PLAYER"]] as const) {
+    await db.run(`INSERT INTO "User" (id, email, name, "phoneNumber", "updatedAt") VALUES ($1, $2, $3, $4, now())`, [p.id, `${p.id}@e2e.test`, p.name, p.phone]);
+    await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1, $2, $3, $4::"MemberRole")`, [`mem-${p.id}`, p.id, B4.org, role]);
+  }
+  await db.run(`INSERT INTO "SquadMonthMember" (id, "monthId", "userId", kind, slot, "gamesCovered", source, "updatedAt") VALUES ($1, $2, $3, 'regular', 1, 3, 'seed-list', now())`, [
+    `${B4.month}-amy`,
+    B4.month,
+    amy.id,
+  ]);
+  const row = (who: { id: string }) =>
+    db.one<{ kind: string; gamesCovered: number; gamesCommitted: number | null }>(`SELECT kind, "gamesCovered", "gamesCommitted" FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`, [B4.month, who.id]);
+  const sayB4 = async (who: { name: string; phone: string }, body: string) => {
+    const waMessageId = `e2e-mr-b4-${Date.now()}-${++seq}`;
+    const res = await request.post("/api/whatsapp/analyze", {
+      headers: KEY,
+      data: { groupId: B4.group, messages: [{ waMessageId, body, authorPhone: digits(who.phone), authorName: who.name, timestamp: new Date().toISOString() }] },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    return ((await res.json()) as { results?: Array<{ waMessageId: string; intent: string | null; react: string | null }> }).results?.find((r) => r.waMessageId === waMessageId);
+  };
+  const signup = (games: number) => ({ ...listAnswer([]), kind: "signup", choice: "in", signupMonth: monthNumber, signupFor: "sender", games });
+  const body = `I'm in for ${monthName} except the last week`;
+  const body2 = `In for ${monthName}, all but the last game`;
+  setMonthlyReaderStub({ bodies: { [body]: signup(2), [body2]: signup(3) } });
+
+  // Counted against the 3 games left: 2. Recorded, with ✅.
+  expect(await sayB4(tess, body)).toMatchObject({ intent: "month_signup", react: "✅" });
+  expect(await row(tess)).toMatchObject({ kind: "regular", gamesCovered: 3, gamesCommitted: 2 });
+
+  // A count of all 3 of his 3 is every game he covers (the one fit rule,
+  // 2026-11-16): stored as every game, with ✅. Nobody is asked "which
+  // games?" (that question was cut), and nothing is charged beyond his 3.
+  expect(await sayB4(theo, body2)).toMatchObject({ intent: "month_signup", react: "✅" });
+  expect(await row(theo)).toMatchObject({ kind: "regular", gamesCovered: 3, gamesCommitted: null });
+  const texts = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2`, [B4.org, digits(theo.phone)]);
+  expect(texts.some((x) => x.text.includes("Which of them"))).toBe(false);
 });
 
 test("an organiser's list for the COMING month in the players' group: the draft goes to him by DM (with '4 only'), nothing in the group", async ({ request, db }) => {
