@@ -98,6 +98,14 @@ describe("releaseMatchPayments skips a player already marked paid", () => {
     expect(botJobs).toHaveLength(2);
   });
 
+  it("each link is queued with the match and player it is for, so the send-time check can look again (Sutton, 2026-11-17)", async () => {
+    matchRow = match([att(1, "ali"), att(2, "ben"), att(3, "col")]);
+    await releaseMatchPayments("m1");
+    expect(botJobs.map((j) => (j as { aboutKey?: string }).aboutKey)).toEqual(["m1:pay-link:ali", "m1:pay-link:ben"]);
+    // matchId stays unset: a pay link's quoted-reply context is as before.
+    expect(botJobs.every((j) => (j as { matchId?: string }).matchId === undefined)).toBe(true);
+  });
+
   it("a free place (feeWaivedAt, not paid) gets no pay link either, so a fee set later never charges it", async () => {
     const waived = new Date("2026-10-16T18:00:00Z");
     matchRow = match([att(1, "bibs", null, waived), att(2, "ali"), att(3, "col")]);

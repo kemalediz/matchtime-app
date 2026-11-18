@@ -106,3 +106,70 @@ test("quiet hours off: nothing waits, even at 23:30", async ({ request, db }) =>
   for (const l of links) expect(l.sendAfter).toBeNull();
   expect((await ack(db))?.text).toMatch(/^✅ Done, sent /);
 });
+
+// ── Send time (Sutton, 2026-11-17) ─────────────────────────────────────
+// Released at 23:01 inside quiet hours; the collector marked 8 players paid
+// on /collect before midnight; at 09:00 all 8 still got "tap to pay". The
+// scheduler now asks again, at send time, whether each player still owes.
+
+async function dueDmPhones(request: APIRequestContext, now: Date): Promise<string[]> {
+  const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`, {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-test-now": now.toISOString(), "x-no-claim": "1" },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  const json = (await res.json()) as { instructions?: Array<{ kind: string; phone?: string }> };
+  return (json.instructions ?? []).filter((i) => i.kind === "dm" && i.phone).map((i) => i.phone!);
+}
+
+test("released at 23:30, Pat marked received before 09:00: at 09:00 Pat gets no link, Riley still does", async ({ request, db }) => {
+  await pending(db);
+  await confirmFee(request, londonAt(0, 23, 30));
+  const links = await payLinks(db);
+  expect(links.map((l) => l.phone)).toEqual(expect.arrayContaining([digits(PHONE.player), digits(PHONE.rater)]));
+
+  // The shape `confirmDirectPayment` writes for "Mark received" on /collect.
+  await db.run(
+    `UPDATE "Attendance" SET "paidAt" = now(), "directPendingAt" = null, "directConfirmedByUserId" = $3
+      WHERE "matchId" = $1 AND "userId" = $2`,
+    [MATCH.rate, U.player, U.collector],
+  );
+
+  // Before 09:00 nothing is due.
+  expect(await dueDmPhones(request, londonAt(1, 8, 59))).not.toContain(digits(PHONE.rater));
+
+  const nine = await dueDmPhones(request, londonAt(1, 9, 1));
+  expect(nine).not.toContain(digits(PHONE.player));
+  expect(nine).toContain(digits(PHONE.rater));
+  // Pat's unsent job is gone, so no later poll can send it either.
+  expect(
+    await db.count(`SELECT count(*) FROM "BotJob" WHERE phone = $1 AND "createdAt" >= $2`, [digits(PHONE.player), since]),
+  ).toBe(0);
+});
+
+test("a free place, a direct payment chosen, or a drop before 09:00: no link for any of them", async ({ request, db }) => {
+  await pending(db);
+  await confirmFee(request, londonAt(0, 23, 30));
+  await db.run(
+    `UPDATE "Attendance" SET "feeWaivedAt" = now(), "feeWaivedReason" = 'organiser' WHERE "matchId" = $1 AND "userId" = $2`,
+    [MATCH.rate, U.player],
+  );
+  await db.run(
+    `UPDATE "Attendance" SET "directPendingAt" = now(), "paymentMethod" = 'direct' WHERE "matchId" = $1 AND "userId" = $2`,
+    [MATCH.rate, U.third],
+  );
+  await db.run(`UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.rate, U.rater]);
+  const nine = await dueDmPhones(request, londonAt(1, 9, 1));
+  expect(nine).not.toContain(digits(PHONE.player));
+  expect(nine).not.toContain(digits(PHONE.third));
+  expect(nine).not.toContain(digits(PHONE.rater));
+});
+
+test("the match cancelled before 09:00: no pay link goes out", async ({ request, db }) => {
+  await pending(db);
+  await confirmFee(request, londonAt(0, 23, 30));
+  const phones = (await payLinks(db)).map((l) => l.phone);
+  expect(phones.length).toBeGreaterThan(0);
+  await db.run(`UPDATE "Match" SET status = 'CANCELLED' WHERE id = $1`, [MATCH.rate]);
+  const nine = await dueDmPhones(request, londonAt(1, 9, 1));
+  for (const p of phones) expect(nine).not.toContain(p);
+});

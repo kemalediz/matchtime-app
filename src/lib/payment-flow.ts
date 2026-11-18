@@ -33,6 +33,7 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { withOrgAiBudget } from "./ai-budget";
 import { MONTHLY_PAYMENT_METHOD, isMonthlyRow, recordPaygFeeDeclined, stagePaygFeeForReply } from "./monthly-week";
 import { isFeeWaived } from "./fee-waiver-rules";
+import { payLinkAboutKey } from "./pay-link-job-rules";
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf, type QuietHours } from "./message-hours";
 import { formatLondon } from "./london-time";
 import type Stripe from "stripe";
@@ -127,6 +128,12 @@ export async function releaseMatchPayments(matchId: string, opts: { now?: Date }
           lang: match.activity.org.language,
         }),
         ...(sendAfter ? { sendAfter } : {}),
+        // Who and what it is for, so the scheduler checks again at send
+        // time that they still owe (Sutton, 2026-11-17: 8 players marked
+        // paid overnight still got the 09:00 link; pay-link-job-rules.ts).
+        // `matchId` is left unset on purpose: it would change what a
+        // swipe-reply to the link resolves to (reply-context.ts).
+        aboutKey: payLinkAboutKey(matchId, a.user.id),
       },
     });
     queued++;

@@ -771,6 +771,14 @@ export async function computeDuePosts(
     // One team sheet per set of teams (2026-10-30, admin-group-graphics.ts):
     // the matches whose team sheet is already going out on this poll.
     const teamSheetsEmitted = new Set<string>();
+    // A queued pay link goes only to someone who still owes NOW (Sutton,
+    // 2026-11-17: released in quiet hours, 8 players marked paid before
+    // the 09:00 send all got the link). One check for the unclaimed pay
+    // links in this batch; a moot one is deleted, a failed check holds
+    // (pay-link-job.ts). No pay link in the batch: no reads.
+    const payLinkVerdicts = await (await import("./pay-link-job")).payLinkJobVerdicts(
+      jobs.filter((j) => j.kind === "dm" && !sentKeys.has(`botjob-${j.id}`)),
+    );
     for (const job of jobs) {
       const key = `botjob-${job.id}`;
       if (sentKeys.has(key)) continue;
@@ -778,6 +786,7 @@ export async function computeDuePosts(
         console.warn(`[partner-ask] job ${job.id}: held, this Pi does not forward quoted ids`);
         continue;
       }
+      if ((payLinkVerdicts.get(job.id) ?? "send") !== "send") continue;
       if (job.kind === "dm" && job.phone) {
         out.push({
           kind: "dm",
