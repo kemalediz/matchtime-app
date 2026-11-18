@@ -689,7 +689,17 @@ export interface AdminFacts {
     | "switch_format"
     | "move_game"
     | "open_squad"
+    | "month_coverage"
     | "other";
+  /**
+   * month_coverage (2026-11-16, Kemal): in a monthly club, how much of a
+   * month a player on its list covers: "whole" (he paid every game of it)
+   * or "left" (the games still to play). Absent when the words say neither
+   * ("add Tom, he's paid"): MatchTime asks once in HQ
+   * (`month-coverage-words.ts`). The player is `coveredRefs[0]`; an
+   * answer to MatchTime's question names nobody.
+   */
+  coverage?: "whole" | "left";
   /** bulk_payment */
   payerRef?: string;
   count?: number;

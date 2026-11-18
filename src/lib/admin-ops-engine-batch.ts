@@ -877,8 +877,10 @@ export async function runAdminOpsBatch(args: {
 
     // A free place (2026-10-16, `fee_waiver`) is given in the organisers'
     // group only (`admin-group-understand.ts` → `fee-waiver.ts`); in the
-    // players' group it is answered exactly as `other` is.
-    if (facts.action === "other" || facts.action === "fee_waiver") {
+    // players' group it is answered exactly as `other` is. So is what a
+    // monthly regular covers (2026-11-16, `month_coverage`): HQ and the
+    // months page change it (`month-coverage-words.ts`).
+    if (facts.action === "other" || facts.action === "fee_waiver" || facts.action === "month_coverage") {
       // This used to read: "The mega-prompt still models admin intents
       // this route does not: `show_teams_request` phrasings that land
       // here, stats asks, and anything §14.3 calls 'the least designed

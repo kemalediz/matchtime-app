@@ -157,6 +157,28 @@ export async function setMemberGames(
   return res;
 }
 
+/**
+ * The coverage editor (2026-11-16) on /admin/months: how many of the
+ * month's games a regular covers, from the games left to the whole month.
+ * What they owe follows with the existing pricing; nothing is paid.
+ */
+export async function setMemberCoverage(
+  orgId: string,
+  monthId: string,
+  userId: string,
+  games: number,
+): Promise<{ ok: true; gamesCovered: number } | { ok: false; error: string }> {
+  await requireAdmin(orgId);
+  if (typeof games !== "number" || !Number.isInteger(games)) return { ok: false, error: "bad-games" };
+  // The month must be this club's: the id alone is not trusted.
+  const month = await db.squadMonth.findFirst({ where: { id: monthId, orgId }, select: { id: true } });
+  if (!month) return { ok: false, error: "not-found" };
+  const { setMonthMemberCoverage } = await import("@/lib/month-member-coverage");
+  const res = await setMonthMemberCoverage({ squadMonthId: monthId, userId, coverage: games });
+  revalidatePath("/admin/months");
+  return res.ok ? { ok: true, gamesCovered: res.gamesCovered } : { ok: false, error: res.error };
+}
+
 /** A3 (2026-10-29): the months the club plays no games in. */
 export async function saveSeasonBreak(
   orgId: string,

@@ -207,6 +207,18 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * free places (a held-out wording, not the check's). 12 of 12, and 5 runs of
  * scripts/live-check-free-places.ts. 23,859 to 24,238 characters.
  *
+ * And `month_coverage` (PR #611, Kemal 2026-11-16: a player added after a
+ * month started covered only the games left, even one who paid the whole
+ * month), placed in that grouping on 2026-11-18: one action under "Anything
+ * else", beside the payments (how much of a month a regular on a monthly
+ * list covers, the whole month or the games left; an add part-way through
+ * is this too, and so is the answer to MatchTime's own "whole month, or
+ * just the games left?"; saying only that somebody paid is not this), one
+ * field, `coverage` ("whole", "left", or "" when the words say neither or
+ * name two players with different coverages), `coveredRefs` widened to it,
+ * and one example group beside the payments, EN and TR side by side.
+ * Old and new: MDs/prompt-admin-extractor-old-2026-11-18.txt and -new-.
+ *
  * The TEAMS extractor, 2026-11-10 (Sutton FC, "@Match Time reduce my
  * strength for this match as I am quite tired." went to the settings
  * page): one action, `form`, defined once beside the others (how a player
@@ -673,6 +685,7 @@ The club, from now on:
 Anything else:
   "retry_ask" try MatchTime's last request again, or say that what stopped it is now done or fixed, naming nothing new ("done, try again", "added the venue location"). A message that names the place is "set_venue"; one that asks for something again in full ("now ask the pool") is that action.
   "bulk_payment" someone paid for several players.
+  "month_coverage" in a club that plays a monthly squad: how much of a month a player on its list covers, the whole month (every game of it) or only the games still to play. Putting somebody on a month part-way through is this too, whether or not it says which ("add Tom, he's paid the whole month", "add Tom to the November list"), and so is an answer to MatchTime's own question "whole month, or just the games left?". Saying only that somebody has paid ("Tom paid for the whole month", "Tom ayın tamamını ödedi") is not this. Asking how much someone covers or owes is "other".
   "reminder" MatchTime is to remind the sender, at a time.
   "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open their link) is "other".
   "other" anything else.
@@ -696,7 +709,7 @@ One game:
   newDay (move_game): the day of the week it moves to, "monday" to "sunday"; "" when the day stays.
   newTime (move_game): the new kickoff as a 24-hour London time "HH:MM". A time with no am or pm is the one nearest the game's own kickoff ("8:15" for a 20:30 game is "20:15", "8" is "20:00", "10am" is "10:00"); "" when the time stays.
   everyWeek (move_game): true when it changes the weekly game from now on ("from now on", "every week", "artık", "her hafta", "bundan sonra"); false for one game.
-  coveredRefs (fee_waiver, bulk_payment): the people the action is about, one entry each, as written: those given or losing the free place, or those paid for. "he" or "him" is the person named, else the author of the quoted message.
+  coveredRefs (fee_waiver, bulk_payment, month_coverage): the people the action is about, one entry each, as written: those given or losing the free place, those paid for, or the player whose month it is. "he" or "him" is the person named, else the author of the quoted message. [] for an answer to MatchTime's question that names nobody.
   undo (fee_waiver): true when it takes a free place back.
 The club, from now on:
   breakMonths (season_break): each month with no football, as "YYYY-MM", the next such month from NOW ("December" in October 2026 is "2026-12"; "December and January" is both).
@@ -714,6 +727,7 @@ The club, from now on:
 Anything else:
   payerRef (bulk_payment): who paid, as written.
   count (bulk_payment): how many players they paid for.
+  coverage (month_coverage): "whole" when the words say the whole month ("the whole month", "the full month", "ayın tamamı"); "left" when they say only the games still to play ("the games left", "the rest of the month", "kalan maçlar"); "" when they say neither, or name two players with different coverages. "He's paid" alone does not say which: "".
   phrase (reminder): the time phrase exactly as written ("tomorrow at 6"), kept as a record.
   remindAt (reminder): when to send it, as a London date and time "YYYY-MM-DD HH:MM", worked out from NOW: the next such time that is still to come ("at 6" means 18:00 unless they say morning; a day with no time is 09:00). "" when the message names no time MatchTime could act on ("later", "soon").
   note (reminder): what to remind about, in their own words ("bring the bibs"); "" when it names nothing.
@@ -788,6 +802,16 @@ Free places in a game, and payments:
   "no, leave it" / "hayır, kalsın", answering MatchTime's "Make Tom free for Friday?" -> other
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
+How much of the month a player on a monthly list covers:
+  "@Match Time add Tom to the November list, he's paid the whole month" / "@Match Time Tom'u Kasım listesine ekle, ayın tamamını ödedi" -> month_coverage, coveredRefs ["Tom"], coverage "whole"
+  "@Match Time add Tom for the games left" / "@Match Time Tom'u kalan maçlar için ekle" -> month_coverage, coveredRefs ["Tom"], coverage "left"
+  "@Match Time add Tom to the November list, he's paid" / "@Match Time Tom'u Kasım listesine ekle, ödedi" -> month_coverage, coveredRefs ["Tom"], coverage ""
+  "@Match Time Dan covers the whole month" / "@Match Time Dan ayın tamamını kapsıyor" -> month_coverage, coveredRefs ["Dan"], coverage "whole"
+  "@Match Time Dan only pays for the games left" / "@Match Time Dan sadece kalan maçları ödüyor" -> month_coverage, coveredRefs ["Dan"], coverage "left"
+  "@Match Time add Tom for the games left, and Ian covers the whole month" / "@Match Time Tom'u kalan maçlar için ekle, Ian ayın tamamını kapsıyor" -> month_coverage, coveredRefs ["Tom","Ian"], coverage ""
+  "whole month" / "ayın tamamı", answering MatchTime's "Tom on the November list: whole month, or just the games left?" -> month_coverage, coveredRefs [], coverage "whole"
+  "just the games left" / "sadece kalanlar" answering the same -> month_coverage, coveredRefs [], coverage "left"
+  "@Match Time how many games does Dan cover?" / "@Match Time Dan kaç maç ödedi?" -> other
 A month or more off, or back (NOW is October 2026 here):
   "@Match Time no football in December" / "@Match Time aralıkta maç yok" -> season_break, breakMonths ["2026-12"]
   "no games December or January, back in February" / "aralık ve ocakta maç yok, şubatta dönüyoruz" -> season_break, breakMonths ["2026-12","2027-01"], playMonths ["2027-02"]
@@ -1033,8 +1057,11 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "month_coverage", "other"],
     },
+    // month_coverage (2026-11-16): the whole month, the games left, or
+    // neither said ("": MatchTime asks).
+    coverage: { type: "string", enum: ["", "whole", "left"] },
     // season_break (2026-10-29): the months with no football, and the
     // months it is back in, each "YYYY-MM".
     breakMonths: { type: "array", items: { type: "string" } },
@@ -1091,7 +1118,7 @@ const ADMIN_SCHEMA = {
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "openSquadOff", "size", "aSide", "game", "newDay", "newTime", "everyWeek", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "openSquadOff", "size", "aSide", "game", "newDay", "newTime", "everyWeek", "coverage", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1368,7 +1395,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "month_coverage", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1452,6 +1479,9 @@ export function parseFacts(
           : {}),
         ...(action === "move_game" && typeof raw.newTime === "string" && raw.newTime.trim() ? { newTime: raw.newTime.trim() } : {}),
         ...(action === "move_game" && raw.everyWeek === true ? { everyWeek: true as const } : {}),
+        // month_coverage (2026-11-16): only the schema's two values; "" or
+        // anything else is not said, and MatchTime asks.
+        ...(action === "month_coverage" && (raw.coverage === "whole" || raw.coverage === "left") ? { coverage: raw.coverage } : {}),
         // season_break (2026-10-29): only well-formed "YYYY-MM" months.
         ...(action === "season_break" ? { breakMonths: monthKeysOf(raw.breakMonths), playMonths: monthKeysOf(raw.playMonths) } : {}),
         // Only a clear true: a missing or false value keeps HQ's outward

@@ -234,28 +234,37 @@ export async function setMonthMemberGames(args: {
   // way every other change to the month is reconciled. Worked out from the
   // state, so the order of events does not matter. Best effort: the hourly
   // sweep and the next poll do the same.
-  if (res.ok) {
-    try {
-      const { reconcileCancelledWeeks } = await import("./month-close");
-      await reconcileCancelledWeeks(month.orgId, now);
-      const { syncMonthlyWeek } = await import("./monthly-week");
-      const played = await db.match.findMany({
-        where: { activity: { orgId: month.orgId }, isHistorical: false, status: { not: "CANCELLED" }, date: { gte: monthFrom(month.monthStart), lt: monthTo(month.monthStart) } },
-        select: { id: true },
-      });
-      // One week's failure must not skip the others.
-      for (const x of played) {
-        try {
-          await syncMonthlyWeek(x.id, now);
-        } catch (err) {
-          console.error(`[month-member-games] syncing match ${x.id} after ${args.userId}'s games changed failed (the next poll retries):`, err);
-        }
-      }
-    } catch (err) {
-      console.error(`[month-member-games] reconciling ${args.userId}'s credits for ${month.id} failed (the sweep retries):`, err);
-    }
-  }
+  if (res.ok) await afterMemberGamesChanged({ orgId: month.orgId, monthId: month.id, monthStart: month.monthStart, userId: args.userId, now });
   return res;
+}
+
+/**
+ * After a regular's games changed (what they commit to, or what they
+ * cover, `month-member-coverage.ts`): the club's cancelled-week credits are
+ * reconciled and the month's weeks synced, the way every other change to
+ * the month is. Best effort, never throws: the hourly sweep and the next
+ * poll do the same.
+ */
+export async function afterMemberGamesChanged(p: { orgId: string; monthId: string; monthStart: Date; userId: string; now: Date }): Promise<void> {
+  try {
+    const { reconcileCancelledWeeks } = await import("./month-close");
+    await reconcileCancelledWeeks(p.orgId, p.now);
+    const { syncMonthlyWeek } = await import("./monthly-week");
+    const played = await db.match.findMany({
+      where: { activity: { orgId: p.orgId }, isHistorical: false, status: { not: "CANCELLED" }, date: { gte: monthFrom(p.monthStart), lt: monthTo(p.monthStart) } },
+      select: { id: true },
+    });
+    // One week's failure must not skip the others.
+    for (const x of played) {
+      try {
+        await syncMonthlyWeek(x.id, p.now);
+      } catch (err) {
+        console.error(`[month-member-games] syncing match ${x.id} after ${p.userId}'s games changed failed (the next poll retries):`, err);
+      }
+    }
+  } catch (err) {
+    console.error(`[month-member-games] reconciling ${p.userId}'s credits for ${p.monthId} failed (the sweep retries):`, err);
+  }
 }
 
 const monthFrom = (monthStart: Date): Date => londonDateTimeToUtc(monthStart.toISOString().slice(0, 10), "00:00");
