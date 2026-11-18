@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { STATS_ANSWER_INTENTS, displaysSquadState, skipsSquadComposition } from "../group-copy";
+import { composesSquadPost } from "../squad-post-carrier";
 
 describe("by intent", () => {
   it("every stats-answer intent is skipped", () => {
@@ -40,9 +41,20 @@ describe("by intent", () => {
   it("an ordinary question or attendance reply is still recomposed", () => {
     for (const i of ["question", "attendance", "self_att", null]) expect(skipsSquadComposition(i), String(i)).toBe(false);
   });
-  it("route.ts asks this function, in the composition pass", () => {
-    const src = fs.readFileSync(path.resolve(__dirname, "../../app/api/whatsapp/analyze/route.ts"), "utf8");
-    expect(src).toMatch(/if \(skipsSquadComposition\(r\.intent\)\) continue;/);
+  it("route.ts asks this function, in the composition pass (through composesSquadPost)", () => {
+    // The composition pass and the choice of the squad post's carrier share
+    // ONE filter, `composesSquadPost` (squad-post-carrier.ts), which asks
+    // `skipsSquadComposition`. Both links are pinned.
+    const route = fs.readFileSync(path.resolve(__dirname, "../../app/api/whatsapp/analyze/route.ts"), "utf8");
+    expect(route).toMatch(/if \(!composesSquadPost\(r, deterministicTeamPostIds\)\) continue;/);
+    const carrier = fs.readFileSync(path.resolve(__dirname, "../squad-post-carrier.ts"), "utf8");
+    expect(carrier).toMatch(/if \(skipsSquadComposition\(r\.intent\)\) return false;/);
+  });
+  it("and the shared filter skips every stats answer, by intent", () => {
+    for (const intent of STATS_ANSWER_INTENTS) {
+      expect(composesSquadPost({ waMessageId: "m", handledBy: "llm", intent, reply: "1. Sait Demir\n2. Idris Bello" }, new Set()), intent).toBe(false);
+    }
+    expect(composesSquadPost({ waMessageId: "m", handledBy: "llm", intent: "question", reply: "1. Sait Demir\n2. Idris Bello" }, new Set())).toBe(true);
   });
 });
 

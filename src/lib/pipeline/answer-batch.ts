@@ -173,7 +173,7 @@ import type { QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
 import { UNIFIED_ANSWER_INTENT } from "../group-copy";
-import { decide as decideDefault } from "./engine";
+import { decide as decideDefault, isSelfRefAmong } from "./engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
 import { extractForRouteTraced } from "./trace";
@@ -1089,11 +1089,20 @@ export async function runAnswerBatch(args: {
       const m = byId.get(id);
       const f = factsById.get(id);
       // Whose pairings the tables show: the member the question names
-      // (who-is-who, never spelling), else the asker.
+      // (who-is-who, never spelling), else the asker. A question that names
+      // someone who does not resolve to one member (two of that name,
+      // nobody, a misspelling) has NO subject: it is not about the asker,
+      // and showing the asker's numbers as the subject's is how "what is
+      // Alex's rating?" got the asker's (review of #595, 2026-11-15). The
+      // tables still carry everyone's under their own names. The asker's
+      // own words for themselves ("me", "I", "myself", "beni", "bana") are
+      // `isSelfRef`'s, the extractor's reference read against the engine's
+      // closed list, and not when the word is also a member's name ("Bana",
+      // `isSelfRefAmong`).
       let person: { userId: string; self: boolean } | null = m?.senderUserId ? { userId: m.senderUserId, self: true } : null;
-      if (f?.kind === "question" && f.personRef && f.personRef.toLowerCase() !== "me") {
+      if (f?.kind === "question" && f.personRef && !isSelfRefAmong(f.personRef, state.roster)) {
         const r = resolvePerson(f.personRef, state.roster, peopleById.get(id));
-        if (r.kind === "resolved") person = { userId: r.member.userId, self: r.member.userId === m?.senderUserId };
+        person = r.kind === "resolved" ? { userId: r.member.userId, self: r.member.userId === m?.senderUserId } : null;
       }
       if (person && u.stats && !u.stats.chemistry[person.userId]) {
         const load = deps.loadChemistry ?? (async (o: string, uid: string, at?: Date) => (await import("./load-stats")).loadStatsChemistry(o, uid, at));
@@ -1107,7 +1116,7 @@ export async function runAnswerBatch(args: {
       const asker = m?.senderUserId ? state.roster.find((r) => r.userId === m.senderUserId) : undefined;
       // The asker's own stats, in HQ only, when the question is about them.
       const own: string[] = [];
-      if (organisers && m?.senderUserId && f?.kind === "question" && f.personRef?.toLowerCase() === "me") {
+      if (organisers && m?.senderUserId && f?.kind === "question" && isSelfRefAmong(f.personRef ?? "", state.roster)) {
         const loadOwn = deps.loadOwnStats ?? (async (o: string, uid: string) => (await import("../unified-dm")).loadAskerOwnStats(o, uid));
         try {
           const block = await loadOwn(orgId, m.senderUserId);

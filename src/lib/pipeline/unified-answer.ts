@@ -40,6 +40,7 @@
  * It changes nothing: no database access, returns a string, and the prompt
  * says it may never claim to have done anything.
  */
+import { isAiBudgetExceeded } from "../ai-budget-context";
 import { extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./llm";
 import { groundingCheck, membersNamed } from "./stats-grounding";
 import { ELO_TOP_MIN_MATCHES_SHOWN, GROUP_LIST_CAP, GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./stats-limits";
@@ -866,13 +867,16 @@ export function reproducesSquad(reply: string, state: SquadState): boolean {
 /**
  * One grounded answer, ONE call. NEVER THROWS: a failed call, an
  * unparseable body and a refused reply are all `rejected`, with the reason.
+ * The daily AI cap refusing the call is `rejected` too, and `capped` says so
+ * (review of #595, 2026-11-15): a DM at the cap sends nothing at all, where
+ * a failed call gets the apology (`dm-qa.ts`).
  * A number written as a word is checked as the number it stands for
  * (2026-11-11: "once a place opens" refused a correct bench answer), so
  * there is no second call for it any more.
  */
 export async function answerUnified(
   args: UnifiedAnswerInput & { model: PipelineModel },
-): Promise<{ result: UnifiedAnswerResult; costUsd: number; ms: number; called: boolean; inputTokens: number; calls: number }> {
+): Promise<{ result: UnifiedAnswerResult; capped: boolean; costUsd: number; ms: number; called: boolean; inputTokens: number; calls: number }> {
   const ctx = buildUnifiedContext(args);
   let text: string;
   let costUsd = 0;
@@ -893,7 +897,10 @@ export async function answerUnified(
     const raw = extractJson(resp.text) as { answer?: unknown };
     text = typeof raw?.answer === "string" ? raw.answer : "";
   } catch (err) {
-    return { result: { rejected: `the unified answer call failed (${(err as Error).message})` }, costUsd, ms, called: true, inputTokens, calls: 1 };
+    if (isAiBudgetExceeded(err)) {
+      return { result: { rejected: "the daily AI cap refused the unified answer call" }, capped: true, costUsd, ms, called: false, inputTokens, calls: 0 };
+    }
+    return { result: { rejected: `the unified answer call failed (${(err as Error).message})` }, capped: false, costUsd, ms, called: true, inputTokens, calls: 1 };
   }
   const lang = args.state.features.language;
   const tidy = stripLongDashes(text, lang).trim();
@@ -910,5 +917,5 @@ export async function answerUnified(
   if ("text" in result && args.audience === "players" && args.state.features.listAnnouncer === "organisers" && reproducesSquad(result.text, args.state)) {
     result = { text: t(lang).oa_list_by_organisers };
   }
-  return { result, costUsd, ms, called: true, inputTokens, calls: 1 };
+  return { result, capped: false, costUsd, ms, called: true, inputTokens, calls: 1 };
 }

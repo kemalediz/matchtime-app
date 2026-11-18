@@ -1757,6 +1757,8 @@ async function handleInboundDmInScope(body: InboundDm, ctx: InboundDmContext): P
         includePhoneFlags,
         quoted: qa.quoted,
         phone: replyPhone,
+        // The pool switch, resolved as the group and HQ resolve it.
+        poolEnv: () => poolEnvForApiRequest(request),
       });
       if (result) {
         await db.botJob.create({
