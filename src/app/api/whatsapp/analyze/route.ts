@@ -1577,6 +1577,7 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
         sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
         senderWhatsAppName: m.authorName ?? null,
         needHeader,
+        text: m.body,
         ...mode,
       });
     } catch (err) {
@@ -1741,7 +1742,7 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
       const sender = senderById.get(m.waMessageId)!;
       let res: Awaited<ReturnType<typeof monthSignup.handleSignupMessage>> = null;
       try {
-        res = await monthSignup.handleSignupMessage({ orgId: org.id, ask: reading, sender: { userId: sender.userId } });
+        res = await monthSignup.handleSignupMessage({ orgId: org.id, ask: reading, sender: { userId: sender.userId }, text: m.body });
       } catch (err) {
         console.error(`[analyze] month sign-up ${m.waMessageId} failed:`, err);
       }

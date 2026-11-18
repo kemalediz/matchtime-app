@@ -677,3 +677,30 @@ export function heldNudgeDue(p: { now: Date; firstKickoff: Date; firstNoticeAt: 
   const t = p.now.getTime();
   return t >= p.firstKickoff.getTime() - DAY_MS && t < p.firstKickoff.getTime() && t - p.firstNoticeAt.getTime() >= HELD_NUDGE_GAP_MS;
 }
+
+/**
+ * PURE. The games a join question says he will play (2026-11-18): the
+ * count he gave, read against the games left, when it is a whole number
+ * from 1 to fewer than them; else none (every game left).
+ */
+export function joinAskGames(games: number | null | undefined, left: number): number | null {
+  return typeof games === "number" && Number.isInteger(games) && games >= 1 && games < left ? games : null;
+}
+
+/** PURE. A REGULAR on the month: on its list as one, not out, not waiting
+ *  for a place. A pay-as-you-go or bench row is not (2026-11-16). */
+export function isRegularMember(m: { kind: string; out: boolean; waiting: boolean }): boolean {
+  return m.kind === "regular" && !m.out && !m.waiting;
+}
+
+/**
+ * PURE. The line of a pasted list that is his (2026-11-16): what the
+ * organisers' line about his games quotes, never the whole list. Found by
+ * the name the reader read on it, as written; the name itself when no line
+ * has it. For display only: nothing is read from it.
+ */
+export function pastedLineOf(body: string | null, entry: { name: string } | null | undefined): string | null {
+  if (!entry?.name) return body;
+  const name = entry.name.toLocaleLowerCase("en");
+  return (body ?? "").split("\n").map((l) => l.trim()).find((l) => l.toLocaleLowerCase("en").includes(name)) ?? entry.name;
+}

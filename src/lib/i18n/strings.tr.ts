@@ -3422,7 +3422,13 @@ export const tr: Strings = {
     `Oynamak için grupta kendin *VARIM* yaz ya da bir organizatörden eklemesini iste.`,
   mwk_dm_paste_guests_refused: (p) => `📋 Bir listeyle ancak birkaç yeni oyuncu eklenebilir, bu yüzden ${p.names.join(", ")} eklenmedi. Bir organizatör ekleyebilir.`,
   msu_dm_join_ask: (p) =>
-    `📋 Kalan ${p.games} maç için ${p.month} ayına düzenli oyuncu olarak katılmak ister misin${p.price ? ` (${p.price})` : ""}? Evet yazarsan seni ekliyorum.`,
+    p.of
+      ? `📋 Kalan ${p.games} maçtan ${p.of} maç için ${p.month} ayına düzenli oyuncu olarak katılmak ister misin${p.price ? ` (${p.price})` : ""}? Evet yazarsan seni ekliyorum.`
+      : `📋 Kalan ${p.games} maç için ${p.month} ayına düzenli oyuncu olarak katılmak ister misin${p.price ? ` (${p.price})` : ""}? Evet yazarsan seni ekliyorum.`,
+  msu_admin_games_fitted: (p) =>
+    `📋 ${p.name}, ${p.month} için ${p.said} maç dedi${p.words ? ` ("${p.words}")` : ""}, ama ${p.covers} maçı kapsıyor (${p.played} maç oynadı); ${p.stored} olarak kaydettim. Yanlışsa ay sayfasından değiştir.`,
+  msu_admin_games_unrecorded: (p) =>
+    `📋 ${p.name}, ${p.month} için ${p.games} maç dedi${p.words ? ` ("${p.words}")` : ""}, ama ödemesi onaylandı, bu yüzden maçlarını değiştirmedim. Gerekirse ay sayfasından değiştir.`,
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,

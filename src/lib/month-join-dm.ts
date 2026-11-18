@@ -11,9 +11,21 @@
  * quoted one, or MatchTime's newest DM to him); one delivery is read once.
  */
 import { db } from "./db";
-import { MONTH_JOIN_ASK_KIND } from "./month-signup";
+import { MONTH_JOIN_ASK_GAMES_KIND, MONTH_JOIN_ASK_KIND, monthJoinAskGamesKey } from "./month-signup";
 
 const OPEN_MS = 48 * 3600 * 1000;
+
+/** The games the join question said he will play (`askToJoinMonth`), if any. */
+async function askedGames(askKey: string): Promise<{ games: number; words: string | null } | null> {
+  const row = await db.sentNotification.findUnique({ where: { key: monthJoinAskGamesKey(askKey) }, select: { kind: true, text: true } });
+  if (row?.kind !== MONTH_JOIN_ASK_GAMES_KIND || !row.text) return null;
+  try {
+    const v = JSON.parse(row.text) as { games?: unknown; words?: unknown };
+    return typeof v.games === "number" && Number.isInteger(v.games) && v.games >= 1 ? { games: v.games, words: typeof v.words === "string" ? v.words : null } : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function handleMonthJoinDmReply(input: {
   userId: string;
@@ -62,15 +74,21 @@ export async function handleMonthJoinDmReply(input: {
     // Answered either way: the ask is closed.
     await db.sentNotification.updateMany({ where: { id: ask.id, kind: MONTH_JOIN_ASK_KIND }, data: { kind: `${MONTH_JOIN_ASK_KIND}-closed` } });
     if (reading.choice !== "in") return { handled: "month-join-no", monthId };
-    const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, now: input.now });
     // "yes but only 3 games": the games he commits to, when FEWER than the
     // games left (a plain "yes" can come back with the question's own "3
     // games left", which is what he is joining for anyway: nothing to set).
+    // Given to applySignup (2026-11-16): through the one fit rule, and
+    // recorded before he and the organisers are told what he owes. (A
+    // leaver who paid: his count of the games left is made a total there.)
     const left = month.kickoffs.filter((k) => k.getTime() > input.now.getTime()).length;
-    if (res.ok && res.outcome === "regular" && reading.games !== null && reading.games < left) {
-      const { commitMonthGames } = await import("./month-signup");
-      await commitMonthGames(monthId, input.userId, reading.games);
-    }
+    // A count of his own in the answer wins; a plain yes is for the games
+    // the question said (the count from the message that led to it,
+    // 2026-11-18), else every game left.
+    const said = await askedGames(ask.key);
+    const own = reading.games !== null && reading.games < left ? reading.games : null;
+    const games = own ?? said?.games ?? null;
+    const words = own !== null ? input.text : (said?.words ?? input.text);
+    const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games, words, now: input.now });
     return res.ok ? { handled: "month-join-yes", monthId } : null;
   } catch (err) {
     console.error("[month-join-dm] failed:", err instanceof Error ? err.message : "failed");

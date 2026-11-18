@@ -99,8 +99,18 @@ describe("the join, as the months page's 'Add a player, Regular'", () => {
     const r = await joinMonthAsOrganiser({ orgId: "o", monthId: "month-nov", userId: "u-tom", line: { ...line, games: 2 }, organiserUserId: "u-davide", now: NOW });
     expect(m.applySignup).toHaveBeenCalledWith(expect.objectContaining({ monthId: "month-nov", userId: "u-tom", choice: "in", source: "admin", byOrganiser: true, actorUserId: "u-davide" }));
     expect(m.claimMonthPaid).toHaveBeenCalledWith(expect.objectContaining({ userId: "u-tom", source: "organiser" }));
-    expect(m.commitMonthGames).toHaveBeenCalledWith("month-nov", "u-tom", 2);
     expect(r).toMatchObject({ ok: true, changed: true, outcome: "regular", gamesLeft: 3 });
+  });
+  it("his games go WITH the join, through applySignup's one fit rule (a paid leaver back is counted from now there), never a second write after it", async () => {
+    m.applySignup.mockResolvedValueOnce({ ok: true, changed: false, locked: false, outcome: "regular", unknownDays: [], gamesStored: true } as never);
+    const r = await joinMonthAsOrganiser({ orgId: "o", monthId: "month-nov", userId: "u-tom", line: { ...line, games: 2 }, organiserUserId: "u-davide", words: "4. Tom 2 games", now: NOW });
+    expect(m.applySignup).toHaveBeenCalledWith(expect.objectContaining({ userId: "u-tom", games: 2, words: "4. Tom 2 games" }));
+    expect(m.commitMonthGames).not.toHaveBeenCalled();
+    expect(r.changed).toBe(true);
+  });
+  it("no games on the line: none given to applySignup", async () => {
+    await joinMonthAsOrganiser({ orgId: "o", monthId: "month-nov", userId: "u-tom", line: { ...line, games: null }, organiserUserId: "u-davide", now: NOW });
+    expect(m.applySignup).toHaveBeenCalledWith(expect.objectContaining({ games: null }));
   });
   it("a PAYG line is PAYG for the days it names, or the next game", async () => {
     await joinMonthAsOrganiser({ orgId: "o", monthId: "month-nov", userId: "u-tom", line: { ...line, payg: true, paid: false }, organiserUserId: "u-davide", weekDay: 9, now: NOW });
