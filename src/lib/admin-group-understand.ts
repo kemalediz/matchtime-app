@@ -956,7 +956,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     const askOne = async (source: RecruitSource, organiser: string, clubRef: string | null): Promise<Understood> => {
       if (source === "pool") return askPoolInWords();
       if (source === "partners") {
-        const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: organiser, via: "hq", clubRef, lang, now });
+        const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: organiser, via: "hq", clubRef, sourceMessageId: messageId, lang, now });
         return said(r.outcome, r.replyText);
       }
       const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });

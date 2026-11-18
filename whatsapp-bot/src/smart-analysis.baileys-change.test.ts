@@ -91,7 +91,6 @@ async function wired() {
         return "k";
       },
       attempt: async () => true,
-      whenFlushIdle: async () => true,
       log: () => {},
       error: () => {},
     });
@@ -151,17 +150,16 @@ describe("the Baileys driver, the local record and the batch together", () => {
     expect(posted().messages.map((m) => m.body)).toEqual([SECRET]);
   });
 
-  it("a typo edit while waiting: the message is analysed ONCE, with the content the Pi has ('Inn'); the edit is recorded and posted by ids only", async () => {
+  it("a typo edit while waiting: the message is analysed ONCE, with the content the Pi has ('Inn'); the edit is recorded and posted with its new words (round 14)", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00021", { conversation: "Inn" }));
     await t.upsert(wa("3EB0NOTICE000021", editOf("3EB0BAILEYS00021", { extendedTextMessage: { text: "In, ask @158055467598022", contextInfo: { mentionedJid: [ALI_LID] } } })));
-    expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00021", byAdmin: false })]);
-    expect(JSON.stringify(t.outbox)).not.toMatch(/Inn|ask @/);
+    expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00021", byAdmin: false, text: "In, ask @158055467598022" })]);
+    expect(JSON.stringify(t.outbox)).not.toContain("Inn");
     await _test_flushNow(GROUP);
     await _test_flushNow(GROUP);
     expect(postAnalyzeFull).toHaveBeenCalledTimes(1);
     expect(posted().messages.map((m) => m.body)).toEqual(["Inn"]);
-    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("ask @");
   });
 
   it("the edit in the SAME upsert as its original: the original is analysed once, as it came", async () => {
@@ -183,7 +181,7 @@ describe("the Baileys driver, the local record and the batch together", () => {
     ]);
   });
 
-  it("the catch-up re-queues a message already analysed, then it is edited: the copy goes as it is (the server dedupes it, and forgets the stored words)", async () => {
+  it("the catch-up re-queues a message already analysed, then it is edited: the copy goes as it is (the server dedupes it, and replaces the stored words); the recent chat shows the edited words", async () => {
     const t = await wired();
     await t.upsert(wa("3EB0BAILEYS00025", { conversation: SECRET }));
     await _test_flushNow(GROUP);
@@ -193,7 +191,7 @@ describe("the Baileys driver, the local record and the batch together", () => {
     expect(t.outbox).toEqual([expect.objectContaining({ kind: "edit", messageId: "3EB0BAILEYS00025", byAdmin: false })]);
     await _test_flushNow(GROUP);
     expect(posted().messages.map((m) => m.body)).toEqual([SECRET]);
-    expect(JSON.stringify(postAnalyzeFull.mock.calls)).not.toContain("my new words");
+    expect(JSON.stringify(posted().history)).not.toContain("4321");
   });
 
   it("an edit by somebody else is ignored", async () => {

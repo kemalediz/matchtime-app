@@ -103,6 +103,8 @@ export async function askPartnersFromWords(args: {
   clubRef: string | null | undefined;
   /** The match the caller already knows (the players' group's state). */
   matchId?: string | null;
+  /** The group message that asked (PR #606): deleting it cancels an ask still awaiting approval. */
+  sourceMessageId?: string | null;
   lang: string | null;
   now: Date;
 }): Promise<PartnerAskFromWordsResult> {
@@ -133,6 +135,7 @@ export async function askPartnersFromWords(args: {
         requestedByUserId: args.requestedByUserId,
         via: args.via,
         roundId,
+        sourceMessageId: args.sourceMessageId ?? null,
         now,
       });
       if (r.ok) places = Math.max(places, r.places);

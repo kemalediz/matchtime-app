@@ -137,7 +137,7 @@ test("when the teams are made, the stored amount is the one used and recorded", 
   expect(adj).toEqual({ delta: -1, reason: "Form note in the chat: ill", confidence: 1 });
 });
 
-test("a note, then the teams, then the author DELETES the message: the note's reason, its copy on the RatingAdjustment row and MatchTime's acknowledgement lose the words", async ({ request, db }) => {
+test("a note, then the teams, then the author DELETES the message: the note is undone (reason AND amount, round 14), its copy on the RatingAdjustment row too, and MatchTime's acknowledgement loses the words", async ({ request, db }) => {
   const keys = ["owner", "alice", "pete", "dan", "felix", "greg", "henry", "ivan"];
   const g = (
     await createGroup(request, db, {
@@ -157,15 +157,15 @@ test("a note, then the teams, then the author DELETES the message: the note's re
     facts: { action: "generate", includeRefs: [], teamNames: null, swaps: [], pairings: [] },
     tag: true,
   });
-  const adj = () => db.one<{ reason: string }>(`SELECT reason FROM "RatingAdjustment" WHERE "matchId" = $1 AND "userId" = $2`, [g.matchId!, pete.userId]);
-  expect(await adj()).toEqual({ reason: "Form note in the chat: knee is sore" });
+  const adj = () => db.one<{ reason: string; delta: number }>(`SELECT reason, delta FROM "RatingAdjustment" WHERE "matchId" = $1 AND "userId" = $2`, [g.matchId!, pete.userId]);
+  expect(await adj()).toEqual({ reason: "Form note in the chat: knee is sore", delta: -1 });
   const res = await request.post("/api/whatsapp/message-change", {
     headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
     data: { kind: "revoke", chatId: g.groupId, messageId: bare, byAdmin: false, senderJids: [`${phone}@c.us`], senderPhone: phone },
   });
   expect(res.status(), await res.text()).toBe(200);
-  expect(await adj()).toEqual({ reason: "" });
-  expect(await noteOf(g, "pete")).toMatchObject({ delta: -1, reason: "" });
+  expect(await adj()).toEqual({ reason: "", delta: 0 });
+  expect(await noteOf(g, "pete")).toMatchObject({ delta: 0, reason: "" });
   const acks = await db.all<{ text: string | null }>(`SELECT text FROM "SentNotification" WHERE key LIKE $1`, [`%:${id}`]);
   expect(acks.length).toBeGreaterThan(0);
   expect(JSON.stringify(acks)).not.toContain("knee");

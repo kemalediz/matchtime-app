@@ -126,15 +126,25 @@ describe("onMessageChange", () => {
     expect(await t.driver.isGroupAdmin!("120363000000009999@g.us", [ADMIN_LID])).toBeNull();
   });
 
-  it("a group edit: handed up by ids and sender only (never its new words, never as a message); never an admin's; never logged", async () => {
+  it("a group edit: handed up by ids, sender and its NEW words (never as a message); never an admin's; the words never logged", async () => {
     const t = await started();
     const calls = t.sock().metadataCalls.length;
     await t.upsert(wa(editOf({ extendedTextMessage: { text: "my new secret words @447700900456", contextInfo: { mentionedJid: ["447700900456@s.whatsapp.net"] } } }), { participant: ADMIN_LID, participantAlt: ADMIN_PN }));
     expect(t.messages).toEqual([]);
     expect(t.changes).toEqual([
-      { kind: "edit", chatId: GROUP, isGroup: true, messageId: TARGET, senderJids: [ADMIN_LID, "447700900124@c.us"], senderPhone: "447700900124", byAdmin: false, fromMe: false },
+      {
+        kind: "edit",
+        chatId: GROUP,
+        isGroup: true,
+        messageId: TARGET,
+        senderJids: [ADMIN_LID, "447700900124@c.us"],
+        senderPhone: "447700900124",
+        byAdmin: false,
+        fromMe: false,
+        text: "my new secret words @447700900456",
+        editedAt: expect.any(Number),
+      },
     ]);
-    expect(JSON.stringify(t.changes)).not.toContain("secret");
     // No admin lookup for an edit: only its author may edit.
     expect(t.sock().metadataCalls.length).toBe(calls);
     expect([...t.logs, ...t.errors].join("\n")).not.toContain("secret");
@@ -150,8 +160,8 @@ describe("onMessageChange", () => {
     expect(t.messages).toHaveLength(1);
     expect((t.messages[0] as unknown as { body: string }).body).toBe("In");
     expect(t.changes).toEqual([
-      expect.objectContaining({ kind: "edit", messageId: TARGET, senderJids: [PLAYER_LID, "447700900123@c.us"], byAdmin: false }),
-      expect.objectContaining({ kind: "edit", messageId: TARGET, senderJids: [PLAYER_LID, "447700900123@c.us"], byAdmin: false }),
+      expect.objectContaining({ kind: "edit", messageId: TARGET, senderJids: [PLAYER_LID, "447700900123@c.us"], byAdmin: false, text: "In" }),
+      expect.objectContaining({ kind: "edit", messageId: TARGET, senderJids: [PLAYER_LID, "447700900123@c.us"], byAdmin: false, text: "In" }),
     ]);
     const alone = await started();
     await alone.upsert(wa({ editedMessage: { message: { conversation: "Out" } } }, { id: "3EB0MERGED000002" }));

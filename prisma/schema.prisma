@@ -1539,6 +1539,10 @@ model PartnerAsk {
   /// Partner discovery P4 (2026-10-22): asks sent together share it, and
   /// `places` (the organiser's number) covers the whole round, not each
   /// partner. Null: a round of its own (older rows).
+  /// The group message that requested it (PR #606, round 14): deleting that
+  /// message cancels an ask still awaiting approval. Null from a button,
+  /// a link or a DM.
+  sourceMessageId   String?
   roundId           String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -2541,6 +2545,11 @@ model AnalyzedMessage {
   /// phone numbers. NULL for rows written before it shipped and for
   /// messages that never reached the router. Read with
   /// `scripts/trace-message.ts`.
+  /// The message this one quoted, as the Pi sent it (PR #606, round 14): a
+  /// change to the quoted message clears the words this reply's reading may
+  /// carry of it (its reasoning, its trace's free words).
+  quotedMessageId String?
+
   pipelineTrace Json?
 
   createdAt DateTime @default(now())
@@ -2807,6 +2816,9 @@ model DeletedMessage {
   /// takes the NULL ones first, then re-checks the rest for 48 hours, moving
   /// this to now each time; a re-check never makes it NULL again.
   enforcedAt   DateTime?
+  /// The unsent DMs a delete of this message cancelled (round 14): their
+  /// `botjob-<id>` dispatch claims are cleared again at each re-check, by key.
+  cancelledJobIds String[] @default([])
 
   @@unique([chatId, waMessageId])
   @@index([lastChangeAt])

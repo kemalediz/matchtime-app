@@ -75,7 +75,6 @@ import {
   restoreMessageChanges,
   isRevokedLocally,
   isChangedLocally,
-  whenFlushIdle,
 } from "./smart-analysis.js";
 import { bodyForServer, handleMessageChange } from "./message-change.js";
 import { createMessageChangeOutbox, outboxPath } from "./message-change-outbox.js";
@@ -850,7 +849,6 @@ async function main() {
       record: (c) => messageChanges.record(c),
       update: (key, c) => messageChanges.update(key, c),
       attempt: (key) => messageChanges.attempt(key),
-      whenFlushIdle: (groupId) => whenFlushIdle(groupId),
       log: (l) => console.log(l),
       error: (l) => console.error(l),
     });

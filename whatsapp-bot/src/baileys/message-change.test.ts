@@ -52,15 +52,22 @@ describe("readMessageChange: a delete for everyone", () => {
 });
 
 describe("readMessageChange: an edit", () => {
-  it("a text edited: the edited message's id only, never its new words", () => {
-    const r = readMessageChange(wa(edit({ extendedTextMessage: { text: "new words" } })));
-    expect(r).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET });
+  it("a text edited: the edited message's id, its NEW words and when WhatsApp made the edit (round 14: they replace the stored words)", () => {
+    const r = readMessageChange(wa(edit({ extendedTextMessage: { text: "  new words " } })));
+    expect(r).toEqual({ kind: "edit", chatJid: GROUP, targetId: TARGET, text: "new words", editedAt: 1763200001000 });
   });
 
-  it("inside the editedMessage wrapper, and an edit of a caption or of anything else", () => {
-    expect(readMessageChange(wa({ editedMessage: { message: edit({ conversation: "wrapped edit" }) } }))).toMatchObject({ kind: "edit", chatJid: GROUP, targetId: TARGET });
-    expect(readMessageChange(wa(edit({ imageMessage: { mimetype: "image/jpeg" } })))).toMatchObject({ kind: "edit", targetId: TARGET });
-    expect(readMessageChange(wa(edit({ stickerMessage: { mimetype: "image/webp" } })))).toMatchObject({ kind: "edit", targetId: TARGET });
+  it("inside the editedMessage wrapper, and an edit of a caption (its new caption) or of anything with no words (none)", () => {
+    expect(readMessageChange(wa({ editedMessage: { message: edit({ conversation: "wrapped edit" }) } }))).toMatchObject({ kind: "edit", chatJid: GROUP, targetId: TARGET, text: "wrapped edit" });
+    expect(readMessageChange(wa(edit({ imageMessage: { mimetype: "image/jpeg", caption: "new caption" } })))).toMatchObject({ kind: "edit", targetId: TARGET, text: "new caption" });
+    const sticker = readMessageChange(wa(edit({ stickerMessage: { mimetype: "image/webp" } })));
+    expect(sticker).toMatchObject({ kind: "edit", targetId: TARGET });
+    expect(sticker?.text).toBeUndefined();
+  });
+
+  it("an edit with no time of its own takes the notice's", () => {
+    const m = wa({ protocolMessage: { key: { id: TARGET, remoteJid: GROUP, fromMe: true }, type: P.MESSAGE_EDIT, editedMessage: { conversation: "x" } } });
+    expect(readMessageChange(m)).toMatchObject({ text: "x", editedAt: 1763200000000 });
   });
 
   it("an ORIGINAL that Baileys merged its edit into (`editedMessage` holding the new content itself) is a message, not a change; `isMergedEdit` tells it apart", () => {

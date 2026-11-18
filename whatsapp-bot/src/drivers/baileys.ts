@@ -1289,6 +1289,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         byAdmin: false,
         fromMe: key.fromMe === true,
       };
+      // An edit's new words and time (round 14), set by name: the driver
+      // builds no message body here.
+      if (change.kind === "edit" && change.text) event.text = change.text;
+      if (change.kind === "edit" && change.editedAt) event.editedAt = change.editedAt;
       // Only a delete may come from an admin; an edit is its author's or
       // nothing. Whether the sender IS an admin is read by the change
       // handler (`isGroupAdmin`), never here: a roster read on this serial
@@ -1357,7 +1361,11 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       const senderJids = [...new Set([key.participant, key.participantAlt].map((j) => legacyJid(j)).filter((j): j is string => !!j))];
       log(`${line} a merged edit of ${mapped.id}: handed up as the message, and as an edit`);
       tally("a merged edit");
-      hand(changeHandlers, { kind: "edit", chatId: mapped.chatJid, isGroup: true, messageId: mapped.id, senderJids, senderPhone, byAdmin: false, fromMe: false }, "onMessageChange");
+      // Its new words are the message as it arrived (round 14).
+      const merged: MessageChangeEvent = { kind: "edit", chatId: mapped.chatJid, isGroup: true, messageId: mapped.id, senderJids, senderPhone, byAdmin: false, fromMe: false };
+      if (mapped.body) merged.text = mapped.body;
+      if (mapped.timestampSec) merged.editedAt = mapped.timestampSec * 1000;
+      hand(changeHandlers, merged, "onMessageChange");
     }
     // Picture reading: handed up by the reader, once, after it is read.
     if (deps.pictures?.wants(view as InboundMessage)) {

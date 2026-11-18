@@ -19,8 +19,9 @@
  *
  * The file is the dm-pacer's kind (`dm-pacer.ts`): JSON beside the bot,
  * written atomically, 0600, gitignored, never touched by `deploy-pi.sh`'s
- * `git pull`. It holds ids and phones, never a word of any message (an
- * edit is a purge and carries none). Bounded: OUTBOX_MAX entries (the oldest taken changes go
+ * `git pull`. It holds ids and phones, and an edit's NEW words (round 14:
+ * what the member now says, for the server to put in place of the
+ * original); never the original words, never a delete's. Bounded: OUTBOX_MAX entries (the oldest taken changes go
  * first), and a change the server has not taken in GIVE_UP_MS is dropped
  * with a CRITICAL line naming its id. Logs carry ids only.
  */

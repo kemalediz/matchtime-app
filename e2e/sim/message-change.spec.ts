@@ -129,20 +129,18 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     expect(answer!.user).not.toContain("4321");
   });
 
-  test("edited by its author: a purge. The next recent chat has neither the old words nor the new", async ({ request, db }) => {
+  test("edited by its author (round 14): the stored words are REPLACED; the next recent chat has the new words, never the old", async ({ request, db }) => {
     const g = await createGroup(request, db, { attendance: [{ key: "pete", status: "CONFIRMED" as const }] });
     const bare = await storeTwoLines(g);
-    // Even if a Pi sent the new words, they are never stored.
     const r = await change(request, { ...editBy(g, "dan", bare), text: "see you all at 8" });
     expect(r).toMatchObject({ ok: true, analyzed: 1, refused: 0 });
     expect(await db.one(`SELECT reason FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare])).toEqual({ reason: "edited" });
 
     await g.postBatch([{ player: "pete", body: "@Match Time out", tag: true, route: "self_att", facts: selfOut() }]);
     const call = calls().find((c) => c.user.endsWith("@Match Time out"));
-    expect(recentChatOf(call!.user)).toEqual([`${g.player("pete").name}: ${OTHER}`]);
+    expect(recentChatOf(call!.user)).toEqual([`${g.player("dan").name}: see you all at 8`, `${g.player("pete").name}: ${OTHER}`]);
     expect(JSON.stringify(calls())).not.toContain("4321");
-    expect(JSON.stringify(calls())).not.toContain("see you all at 8");
-    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE body LIKE '%see you all at 8%'`)).toBe(0);
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE body = 'see you all at 8'`)).toBe(1);
   });
 
   test("HQ: a deleted organiser's message leaves the log, and the next HQ answer is shown the chat without it", async ({ request, db }) => {
@@ -176,6 +174,57 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     expect(answer, "the unified answer was asked in HQ").toBeTruthy();
     expect(answer!.user).toContain(OTHER);
     expect(answer!.user).not.toContain("4321");
+  });
+
+  // ── Round 14: an author's edit REPLACES the words ───────────────────
+
+  test("round 14: 'me' quoting a message its author EDITED: the extractor is shown the EDITED words, never the original", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = bareId();
+    const id = storedId(g.groupId, bare, g.player("dan").phone);
+    await g.postBatch([{ player: "dan", body: "Need 1 more tonight", route: "none", waMessageId: id }]);
+    expect(await change(request, { ...editBy(g, "dan", bare), text: "Need 2 more tonight", editedAt: Date.now() })).toMatchObject({ ok: true, analyzed: 1 });
+    expect(await db.one(`SELECT body FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [id])).toEqual({ body: "Need 2 more tonight" });
+    await g.postBatch([{ player: "pete", body: "me", route: "self_att", facts: selfIn(), quote: { id, text: "Need 1 more tonight", authorJid: `${digits(g.player("dan").phone)}@c.us` } }]);
+    const call = calls().find((c) => c.user.trimEnd().endsWith("me"));
+    expect(call, "the extractor read the reply").toBeTruthy();
+    expect(call!.user).toContain("Need 2 more tonight");
+    expect(JSON.stringify(calls())).not.toContain("Need 1 more");
+  });
+
+  test("round 14: the recent chat a model is shown carries an edited line's EDITED words; a deleted line is gone", async ({ request, db }) => {
+    const g = await createGroup(request, db);
+    const bare = bareId();
+    const id = storedId(g.groupId, bare, g.player("dan").phone);
+    await g.postBatch([{ player: "dan", body: "kickoff 7", route: "none", waMessageId: id }]);
+    await change(request, { ...editBy(g, "dan", bare), text: "kickoff 8", editedAt: Date.now() });
+    await g.postBatch([{ player: "pete", body: "@Match Time out", tag: true, route: "self_att", facts: selfOut() }], {
+      history: [{ authorName: g.player("dan").name, body: "kickoff 7", waMessageId: id }],
+    });
+    const call = calls().find((c) => c.user.endsWith("@Match Time out"));
+    expect(recentChatOf(call!.user).join("\n")).toContain("kickoff 8");
+    expect(JSON.stringify(calls())).not.toContain("kickoff 7");
+  });
+
+  test("round 14: an edited pasted list (squad-from-list's archive) and an edited HQ line keep their rows with the EDITED words (real Postgres)", async ({ request, db }) => {
+    const g = await createGroup(request, db, { features: { squadFromList: true } });
+    const bare = bareId();
+    const id = storedId(g.groupId, bare, g.player("dan").phone);
+    await g.postBatch([{ player: "dan", body: "Thursday:\n1. Pete\n2. Dan", route: "none", waMessageId: id }]);
+    await change(request, { ...editBy(g, "dan", bare), text: "Thursday:\n1. Pete\n2. Dan\n3. Felix", editedAt: Date.now() });
+    expect(await db.one(`SELECT body FROM "GroupMessage" WHERE "waMessageId" = $1`, [id])).toEqual({ body: "Thursday:\n1. Pete\n2. Dan\n3. Felix" });
+    const HQ = `${g.groupId.replace("@g.us", "")}-hq@g.us`;
+    await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [g.orgId, HQ]);
+    const alice = g.player("alice");
+    const hqBare = bareId();
+    const hqId = storedId(HQ, hqBare, alice.phone);
+    const posted = await request.post("/api/whatsapp/admin-group", {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+      data: { channel: "admin-group", botMentioned: false, groupId: HQ, messageId: hqId, text: "1. Pete\n2. Dan", senderPhone: digits(alice.phone), timestamp: String(Math.floor(Date.now() / 1000)) },
+    });
+    expect(posted.status()).toBe(200);
+    await change(request, { ...editBy(g, "alice", hqBare, HQ), text: "1. Pete\n2. Dan\n3. Felix", editedAt: Date.now() });
+    expect(await db.one(`SELECT text FROM "AdminGroupMessage" WHERE "waMessageId" = $1`, [hqId])).toEqual({ text: "1. Pete\n2. Dan\n3. Felix" });
   });
 
   // ── Round 2 (two reviews of #606) ──────────────────────────────────
@@ -355,7 +404,8 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
       const t = await db.one<{ reason: string }>(`SELECT reason FROM "DeletedMessage" WHERE "chatId" = $1 AND "waMessageId" = $2`, [g.groupId, bare]);
       expect(t?.reason).toBe(order.includes("revoke") ? "deleted" : "edited");
     }
-    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE body LIKE 'edit %'`)).toBe(0);
+    // Round 14: the edit-then-edit case keeps the edited words (one row); a delete in any order leaves none.
+    expect(await db.count(`SELECT count(*)::int AS c FROM "AnalyzedMessage" WHERE body LIKE 'edit %'`)).toBe(1);
   });
 
   test("an edit by somebody else is ignored entirely", async ({ request, db }) => {

@@ -52,7 +52,14 @@
 -- plain CREATE INDEX: it holds a write lock on "GroupMessage" while it
 -- builds, which on the archive's size is well under a second); three NEW
 -- columns on "FormNote" (one nullable, two with a constant default: no
--- rewrite, instant). No row changes.
+-- rewrite, instant); one NEW nullable column each on "AnalyzedMessage"
+-- ("quotedMessageId", the message a reply quoted) and "PartnerAsk"
+-- ("sourceMessageId", the message that requested it): no rewrite, instant.
+-- No row changes.
+--
+-- ORDER, AGAIN: the analyze route writes "AnalyzedMessage"."quotedMessageId"
+-- on every message. A server deployed before this would fail every
+-- AnalyzedMessage write (logged, the reply still sent, but nothing stored).
 --
 -- IDEMPOTENT: IF NOT EXISTS everywhere. ONE transaction; SET LOCAL only.
 --
@@ -66,6 +73,8 @@
 --   ALTER TABLE "FormNote" DROP COLUMN IF EXISTS "reasonSourceMessageId";
 --   ALTER TABLE "FormNote" DROP COLUMN IF EXISTS "reasonMessageIds";
 --   ALTER TABLE "FormNote" DROP COLUMN IF EXISTS "clearedMessageIds";
+--   ALTER TABLE "AnalyzedMessage" DROP COLUMN IF EXISTS "quotedMessageId";
+--   ALTER TABLE "PartnerAsk" DROP COLUMN IF EXISTS "sourceMessageId";
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -82,9 +91,12 @@ CREATE TABLE IF NOT EXISTS "DeletedMessage" (
     "deletedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "lastChangeAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "enforcedAt" TIMESTAMP(3),
+    "cancelledJobIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
 
     CONSTRAINT "DeletedMessage_pkey" PRIMARY KEY ("id")
 );
+-- A table made by an earlier draft of this file gets the column too.
+ALTER TABLE "DeletedMessage" ADD COLUMN IF NOT EXISTS "cancelledJobIds" TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 CREATE UNIQUE INDEX IF NOT EXISTS "DeletedMessage_chatId_waMessageId_key" ON "DeletedMessage"("chatId", "waMessageId");
 CREATE INDEX IF NOT EXISTS "DeletedMessage_lastChangeAt_idx" ON "DeletedMessage"("lastChangeAt");
@@ -93,5 +105,7 @@ CREATE INDEX IF NOT EXISTS "GroupMessage_waChatId_createdAt_idx" ON "GroupMessag
 ALTER TABLE "FormNote" ADD COLUMN IF NOT EXISTS "reasonSourceMessageId" TEXT;
 ALTER TABLE "FormNote" ADD COLUMN IF NOT EXISTS "reasonMessageIds" TEXT[] DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE "FormNote" ADD COLUMN IF NOT EXISTS "clearedMessageIds" TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "AnalyzedMessage" ADD COLUMN IF NOT EXISTS "quotedMessageId" TEXT;
+ALTER TABLE "PartnerAsk" ADD COLUMN IF NOT EXISTS "sourceMessageId" TEXT;
 
 COMMIT;

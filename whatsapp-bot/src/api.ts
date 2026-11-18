@@ -525,7 +525,7 @@ export async function postGroupPostability(body: {
  *  An edit is a purge: it carries no words, old or new. */
 export type MessageChangeBody =
   | { kind: "revoke"; chatId: string; messageId: string; byAdmin: boolean; senderJids: string[]; senderPhone: string | null }
-  | { kind: "edit"; chatId: string; messageId: string; senderJids: string[]; senderPhone: string | null };
+  | { kind: "edit"; chatId: string; messageId: string; senderJids: string[]; senderPhone: string | null; text?: string; editedAt?: number };
 
 /** Counts only: the server never sends the words back. */
 export interface MessageChangeResponse {

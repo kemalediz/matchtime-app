@@ -38,7 +38,7 @@ vi.mock("./api.js", () => ({
 }));
 
 const sa = await import("./smart-analysis.js");
-const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, restoreMessageChanges, adjustForServer, isRevokedLocally, isChangedLocally, whenFlushIdle, _test_flushNow, _test_reset } = sa;
+const { enqueueForAnalysis, recordHistory, applyMessageChangeLocally, restoreMessageChanges, adjustForServer, isRevokedLocally, isChangedLocally, _test_flushNow, _test_reset } = sa;
 
 const GROUP = "120363000000009300@g.us";
 const SAM = "447700900123";
@@ -242,7 +242,7 @@ describe("an author's edit never changes what is analysed (the rule after six re
     expect(posted().messages[0].botMentioned).not.toBe(true);
   });
 
-  it("a quote of an edited message is stripped (its author made the change: the original words must go)", async () => {
+  it("a quote of a message edited with NO words (an older record) is stripped (its author made the change: the original words must go)", async () => {
     await arrive(message("SAMMSG000029", SECRET));
     await arrive(message("ALIMSG000029", "@Match Time right?", ALI, "Ali", { id: "SAMMSG000029", text: SECRET, participant: `${SAM}@c.us` }));
     expect(applyMessageChangeLocally(edit("SAMMSG000029"))).toEqual({ buffered: 0, history: 0, quotes: 1 });
@@ -250,6 +250,34 @@ describe("an author's edit never changes what is analysed (the rule after six re
     const reply = posted().messages.find((m) => m.quotedMessageId);
     expect(reply?.quotedMessageId).toBe("SAMMSG000029");
     expect(reply?.quotedBody).toBeUndefined();
+  });
+
+  it("round 14: a quote of a message its author EDITED carries the edited words in place of the original, waiting in the batch or still to come; the latest edit wins", async () => {
+    await arrive(message("SAMMSG000031", "Need 1 more tonight"));
+    await arrive(message("ALIMSG000031", "me", ALI, "Ali", { id: "SAMMSG000031", text: "Need 1 more tonight", participant: `${SAM}@c.us` }));
+    expect(applyMessageChangeLocally({ ...edit("SAMMSG000031"), text: "Need 3 more tonight", editedAt: 1000 })).toMatchObject({ quotes: 1 });
+    applyMessageChangeLocally({ ...edit("SAMMSG000031"), text: "Need 2 more tonight", editedAt: 2000 });
+    await arrive(message("PETMSG000031", "and me", "447700900777", "Pete", { id: "SAMMSG000031", text: "Need 1 more tonight", participant: `${SAM}@c.us` }));
+    await _test_flushNow(GROUP);
+    const replies = posted().messages.filter((m) => m.quotedMessageId === "SAMMSG000031");
+    expect(replies.map((m) => m.quotedBody)).toEqual(["Need 2 more tonight", "Need 2 more tonight"]);
+    // The message itself is analysed once, as it arrived (an edit never changes what is analysed);
+    // nothing else shows its original words.
+    expect(posted().messages.map((m) => m.body)).toEqual(["Need 1 more tonight", "me", "and me"]);
+    expect(JSON.stringify(posted().history)).not.toContain("Need 1 more");
+  });
+
+  it("round 14: the recent chat shows an edited line with its edited words; a deleted one is gone", async () => {
+    recordHistory(GROUP, { authorName: "Sam", body: "Need 1 more tonight", timestamp: new Date(Date.now() - 60_000).toISOString() }, ID("SAMMSG000032"));
+    recordHistory(GROUP, { authorName: "Sam", body: SECRET, timestamp: new Date(Date.now() - 50_000).toISOString() }, ID("SAMMSG000033"));
+    applyMessageChangeLocally({ ...edit("SAMMSG000032"), text: "Need 2 more tonight" });
+    applyMessageChangeLocally(del("SAMMSG000033"));
+    await arrive(message("ALIMSG000032", "@Match Time who is in?", ALI, "Ali"));
+    await _test_flushNow(GROUP);
+    const lines = JSON.stringify(posted().history);
+    expect(lines).toContain("Need 2 more tonight");
+    expect(lines).not.toContain("Need 1 more");
+    expect(lines).not.toContain("4321");
   });
 
   it("an edit by anyone else, a group admin included: no quote stripped, nothing recorded against the author", async () => {
@@ -428,6 +456,12 @@ describe("an admin-group (HQ) forward is held to the record (adjustForServer)", 
     expect(adjustForServer(hq())).toBeNull();
   });
 
+  it("round 14: a forward quoting a message its author EDITED carries the edited words", () => {
+    applyMessageChangeLocally({ ...edit("SAMHQ0000003"), text: "list, edited" });
+    const out = adjustForServer(hq({ messageId: `false_${GROUP}_ALIHQ0000003_${ALI}@c.us`, senderPhone: ALI, text: "@Match Time make teams from the list above", quotedMessageId: "SAMHQ0000003", quotedText: "the old list", quotedAuthorJid: `${SAM}@c.us` }));
+    expect(out).toMatchObject({ quotedMessageId: "SAMHQ0000003", quotedText: "list, edited" });
+  });
+
   it("a forward quoting a deleted message goes without the quoted words, when its author deleted it", () => {
     applyMessageChangeLocally(del("SAMHQ0000002"));
     const out = adjustForServer(hq({ messageId: `false_${GROUP}_ALIHQ0000002_${ALI}@c.us`, senderPhone: ALI, text: "@Match Time right?", quotedMessageId: "SAMHQ0000002", quotedText: SECRET, quotedAuthorJid: `${SAM}@c.us` }));
@@ -436,32 +470,3 @@ describe("an admin-group (HQ) forward is held to the record (adjustForServer)", 
   });
 });
 
-describe("whenFlushIdle", () => {
-  it("resolves at once when nothing is running", async () => {
-    await expect(whenFlushIdle(GROUP, { pollMs: 5, timeoutMs: 50 })).resolves.toBe(true);
-  });
-
-  it("waits for the running flush of that group to end", async () => {
-    await arrive(message("SAMMSG000040", "in"));
-    let release!: () => void;
-    postAnalyzeFull.mockImplementationOnce(() => new Promise((r) => (release = () => r({ results: [], nextKickoffMs: null }))));
-    const running = _test_flushNow(GROUP);
-    await vi.waitFor(() => expect(postAnalyzeFull).toHaveBeenCalledTimes(1));
-    let idle = false;
-    const waiting = whenFlushIdle(GROUP, { pollMs: 5, timeoutMs: 5000 }).then((v) => (idle = v));
-    await new Promise((r) => setTimeout(r, 30));
-    expect(idle).toBe(false);
-    release();
-    await running;
-    await waiting;
-    expect(idle).toBe(true);
-  });
-
-  it("gives up after its timeout, saying so", async () => {
-    await arrive(message("SAMMSG000041", "in"));
-    postAnalyzeFull.mockImplementationOnce(() => new Promise(() => {}));
-    void _test_flushNow(GROUP);
-    await vi.waitFor(() => expect(postAnalyzeFull).toHaveBeenCalledTimes(1));
-    await expect(whenFlushIdle(GROUP, { pollMs: 5, timeoutMs: 40 })).resolves.toBe(false);
-  });
-});

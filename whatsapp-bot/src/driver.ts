@@ -71,7 +71,8 @@ export interface InboundMessage {
  * `messageId` is the BARE WhatsApp id of the message deleted or edited
  * (not the notice's own id). The sender fields name whoever sent the
  * notice: for a delete in a group that can be an admin, not the author.
- * An edit's new words are never carried: an edit is never analysed again.
+ * An edit carries its NEW words (round 14), for the server to put in place
+ * of the stored ones; it is never analysed again.
  */
 export interface MessageChangeEvent {
   kind: "revoke" | "edit";
@@ -97,6 +98,10 @@ export interface MessageChangeEvent {
    *  while it cannot be read. Never taken as "no" for good. */
   adminUnknown?: boolean;
   fromMe: boolean;
+  /** An edit's new words (round 14). Never on a delete. */
+  text?: string;
+  /** When WhatsApp made the edit (ms). */
+  editedAt?: number;
 }
 
 /** A group this account is a member of. */

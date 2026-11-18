@@ -65,10 +65,6 @@ function deps(over: Partial<MessageChangeDeps> = {}) {
       order.push("post");
       return true;
     }),
-    whenFlushIdle: vi.fn(async () => {
-      order.push("idle");
-      return true;
-    }),
     phoneForLid: vi.fn(async () => null),
     log: (l) => logs.push(l),
     error: (l) => logs.push(`ERR ${l}`),
@@ -103,7 +99,7 @@ describe("the Pi's own copies, by id and group, never by text", () => {
     expect(deleteApplies(by("447700900999"), SAM_ID, SAM)).toBe(false);
   });
 
-  it("bodyForServer: a delete by ids, sender and admin flag; an edit by ids and sender, never words", () => {
+  it("bodyForServer: a delete by ids, sender and admin flag, never words; an edit by ids and sender, with its NEW words and time when it has them (round 14)", () => {
     expect(bodyForServer({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: true })).toEqual({
       kind: "revoke",
       chatId: GROUP,
@@ -119,14 +115,24 @@ describe("the Pi's own copies, by id and group, never by text", () => {
       senderJids: [],
       senderPhone: SAM,
     });
+    expect(bodyForServer({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [], senderPhone: SAM, byAdmin: false, text: "late, sorry", editedAt: 1763200001000 })).toEqual({
+      kind: "edit",
+      chatId: GROUP,
+      messageId: TARGET,
+      senderJids: [],
+      senderPhone: SAM,
+      text: "late, sorry",
+      editedAt: 1763200001000,
+    });
+    expect(bodyForServer({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [], senderPhone: SAM, byAdmin: false, text: "x" } as never)).not.toHaveProperty("text");
   });
 });
 
 describe("handleMessageChange", () => {
-  it("a group delete: the Pi's own record first, then the outbox, then waits for a running flush, then one post", async () => {
+  it("a group delete: the Pi's own record first, then the outbox, then one post (no wait for a running flush: the outbox posts at once anyway, and the server clears again after every write)", async () => {
     const { d, order, logs, recorded } = deps();
     expect(await handleMessageChange(revoke(), d)).toBe("posted");
-    expect(order).toEqual(["local:revoke", "record", "idle", "post"]);
+    expect(order).toEqual(["local:revoke", "record", "post"]);
     expect(recorded[0]).toEqual({ kind: "revoke", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
     expect(d.attempt).toHaveBeenCalledWith("key-1");
     expect(logs.join("\n")).toMatch(/delete for everyone of 3EB0AAAABBBBCCCC0001 .*batch=1/);
@@ -139,12 +145,13 @@ describe("handleMessageChange", () => {
     expect(d.record).toHaveBeenCalled();
   });
 
-  it("an author's edit: recorded and posted (ids only), exactly as a delete is; nothing is read, replaced, held or flushed", async () => {
-    const { d, order, recorded } = deps();
-    expect(await handleMessageChange(revoke({ kind: "edit", byAdmin: true }), d)).toBe("posted");
-    expect(order).toEqual(["local:edit", "record", "idle", "post"]);
-    expect(recorded[0]).toEqual({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false });
-    expect(Object.keys(d).sort()).toEqual(["applyLocally", "attempt", "error", "log", "phoneForLid", "record", "update", "whenFlushIdle"]);
+  it("an author's edit: recorded and posted with its new words, exactly as a delete is; the message itself is not read, replaced, held or flushed", async () => {
+    const { d, order, recorded, logs } = deps();
+    expect(await handleMessageChange(revoke({ kind: "edit", byAdmin: true, text: "late, sorry", editedAt: 1763200001000 }), d)).toBe("posted");
+    expect(order).toEqual(["local:edit", "record", "post"]);
+    expect(recorded[0]).toEqual({ kind: "edit", groupId: GROUP, messageId: TARGET, senderJids: [`${SAM}@c.us`], senderPhone: SAM, byAdmin: false, text: "late, sorry", editedAt: 1763200001000 });
+    expect(logs.join("\n")).not.toContain("late, sorry");
+    expect(Object.keys(d).sort()).toEqual(["applyLocally", "attempt", "error", "log", "phoneForLid", "record", "update"]);
     expect(d.update).not.toHaveBeenCalled();
   });
 
@@ -159,7 +166,7 @@ describe("handleMessageChange", () => {
     expect(recorded[0]).toMatchObject({ senderPhone: null, senderJids: [SAM_LID] });
     answer(SAM);
     expect(await running).toBe("posted");
-    expect(order).toEqual(["local:edit", "record", "local:edit", "update:key-1:false", "idle", "post"]);
+    expect(order).toEqual(["local:edit", "record", "local:edit", "update:key-1:false", "post"]);
     const widened = (d.update as ReturnType<typeof vi.fn>).mock.calls[0][1] as LocalMessageChange;
     expect(widened).toMatchObject({ senderPhone: SAM, senderJids: [SAM_LID, `${SAM}@c.us`] });
     expect(isByAuthor(SAM_ID, null, widened)).toBe(true);
@@ -192,11 +199,11 @@ describe("handleMessageChange", () => {
     expect(recorded[0]).toMatchObject({ kind: "revoke", byAdmin: false, adminUnknown: true });
     answer(true);
     expect(await running).toBe("posted");
-    expect(order).toEqual(["local:revoke", "record", "local:revoke", "update:key-1:true", "idle", "post"]);
+    expect(order).toEqual(["local:revoke", "record", "local:revoke", "update:key-1:true", "post"]);
     // Not an admin: settled as known; a read that throws leaves it unknown, for the outbox's re-check.
     const no = deps({ isGroupAdmin: vi.fn(async () => false) });
     await handleMessageChange(revoke({ adminUnknown: true }), no.d);
-    expect(no.order).toEqual(["local:revoke", "record", "update:key-1:false", "idle", "post"]);
+    expect(no.order).toEqual(["local:revoke", "record", "update:key-1:false", "post"]);
     const boom = deps({ isGroupAdmin: vi.fn(async () => Promise.reject(new Error("rate-overlimit"))) });
     await handleMessageChange(revoke({ adminUnknown: true }), boom.d);
     expect(boom.recorded[0]).toMatchObject({ byAdmin: false, adminUnknown: true });
@@ -257,9 +264,4 @@ describe("handleMessageChange", () => {
     expect(logs.join("\n")).toMatch(/DM/);
   });
 
-  it("a flush that never ends does not hold the delete back for ever", async () => {
-    const { d, logs } = deps({ whenFlushIdle: vi.fn(async () => false) });
-    expect(await handleMessageChange(revoke(), d)).toBe("posted");
-    expect(logs.join("\n")).toMatch(/still running/);
-  });
 });

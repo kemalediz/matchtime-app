@@ -36,4 +36,4 @@ export const TOMBSTONE_UPSERT_SQL = `INSERT INTO "DeletedMessage" ("id", "chatId
        ),
        "lastChangeAt" = CASE WHEN ${SAME_CHANGE_SEEN} THEN "DeletedMessage"."lastChangeAt" ELSE GREATEST("DeletedMessage"."lastChangeAt", EXCLUDED."lastChangeAt") END,
        "enforcedAt" = CASE WHEN ${SAME_CHANGE_SEEN} THEN "DeletedMessage"."enforcedAt" ELSE NULL END
-     RETURNING "byAdmin", "reason", "senderJids", "senderPhones", "deletedAt", "changes"`;
+     RETURNING "byAdmin", "reason", "senderJids", "senderPhones", "deletedAt", "changes", "cancelledJobIds"`;

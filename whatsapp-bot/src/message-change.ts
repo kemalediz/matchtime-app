@@ -17,21 +17,25 @@
  *      group: right after a restart the org list may not have loaded, and a
  *      delete that waited for it would be forgotten;
  *   2. the durable outbox (`message-change-outbox.ts`), before any post;
- *   3. a running analysis of that group allowed to end (bounded);
- *   4. one post to `/api/whatsapp/message-change`; a failure is left to the
- *      outbox's retries with backoff, across restarts.
+ *   3. one post to `/api/whatsapp/message-change`; a failure is left to the
+ *      outbox's retries with backoff, across restarts. It does not wait for
+ *      a running analysis of the group (round 14): the outbox may post the
+ *      entry at once anyway, and the server clears again after every write
+ *      (clear-after-write) and at its staggered re-checks.
  *
- * AN EDIT (decided after six review rounds): an author's edit is recorded
- * here and posted as an "edited" tombstone (no words), and the server
- * forgets every stored copy of the message's text, including after any
- * later write, and strips quotes of it. It NEVER changes what MatchTime
- * acts on: the Pi does not hold, drop, replace or re-order the message, so
- * it is analysed once with whatever content the Pi has, exactly as before
- * PR #606, and nothing built from it is cancelled. Only a delete cancels.
- * A merged edit (Baileys folds it into the original after a reconnect) is
- * the message as it arrived, plus the same tombstone.
+ * AN EDIT (round 14): an author's edit is recorded here and posted with its
+ * NEW words, and the server puts them in place of every stored copy of the
+ * original, including after any later write, and in quotes of it and the
+ * recent chat (the Pi does the same for its own copies). It NEVER changes
+ * what MatchTime acts on: the Pi does not hold, drop, replace or re-order
+ * the message, so it is analysed once with whatever content the Pi has,
+ * exactly as before PR #606, and nothing built from it is cancelled. Only a
+ * delete cancels. A merged edit (Baileys folds it into the original after a
+ * reconnect) is the message as it arrived, plus the same edit.
  *
- * The outbox and the tombstone never hold a word of any message.
+ * The outbox holds an edit's NEW words (what the member now says) until the
+ * server has taken it, and a day after, for late copies after a restart;
+ * never the original words, and never a delete's.
  *
  * WHO: a delete from a group admin (`byAdmin`, from the group's metadata)
  * or the message's own author; an edit from its author only. Anything else
@@ -63,6 +67,10 @@ export interface LocalMessageChange {
   byAdmin: boolean;
   /** Whether the sender is an admin could not be read yet: checked again by the outbox. */
   adminUnknown?: boolean;
+  /** An edit's NEW words (round 14): shown in place of the original. Never on a delete. */
+  text?: string;
+  /** When WhatsApp made the edit (ms): the latest edit wins. */
+  editedAt?: number;
 }
 
 /** A WhatsApp message id: never '@', never a space. */
@@ -116,7 +124,15 @@ export function bodyForServer(c: LocalMessageChange): MessageChangeBody {
   if (c.kind === "revoke") {
     return { kind: "revoke", chatId: c.groupId, messageId: c.messageId, byAdmin: c.byAdmin, senderJids: c.senderJids, senderPhone: c.senderPhone };
   }
-  return { kind: "edit", chatId: c.groupId, messageId: c.messageId, senderJids: c.senderJids, senderPhone: c.senderPhone };
+  return {
+    kind: "edit",
+    chatId: c.groupId,
+    messageId: c.messageId,
+    senderJids: c.senderJids,
+    senderPhone: c.senderPhone,
+    ...(c.text ? { text: c.text } : {}),
+    ...(c.editedAt ? { editedAt: c.editedAt } : {}),
+  };
 }
 
 export interface MessageChangeDeps {
@@ -131,8 +147,6 @@ export interface MessageChangeDeps {
   update?(key: string, change: LocalMessageChange): void;
   /** One post: "taken", "accepted" (taken; only the admin check is open) or "queued" (true/false: taken or not). */
   attempt(key: string): Promise<boolean | "taken" | "accepted" | "queued">;
-  /** True when no analysis of the group is running; false on its timeout. */
-  whenFlushIdle(groupId: string): Promise<boolean>;
   log(line: string): void;
   error(line: string): void;
 }
@@ -156,6 +170,8 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
     senderPhone: change.senderPhone,
     byAdmin: isDelete && change.byAdmin === true,
     ...(isDelete && change.adminUnknown ? { adminUnknown: true } : {}),
+    ...(!isDelete && change.text ? { text: change.text } : {}),
+    ...(!isDelete && change.editedAt ? { editedAt: change.editedAt } : {}),
   };
   try {
     // The Pi's own record and the durable outbox FIRST, before any lookup:
@@ -206,8 +222,6 @@ export async function handleMessageChange(change: MessageChangeEvent, deps: Mess
         deps.update?.(key, local);
       }
     }
-    const idle = await deps.whenFlushIdle(change.chatId);
-    if (!idle) deps.log(`${tag}: an analysis of this group is still running; posting anyway`);
     let result: boolean | "taken" | "accepted" | "queued" = "queued";
     try {
       result = await deps.attempt(key);

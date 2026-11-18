@@ -171,6 +171,21 @@ async function factsFor(match: AskMatch, askerName: string, places: number, lang
 /** The match's places an ask may fill: its size less its CONFIRMED rows,
  *  or, in a week of a running month, the week's own count
  *  (`monthly-week-asks.ts`). */
+/**
+ * Asks still awaiting approval whose requesting group message was DELETED
+ * for everyone (PR #606, `message-change.ts`): cancelled, inside the
+ * caller's transaction. A posted one is out in the partner group already
+ * and closes as it always does. Returns how many were cancelled.
+ */
+export async function cancelAsksOfDeletedMessage(
+  tx: { partnerAsk: { updateMany: typeof db.partnerAsk.updateMany } },
+  askIds: string[],
+  now: Date,
+): Promise<number> {
+  if (askIds.length === 0) return 0;
+  return (await tx.partnerAsk.updateMany({ where: { id: { in: askIds }, status: "awaiting-approval" }, data: { status: "cancelled", reason: "source-deleted", closedAt: now } })).count;
+}
+
 export async function placesOpen(matchId: string): Promise<number> {
   return askPlacesOpen(matchId);
 }
@@ -249,6 +264,8 @@ export async function requestPartnerAsk(args: {
   via: PartnerAskVia;
   places?: number;
   roundId?: string | null;
+  /** The group message that requested it (PR #606): deleting it cancels the ask while it awaits approval. */
+  sourceMessageId?: string | null;
   now?: Date;
 }): Promise<RequestResult> {
   const now = args.now ?? new Date();
@@ -312,6 +329,7 @@ export async function requestPartnerAsk(args: {
           roundId: args.roundId ?? null,
           requestedByUserId: args.requestedByUserId,
           requestedVia: args.via,
+          ...(args.sourceMessageId ? { sourceMessageId: args.sourceMessageId } : {}),
           postBy,
           closesAt,
         },

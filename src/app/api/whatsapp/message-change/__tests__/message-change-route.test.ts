@@ -66,11 +66,10 @@ describe("POST /api/whatsapp/message-change", () => {
     expect(touched).toEqual([]);
   });
 
-  it("an edit is a purge: applied with its sender, and any words the Pi sent are never passed on or answered back", async () => {
-    const r = await post({ kind: "edit", chatId: G, messageId: "3EB0AAAA", text: "late, sorry", senderJids: ["447700900123@c.us"], senderPhone: "447700900123" });
+  it("an edit is applied with its sender and its NEW words (round 14: they replace the stored ones); the words are never answered back", async () => {
+    const r = await post({ kind: "edit", chatId: G, messageId: "3EB0AAAA", text: "late, sorry", editedAt: 1763229600000, senderJids: ["447700900123@c.us"], senderPhone: "447700900123" });
     expect(r.status).toBe(200);
-    expect(apply).toHaveBeenCalledWith({ kind: "edit", chatId: G, messageId: "3EB0AAAA", byAdmin: false, senderJids: ["447700900123@c.us"], senderPhone: "447700900123" });
-    expect(JSON.stringify(apply.mock.calls)).not.toContain("late, sorry");
+    expect(apply).toHaveBeenCalledWith({ kind: "edit", chatId: G, messageId: "3EB0AAAA", byAdmin: false, senderJids: ["447700900123@c.us"], senderPhone: "447700900123", text: "late, sorry", editedAt: 1763229600000 });
     expect(JSON.stringify(r.json)).not.toContain("late, sorry");
   });
 

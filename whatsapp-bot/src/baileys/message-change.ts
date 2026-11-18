@@ -12,9 +12,10 @@
  *                 arrives inside an `editedMessage` wrapper, which
  *                 `normalizeMessageContent` peels.
  *
- * AN EDIT: only which message was edited is read, never its new words. An
- * edit is a purge of the stored words on the server; the message itself is
- * analysed once, as the Pi had it, and never again.
+ * AN EDIT: which message was edited, its NEW words (the text, or a media
+ * caption) and when WhatsApp made it (round 14). The server puts the new
+ * words in place of the stored ones; the message itself is analysed once,
+ * as the Pi had it, and never again.
  *
  * A MERGED EDIT: after a reconnect Baileys can merge an edit into the
  * original's own upsert (`Utils/event-buffer.js`), so the original arrives
@@ -38,6 +39,32 @@ export interface ReadMessageChange {
   kind: "revoke" | "edit";
   chatJid: string;
   targetId: string;
+  /** An edit's new words, trimmed; absent when it has none (a sticker). */
+  text?: string;
+  /** An edit's own time (ms): the protocol message's, else the notice's. */
+  editedAt?: number;
+}
+
+/** PURE. The words of an edit's new content: its text, or a media caption. */
+function editedWords(edited: proto.IMessage | null | undefined): string | null {
+  const content = normalizeMessageContent(edited ?? undefined);
+  if (!content) return null;
+  if (typeof content.conversation === "string" && content.conversation.trim()) return content.conversation.trim();
+  for (const node of Object.values(content as Record<string, unknown>)) {
+    if (!node || typeof node !== "object") continue;
+    const n = node as { text?: unknown; caption?: unknown };
+    const v = typeof n.text === "string" ? n.text : typeof n.caption === "string" ? n.caption : "";
+    if (v.trim()) return v.trim();
+  }
+  return null;
+}
+
+/** A protobuf Long, a number or a string, as a number; 0 when none. */
+function asNumber(v: unknown): number {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") return Number(v) || 0;
+  if (v && typeof (v as { toNumber?: () => number }).toNumber === "function") return (v as { toNumber: () => number }).toNumber();
+  return 0;
 }
 
 /** PURE. An original Baileys merged its edit into: `editedMessage` around the new content, not around an edit notice. */
@@ -61,7 +88,11 @@ export function readMessageChange(msg: WAMessage): ReadMessageChange | null {
     // one; the key naming a message is what makes it a real delete.
     const type = protocol.type ?? proto.Message.ProtocolMessage.Type.REVOKE;
     if (type === proto.Message.ProtocolMessage.Type.REVOKE) return { kind: "revoke", chatJid, targetId };
-    if (type === proto.Message.ProtocolMessage.Type.MESSAGE_EDIT) return { kind: "edit", chatJid, targetId };
+    if (type === proto.Message.ProtocolMessage.Type.MESSAGE_EDIT) {
+      const text = editedWords(protocol.editedMessage);
+      const editedAt = asNumber(protocol.timestampMs) || asNumber(msg.messageTimestamp) * 1000;
+      return { kind: "edit", chatJid, targetId, ...(text ? { text } : {}), ...(editedAt > 0 ? { editedAt } : {}) };
+    }
     return null;
   } catch {
     return null;

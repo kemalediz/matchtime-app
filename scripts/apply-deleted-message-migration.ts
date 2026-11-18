@@ -18,7 +18,7 @@
  * foreign key), one unique index ("chatId", "waMessageId"), one index
  * ("lastChangeAt", for the pruning), one ("enforcedAt", "lastChangeAt", for
  * the sweep), and CREATE INDEX on the existing
- * "GroupMessage" ("waChatId", "createdAt"), and three "FormNote" columns
+ * "GroupMessage" ("waChatId", "createdAt"), "AnalyzedMessage"."quotedMessageId", "PartnerAsk"."sourceMessageId", "DeletedMessage"."cancelledJobIds", and three "FormNote" columns
  * ("reasonSourceMessageId", "reasonMessageIds", "clearedMessageIds"). It rewrites, backfills, drops
  * or renames nothing. The dry run prints the state; the apply checks every
  * object is in place.
@@ -61,9 +61,9 @@ async function main() {
     );
     const analyzed: any = await db.$queryRawUnsafe(`SELECT COUNT(*)::int AS n FROM "AnalyzedMessage";`);
     const noteCol: any = await db.$queryRawUnsafe(
-      `SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_name = 'FormNote' AND column_name IN ('reasonSourceMessageId', 'reasonMessageIds', 'clearedMessageIds');`,
+      `SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE (table_name = 'FormNote' AND column_name IN ('reasonSourceMessageId', 'reasonMessageIds', 'clearedMessageIds')) OR (table_name = 'AnalyzedMessage' AND column_name = 'quotedMessageId') OR (table_name = 'PartnerAsk' AND column_name = 'sourceMessageId') OR (table_name = 'DeletedMessage' AND column_name = 'cancelledJobIds');`,
     );
-    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", enforcedAt: enforced[0].n === 3 && noteCol[0].n === 3 && sweepIdx[0].ok === true, analyzedRows: analyzed[0].n };
+    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", enforcedAt: enforced[0].n === 3 && noteCol[0].n === 6 && sweepIdx[0].ok === true, analyzedRows: analyzed[0].n };
   };
 
   const todo = statements(readFileSync(FILE, "utf8"));

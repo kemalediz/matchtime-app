@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { makeDb, row, type Row } from "./fake-message-db";
 
-const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias", "organisation", "adminSquadProposal", "adminFeeProposal", "formNote", "ratingAdjustment", "windowVerdict", "onboardingSession", "clubConnect"];
+const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias", "organisation", "adminSquadProposal", "adminFeeProposal", "formNote", "ratingAdjustment", "windowVerdict", "partnerAsk", "onboardingSession", "clubConnect"];
 const T: Record<string, Row[]> = {};
 const fake = makeDb(T, NAMES, { deletedMessage: [["chatId", "waMessageId"]] });
 vi.mock("@/lib/db", () => ({
@@ -37,7 +37,7 @@ import { quotedLines } from "../reply-context";
 import { hqWeekChat, loadWeekChat, playersWeekChat } from "../week-chat";
 import { loadStoredGroupLines } from "../group-chat-history";
 import { groupLogSince, hqLogSince } from "../admin-group-log";
-import { loadSquadSourceMessages } from "../squad-from-list";
+import { loadSquadSourceMessages, readSquadLists } from "../squad-from-list";
 import { loadOpenStatsClarifications } from "../pipeline/load-awaiting-answer";
 import { recordAttendanceAsk } from "../attendance-ask-store";
 import { latestAskFromRecords } from "../refused-ask-retry";
@@ -129,6 +129,46 @@ describe("after a delete for everyone", () => {
     await applyMessageChange({ kind: "revoke", chatId: HQ, messageId: "SAMHQ0000001", ...BY_SAM });
     expect((await hqWeekChat({ orgId: ORG, now: NOW, messageId: "none" })).map((l) => l.body)).toEqual([KEEP]);
     expect((await hqLogSince(ORG, ago(24 * 60))).map((r) => r.text)).toEqual([KEEP]);
+  });
+});
+
+describe("round 14: after an edit by its author WITH its new words, every reader shows the edited words in place of the original", () => {
+  const EDITED = "see you all at 8, bring bibs";
+  const editTo = (chatId: string, messageId: string, text: string) => ({ kind: "edit" as const, byAdmin: false, senderJids: [`${SAM}@c.us`], senderPhone: SAM, chatId, messageId, text });
+
+  it("the players' group and HQ: the edited words everywhere, the original nowhere", async () => {
+    await applyMessageChange(editTo(G, "SAMMSG000001", EDITED));
+    await applyMessageChange(editTo(HQ, "SAMHQ0000001", EDITED));
+    const all = await everythingShown();
+    expect(all).not.toContain("4321");
+    expect(all.split(EDITED).length - 1).toBeGreaterThanOrEqual(9);
+    expect((await playersWeekChat({ orgId: ORG, groupId: G, now: NOW, batch: [] })).map((l) => l.body)).toEqual([EDITED, KEEP]);
+  });
+
+  it("HQ: 'make teams from the list above' reads the EDITED list (the squad reader and the pick reader)", async () => {
+    const LIST = "1. Pete\n2. Dan\n3. Felix";
+    T.adminGroupMessage.push(row({ waMessageId: gid("SAMHQLIST001", SAM, HQ), orgId: ORG, fromMatchTime: false, senderUserId: "u-sam", text: "1. Pete\n2. Dan", createdAt: ago(3) }));
+    await applyMessageChange(editTo(HQ, "SAMHQLIST001", LIST));
+    const squad = await loadHqRecentMessages(ORG, "none", NOW);
+    const pick = await recentHqMessages(ORG, "u-ali", "1", NOW, []);
+    for (const lines of [squad, pick]) {
+      expect(lines.map((l) => l.body)).toContain(LIST);
+      expect(lines.map((l) => l.body)).not.toContain("1. Pete\n2. Dan");
+    }
+  });
+
+  it("squad-from-list: a pasted list edited within the window is read AS EDITED (extract-squads is shown the edited list)", async () => {
+    const PASTED = "Thursday:\n1. Pete\n2. Dan";
+    const EDITED_LIST = "Thursday:\n1. Pete\n2. Dan\n3. Felix";
+    T.groupMessage.push(row({ waMessageId: gid("SAMLIST00001", SAM), orgId: ORG, waChatId: G, senderPhone: SAM, body: PASTED, timestamp: ago(10), createdAt: ago(10) }));
+    await applyMessageChange(editTo(G, "SAMLIST00001", EDITED_LIST));
+    const window = await loadSquadSourceMessages(ORG, ago(15));
+    let shown = "";
+    const model = { name: "stub", complete: async (req: { user: string }) => ((shown = req.user), { text: '{"lists":[]}', usage: null }) };
+    await readSquadLists(window, { model: model as never });
+    expect(shown).toContain(EDITED_LIST);
+    expect(shown).not.toContain("2. Dan\n\n");
+    expect(window.find((m) => m.waMessageId === gid("SAMLIST00001", SAM))!.body).toBe(EDITED_LIST);
   });
 });
 

@@ -204,9 +204,9 @@ export async function GET(request: Request) {
   // THE DELETE AND EDIT SAFETY SWEEP (2026-11-15): every tombstone not
   // enforced yet (a request that died before its own clear, or an edited
   // message's open "who is that?" still waiting for its hour to end) is
-  // enforced against the stores, and each is re-checked for 48 hours after
-  // its latest change, for late writers; rows 14 days past their latest
-  // change are pruned. Idempotent, bounded (500 never-enforced and 200 re-checks a run), indexed; never
+  // enforced against the stores, and each is re-checked at 1, 6, 24 and 48
+  // hours after its latest change, for late writers; rows 14 days past their
+  // latest change are pruned. Idempotent, bounded (500 never-enforced and 200 re-checks a run), indexed; never
   // throws (`message-change.ts`).
   const deletes = await sweepRecentTombstones(now);
 

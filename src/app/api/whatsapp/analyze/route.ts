@@ -560,8 +560,9 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
     }
     body.messages = await withoutDeletedQuotes(body.groupId, body.messages, "quotedBody");
     // The server's safety net for the Pi's recent chat (round 6): a line of a
-    // message deleted, or edited by its author, never reaches a model.
-    if (Array.isArray(body.history)) body.history = await withoutChangedHistory(body.groupId, body.history);
+    // DELETED message never reaches a model; one its author EDITED shows the
+    // edited words (round 14).
+    if (Array.isArray(body.history)) body.history = await withoutChangedHistory(body.groupId, body.history, "body");
     if (body.messages.length === 0) {
       // Nothing left to read; the Pi still needs the next kickoff for its urgency flush.
       const next = await db.match.findFirst({
@@ -4552,6 +4553,8 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
         requestedByUserId: ask.sender.userId,
         via: "group",
         clubRef: ask.clubRef,
+        // The message that asked (PR #606): its delete cancels an ask still awaiting approval.
+        sourceMessageId: ask.msg.waMessageId,
         // Null: the asks code made from an answer or the attendance path,
         // for the club's next match (`askPartnersFromWords` loads it).
         matchId: ask.matchId ?? undefined,
@@ -5372,6 +5375,9 @@ async function recordAnalysis(args: {
         action: args.action,
         confidence: args.confidence,
         reasoning: args.reasoning.slice(0, 2000),
+        // The message it quoted (PR #606, round 14): a change to that one
+        // clears what this row's reading may carry of its words.
+        quotedMessageId: args.msg.quotedMessageId || null,
         // The flush this message was reasoned about in. Null outside a
         // batch (nothing else calls this) — see analyze-batch-context.ts.
         batchId: currentAnalyzeBatchId(),
