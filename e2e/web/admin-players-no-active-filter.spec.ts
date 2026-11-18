@@ -6,7 +6,7 @@
  * The positions, phones and ratings pages used to badge a member
  * "Inactive" and hide him under a default "Active" filter. Now every
  * club member is listed, with no badge and no filter; the search box
- * stays. A member whose `User.isActive` is false (the flag the squad and
+ * stays. A member who has left the club is still not listed. A member whose `User.isActive` is false (the flag the squad and
  * merge code still read) is listed like anyone else. The phones page
  * keeps its "Missing phone" toggle, which is about phones, not activity.
  *
@@ -21,6 +21,8 @@ const P = "e2e-naf";
 const FLAG_OFF = { id: `${P}-off`, name: "Fenna Flagoff", flag: false, phone: null };
 const FLAG_ON = { id: `${P}-on`, name: "Nico Flagon", flag: true, phone: "+447700900971" };
 const MEMBERS = [FLAG_OFF, FLAG_ON];
+/** Left the club: not a current member, so on none of the three pages. */
+const LEFT = { id: `${P}-left`, name: "Lena Leftclub", flag: true, phone: null };
 
 test.beforeAll(async ({ db }) => {
   resetDb();
@@ -34,6 +36,14 @@ test.beforeAll(async ({ db }) => {
       [`${u.id}-m`, u.id, ORG_ID],
     );
   }
+  await db.run(
+    `INSERT INTO "User" (id,name,email,"phoneNumber",onboarded,"isActive","updatedAt") VALUES ($1,$2,$3,$4,true,$5,now())`,
+    [LEFT.id, LEFT.name, `${LEFT.id}@e2e-test.invalid`, LEFT.phone, LEFT.flag],
+  );
+  await db.run(
+    `INSERT INTO "Membership" (id,"userId","orgId",role,"createdAt","leftAt") VALUES ($1,$2,$3,'PLAYER',now() - interval '7 months',now() - interval '1 month')`,
+    [`${LEFT.id}-m`, LEFT.id, ORG_ID],
+  );
 });
 
 test.afterAll(() => {
@@ -47,6 +57,7 @@ for (const path of ["/admin/players/positions", "/admin/players/phones", "/admin
 
     await expect(row(FLAG_OFF.name)).toBeVisible({ timeout: 30_000 });
     await expect(row(FLAG_ON.name)).toBeVisible();
+    await expect(row(LEFT.name)).toHaveCount(0);
     await expect(page.getByText("Inactive", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Active", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "All", exact: true })).toHaveCount(0);

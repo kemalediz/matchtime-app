@@ -9,7 +9,7 @@
  * number rather than a reconstructed one, and that the window is
  * measured from today rather than from the club's last fixture.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   RANKED_TABLE_INACTIVE_AFTER_MONTHS,
   RANKED_TABLE_COUNTS_BENCH_AS_PLAYED,
@@ -18,6 +18,8 @@ import {
   VIEWER_IS_EXEMPT_ON_OWN_STATS_PAGE,
   rankedTableCutoff,
   buildRankedRoster,
+  playedAttendanceWhere,
+  loadLastPlayedByUser,
 } from "@/lib/ranked-table-activity";
 
 /** A fixed "today" so the tests never drift with the wall clock. */
@@ -158,5 +160,20 @@ describe("buildRankedRoster reports what it hid, so a surface can say so", () =>
       NOW,
     );
     expect(roster.hiddenCount).toBe(0);
+  });
+});
+
+describe("playedAttendanceWhere: the stats page's 'played'", () => {
+  it("is a CONFIRMED row on a COMPLETED, non-historical match of this club", () => {
+    expect(playedAttendanceWhere("org-sutton")).toEqual({
+      status: "CONFIRMED",
+      match: { activity: { orgId: "org-sutton" }, status: "COMPLETED", isHistorical: false },
+    });
+  });
+
+  it("is the filter loadLastPlayedByUser uses", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    await loadLastPlayedByUser({ attendance: { findMany } }, "org-sutton");
+    expect(findMany.mock.calls[0][0].where).toEqual(playedAttendanceWhere("org-sutton"));
   });
 });
