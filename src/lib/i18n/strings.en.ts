@@ -4835,6 +4835,10 @@ export const en = {
    *  games. Once per player, month and count. */
   msu_admin_games_unrecorded: (p: { name: string; month: string; games: number; words: string }): string =>
     `📋 ${p.name} said ${p.games} ${p.games === 1 ? "game" : "games"} of ${p.month}${p.words ? ` ("${p.words}")` : ""}, but his payment is confirmed, so I left his games as they are. Change them on the month page if needed.`,
+  /** To the organisers (review of #610): a player said yes to joining a
+   *  month after every game he had said he would play was played. */
+  msu_admin_join_lapsed: (p: { name: string; month: string }): string =>
+    `📋 ${p.name} said yes to joining ${p.month}, but the games he said he'd play have been played, so I didn't add him. Add him on the month page if he's still playing.`,
   /** To a member whose paste had more new players than one paste may add. */
   mwk_dm_paste_guests_refused: (p: { names: string[] }): string =>
     `📋 One list can only add a few new players, so I didn't add ${p.names.join(", ")}. An organiser can add them.`,

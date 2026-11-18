@@ -11,7 +11,7 @@ import { hasStarted, loadLiveMonths } from "@/lib/month-signup";
 import { loadAwayView, loadMonthMoney } from "@/lib/month-close";
 import { mayConfirmPayments } from "@/lib/month-payment";
 import { mayJoinStartedMonth } from "@/lib/month-signup-rules";
-import { chargedGames, normaliseSquadMode } from "@/lib/squad-month-rules";
+import { chargedGames, normaliseSquadMode, shownCommitted } from "@/lib/squad-month-rules";
 import { MyGamesCard } from "./games-card";
 import { AwayWeeksCard } from "./away-card";
 import { MonthSignupCard } from "./signup-card";
@@ -158,7 +158,7 @@ export default async function MonthPage({ searchParams }: { searchParams: Promis
               }
             />
             {me && outcome === "regular" && !started && me.paid === "none" && me.gamesCovered > 1 && (
-              <MyGamesCard monthId={m.id} lang={lang} of={me.gamesCovered} committed={me.gamesCommitted} />
+              <MyGamesCard monthId={m.id} lang={lang} of={me.gamesCovered} committed={shownCommitted(me)} />
             )}
             {awayView && (
               <AwayWeeksCard

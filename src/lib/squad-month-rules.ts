@@ -223,6 +223,26 @@ export function fitGamesCount(p: { count: number | null; covers: number; played:
 }
 
 /**
+ * PURE. The count a page shows as his games (review of #610, item 3): what
+ * `chargedGames` charges. A count at or above what he covers, or not a
+ * whole number from 1, is every game (null), as the seed and the setter
+ * treat it.
+ */
+export function shownCommitted(m: { gamesCovered: number; gamesCommitted: number | null | undefined }): number | null {
+  const c = m.gamesCommitted;
+  return c != null && Number.isInteger(c) && c >= 1 && c < m.gamesCovered ? c : null;
+}
+
+/**
+ * PURE. The games a member played, as the month counts games (review of
+ * #610, item 5): one per London day, so two matches on one day (a game
+ * moved, a second game added) are one game, as `monthGames` counts them.
+ */
+export function playedLondonDays(dates: Date[]): number {
+  return new Set(dates.map((d) => formatLondon(d, "yyyy-MM-dd"))).size;
+}
+
+/**
  * PURE. When the games a member PLAYED in a month can be (2026-11-18): from
  * the month's first London midnight to now, and never past the month's
  * end. A count read while a month is still open after it ended (the close

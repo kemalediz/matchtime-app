@@ -3429,6 +3429,8 @@ export const tr: Strings = {
     `📋 ${p.name}, ${p.month} için ${p.said} maç dedi${p.words ? ` ("${p.words}")` : ""}, ama ${p.covers} maçı kapsıyor (${p.played} maç oynadı); ${p.stored} olarak kaydettim. Yanlışsa ay sayfasından değiştir.`,
   msu_admin_games_unrecorded: (p) =>
     `📋 ${p.name}, ${p.month} için ${p.games} maç dedi${p.words ? ` ("${p.words}")` : ""}, ama ödemesi onaylandı, bu yüzden maçlarını değiştirmedim. Gerekirse ay sayfasından değiştir.`,
+  msu_admin_join_lapsed: (p) =>
+    `📋 ${p.name}, ${p.month} ayına katılmaya evet dedi, ama oynayacağını söylediği maçlar oynandı, bu yüzden onu eklemedim. Hâlâ oynuyorsa ay sayfasından ekle.`,
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,

@@ -11,21 +11,10 @@
  * quoted one, or MatchTime's newest DM to him); one delivery is read once.
  */
 import { db } from "./db";
-import { MONTH_JOIN_ASK_GAMES_KIND, MONTH_JOIN_ASK_KIND, monthJoinAskGamesKey } from "./month-signup";
+import { joinAskRecount } from "./month-signup-rules";
+import { MONTH_JOIN_ASK_KIND } from "./month-signup";
 
 const OPEN_MS = 48 * 3600 * 1000;
-
-/** The games the join question said he will play (`askToJoinMonth`), if any. */
-async function askedGames(askKey: string): Promise<{ games: number; words: string | null } | null> {
-  const row = await db.sentNotification.findUnique({ where: { key: monthJoinAskGamesKey(askKey) }, select: { kind: true, text: true } });
-  if (row?.kind !== MONTH_JOIN_ASK_GAMES_KIND || !row.text) return null;
-  try {
-    const v = JSON.parse(row.text) as { games?: unknown; words?: unknown };
-    return typeof v.games === "number" && Number.isInteger(v.games) && v.games >= 1 ? { games: v.games, words: typeof v.words === "string" ? v.words : null } : null;
-  } catch {
-    return null;
-  }
-}
 
 export async function handleMonthJoinDmReply(input: {
   userId: string;
@@ -33,7 +22,7 @@ export async function handleMonthJoinDmReply(input: {
   waMessageId: string;
   answering: () => Promise<string | null>;
   now: Date;
-}): Promise<{ handled: "month-join-yes" | "month-join-no"; monthId: string } | null> {
+}): Promise<{ handled: "month-join-yes" | "month-join-no" | "month-join-asked"; monthId: string } | null> {
   try {
     const ask = await db.sentNotification.findFirst({
       where: { kind: MONTH_JOIN_ASK_KIND, targetUser: input.userId, createdAt: { gte: new Date(input.now.getTime() - OPEN_MS) } },
@@ -68,7 +57,7 @@ export async function handleMonthJoinDmReply(input: {
       );
     });
     if (reading.kind !== "signup") return null;
-    const { loadSignupMonth, applySignup } = await import("./month-signup");
+    const { loadSignupMonth, applySignup, askToJoinMonth, noteJoinLapsed, readJoinAskGames, retireJoinAsk } = await import("./month-signup");
     const month = await loadSignupMonth(monthId);
     if (!month || reading.month !== month.monthNumber) return null;
     // Answered either way: the ask is closed.
@@ -84,10 +73,26 @@ export async function handleMonthJoinDmReply(input: {
     // A count of his own in the answer wins; a plain yes is for the games
     // the question said (the count from the message that led to it,
     // 2026-11-18), else every game left.
-    const said = await askedGames(ask.key);
+    const said = await readJoinAskGames(ask.key);
+    // A count of his own at or above the games left is every game left
+    // (review of #610, item 6: "yes, all 3" to "2 of the 3").
+    const ownAll = reading.games !== null && reading.games >= left;
     const own = reading.games !== null && reading.games < left ? reading.games : null;
-    const games = own ?? said?.games ?? null;
-    const words = own !== null ? input.text : (said?.words ?? input.text);
+    const count = ownAll ? null : (own ?? said?.games ?? null);
+    const words = own !== null || ownAll ? input.text : (said?.words ?? input.text);
+    // The games left changed since the question was asked (item 2): his
+    // count was of those games, so he is asked again with today's numbers.
+    const recount = joinAskRecount({ count, askedLeft: said?.left ?? null, left });
+    if (recount.kind !== "same") {
+      await retireJoinAsk(ask.id, ask.key);
+      if (recount.kind === "lapsed") {
+        await noteJoinLapsed({ monthId, userId: input.userId, now: input.now });
+        return { handled: "month-join-no", monthId };
+      }
+      await askToJoinMonth({ month, userId: input.userId, games: recount.of, words, now: input.now });
+      return { handled: "month-join-asked", monthId };
+    }
+    const games = count;
     const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, games, words, now: input.now });
     return res.ok ? { handled: "month-join-yes", monthId } : null;
   } catch (err) {
