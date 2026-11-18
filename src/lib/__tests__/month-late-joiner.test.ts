@@ -10,8 +10,52 @@
  * Pure: no database and no model.
  */
 import { describe, expect, it } from "vitest";
-import { coverFor, fitGamesCount, monthPlayedWindow } from "../squad-month-rules";
-import { pastedLineOf } from "../month-signup-rules";
+import { coverFor, fitGamesCount, monthPlayedWindow, playedLondonDays, shownCommitted } from "../squad-month-rules";
+import { benchCountOnPlace, joinAskGames, joinAskRecount, pastedLineOf } from "../month-signup-rules";
+
+describe("review of #610 (2026-11-18): the money edges", () => {
+  it("item 2: the join question's count, asked with 3 left, after a game is played: 'except the last week' (2) is 1 game now", () => {
+    expect(joinAskRecount({ count: 2, askedLeft: 3, left: 2 })).toEqual({ kind: "ask", of: 1 });
+    expect(joinAskRecount({ count: 2, askedLeft: 3, left: 3 })).toEqual({ kind: "same" });
+    // No count: the question is asked again with the games left now.
+    expect(joinAskRecount({ count: null, askedLeft: 3, left: 2 })).toEqual({ kind: "ask", of: null });
+    // Every game he said has been played: nothing to join him for.
+    expect(joinAskRecount({ count: 1, askedLeft: 3, left: 1 })).toEqual({ kind: "lapsed" });
+    // Not known when it was asked (a question from before this): as asked.
+    expect(joinAskRecount({ count: 2, askedLeft: null, left: 2 })).toEqual({ kind: "same" });
+  });
+  it("item 6: a count at or above the games left is dropped from the question (every game left), never a bigger number", () => {
+    expect(joinAskGames(3, 3)).toBeNull();
+    expect(joinAskGames(4, 3)).toBeNull();
+    expect(joinAskGames(2, 3)).toBe(2);
+  });
+  it("item 3: a bench count is kept as stored only while the games left are unchanged; else the games played since come off, and it is fitted", () => {
+    expect(benchCountOnPlace({ count: 2, storedLeft: 3, left: 3 })).toEqual({ games: 2, changed: false });
+    expect(benchCountOnPlace({ count: 2, storedLeft: 3, left: 2 })).toEqual({ games: 1, changed: true });
+    // "Except the last week" of 4 (3), two played since: the 1 game before the last.
+    expect(benchCountOnPlace({ count: 3, storedLeft: 4, left: 2 })).toEqual({ games: 1, changed: true });
+    // A count that comes to every game left: every game.
+    expect(benchCountOnPlace({ count: 2, storedLeft: null, left: 2 })).toEqual({ games: null, changed: true });
+    // Not known when it was stored: fitted against the games left, and the organisers told.
+    expect(benchCountOnPlace({ count: 5, storedLeft: null, left: 3 })).toEqual({ games: null, changed: true });
+    expect(benchCountOnPlace({ count: 2, storedLeft: null, left: 3 })).toEqual({ games: 2, changed: true });
+    // Every game he said has gone: the organiser placed him to play, so at least the next one.
+    expect(benchCountOnPlace({ count: 1, storedLeft: 4, left: 2 })).toEqual({ games: 1, changed: true });
+  });
+  it("item 3: what a page shows is what chargedGames charges: a count at or above the cover is every game", () => {
+    expect(shownCommitted({ gamesCovered: 3, gamesCommitted: 2 })).toBe(2);
+    expect(shownCommitted({ gamesCovered: 3, gamesCommitted: 3 })).toBeNull();
+    expect(shownCommitted({ gamesCovered: 3, gamesCommitted: 5 })).toBeNull();
+    expect(shownCommitted({ gamesCovered: 3, gamesCommitted: null })).toBeNull();
+    expect(shownCommitted({ gamesCovered: 3, gamesCommitted: 0 })).toBeNull();
+  });
+  it("item 5: two games on the same London day are one game played", () => {
+    const d = (s: string) => new Date(s);
+    expect(playedLondonDays([d("2026-11-02T19:00:00Z"), d("2026-11-02T21:00:00Z"), d("2026-11-09T20:00:00Z")])).toBe(2);
+    // 23:30 UTC on 1 Nov is 23:30 London (GMT); 00:30 UTC on 2 Nov is the next day.
+    expect(playedLondonDays([d("2026-11-01T23:30:00Z"), d("2026-11-02T00:30:00Z")])).toBe(2);
+  });
+});
 import {
   buildMonthlyReaderUserTurn,
   MONTHLY_READER_SYSTEM,

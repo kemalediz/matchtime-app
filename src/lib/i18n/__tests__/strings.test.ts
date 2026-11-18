@@ -1346,6 +1346,7 @@ const SAMPLES: SampleArgs = {
   msu_dm_join_ask: { month: "November", games: 3, price: "£22.50" },
   msu_admin_games_fitted: { name: "Dan", month: "November", said: 6, covers: 3, played: 1, stored: 3, words: "Dan 6 games" },
   msu_admin_games_unrecorded: { name: "Cy", month: "November", games: 2, words: "5. Cy 2 only" },
+  msu_admin_join_lapsed: { name: "Kay", month: "November" },
   mwk_dm_paste_guests_refused: { names: ["Luca", "Max"] },
   mwk_dm_paste_guests_added: { names: ["Jon", "Luca"], when: "Mon 9 Nov, 20:30" },
   mwk_dm_seed_declined: { month: "November" },

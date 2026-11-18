@@ -30,7 +30,7 @@ import { db } from "./db";
 import { lockMonth } from "./month-signup";
 import { lockClubCredits, usableCredits } from "./month-payment";
 import { planPricing } from "./month-payment-rules";
-import { chargedGames, checkGamesCommitted, fitGamesCount, monthPlayedWindow, normaliseSquadMode } from "./squad-month-rules";
+import { chargedGames, checkGamesCommitted, fitGamesCount, monthPlayedWindow, normaliseSquadMode, playedLondonDays } from "./squad-month-rules";
 import { londonDateTimeToUtc } from "./london-time";
 
 export type SetMonthMemberGamesError =
@@ -132,7 +132,8 @@ export async function setMonthMemberGames(args: {
         },
         select: { date: true },
       });
-      return played.filter((x) => x.date.getTime() >= row.joinedAt.getTime()).length + (row.source.startsWith("seed") ? m.gamesPlayedBeforeStart : 0);
+      // One per London day, as the month counts its games (review of #610, item 5).
+      return playedLondonDays(played.filter((x) => x.date.getTime() >= row.joinedAt.getTime()).map((x) => x.date)) + (row.source.startsWith("seed") ? m.gamesPlayedBeforeStart : 0);
     };
     let committed: number | null;
     if (args.fitted) {

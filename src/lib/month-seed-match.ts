@@ -26,6 +26,7 @@ import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
 import { usableName } from "./player-display-name";
 import { applyListMatch, numberNameless, type ListMatchError, type NamelessRef } from "./month-seed-match-rules";
 import type { MonthSeedProposalData } from "./month-seed-hq";
+import { shownCommitted } from "./squad-month-rules";
 
 export interface NamelessMember {
   userId: string;
@@ -94,7 +95,7 @@ export async function seedDmText(args: {
   const users = ids.length > 0 ? await db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [];
   const nameOf = new Map(users.map((u) => [u.id, u.name ?? ""]));
   const names = data.rows
-    .map((r) => `${r.listName || nameOf.get(r.userId) || ""}${r.kind === "payg" ? " (PAYG)" : r.gamesCommitted ? ` (${r.gamesCommitted})` : ""}`)
+    .map((r) => `${r.listName || nameOf.get(r.userId) || ""}${r.kind === "payg" ? " (PAYG)" : shownCommitted({ gamesCovered: data.games, gamesCommitted: r.gamesCommitted }) != null ? ` (${r.gamesCommitted})` : ""}`)
     .join(", ");
   const unmatched = data.unmatched ?? [];
   const nameless = unmatched.length > 0 ? await loadNamelessMembers(args.orgId, ids) : [];

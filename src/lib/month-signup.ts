@@ -54,6 +54,7 @@ import {
   WAITING_NOTE,
   pastedLineOf,
   joinAskGames,
+  benchCountOnPlace,
   buildSignupList,
   decideSignup,
   decideSignupListPost,
@@ -751,11 +752,17 @@ export async function applySignup(args: {
   if (!member) return { ok: false, error: "not-a-member" };
 
   let keptRejoin = false;
+  let keptConfirmed = false;
+  /** A bench count an organiser's place changed (review of #610, item 3): told after. */
+  let benchNote: { said: number; stored: number | null } | null = null;
+  /** A count kept on the bench, written under the lock (item 4): told after when fitted. */
+  let benchFit: { said: number; stored: number | null; changed: boolean } | null = null;
+  const benchKey = `${signupKeyPrefix(month.orgId)}bench-games:${month.id}:${args.userId}`;
   const decision = await db.$transaction(async (tx) => {
     await lockMonth(tx, month.id);
     const rows = await tx.squadMonthMember.findMany({
       where: { monthId: month.id },
-      select: { id: true, userId: true, kind: true, slot: true, note: true, leftAt: true, paidAt: true, paidClaimedAt: true, paygMatchIds: true, gamesCovered: true },
+      select: { id: true, userId: true, kind: true, slot: true, note: true, leftAt: true, paidAt: true, paidClaimedAt: true, paygMatchIds: true, gamesCovered: true, gamesCommitted: true },
     });
     const view = (r: (typeof rows)[number]): SignupMember => ({
       userId: r.userId,
@@ -814,7 +821,27 @@ export async function applySignup(args: {
     } else {
       const wasRegular = mine.kind === "regular" && mine.leftAt === null;
       // A leaver who paid, back as a regular: he keeps his row's games.
-      if (regular && !wasRegular && mine.leftAt !== null && (mine.paidAt || mine.paidClaimedAt) && mine.gamesCovered > 0) keptRejoin = true;
+      if (regular && !wasRegular && mine.leftAt !== null && (mine.paidAt || mine.paidClaimedAt) && mine.gamesCovered > 0) {
+        keptRejoin = true;
+        keptConfirmed = !!mine.paidAt;
+      }
+      // An organiser giving a bench player his place (review of #610, item
+      // 3): his kept count stands only while the games left are what they
+      // were when it was kept; else it is fitted, and the organisers told.
+      let placed: { gamesCommitted: number | null } | null = null;
+      if (regular && args.byOrganiser && view(mine).waiting && mine.gamesCommitted != null) {
+        const marker = await tx.sentNotification.findUnique({ where: { key: benchKey }, select: { text: true } });
+        let storedLeft: number | null = null;
+        try {
+          const v = marker?.text ? (JSON.parse(marker.text) as { left?: unknown }) : null;
+          if (v && typeof v.left === "number") storedLeft = v.left;
+        } catch {
+          storedLeft = null;
+        }
+        const fit = benchCountOnPlace({ count: mine.gamesCommitted, storedLeft, left: gamesLeft });
+        placed = { gamesCommitted: fit.games };
+        if (fit.changed) benchNote = { said: mine.gamesCommitted, stored: fit.games };
+      }
       await tx.squadMonthMember.update({
         where: { id: mine.id },
         data: {
@@ -832,12 +859,10 @@ export async function applySignup(args: {
             ? wasRegular
               ? {}
               : (mine.paidAt || mine.paidClaimedAt) && mine.gamesCovered > 0
-                ? // A leaver who paid, back: his games stay, and a count from
-                  // before he left is not his word now (his message's own is
-                  // set below). Only an organiser changes a CONFIRMED payment's.
-                  mine.paidAt
-                  ? {}
-                  : { gamesCommitted: null }
+                ? // A leaver who paid, back: his games stay, and so does his
+                  // count until the one setter sets it below, from now
+                  // (review of #610, item 1: never wiped to every game).
+                  {}
                 : {
                   gamesCovered: gamesLeft,
                   joinedAt: now,
@@ -846,13 +871,32 @@ export async function applySignup(args: {
                   // these games: his message's own count is set below, and
                   // none is every game (2026-11-18). An organiser giving a
                   // bench player his place keeps the bench count.
-                  ...(args.byOrganiser && view(mine).waiting ? {} : { gamesCommitted: null }),
+                  ...(args.byOrganiser && view(mine).waiting ? (placed ?? {}) : { gamesCommitted: null }),
                 }
             : mine.paidAt
               ? {}
               : { gamesCovered: 0, gamesCommitted: null, creditsApplied: 0, amountDuePence: null }),
         },
       });
+    }
+    // A count for somebody on the bench (review of #610, item 4): kept on
+    // his row under the lock, only while the row is a bench row, with the
+    // games left when it was kept (item 3), fitted against those.
+    if (d.row.waiting && args.games != null) {
+      const fit = fitGamesCount({ count: args.games, covers: gamesLeft, played: 0 });
+      const kept = await tx.squadMonthMember.updateMany({
+        where: { monthId: month.id, userId: args.userId, kind: "payg", note: WAITING_NOTE },
+        data: { gamesCommitted: fit.games },
+      });
+      if (kept.count > 0) {
+        benchFit = { said: args.games, stored: fit.games, changed: fit.changed };
+        const text = JSON.stringify({ games: fit.games, left: gamesLeft });
+        await tx.sentNotification.upsert({
+          where: { key: benchKey },
+          create: { key: benchKey, kind: "month-bench-games", targetUser: args.userId, text },
+          update: { text },
+        });
+      }
     }
     return d;
   });
@@ -862,8 +906,16 @@ export async function applySignup(args: {
   // he says is about the games left (the reader is told he covers those, as
   // the join question does): the setter makes it a total, adding the games
   // he played before he left (PR #610 round 6).
+  // A paid leaver back with no count (a plain yes): the games left, from
+  // now, so he is charged the games he played plus those, every game only
+  // when that reaches his cover (review of #610, item 1). A CONFIRMED
+  // payment's games are the organiser's: nothing is set for it unasked.
   const commitGames = async (): Promise<boolean> =>
-    args.games != null ? commitMonthGames(month.id, args.userId, args.games, args.words ?? null, keptRejoin) : false;
+    args.games != null
+      ? commitMonthGames(month.id, args.userId, args.games, args.words ?? null, keptRejoin)
+      : keptRejoin && !keptConfirmed && gamesLeft > 0
+        ? commitMonthGames(month.id, args.userId, gamesLeft, args.words ?? null, true)
+        : false;
 
   if (decision.kind === "none") {
     // Already a regular: a count with it is his games changing.
@@ -893,13 +945,18 @@ export async function applySignup(args: {
     // A regular who says he has paid is not moved, but his games are read
     // as main always has (only a CONFIRMED payment locks them, the setter).
     gamesStored = await commitGames();
-  } else if (decision.kind === "write" && decision.outcome === "waiting" && args.games != null) {
-    const fit = fitGamesCount({ count: args.games, covers: gamesLeft, played: 0 });
-    await db.squadMonthMember.updateMany({ where: { monthId: month.id, userId: args.userId }, data: { gamesCommitted: fit.games } });
-    gamesStored = fit.games !== null;
-    if (fit.changed) {
-      await noteFittedGames({ monthId: month.id, userId: args.userId, said: args.games, covers: gamesLeft, played: 0, stored: fit.games ?? gamesLeft, words: args.words ?? null, now });
+  } else if (benchFit) {
+    // Kept on his bench row under the lock (above).
+    const bf = benchFit as { said: number; stored: number | null; changed: boolean };
+    gamesStored = bf.stored !== null;
+    if (bf.changed) {
+      await noteFittedGames({ monthId: month.id, userId: args.userId, said: bf.said, covers: gamesLeft, played: 0, stored: bf.stored ?? gamesLeft, words: args.words ?? null, now });
     }
+  }
+  // An organiser's place changed his bench count: the organisers told once.
+  const bn = benchNote as { said: number; stored: number | null } | null;
+  if (bn) {
+    await noteFittedGames({ monthId: month.id, userId: args.userId, said: bn.said, covers: gamesLeft, played: 0, stored: bn.stored ?? gamesLeft, words: args.words ?? null, now });
   }
 
   const phone = member.user.phoneNumber?.replace(/^\+/, "") ?? null;
@@ -1390,6 +1447,12 @@ export async function askToJoinMonth(p: {
   const phone = user?.phoneNumber?.replace(/^\+/, "");
   if (!phone) return false;
   const of = joinAskGames(p.games, left);
+  // A count at or above the games left is every game left: the question
+  // says so, and the organisers are told, as every door that changes a
+  // count does (review of #610, item 6).
+  if (p.games != null && p.games >= 1 && of === null) {
+    await noteFittedGames({ monthId: month.id, userId, said: p.games, covers: left, played: 0, stored: left, words: p.words ?? null, now });
+  }
   // No price while the club neither tracks nor collects payments
   // (2026-11-03, `payment-messages.ts`), nor for somebody who has paid.
   const paid = month.members.some((x) => x.userId === userId && x.paid !== "none");
@@ -1397,12 +1460,22 @@ export async function askToJoinMonth(p: {
   const price = !paid && month.sharePerGamePence != null && paymentMessagesOn(flags) ? `£${((month.sharePerGamePence * (of ?? left)) / 100).toFixed(2)}` : null;
   const text = t(month.language).msu_dm_join_ask({ month: monthNameLabel(month.language, month.firstKickoff), games: left, of, price });
   const key = monthJoinAskKey(month.orgId, month.id, userId);
+  // An OPEN question with another count (review of #610, item 2): his newer
+  // message wins; the old question is retired and he is asked again.
+  const open = await db.sentNotification.findUnique({ where: { key }, select: { id: true, kind: true } });
+  if (open?.kind === MONTH_JOIN_ASK_KIND) {
+    const was = await readJoinAskGames(key);
+    if ((was?.games ?? null) === of) return false; // the same question stands
+    await retireJoinAsk(open.id, key);
+  }
   try {
     await db.$transaction(async (tx) => {
       await tx.sentNotification.create({ data: { key, kind: MONTH_JOIN_ASK_KIND, targetUser: userId, text } });
-      if (of !== null) {
-        await tx.sentNotification.create({ data: { key: monthJoinAskGamesKey(key), kind: MONTH_JOIN_ASK_GAMES_KIND, targetUser: userId, text: JSON.stringify({ games: of, words: p.words ?? null }) } });
-      }
+      // What the question said, and the games left when it was asked: an
+      // answer after a game was played is asked again (item 2).
+      await tx.sentNotification.create({
+        data: { key: monthJoinAskGamesKey(key), kind: MONTH_JOIN_ASK_GAMES_KIND, targetUser: userId, text: JSON.stringify({ games: of, words: p.words ?? null, left }) },
+      });
     });
   } catch {
     return false; // asked already
@@ -1410,6 +1483,28 @@ export async function askToJoinMonth(p: {
   const sendAfter = adminNoticeSendAfter(now, await loadClubQuietHours(month.orgId));
   await db.botJob.create({ data: { orgId: month.orgId, kind: "dm", phone, text, ...(sendAfter ? { sendAfter } : {}) } });
   return true;
+}
+
+/** What a join question said (`askToJoinMonth`): its count (null: every
+ *  game left), his words, and the games left when it was asked (null on a
+ *  question from before 2026-11-18). Null when there is no record. */
+export async function readJoinAskGames(askKey: string): Promise<{ games: number | null; words: string | null; left: number | null } | null> {
+  const row = await db.sentNotification.findUnique({ where: { key: monthJoinAskGamesKey(askKey) }, select: { kind: true, text: true } });
+  if (row?.kind !== MONTH_JOIN_ASK_GAMES_KIND || !row.text) return null;
+  try {
+    const v = JSON.parse(row.text) as { games?: unknown; words?: unknown; left?: unknown };
+    const whole = (x: unknown): x is number => typeof x === "number" && Number.isInteger(x) && x >= 1;
+    return { games: whole(v.games) ? v.games : null, words: typeof v.words === "string" ? v.words : null, left: whole(v.left) ? v.left : null };
+  } catch {
+    return null;
+  }
+}
+
+/** A join question that is replaced (review of #610, item 2): closed, and
+ *  its keys moved aside so a new one can be asked. */
+export async function retireJoinAsk(askId: string, askKey: string): Promise<void> {
+  await db.sentNotification.updateMany({ where: { id: askId }, data: { key: `${askKey}:retired:${askId}`, kind: `${MONTH_JOIN_ASK_KIND}-closed` } });
+  await db.sentNotification.updateMany({ where: { key: monthJoinAskGamesKey(askKey) }, data: { key: `${monthJoinAskGamesKey(askKey)}:retired:${askId}` } });
 }
 
 /** Is this person an OWNER or ADMIN of the club? */
@@ -1508,6 +1603,24 @@ async function noteUnrecordedGames(p: { monthId: string; userId: string; games: 
     await sendAdminNotice({ orgId: month.orgId, now: p.now, text });
   } catch (err) {
     console.error(`[month-signup] telling the organisers about ${p.userId}'s games for ${p.monthId} failed:`, err);
+  }
+}
+
+/**
+ * His yes came after every game the join question said had been played
+ * (review of #610, item 2): he is not put on the month for games he never
+ * said, and the organisers are told once. Never throws.
+ */
+export async function noteJoinLapsed(p: { monthId: string; userId: string; now: Date }): Promise<void> {
+  try {
+    const month = await loadSignupMonth(p.monthId);
+    if (!month) return;
+    if (!(await claimOnce(`${signupKeyPrefix(month.orgId)}join-lapsed:${month.id}:${p.userId}`, "admin-notice"))) return;
+    const user = await db.user.findUnique({ where: { id: p.userId }, select: { name: true } });
+    const text = t(month.language).msu_admin_join_lapsed({ name: user?.name ?? "A player", month: monthNameLabel(month.language, month.firstKickoff) });
+    await sendAdminNotice({ orgId: month.orgId, now: p.now, text });
+  } catch (err) {
+    console.error(`[month-signup] telling the organisers ${p.userId}'s join of ${p.monthId} lapsed failed:`, err);
   }
 }
 
