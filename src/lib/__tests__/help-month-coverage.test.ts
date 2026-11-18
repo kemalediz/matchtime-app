@@ -22,6 +22,8 @@ describe("help players in a monthly club's admin group", () => {
     expect(text).toContain("never below the games he has played since he joined, the weeks called off he was credited for, and the games left");
     // Review 2 of #611, item 4.
     expect(text).toContain("up to the whole month, less any games he already paid as pay as you go");
+    // Kemal, 2026-11-18: a change that affects money waits for YES.
+    expect(text).toContain("If the month has a price, or he has paid, I say what it does to his money first and change it when you say *@Match Time YES*.");
     expect(text).not.toMatch(DASH);
   });
 
@@ -31,6 +33,7 @@ describe("help players in a monthly club's admin group", () => {
     expect(text).toContain(`*"@Match Time Dan ayın tamamını kapsıyor"*`);
     expect(text).toContain("ayın tamamı mı, yoksa sadece kalan maçlar mı?");
     expect(text).toContain("maç başı ödediği maçlar hariç ayın tamamına kadar");
+    expect(text).toContain("Ayın fiyatı varsa ya da ödediyse, önce parasına ne olacağını söylerim, *@Match Time EVET* yazınca değiştiririm.");
     expect(text).not.toMatch(DASH);
   });
 });
@@ -81,13 +84,17 @@ describe("the organiser guide on the web", () => {
 
   it("says the organiser chooses the whole month or the games left, and how to change it", () => {
     expect(start).toBeGreaterThan(-1);
-    expect(section).toContain("the whole month (he paid for it) or the games left");
+    expect(section).toContain("the whole month or the games left");
     expect(section).toContain("@Match Time Dan covers the whole month");
     expect(section).toContain("Whole month, or just the games left?");
     expect(section).toContain("Covers");
     // Review of #611: the bounds, the claim, and the other doors.
     expect(section).toContain("never below the games he has played since he joined, the weeks called off he was credited for, and the games left");
-    expect(section).toContain("also marks him as says paid, for the money collector to confirm");
+    // Kemal, 2026-11-18: coverage and payment are separate on both doors.
+    expect(section).not.toContain("already paid&quot;");
+    expect(section).not.toContain("marks him as says paid");
+    expect(section).toContain("records no payment: record what he paid on its own, as in WhatsApp");
+    expect(section).toContain("MatchTime first says what the change does to his money and makes it when you say");
     expect(section).toContain("are added for the games left, and MatchTime tells you so and how to change it");
     // Round 3, item 5: true after a cancellation too.
     expect(section).not.toContain("always covers the whole month");

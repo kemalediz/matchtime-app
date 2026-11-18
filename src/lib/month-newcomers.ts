@@ -473,6 +473,7 @@ export type MonthAddOutcome =
   // Already on the month, and the words said what he covers (2026-11-16).
   | "month-coverage-done"
   | "month-coverage-same"
+  | "month-coverage-confirm"
   | "month-coverage-failed";
 
 export interface MonthAddResult {
@@ -639,10 +640,21 @@ async function addToMonth(p: Parameters<typeof applyMonthAdd>[0]): Promise<Month
     // on the month records nothing, as before this feature; what he paid,
     // or says he paid, is kept and the reply says what that leaves.
     if (coverage) {
-      const { applyCoverage } = await import("./month-coverage-words");
-      const r = await applyCoverage({ orgId: p.orgId, lang, monthId: month.id, userId: c.userId, name, monthDate: month.firstKickoff, coverage, now });
+      // In the organisers' group a change that affects money waits for YES
+      // (Kemal, 2026-11-18); elsewhere it applies as before.
+      const { applyCoverage, askCoverageChangeInHq, proposeOrApplyCoverage } = await import("./month-coverage-words");
+      const args = { orgId: p.orgId, lang, monthId: month.id, userId: c.userId, name, monthDate: month.firstKickoff, coverage, now };
+      const r = p.readCoverage ? await proposeOrApplyCoverage(args) : await applyCoverage(args);
+      if (r.confirm) await askCoverageChangeInHq({ orgId: p.orgId, change: r.confirm, text: `${r.replyText}${othersLine}`, now });
       return {
-        outcome: r.outcome === "month-coverage-done" ? "month-coverage-done" : r.outcome === "month-coverage-same" ? "month-coverage-same" : "month-coverage-failed",
+        outcome:
+          r.outcome === "month-coverage-done"
+            ? "month-coverage-done"
+            : r.outcome === "month-coverage-same"
+              ? "month-coverage-same"
+              : r.outcome === "month-coverage-confirm"
+                ? "month-coverage-confirm"
+                : "month-coverage-failed",
         replyText: `${r.replyText}${othersLine}`,
         changed: r.outcome === "month-coverage-done",
       };

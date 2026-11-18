@@ -45,7 +45,7 @@ export interface PendingItem {
    *  `joinRequestRef(invitationId)` (a guest who wants to join, L8's
    *  notice), both in `admin-group-pool-refs.ts`. */
   ref: string;
-  kind: "teams" | "list" | "partner-ask" | "fee" | "pairing" | "pool-ask" | "join-request";
+  kind: "teams" | "list" | "partner-ask" | "fee" | "pairing" | "pool-ask" | "join-request" | "coverage";
   /** When it was (last) asked: a quote of an older post about it is stale. */
   askedAt?: Date;
 }

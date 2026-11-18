@@ -78,6 +78,16 @@ const RILEY_LEFT = "@Match Time Riley only pays for the games left";
 const RILEY_TR = "@Match Time Riley'nin ayını düzelt";
 const ANSWER_TR = "@Match Time sadece kalanlar";
 const TWO_PAID = "@Match Time fix Ian's and Zara's month";
+// Kemal, 2026-11-18: a change that affects money waits for YES.
+const YES = "@Match Time yes";
+const EVET = "@Match Time evet";
+const NO = "@Match Time no, leave it";
+const ZARA_LEFT = "@Match Time Zara only pays for the games left";
+/** "Make Riley Rater cover the whole of November (5 games, £15 more)? Say *@Match Time YES*." */
+const confirmWhole = (name: string, n: number, more: number) => `Make ${name} cover the whole of ${MONTH} (${games(n)}, ${pounds(more)} more)? Say *@Match Time YES*.`;
+const confirmPart = (name: string, n: number, of: number, less: number) => `Make ${name} cover ${n} of the ${of} games of ${MONTH} (${pounds(less)} less)? Say *@Match Time YES*.`;
+const changeQuestions = (db: TestDb) =>
+  db.all<{ askRef: string; text: string }>(`SELECT "askRef", text FROM "AdminGroupMessage" WHERE "orgId" = $1 AND "askRef" LIKE 'coverage-change:%' ORDER BY "createdAt"`, [ORG_ID]);
 
 /** The monthly reader's raw answer for "add <name> to the month". */
 const addReading = (name: string, paid: boolean) => ({
@@ -112,7 +122,7 @@ const questions = (db: TestDb) =>
   db.all<{ askRef: string; text: string }>(`SELECT "askRef", text FROM "AdminGroupMessage" WHERE "orgId" = $1 AND "askRef" LIKE 'month-coverage:%' ORDER BY "createdAt"`, [ORG_ID]);
 
 let seq = 0;
-async function hq(request: APIRequestContext, text: string, who: "admin" | "player" = "admin", quoted?: { id: string; text: string }) {
+async function hq(request: APIRequestContext, text: string, who: "admin" | "player" | "third" = "admin", quoted?: { id: string; text: string }) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
     data: {
@@ -182,6 +192,10 @@ test.beforeAll(async () => {
     [RILEY_TR]: coverage(["Riley"], ""),
     [ANSWER_TR]: coverage([], "left", "unsure"),
     [TWO_PAID]: { route: "admin_ops", facts: { action: "month_coverage", coveredRefs: ["Ian", "Zara"], coverage: "", toMatchTime: true } },
+    [YES]: { route: "approve" },
+    [EVET]: { route: "approve" },
+    [NO]: { route: "none" },
+    [ZARA_LEFT]: coverage(["Zara"], "left"),
   });
 });
 
@@ -234,14 +248,19 @@ test("an add that says neither: he joins for the games left, MatchTime asks once
 test("REVIEW ITEM 2: right after a question about Olivia, 'Riley covers the whole month' changes Riley's, never Olivia's", async ({ request, db }) => {
   await hq(request, ADD_OLIVIA);
   expect((await questions(db)).at(-1)?.askRef).toBe(`month-coverage:${MONTH_ID}:${U.opt}`);
-  const r = await hq(request, RILEY_WHOLE);
+  // He says he paid, in a priced month: the change and its money, then YES (Kemal, 2026-11-18).
+  const asked = await hq(request, RILEY_WHOLE);
+  expect(asked).toMatchObject({ outcome: "hq-month-coverage-confirm", replyText: confirmWhole("Riley Rater", WHOLE, SHARE * (WHOLE - SINCE)) });
+  expect(await member(db, U.rater)).toMatchObject({ gamesCovered: SINCE });
+  const r = await hq(request, YES);
   expect(r).toMatchObject({ outcome: "hq-month-coverage-done", replyText: `✅ Riley Rater covers the whole of ${MONTH}: ${games(WHOLE)}. He still shows ${pounds(SHARE * (WHOLE - SINCE))} to pay.` });
   expect(await member(db, U.rater)).toMatchObject({ gamesCovered: WHOLE, amountDuePence: SHARE * WHOLE, paidAt: null, claimed: true });
   expect(await member(db, U.opt)).toMatchObject({ gamesCovered: LOW });
 });
 
 test("REVIEW ITEM 1: 'Riley only pays for the games left' never cuts the games he has played since he joined", async ({ request, db }) => {
-  const down = await hq(request, RILEY_LEFT);
+  expect(await hq(request, RILEY_LEFT)).toMatchObject({ outcome: "hq-month-coverage-confirm", replyText: confirmPart("Riley Rater", SINCE, WHOLE, SHARE * (WHOLE - SINCE)) });
+  const down = await hq(request, YES);
   expect(down).toMatchObject({ outcome: "hq-month-coverage-done", replyText: `✅ Riley Rater covers ${SINCE} of the ${WHOLE} games of ${MONTH}.` });
   expect(await member(db, U.rater)).toMatchObject({ gamesCovered: SINCE, amountDuePence: SHARE * SINCE });
   // Again: nothing lower is possible, whatever the day.
@@ -280,7 +299,12 @@ test("ROUND 3, item 1: an answer naming two players changes both, and names both
   // of its answer, names Olivia and Zara: it is about them, both.
   await hq(request, ADD_GARY);
   expect((await questions(db)).at(-1)?.askRef).toBe(`month-coverage:${MONTH_ID}:${U.guest}`);
-  const r = await hq(request, ANSWER_TWO);
+  const asked = await hq(request, ANSWER_TWO);
+  expect(asked.outcome).toBe("hq-month-coverage-confirm");
+  expect(asked.replyText).toContain("Olivia Opty cover the whole of");
+  expect(asked.replyText).toContain("Zara Zest cover the whole of");
+  expect(await member(db, U.opt)).toMatchObject({ gamesCovered: LOW });
+  const r = await hq(request, YES);
   expect(r.outcome).toBe("hq-month-coverage-done");
   expect(r.replyText).toContain(`✅ Olivia Opty covers the whole of ${MONTH}: ${games(WHOLE)}.`);
   expect(r.replyText).toContain(`✅ Zara Zest covers the whole of ${MONTH}: ${games(WHOLE)}.`);
@@ -316,7 +340,10 @@ test("ROUND 3, item 2: the REAL merge (the 'who is this?' answer) between questi
 test("neither said, in Turkish: asked in Turkish, and the answer quoting it sets the games left", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   try {
-    await hq(request, RILEY_WHOLE);
+    const confirm = await hq(request, RILEY_WHOLE);
+    expect(confirm.outcome).toBe("hq-month-coverage-confirm");
+    expect(confirm.replyText).toContain("*@Match Time EVET*");
+    await hq(request, EVET);
     expect(await member(db, U.rater)).toMatchObject({ gamesCovered: WHOLE });
     const monthTr = monthNameLabel("tr", KICKOFFS[0]);
     const asked = await hq(request, RILEY_TR);
@@ -365,4 +392,67 @@ test("ROUND 4, item 4: one reply asking about two players: a plain 'whole month'
   // Nothing changed for either.
   expect(await member(db, U.fresh)).toEqual(before.ian);
   expect(await member(db, U.extra)).toEqual(before.zara);
+});
+
+// ── Kemal, 2026-11-18: a coverage change that affects money waits for YES ──
+
+test("item 2: a NO, or no reply, changes nothing", async ({ request, db }) => {
+  const before = (await member(db, U.rater))!;
+  expect((await hq(request, before.gamesCovered === WHOLE ? RILEY_LEFT : RILEY_WHOLE)).outcome).toBe("hq-month-coverage-confirm");
+  await hq(request, NO);
+  expect(await member(db, U.rater)).toEqual(before);
+});
+
+test("item 2: a YES after the question's 30 minutes changes nothing, and says so", async ({ request, db }) => {
+  const before = (await member(db, U.rater))!;
+  expect((await hq(request, before.gamesCovered === WHOLE ? RILEY_LEFT : RILEY_WHOLE)).outcome).toBe("hq-month-coverage-confirm");
+  await db.run(`UPDATE "AdminGroupMessage" SET "createdAt" = "createdAt" - interval '31 minutes' WHERE "orgId" = $1 AND "askRef" LIKE 'coverage-change:%'`, [ORG_ID]);
+  // The organisers' one confirm step, as for a free place: a YES long after
+  // the question is asked about once; the YES to that says it is too old.
+  expect((await hq(request, YES)).outcome).toBe("hq-confirm-asked");
+  const r = await hq(request, YES);
+  expect(r).toMatchObject({ outcome: "hq-month-coverage-expired", replyText: "That question about what a player covers is over 30 minutes old, so I haven't changed anything. Say it again and I'll ask again." });
+  expect(await member(db, U.rater)).toEqual(before);
+});
+
+test("item 2: a price set while it waits: the YES asks again with today's numbers, and the next YES applies those", async ({ request, db }) => {
+  const now = (await member(db, U.rater))!;
+  const target = now.gamesCovered === WHOLE ? RILEY_LEFT : RILEY_WHOLE;
+  expect((await hq(request, target)).outcome).toBe("hq-month-coverage-confirm");
+  await db.run(`UPDATE "SquadMonth" SET "sharePerGamePence" = 1000 WHERE id = $1`, [MONTH_ID]);
+  try {
+    const again = await hq(request, YES);
+    expect(again.outcome).toBe("hq-month-coverage-confirm");
+    expect(again.replyText).toContain("The price or a payment changed since I asked.");
+    expect(again.replyText).toContain(pounds(1000 * (WHOLE - SINCE)));
+    expect(await member(db, U.rater)).toMatchObject({ gamesCovered: now.gamesCovered });
+    const done = await hq(request, YES);
+    expect(done.outcome).toBe("hq-month-coverage-done");
+    expect((await member(db, U.rater))!.gamesCovered).not.toBe(now.gamesCovered);
+  } finally {
+    await db.run(`UPDATE "SquadMonth" SET "sharePerGamePence" = $2 WHERE id = $1`, [MONTH_ID, SHARE]);
+  }
+});
+
+test("item 2: two organisers: one asks, the other's YES applies it", async ({ request, db }) => {
+  await db.run(`UPDATE "Membership" SET role = 'ADMIN'::"MemberRole" WHERE "orgId" = $1 AND "userId" = $2`, [ORG_ID, U.third]);
+  const now = (await member(db, U.rater))!;
+  const target = now.gamesCovered === WHOLE ? RILEY_LEFT : RILEY_WHOLE;
+  expect((await hq(request, target)).outcome).toBe("hq-month-coverage-confirm");
+  expect((await hq(request, YES, "third")).outcome).toBe("hq-month-coverage-done");
+  expect((await member(db, U.rater))!.gamesCovered).not.toBe(now.gamesCovered);
+  expect((await changeQuestions(db)).length).toBeGreaterThan(0);
+});
+
+test("item 2: no price and no payment: it applies at once, nothing asked", async ({ request, db }) => {
+  await db.run(`UPDATE "SquadMonth" SET "sharePerGamePence" = NULL, "pricedAt" = NULL WHERE id = $1`, [MONTH_ID]);
+  try {
+    const asked = (await changeQuestions(db)).length;
+    const r = await hq(request, ZARA_LEFT);
+    expect(r.outcome).toBe("hq-month-coverage-done");
+    expect(await member(db, U.extra)).toMatchObject({ gamesCovered: LOW, claimed: false });
+    expect((await changeQuestions(db)).length).toBe(asked);
+  } finally {
+    await db.run(`UPDATE "SquadMonth" SET "sharePerGamePence" = $2, "pricedAt" = now() WHERE id = $1`, [MONTH_ID, SHARE]);
+  }
 });

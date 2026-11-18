@@ -23,8 +23,10 @@
  */
 import { db } from "./db";
 import {
+  coverageChangeNeedsYes,
   decideCoverage,
   memberCoverageBounds,
+  moneySig,
   monthCoverage,
   type Coverage,
   type CoverageBounds,
@@ -32,7 +34,7 @@ import {
   type MonthCoverage,
 } from "./month-coverage-rules";
 import { hasStarted, loadSignupMonth, lockMonth, type SignupMonth } from "./month-signup";
-import { amountDuePence } from "./squad-month-rules";
+import { amountDuePence, chargedGames } from "./squad-month-rules";
 import { freezePaidAmount } from "./month-close-rules";
 import { formatLondon } from "./london-time";
 
@@ -193,6 +195,62 @@ export async function checkMonthMemberCoverage(args: {
     },
   });
   return d.ok ? { ok: true } : { ok: false, error: d.error };
+}
+
+export type CoveragePreview =
+  | {
+      ok: true;
+      changed: boolean;
+      gamesCovered: number;
+      month: MonthCoverage;
+      creditedCancelled: number;
+      /** The change affects money: the month has a price, or he paid or
+       *  says he paid (`coverageChangeNeedsYes`, Kemal 2026-11-18). */
+      needsYes: boolean;
+      /** What it adds to (positive) or takes off (negative) what he is
+       *  charged; null with no price. */
+      deltaPence: number | null;
+      /** What decides the money now (`moneySig`). */
+      sig: string;
+    }
+  | { ok: false; error: SetCoverageError };
+
+/**
+ * What `setMonthMemberCoverage` WOULD do, writing nothing (Kemal,
+ * 2026-11-18): the games, whether it waits for YES, and its money. The
+ * same reads and bounds as the write.
+ */
+export async function previewMonthMemberCoverage(args: { squadMonthId: string; userId: string; coverage: Coverage | number; now?: Date }): Promise<CoveragePreview> {
+  const now = args.now ?? new Date();
+  const month = await loadSignupMonth(args.squadMonthId);
+  if (!month) return { ok: false, error: "not-found" };
+  const [m, row] = await Promise.all([
+    db.squadMonth.findUnique({ where: { id: month.id }, select: MONEY_SELECT }),
+    db.squadMonthMember.findUnique({
+      where: { monthId_userId: { monthId: month.id, userId: args.userId } },
+      select: { kind: true, tier: true, leftAt: true, joinedAt: true, source: true, gamesCovered: true, gamesCommitted: true, creditsApplied: true, paidAt: true, paidClaimedAt: true },
+    }),
+  ]);
+  if (!m || m.status === "closed") return { ok: false, error: m ? "closed" : "not-found" };
+  if (!row) return { ok: false, error: "not-a-member" };
+  const cover = monthOf(month, m, now);
+  const creditedCancelled = await db.squadCredit.count({ where: { orgId: m.orgId, userId: args.userId, earnedMonthId: month.id, reason: "cancelled-week", voidedAt: null } });
+  const paidPayg = (await paidPaygGames(db, { activityId: m.activityId, monthStart: m.monthStart, userIds: [args.userId], before: () => row.joinedAt })).get(args.userId) ?? 0;
+  const bounds = memberCoverageBounds(cover, { joinedAt: row.joinedAt, source: row.source, kickoffs: month.kickoffs, now, creditedCancelled, countedAt: countedAtOf(m), paidPayg });
+  const d = decideCoverage({
+    target: args.coverage,
+    bounds,
+    row: { kind: row.kind === "payg" ? "payg" : "regular", out: row.leftAt !== null, gamesCovered: row.gamesCovered, gamesCommitted: row.gamesCommitted, creditsApplied: row.creditsApplied },
+  });
+  if (!d.ok) return { ok: false, error: d.error };
+  const share = row.tier === "concession" && m.concessionPerGamePence != null ? m.concessionPerGamePence : m.sharePerGamePence;
+  const priced = share != null;
+  const paid = row.paidAt !== null || row.paidClaimedAt !== null;
+  const deltaPence = priced
+    ? share! * (chargedGames({ gamesCovered: d.gamesCovered, gamesCommitted: d.gamesCommitted }) - chargedGames({ gamesCovered: row.gamesCovered, gamesCommitted: row.gamesCommitted }))
+    : null;
+  const sig = moneySig([String(share ?? ""), row.paidAt ? "confirmed" : row.paidClaimedAt ? "claimed" : "none", String(row.gamesCovered), String(row.gamesCommitted ?? "")]);
+  return { ok: true, changed: d.changed, gamesCovered: d.gamesCovered, month: cover, creditedCancelled, needsYes: coverageChangeNeedsYes({ priced, paid }), deltaPence, sig };
 }
 
 export async function setMonthMemberCoverage(args: {

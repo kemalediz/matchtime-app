@@ -46,8 +46,8 @@ export async function signUpForMonth(monthId: string, choice: SignupChoice, days
  * An organiser changes one member of a month on /admin/months: make them
  * a regular (past the cap if need be: the organiser decides, plan 4.1),
  * move them to PAYG, or take them off the month. OWNER and ADMIN only.
- * No row is deleted. The one paid field written is the organiser's own
- * "says paid" claim for "the whole month, already paid" (a claim, D3).
+ * No row is deleted, and no paid field is written (coverage and payment
+ * are separate, Kemal 2026-11-18).
  */
 export async function setMonthMember(
   orgId: string,
@@ -55,7 +55,7 @@ export async function setMonthMember(
   userId: string,
   to: "regular" | "payg" | "out",
   /** "Add a player" in a month already under way (2026-11-16): a new
-   *  regular covers the whole month (already paid) or the games left. */
+   *  regular covers the whole month or the games left (no payment). */
   coverage?: "whole" | "left",
 ): Promise<ApplySignupResult | { ok: false; error: SetCoverageError }> {
   const session = await auth();
@@ -84,20 +84,12 @@ export async function setMonthMember(
     byOrganiser: true,
   });
   // What he covers, through the coverage editor's own write and bounds, for
-  // a new row and a returning one alike (review of #611, item 4). "The
-  // whole month, already paid" is also the organiser's "says paid" claim,
-  // the same one the organisers' group records for "he's paid" (item 5):
-  // the collector confirms it; he is not chased for the month. The claim
-  // comes FIRST (review round 2, item 2), as on every door, so he is priced
-  // as a seeded says-paid regular is.
+  // a new row and a returning one alike (review of #611, item 4). Coverage
+  // only: no payment is recorded here (Kemal, 2026-11-18). A payment is
+  // recorded on its own, as in WhatsApp.
   if (res.ok && res.outcome === "regular" && coverage) {
-    if (coverage === "whole") {
-      const { claimMonthPaid } = await import("@/lib/month-payment");
-      await claimMonthPaid({ monthId, userId, source: "organiser", now });
-    }
     const { setMonthMemberCoverage } = await import("@/lib/month-member-coverage");
-    // "Already paid" is that claim being for this coverage (round 4, item 2).
-    await setMonthMemberCoverage({ squadMonthId: monthId, userId, coverage, claimCovers: coverage === "whole", now });
+    await setMonthMemberCoverage({ squadMonthId: monthId, userId, coverage, now });
   }
   // Slice 6: a regular who had paid and is taken off the month (or moved
   // to PAYG) is owed the games left, and one who is back is not. Worked

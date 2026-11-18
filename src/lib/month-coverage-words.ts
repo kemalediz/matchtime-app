@@ -26,7 +26,24 @@ import { monthNameLabel } from "./i18n/dates";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { joinChoice } from "./i18n/text";
 import { CONFIRM_WINDOW_MS } from "./admin-group-confirm-rules";
-import { coverageAskRef, coverageSettledPrefix, parseCoverageAskRef, shownCoverage, type Coverage, type MonthCoverage } from "./month-coverage-rules";
+import {
+  COVERAGE_CHANGE_PREFIX,
+  COVERAGE_CHANGE_TTL_MS,
+  coverageAskRef,
+  coverageChangeRef,
+  coverageSettledPrefix,
+  moneySig,
+  parseCoverageAskRef,
+  parseCoverageChangeRef,
+  shownCoverage,
+  type Coverage,
+  type CoverageChange,
+  type MonthCoverage,
+} from "./month-coverage-rules";
+import type { CoveragePreview } from "./month-member-coverage";
+import { joinList } from "./i18n/text";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 import { refKey } from "./person-ref-key";
 import type { PersonPicker } from "./pipeline/who-is-who";
 
@@ -37,7 +54,9 @@ export type CoverageWordsOutcome =
   | "month-coverage-which"
   | "month-coverage-who"
   | "month-coverage-merged"
-  | "month-coverage-failed";
+  | "month-coverage-failed"
+  | "month-coverage-confirm"
+  | "month-coverage-expired";
 
 export interface CoverageWordsResult {
   outcome: CoverageWordsOutcome;
@@ -48,6 +67,177 @@ export interface CoverageWordsResult {
    * quote of the reply finds every one of them (round 4, item 4).
    */
   asks?: Array<{ monthId: string; userId: string }>;
+  /** A change that affects money, waiting for YES (Kemal, 2026-11-18):
+   *  for the caller to log as MatchTime's question (`askCoverageChangeInHq`). */
+  confirm?: CoverageChange;
+}
+
+/** One player's change waiting for YES, as the question says it. */
+interface Pending {
+  name: string;
+  monthId: string;
+  userId: string;
+  monthDate: Date;
+  preview: Extract<CoveragePreview, { ok: true }>;
+}
+
+/** "Make Dan cover the whole of November (5 games, £10 more)? Say YES." */
+async function confirmText(lang: string | null, items: Pending[]): Promise<string> {
+  const c = monthSetupCopy(lang);
+  const { pounds } = await import("./month-payment-copy");
+  const parts = items.map((i) => {
+    const shown = shownCoverage({ gamesCovered: i.preview.gamesCovered, creditedCancelled: i.preview.creditedCancelled }, i.preview.month);
+    const d = i.preview.deltaPence;
+    return c.hq_cover_confirm_item({
+      name: i.name,
+      month: monthNameLabel(lang, i.monthDate),
+      games: shown.games,
+      of: shown.of,
+      wholeMonth: shown.wholeMonth,
+      amount: d ? pounds(Math.abs(d)) : null,
+      more: (d ?? 0) > 0,
+    });
+  });
+  const items_ = lang === "tr" ? parts.join("; ") : joinList(lang, parts);
+  return c.hq_cover_confirm({ items: items_ });
+}
+
+const changeOf = (coverage: Coverage, items: Pending[]): CoverageChange => ({
+  coverage,
+  sig: moneySig(items.map((i) => i.preview.sig)),
+  players: items.map((i) => ({ monthId: i.monthId, userId: i.userId })),
+});
+
+/** The marker that closes a coverage change question: a SentNotification,
+ *  never a line of the organisers' log (nothing the router reads). */
+const changeClosedKey = (questionId: string) => `coverage-change-closed:${questionId}`;
+
+async function closeChange(questionId: string): Promise<void> {
+  await db.sentNotification.create({ data: { key: changeClosedKey(questionId), kind: "coverage-change-closed" } }).catch(() => {});
+}
+
+/** Open coverage change questions (not closed), newest first. */
+async function openChangeRows(orgId: string, since: Date): Promise<Array<{ waMessageId: string; askRef: string; createdAt: Date }>> {
+  const rows = await db.adminGroupMessage.findMany({
+    // MatchTime's question itself, never the safe-YES rule's "Is that YES to ...?" about it
+    // (logged with the same ask ref, `mt:ask:`): its age is the question's.
+    where: { orgId, fromMatchTime: true, askRef: { startsWith: COVERAGE_CHANGE_PREFIX }, createdAt: { gte: since }, NOT: { waMessageId: { startsWith: "mt:ask:" } } },
+    orderBy: { createdAt: "desc" },
+    select: { waMessageId: true, askRef: true, createdAt: true },
+  });
+  if (rows.length === 0) return [];
+  const closed = new Set(
+    (await db.sentNotification.findMany({ where: { key: { in: rows.map((r) => changeClosedKey(r.waMessageId)) } }, select: { key: true } })).map((x) => x.key),
+  );
+  return rows
+    .filter((r) => r.askRef && !closed.has(changeClosedKey(r.waMessageId)))
+    .map((r) => ({ waMessageId: r.waMessageId, askRef: r.askRef!, createdAt: r.createdAt }));
+}
+
+/**
+ * Log a change waiting for YES as MatchTime's question, its whole reply as
+ * its words. An open question about any of the same players is closed: the
+ * newer words are what a YES is for. Never throws.
+ */
+export async function askCoverageChangeInHq(p: { orgId: string; change: CoverageChange; text: string; now: Date }): Promise<void> {
+  try {
+    const mine = new Set(p.change.players.map((x) => `${x.monthId}.${x.userId}`));
+    for (const r of await openChangeRows(p.orgId, new Date(p.now.getTime() - DAY_MS))) {
+      const c = parseCoverageChangeRef(r.askRef);
+      if (c?.players.some((x) => mine.has(`${x.monthId}.${x.userId}`))) await closeChange(r.waMessageId);
+    }
+  } catch (err) {
+    console.error("[month-coverage] closing older change questions failed:", err instanceof Error ? err.message : "failed");
+  }
+  await recordMatchTimeQuestion({ orgId: p.orgId, askRef: coverageChangeRef(p.change), text: p.text, now: p.now });
+  console.log(`[month-coverage] a change for ${p.change.players.map((x) => x.userId).join(",")} waits for YES`);
+}
+
+/** The coverage changes waiting for YES, for what HQ is WAITING for
+ *  (`loadPending`). A question past its 30 minutes still waits for a day,
+ *  so its YES is answered "too old". */
+export async function coverageChangesAwaiting(orgId: string, now: Date, lang: string | null): Promise<Array<{ ref: string; names: string; month: string; askedAt: Date }>> {
+  const out: Array<{ ref: string; names: string; month: string; askedAt: Date }> = [];
+  const seen = new Set<string>();
+  for (const r of await openChangeRows(orgId, new Date(now.getTime() - DAY_MS))) {
+    if (seen.has(r.askRef)) continue;
+    seen.add(r.askRef);
+    const c = parseCoverageChangeRef(r.askRef);
+    if (!c) continue;
+    const [users, month] = await Promise.all([
+      db.user.findMany({ where: { id: { in: c.players.map((x) => x.userId) } }, select: { id: true, name: true } }),
+      db.squadMonth.findUnique({ where: { id: c.players[0].monthId }, select: { monthStart: true } }),
+    ]);
+    const names = joinList(lang, c.players.map((x) => users.find((u) => u.id === x.userId)?.name ?? "?"));
+    out.push({ ref: r.askRef, names, month: month ? monthNameLabel(lang, new Date(month.monthStart.getTime() + 12 * 3600_000)) : "", askedAt: r.createdAt });
+  }
+  return out;
+}
+
+/**
+ * An organiser's YES to a coverage change, already matched to it by the
+ * safe-YES rule. Past 30 minutes: nothing, and says so. The money changed
+ * since it was asked (a price set, a payment): asked again with today's
+ * numbers. Otherwise each player's change is applied, as the months page
+ * does. Null: nothing waiting under that ref.
+ */
+export async function answerCoverageChangeYes(p: { orgId: string; lang: string | null; ref: string; now: Date }): Promise<CoverageWordsResult | null> {
+  const change = parseCoverageChangeRef(p.ref);
+  if (!change) return null;
+  const row = (await openChangeRows(p.orgId, new Date(p.now.getTime() - DAY_MS))).find((r) => r.askRef === p.ref);
+  if (!row) return null;
+  const c = monthSetupCopy(p.lang);
+  await closeChange(row.waMessageId);
+  if (p.now.getTime() - row.createdAt.getTime() > COVERAGE_CHANGE_TTL_MS) return { outcome: "month-coverage-expired", replyText: c.hq_cover_confirm_expired };
+  const { previewMonthMemberCoverage } = await import("./month-member-coverage");
+  const { loadSignupMonth } = await import("./month-signup");
+  const users = await db.user.findMany({ where: { id: { in: change.players.map((x) => x.userId) } }, select: { id: true, name: true } });
+  const items: Pending[] = [];
+  for (const x of change.players) {
+    const m = await loadSignupMonth(x.monthId);
+    const preview = await previewMonthMemberCoverage({ squadMonthId: x.monthId, userId: x.userId, coverage: change.coverage, now: p.now });
+    if (!m || !preview.ok) continue;
+    items.push({ name: users.find((u) => u.id === x.userId)?.name ?? "?", monthId: x.monthId, userId: x.userId, monthDate: m.firstKickoff, preview });
+  }
+  const now = changeOf(change.coverage, items);
+  if (now.sig !== change.sig) {
+    const ask = items.filter((i) => i.preview.changed && i.preview.needsYes);
+    if (ask.length > 0) {
+      const text = `${c.hq_cover_confirm_changed}\n${await confirmText(p.lang, ask)}`;
+      return { outcome: "month-coverage-confirm", replyText: text, confirm: changeOf(change.coverage, ask) };
+    }
+  }
+  const done: CoverageWordsResult[] = [];
+  for (const i of items) {
+    done.push(await applyCoverage({ orgId: p.orgId, lang: p.lang, monthId: i.monthId, userId: i.userId, name: i.name, monthDate: i.monthDate, coverage: change.coverage, now: p.now }));
+  }
+  if (done.length === 0) return { outcome: "month-coverage-failed", replyText: c.hq_cover_failed({ key: "failed", name: users[0]?.name ?? "", month: "" }) };
+  const outcome = done.some((r) => r.outcome === "month-coverage-done") ? "month-coverage-done" : done[0].outcome;
+  return { outcome, replyText: done.map((r) => r.replyText).join("\n") };
+}
+
+/**
+ * One player's change in the organisers' group (Kemal, 2026-11-18): when it
+ * affects money it waits for YES (the question returned in `confirm`, for
+ * the caller to log); otherwise it is applied at once.
+ */
+export async function proposeOrApplyCoverage(p: {
+  orgId: string;
+  lang: string | null;
+  monthId: string;
+  userId: string;
+  name: string;
+  monthDate: Date;
+  coverage: Coverage;
+  now: Date;
+}): Promise<CoverageWordsResult> {
+  const { previewMonthMemberCoverage } = await import("./month-member-coverage");
+  const preview = await previewMonthMemberCoverage({ squadMonthId: p.monthId, userId: p.userId, coverage: p.coverage, now: p.now });
+  if (preview.ok && preview.changed && preview.needsYes) {
+    const items: Pending[] = [{ name: p.name, monthId: p.monthId, userId: p.userId, monthDate: p.monthDate, preview }];
+    return { outcome: "month-coverage-confirm", replyText: await confirmText(p.lang, items), confirm: changeOf(p.coverage, items) };
+  }
+  return applyCoverage(p);
 }
 
 /** The question's words for one regular of one month. "The whole month"
@@ -159,6 +349,9 @@ export async function applyMonthCoverageWords(p: {
   now: Date;
   /** Tests: who-is-who. Absent: `personPickerFor`. */
   identify?: PersonPicker;
+  /** The organisers' group: a change that affects money waits for YES
+   *  (Kemal, 2026-11-18). */
+  askFirst?: boolean;
 }): Promise<CoverageWordsResult> {
   const c = monthSetupCopy(p.lang);
   try {
@@ -187,6 +380,7 @@ export async function applyMonthCoverageWords(p: {
       where: "HQ, the club organisers' admin group: what a regular on the month's list covers",
     });
     const results: CoverageWordsResult[] = [];
+    const waiting: Pending[] = [];
     const done = new Set<string>();
     for (const ref of refs) {
       const pick = people.get(refKey(ref));
@@ -212,13 +406,27 @@ export async function applyMonthCoverageWords(p: {
         results.push({ outcome: "month-coverage-asked", replyText: text, asks: [{ monthId: on.monthId, userId }] });
         continue;
       }
+      if (p.askFirst) {
+        // Kemal, 2026-11-18: a change that affects money waits for YES.
+        const { previewMonthMemberCoverage } = await import("./month-member-coverage");
+        const preview = await previewMonthMemberCoverage({ squadMonthId: on.monthId, userId, coverage: p.coverage, now: p.now });
+        if (preview.ok && preview.changed && preview.needsYes) {
+          waiting.push({ name, monthId: on.monthId, userId, monthDate: on.monthDate, preview });
+          continue;
+        }
+      }
       results.push(await applyCoverage({ orgId: p.orgId, lang: p.lang, monthId: on.monthId, userId, name, monthDate: on.monthDate, coverage: p.coverage, now: p.now }));
     }
+    let confirm: CoverageChange | undefined;
+    if (waiting.length > 0 && p.coverage) {
+      results.push({ outcome: "month-coverage-confirm", replyText: await confirmText(p.lang, waiting) });
+      confirm = changeOf(p.coverage, waiting);
+    }
     // One reply naming each; its outcome the best of them (a change made).
-    const rank: CoverageWordsOutcome[] = ["month-coverage-done", "month-coverage-asked", "month-coverage-same", "month-coverage-failed", "month-coverage-who"];
+    const rank: CoverageWordsOutcome[] = ["month-coverage-done", "month-coverage-confirm", "month-coverage-asked", "month-coverage-same", "month-coverage-failed", "month-coverage-who"];
     const outcome = rank.find((o) => results.some((r) => r.outcome === o)) ?? "month-coverage-who";
     const asks = results.flatMap((r) => r.asks ?? []);
-    return { outcome, replyText: results.map((r) => r.replyText).join("\n"), ...(asks.length > 0 ? { asks } : {}) };
+    return { outcome, replyText: results.map((r) => r.replyText).join("\n"), ...(asks.length > 0 ? { asks } : {}), ...(confirm ? { confirm } : {}) };
   } catch (err) {
     console.error("[month-coverage] the tagged change failed:", err instanceof Error ? err.message : "failed");
     return { outcome: "month-coverage-failed", replyText: c.hq_cover_failed({ key: "failed", name: p.refs[0] ?? "", month: "" }) };

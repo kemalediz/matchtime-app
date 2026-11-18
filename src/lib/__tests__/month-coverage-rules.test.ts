@@ -28,6 +28,10 @@ import {
   memberCoverageBounds,
   monthCoverage,
   parseCoverageAskRef,
+  coverageChangeNeedsYes,
+  coverageChangeRef,
+  parseCoverageChangeRef,
+  moneySig,
 } from "@/lib/month-coverage-rules";
 import { decideCancelledWeekCredits } from "@/lib/month-close-rules";
 import { planMonthSeed, wholeMonthGames } from "@/lib/squad-month-rules";
@@ -340,5 +344,23 @@ describe("the question in HQ (review item 3)", () => {
   it("a reply about ONE player, quoted with other lines first: that player", () => {
     const one: HqLogRow = { ...inReply("mt:q-ian", "ian", { stanza: "3EB0ONE" }), text: "✅ Ian is on the November list.\n\n📋 Ian on the November list: whole month, or just the games left?" };
     expect(coverageAnswerTarget({ quoted: { messageId: "3EB0ONE", text: one.text, fromMatchTime: true }, log: [one, chat(6)], now: t(7) })).toEqual({ kind: "asked", monthId: "m1", userId: "ian" });
+  });
+});
+
+describe("Kemal's item 2 (2026-11-18): a coverage change that affects money waits for YES", () => {
+  it("money is affected when the month has a price, or he paid or says he paid; never otherwise", () => {
+    expect(coverageChangeNeedsYes({ priced: true, paid: false })).toBe(true);
+    expect(coverageChangeNeedsYes({ priced: false, paid: true })).toBe(true);
+    expect(coverageChangeNeedsYes({ priced: false, paid: false })).toBe(false);
+  });
+  it("the question's ask ref carries the coverage, the money fingerprint and every player, and reads back", () => {
+    const ref = coverageChangeRef({ coverage: "whole", sig: "a1b2", players: [{ monthId: "m1", userId: "u-dan" }, { monthId: "m1", userId: "u-ben" }] });
+    expect(parseCoverageChangeRef(ref)).toEqual({ coverage: "whole", sig: "a1b2", players: [{ monthId: "m1", userId: "u-dan" }, { monthId: "m1", userId: "u-ben" }] });
+    expect(parseCoverageChangeRef("month-coverage:m1:u1")).toBeNull();
+    expect(parseCoverageChangeRef(null)).toBeNull();
+  });
+  it("the money fingerprint changes when the price does", () => {
+    expect(moneySig(["750", "none"])).toBe(moneySig(["750", "none"]));
+    expect(moneySig(["750", "none"])).not.toBe(moneySig(["500", "none"]));
   });
 });

@@ -58,7 +58,7 @@ export const monthSetupEn = {
   // ── What a regular covers (2026-11-16) ───────────────────────────────
   /** "Add a player" once the month has started: what the new regular covers. */
   add_cover_label: "The month has started. They cover:",
-  add_cover_whole: (p: { games: number }): string => `The whole month, already paid (${p.games} ${p.games === 1 ? "game" : "games"})`,
+  add_cover_whole: (p: { games: number }): string => `The whole month (${p.games} ${p.games === 1 ? "game" : "games"})`,
   add_cover_left: (p: { games: number }): string => `The games left (${p.games})`,
   add_cover_pick: "Choose the whole month or the games left first.",
   /** The coverage editor in the games column. */
@@ -84,6 +84,16 @@ export const monthSetupEn = {
    *  once when the words did not say (an add, or a change of coverage). */
   hq_cover_ask: (p: { name: string; month: string; left: number; whole: number }): string =>
     `📋 ${p.name} on the ${p.month} list: whole month, or just the games left? The whole month is ${p.whole} ${p.whole === 1 ? "game" : "games"}; ${p.left} ${p.left === 1 ? "is" : "are"} left. Tag me with your answer.`,
+  /** Kemal, 2026-11-18: a change that affects money waits for YES. One
+   *  player's part of the question; `amount` null when there is no price. */
+  hq_cover_confirm_item: (p: { name: string; month: string; games: number; of: number; wholeMonth: boolean; amount: string | null; more: boolean }): string =>
+    p.wholeMonth
+      ? `${p.name} cover the whole of ${p.month} (${p.games} ${p.games === 1 ? "game" : "games"}${p.amount ? `, ${p.amount} ${p.more ? "more" : "less"}` : ""})`
+      : `${p.name} cover ${p.games} of the ${p.of} games of ${p.month}${p.amount ? ` (${p.amount} ${p.more ? "more" : "less"})` : ""}`,
+  /** `items`: the players' parts, already joined. */
+  hq_cover_confirm: (p: { items: string }): string => `Make ${p.items}? Say *@Match Time YES*.`,
+  hq_cover_confirm_changed: "The price or a payment changed since I asked.",
+  hq_cover_confirm_expired: "That question about what a player covers is over 30 minutes old, so I haven't changed anything. Say it again and I'll ask again.",
   /** From the row as stored. `of`: the month's playable games. */
   hq_cover_done: (p: { name: string; month: string; games: number; of: number; wholeMonth: boolean }): string =>
     p.wholeMonth

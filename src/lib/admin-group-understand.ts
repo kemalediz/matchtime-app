@@ -173,7 +173,15 @@ import { dmNamedPeople } from "./named-invite";
 import { namedInviteReply } from "./named-invite-rules";
 import { applyMoveGameWords, loadGamesToCome } from "./game-move-words";
 import { coverageAnswerTarget, type CoverageRead } from "./month-coverage-rules";
-import { answerCoverageQuestion, applyMonthCoverageWords, askCoverageInHq, askWhichCoveragePlayer } from "./month-coverage-words";
+import {
+  answerCoverageChangeYes,
+  answerCoverageQuestion,
+  applyMonthCoverageWords,
+  askCoverageChangeInHq,
+  askCoverageInHq,
+  askWhichCoveragePlayer,
+  coverageChangesAwaiting,
+} from "./month-coverage-words";
 import { gamesToComeLines, moveGameWordsOf, type GameToCome } from "./game-move-rules";
 
 /** MatchTime's "which game?" in HQ, recorded so the answer is read with it. */
@@ -300,6 +308,10 @@ export async function loadPending(
   // A guest who wants to join, his notice posted here (L8's notice, L10).
   // Never fails HQ.
   out.push(...(await joinRequestsAwaiting(orgId, now).catch(() => [])));
+  // A change of what a monthly regular covers that affects money, waiting
+  // for YES (Kemal, 2026-11-18, `month-coverage-words.ts`). Never fails HQ.
+  const covers = await coverageChangesAwaiting(orgId, now, lang).catch(() => []);
+  for (const c of covers) out.push({ ref: c.ref, kind: "coverage", day: c.month, names: c.names, askedAt: c.askedAt });
   return out;
 }
 
@@ -1073,8 +1085,11 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         senderName: input.senderName ?? null,
         senderUserId: by,
         now,
+        // Kemal, 2026-11-18: a change that affects money waits for YES.
+        askFirst: true,
       });
       for (const a of r.asks ?? []) await askCoverageInHq({ orgId: org.id, ...a, text: r.replyText, now });
+      if (r.confirm) await askCoverageChangeInHq({ orgId: org.id, change: r.confirm, text: r.replyText, now });
       return r;
     };
     const coverageTarget = actor && !weekly ? coverageAnswerTarget({ quoted, log, now }) : null;
@@ -1196,6 +1211,13 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             const proposalId = parseFeeAskRef(item.ref);
             const r = proposalId && feeActor ? await answerFeeProposalYes({ orgId: org.id, proposalId, userId: feeActor, lang, now }) : null;
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+          }
+          if (item.kind === "coverage" && actor) {
+            // What a monthly regular covers (Kemal, 2026-11-18): applied on
+            // the YES, or asked again when the money changed meanwhile.
+            const r = await answerCoverageChangeYes({ orgId: org.id, lang, ref: item.ref, now });
+            if (r?.confirm) await askCoverageChangeInHq({ orgId: org.id, change: r.confirm, text: r.replyText, now });
+            return r ? said(`hq-${r.outcome}`, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
           if (item.kind === "pairing") {
             // The router heard a yes to what is waiting; the pairing reader

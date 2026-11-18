@@ -30,6 +30,8 @@ export function confirmQuestion(lang: string | null, items: PendingWithLabel[]):
         return s.hq_confirm_join_request({ name: i.names ?? "" });
       case "list":
         return s.hq_confirm_list;
+      case "coverage":
+        return s.hq_confirm_coverage({ names: i.names ?? "", month: i.day ?? "" });
     }
   }
   return s.hq_confirm_which({ items: items.map((i) => whichLabel(lang, i)) });
@@ -52,5 +54,7 @@ function whichLabel(lang: string | null, i: PendingWithLabel): string {
       return s.hq_which_join_request({ name: i.names ?? "" });
     case "list":
       return s.hq_which_list;
+    case "coverage":
+      return s.hq_which_coverage({ names: i.names ?? "", month: i.day ?? "" });
   }
 }

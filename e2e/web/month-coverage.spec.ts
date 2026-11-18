@@ -126,7 +126,9 @@ test("Add a player in a month under way: the whole month (its playable games, sa
   const choice = add.getByTestId("member-add-cover");
   await expect(choice).toContainText("The month has started. They cover:");
   // Item 7: the week called off is not a game the form counts.
-  await expect(choice).toContainText(`The whole month, already paid (${PLAYABLE} games)`);
+  // Kemal, 2026-11-18: coverage and payment are separate; the choice says no payment.
+  await expect(choice).toContainText(`The whole month (${PLAYABLE} games)`);
+  await expect(choice).not.toContainText("already paid");
   await expect(choice).toContainText(`The games left (${LEFT})`);
 
   // Not before a choice: a regular's coverage is never guessed.
@@ -141,7 +143,10 @@ test("Add a player in a month under way: the whole month (its playable games, sa
   // seeded says-paid regular, the credit is kept for a later month and
   // what he is asked for is the whole month.
   await expect.poll(() => cancelledCredits(db, U.fresh)).toBe(1);
-  expect(await member(db, U.fresh)).toMatchObject({ kind: "regular", gamesCovered: WHOLE, amountDuePence: SHARE * WHOLE, paidAt: null, claimed: true, source: "admin" });
+  // No paid claim (Kemal, 2026-11-18): an unpaid regular for the whole month, priced as one.
+  expect(await member(db, U.fresh)).toMatchObject({ kind: "regular", gamesCovered: WHOLE, paidAt: null, claimed: false, source: "admin" });
+  const fresh = (await db.one<{ creditsApplied: number; amountDuePence: number }>(`SELECT "creditsApplied", "amountDuePence" FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`, [MONTH_ID, U.fresh]))!;
+  expect(fresh.amountDuePence).toBe(SHARE * (WHOLE - fresh.creditsApplied));
 
   await add.getByTestId("member-add-select").selectOption(U.bench);
   await add.getByTestId("member-add-cover-left").check();
@@ -220,7 +225,7 @@ test("in Turkish", async ({ page, db }) => {
     await signInAs(page, U.admin, "/admin/months");
     const add = card(page).getByTestId("member-add");
     await expect(add.getByTestId("member-add-cover")).toContainText("Ay başladı. Oyuncunun kapsadığı:", { timeout: 30_000 });
-    await expect(add.getByTestId("member-add-cover")).toContainText(`Ayın tamamı, ödendi (${PLAYABLE} maç)`);
+    await expect(add.getByTestId("member-add-cover")).toContainText(`Ayın tamamı (${PLAYABLE} maç)`);
     await expect(row(page, U.bench).getByText("Kapsadığı")).toBeVisible();
   } finally {
     await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);

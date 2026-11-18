@@ -1,9 +1,9 @@
 /**
- * "Add a player" on /admin/months in a month under way, "The whole month,
- * already paid" (review of #611, round 3, item 4): the coverage is checked
- * FIRST, so a refused one writes nothing at all (no sign-up, no says-paid
- * claim). Allowed: the sign-up, then the claim, then the coverage (round
- * 2, item 2). auth, db, org and the writers are mocked.
+ * "Add a player" on /admin/months in a month under way, "The whole month"
+ * (review of #611, round 3, item 4): the coverage is checked FIRST, so a
+ * refused one writes nothing at all. Allowed: the sign-up, then the
+ * coverage. No payment is recorded (Kemal, 2026-11-18: coverage and payment
+ * are separate on both doors). auth, db, org and the writers are mocked.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,7 +30,7 @@ import { setMonthMember } from "@/app/actions/month-signup";
 
 beforeEach(() => vi.clearAllMocks());
 
-describe("Add a player, the whole month, already paid", () => {
+describe("Add a player, the whole month", () => {
   it("a refused coverage (a returning row) writes nothing: no sign-up, no claim, no coverage", async () => {
     m.check.mockResolvedValueOnce({ ok: false, error: "below-credits" });
     const r = await setMonthMember("org1", "mo1", "u-back", "regular", "whole");
@@ -41,10 +41,12 @@ describe("Add a player, the whole month, already paid", () => {
     expect(m.setCoverage).not.toHaveBeenCalled();
   });
 
-  it("allowed: the sign-up, then the says-paid claim, then the coverage", async () => {
+  it("allowed: the sign-up, then the coverage; NO paid claim (Kemal, 2026-11-18)", async () => {
     const r = await setMonthMember("org1", "mo1", "u-new", "regular", "whole");
     expect(r).toMatchObject({ ok: true, outcome: "regular" });
-    const order = [m.check, m.applySignup, m.claim, m.setCoverage].map((f) => f.mock.invocationCallOrder[0]);
+    expect(m.claim).not.toHaveBeenCalled();
+    expect(m.setCoverage).toHaveBeenCalledWith(expect.not.objectContaining({ claimCovers: true }));
+    const order = [m.check, m.applySignup, m.setCoverage].map((f) => f.mock.invocationCallOrder[0]);
     expect(order.every((x) => typeof x === "number")).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });

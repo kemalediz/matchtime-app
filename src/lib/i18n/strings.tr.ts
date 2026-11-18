@@ -1310,7 +1310,7 @@ export const tr: Strings = {
     [
       `👥 *Oyuncular aylık kadronuza nasıl katılır*:`,
       `📋 *"@Match Time Tom'u Kasım listesine ekle, ödedi"*: ayın düzenli oyuncusu olur ve bir sonraki maçın kadrosuna girer. Ay başladıysa ayın tamamını mı yoksa kalan maçları mı kapsadığını söyle, örneğin *"@Match Time Tom'u Kasım listesine ekle, ayın tamamını ödedi"*. Söylemezsen sorarım: ayın tamamı mı, yoksa sadece kalan maçlar mı?`,
-      `🧾 *"@Match Time Dan ayın tamamını kapsıyor"*, *"@Match Time Dan sadece kalan maçları ödüyor"*: düzenli bir oyuncunun kapsadığını maç başı ödediği maçlar hariç ayın tamamına kadar değiştirir, katıldığından beri oynadığı maçlar, kredi aldığı iptal haftaları ve kalan maçların altına inmez; borcu da buna göre değişir. Ya da aylar sayfasından.`,
+      `🧾 *"@Match Time Dan ayın tamamını kapsıyor"*, *"@Match Time Dan sadece kalan maçları ödüyor"*: düzenli bir oyuncunun kapsadığını maç başı ödediği maçlar hariç ayın tamamına kadar değiştirir, katıldığından beri oynadığı maçlar, kredi aldığı iptal haftaları ve kalan maçların altına inmez; borcu da buna göre değişir. Ayın fiyatı varsa ya da ödediyse, önce parasına ne olacağını söylerim, *@Match Time EVET* yazınca değiştiririm. Ya da aylar sayfasından.`,
       `💷 Ayın fiyatı belirlenmeden önce bir oyuncunun kapsadığını düzeltmek borcunu değiştirmez. Fiyat belirlendikten sonra ödediği ya da ödediğini söylediği tutar aynı kalır: kapsamını artırırsan aylar sayfası farkı borç olarak, azaltırsan geri verilecek para olarak gösterir. Cevabımda da bunu söylerim. Kapsamı değiştirmek onu ödemiş olarak işaretlemez.`,
       ...(p.attendance
         ? p.openSquad
@@ -1337,6 +1337,7 @@ export const tr: Strings = {
   hq_which_teams: (p) => `${p.day} için önerilen takımlar mı`,
   hq_which_list: `yapıştırılan kadro listesi mi`,
   hq_which_fee: (p) => `${p.day} için ${p.names} ücretsiz yeri mi`,
+  hq_which_coverage: (p) => `${p.names} için ${p.month} kapsamı mı`,
   hq_which_partner_ask: (p) => `*${p.asker}* kulübünün ${p.day} isteğini oyuncu grubunuzda paylaşmak mı`,
   hq_which_pairing: (p) => `*${p.club}* ile *${p.other}* eşleşmesi mi`,
   hq_which_pool_ask: (p) => `${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak mı`,
@@ -1457,6 +1458,7 @@ export const tr: Strings = {
   hq_fee_free_no_match_day: (p) => `"${p.day}" için bir maç bulamadım.`,
   hq_fee_free_expired: `Bu ücretsiz yer sorusu 30 dakikadan eski, hiçbir şeyi değiştirmedim. Tekrar söylerseniz tekrar sorarım.`,
   hq_confirm_fee: (p) => `Bu EVET, ${p.day} için ${p.names} ücretsiz yerine mi?`,
+  hq_confirm_coverage: (p) => `Bu EVET, ${p.names} için ${p.month} kapsamını değiştirmek için mi?`,
   admin_fee_paid_while_free: (p) =>
     `💷 ${p.name}, ${p.day} maçı için ${p.amount} ödedi ama ücretsiz yerde. Ücretsiz oynaması gerekiyorsa Stripe'tan iade edin.`,
   tp_which_players: `Hangi oyuncular? Örneğin: Sam ile Alex'i değiştir, ya da Sam'i diğer takıma al.`,

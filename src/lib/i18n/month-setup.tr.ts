@@ -47,7 +47,7 @@ export const monthSetupTr: MonthSetupStrings = {
   my_games_all: (p) => `${p.of} maçın hepsi`,
 
   add_cover_label: "Ay başladı. Oyuncunun kapsadığı:",
-  add_cover_whole: (p) => `Ayın tamamı, ödendi (${p.games} maç)`,
+  add_cover_whole: (p) => `Ayın tamamı (${p.games} maç)`,
   add_cover_left: (p) => `Kalan maçlar (${p.games})`,
   add_cover_pick: "Önce ayın tamamını ya da kalan maçları seçin.",
   cover_label: "Kapsadığı",
@@ -69,6 +69,13 @@ export const monthSetupTr: MonthSetupStrings = {
 
   hq_cover_ask: (p) =>
     `📋 ${p.month} listesindeki ${p.name}: ayın tamamı mı, yoksa sadece kalan maçlar mı? Ayın tamamı ${p.whole} maç; ${p.left} maç kaldı. Cevabını beni etiketleyerek yaz.`,
+  hq_cover_confirm_item: (p) =>
+    p.wholeMonth
+      ? `${p.name}: ${p.month} ayının tamamı (${p.games} maç${p.amount ? `, ${p.amount} ${p.more ? "fazla" : "az"}` : ""})`
+      : `${p.name}: ${p.month} ayının ${p.of} maçından ${p.games} maç${p.amount ? ` (${p.amount} ${p.more ? "fazla" : "az"})` : ""}`,
+  hq_cover_confirm: (p) => `Kapsamı değiştireyim mi? ${p.items}. Onaylamak için *@Match Time EVET* yazın.`,
+  hq_cover_confirm_changed: "Sorduğumdan beri fiyat ya da bir ödeme değişti.",
+  hq_cover_confirm_expired: "Bir oyuncunun kapsamıyla ilgili o soru 30 dakikadan eski, bu yüzden hiçbir şeyi değiştirmedim. Tekrar yazarsanız tekrar sorarım.",
   hq_cover_done: (p) =>
     p.wholeMonth
       ? `✅ ${p.name}, ${p.month} ayının tamamını kapsıyor: ${p.games} maç.`

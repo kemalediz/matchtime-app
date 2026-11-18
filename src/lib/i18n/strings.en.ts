@@ -1606,7 +1606,7 @@ export const en = {
     [
       `👥 *How players join your monthly squad*:`,
       `📋 *"@Match Time add Tom to the November list, he's paid"*: a regular of the month, and on the next game's squad. Once the month has started, say whether he covers the whole month or the games left, for example *"@Match Time add Tom to the November list, he's paid the whole month"*. If you don't say, I ask: whole month, or just the games left?`,
-      `🧾 *"@Match Time Dan covers the whole month"*, *"@Match Time Dan only pays for the games left"*: change what a regular covers, up to the whole month, less any games he already paid as pay as you go, and never below the games he has played since he joined, the weeks called off he was credited for, and the games left; what he owes follows. Or on the months page.`,
+      `🧾 *"@Match Time Dan covers the whole month"*, *"@Match Time Dan only pays for the games left"*: change what a regular covers, up to the whole month, less any games he already paid as pay as you go, and never below the games he has played since he joined, the weeks called off he was credited for, and the games left; what he owes follows. If the month has a price, or he has paid, I say what it does to his money first and change it when you say *@Match Time YES*. Or on the months page.`,
       `💷 Correcting what a player covers before the month has a price changes nothing he owes. Once it has a price, what he paid, or says he paid, stays as it was: raise him and the months page shows the extra as owed; lower him and it shows the difference as money to give back. My reply says so too. Changing what he covers never marks him as paid.`,
       ...(p.attendance
         ? p.openSquad
@@ -1641,6 +1641,8 @@ export const en = {
   hq_which_teams: (p: { day: string }): string => `the proposed teams for ${p.day}`,
   hq_which_list: `the pasted squad list`,
   hq_which_fee: (p: { names: string; day: string }): string => `the free place for ${p.names} on ${p.day}`,
+  /** Kemal, 2026-11-18: a coverage change waiting for YES. */
+  hq_which_coverage: (p: { names: string; month: string }): string => `what ${p.names} covers in ${p.month}`,
   hq_which_partner_ask: (p: { asker: string; day: string }): string => `posting *${p.asker}*'s ask for ${p.day} in your players' group`,
   hq_which_pairing: (p: { club: string; other: string }): string => `pairing *${p.club}* with *${p.other}*`,
   hq_which_pool_ask: (p: { day: string }): string => `asking nearby players from the MatchTime player pool for ${p.day}`,
@@ -1842,6 +1844,7 @@ export const en = {
   hq_fee_free_expired: `That free place question is over 30 minutes old, so I haven't changed anything. Say it again and I'll ask again.`,
   /** A YES MatchTime cannot be sure was meant for the free place question. */
   hq_confirm_fee: (p: { names: string; day: string }): string => `Is that YES to the free place for ${p.names} on ${p.day}?`,
+  hq_confirm_coverage: (p: { names: string; month: string }): string => `Is that YES to changing what ${p.names} covers in ${p.month}?`,
   /** To the money collector's admin channel: money arrived from a player on
    *  a free place (a payment started before it was given). */
   admin_fee_paid_while_free: (p: { name: string; amount: string; day: string }): string =>

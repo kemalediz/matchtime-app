@@ -11,7 +11,7 @@
  * game, games already played, the next game called off before anybody
  * was added. The add doors:
  *
- *   the months page   "Add a player", "The whole month, already paid"
+ *   the months page   "Add a player", "The whole month" (no payment: Kemal, 2026-11-18)
  *   HQ, said          "@Match Time add Zara ..., he's paid the whole month"
  *
  * and a regular seeded with the month who says he paid, for comparison.
@@ -68,6 +68,7 @@ const ADD_ASKED = `@Match Time add Ben to the ${MONTH} list, he's paid`;
 const ANSWER = "@Match Time whole month";
 const TOM_ASKED = `@Match Time add Tom to the ${MONTH} list, he's paid`;
 const TOM_BY_NAME = "@Match Time Tom covers the whole month";
+const YES = "@Match Time yes";
 const RILEY_LEFT = `@Match Time add Riley to the ${MONTH} list for the games left`;
 const RILEY_ADD_PAID = `@Match Time add Riley to the ${MONTH} list, he's paid the whole month`;
 const RILEY_PAID = "@Match Time Riley paid for the whole month";
@@ -149,6 +150,8 @@ test.beforeAll(async () => {
     [ANSWER]: facts([], "whole", "none"),
     [TOM_ASKED]: facts(["Tom"], ""),
     [TOM_BY_NAME]: facts(["Tom"], "whole"),
+    // Kemal, 2026-11-18: a change that affects money waits for YES.
+    [YES]: { route: "approve" },
     [RILEY_LEFT]: facts(["Riley"], "left"),
     [RILEY_ADD_PAID]: facts(["Riley"], "whole"),
     // The prompt: saying only that somebody has paid is not month_coverage.
@@ -168,7 +171,7 @@ test.beforeEach(() => {
   test.skip(PLAYED < 1 || FUTURE.length < 2, "needs a game played this month and two still to come");
 });
 
-test("the add doors (the months page, HQ said) leave the seeded says-paid regular's row", async ({ page, request, db }) => {
+test("the add doors: HQ said leaves the seeded says-paid regular's row; the months page records no payment (Kemal, 2026-11-18)", async ({ page, request, db }) => {
   // Door 1: the months page.
   await signInAs(page, U.admin, "/admin/months");
   const add = page.getByTestId("month-card").getByTestId("member-add");
@@ -185,7 +188,8 @@ test("the add doors (the months page, HQ said) leave the seeded says-paid regula
   // A seeded says-paid regular: the whole month, priced as one who says he
   // paid, the week off credited and kept for a later month.
   expect(seeded).toMatchObject({ gamesCovered: WHOLE, creditsApplied: 0, amountDuePence: SHARE * WHOLE, confirmed: false, claimed: true, paidClaimSource: "organiser", paidClaimedAmountPence: null, weekOffCredits: 1, weekOffUsedNow: 0 });
-  expect(await moneyOf(db, U.fresh)).toEqual(seeded);
+  // The months page records no payment (Kemal, 2026-11-18): the whole month, unpaid.
+  expect(await moneyOf(db, U.fresh)).toMatchObject({ gamesCovered: WHOLE, confirmed: false, claimed: false, paidClaimSource: null });
   expect(await moneyOf(db, U.extra)).toEqual(seeded);
 });
 
@@ -196,7 +200,9 @@ test("round 4, item 3: a plain answer and a by-name answer to the same question 
   expect(plain.outcome).toBe("hq-month-coverage-done");
   // Tom: the same add, then answered by name.
   expect((await hq(request, TOM_ASKED)).outcome).toBe("month-add-done");
-  const byName = await hq(request, TOM_BY_NAME);
+  // By name: the change and its money first, applied on YES (Kemal, 2026-11-18).
+  expect((await hq(request, TOM_BY_NAME)).outcome).toBe("hq-month-coverage-confirm");
+  const byName = await hq(request, YES);
   expect(byName.outcome).toBe("hq-month-coverage-done");
 
   const ben = (await moneyOf(db, U.bench)) as Record<string, unknown>;
@@ -219,10 +225,20 @@ test("round 4, option a: 'he's paid the whole month' for one already on the mont
   expect(Number(before.gamesCovered)).toBeLessThan(WHOLE);
 
   // Already on the month: the coverage changes; "he's paid" records nothing (a known limit, as main).
-  const r = await hq(request, RILEY_ADD_PAID);
-  expect(r.outcome, r.replyText ?? "").toBe("month-coverage-done");
+  const asked = await hq(request, RILEY_ADD_PAID);
+  expect(asked.outcome, asked.replyText ?? "").toBe("month-coverage-confirm");
+  const r = await hq(request, YES);
+  expect(r.outcome, r.replyText ?? "").toBe("hq-month-coverage-done");
   const after = (await moneyOf(db, U.rater)) as Record<string, unknown>;
-  expect(after).toMatchObject({ gamesCovered: WHOLE, claimed: false, confirmed: false, paidClaimedAmountPence: null });
+  // The whole month, less the games he paid as pay as you go before he
+  // joined (review 2 of #611, item 4; the seed world's paid game for him).
+  const paygPaid = (await db.one<{ n: number }>(
+    `SELECT COUNT(DISTINCT (a."matchId"))::int AS n FROM "Attendance" a JOIN "Match" m ON m.id = a."matchId"
+      WHERE a."userId" = $1 AND a.status = 'CONFIRMED' AND (a."paidAt" IS NOT NULL OR a."paidViaUserId" IS NOT NULL)
+        AND m."activityId" = $2 AND m.status <> 'CANCELLED' AND m.date >= $3 AND m.date < (SELECT "joinedAt" FROM "SquadMonthMember" WHERE "monthId" = $4 AND "userId" = $1)`,
+    [U.rater, ACTIVITY_ID, monthStartToDate(THIS).toISOString(), MONTH_ID],
+  ))!.n;
+  expect(after).toMatchObject({ gamesCovered: WHOLE - paygPaid, claimed: false, confirmed: false, paidClaimedAmountPence: null });
 
   // Read as a sign-up by the monthly reader and as not coverage by the admin
   // extractor: "already on the list", nothing recorded, exactly as main does.

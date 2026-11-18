@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // the rows (`loadCoverageView`), over one in-memory store. A new regular
 // joins for the 3 games left (`applySignup`'s own rule).
 const cover = vi.hoisted(() => {
-  const state = { started: false, gamesLeft: 3, playable: 5, stored: new Map<string, number>(), refuse: false };
+  const state = { started: false, gamesLeft: 3, playable: 5, stored: new Map<string, number>(), refuse: false, needsYes: false };
   const month = () => ({ gamesLeft: state.gamesLeft, whole: 5, playable: state.playable });
   return {
     state,
@@ -22,6 +22,11 @@ const cover = vi.hoisted(() => {
       members: new Map([...state.stored].map(([u, g]) => [u, { min: 3, max: 5, gamesCovered: g }])),
     })),
     checkMonthMemberCoverage: vi.fn(async (): Promise<{ ok: true } | { ok: false; error: string }> => (state.refuse ? { ok: false, error: "below-credits" } : { ok: true })),
+    // Kemal, 2026-11-18: what the write would do, and whether it waits for YES.
+    previewMonthMemberCoverage: vi.fn(async (a: { userId: string; coverage: "whole" | "left" | number }) => {
+      const g = a.coverage === "whole" ? 5 : a.coverage === "left" ? 3 : a.coverage;
+      return { ok: true, changed: state.stored.get(a.userId) !== g, gamesCovered: g, month: month(), creditedCancelled: 0, needsYes: state.needsYes, deltaPence: state.needsYes ? 1500 : null, sig: "s1" };
+    }),
     setMonthMemberCoverage: vi.fn(async (a: { userId: string; coverage: "whole" | "left" | number }) => {
       if (state.refuse) return { ok: false, error: "below-credits" };
       const g = a.coverage === "whole" ? 5 : a.coverage === "left" ? 3 : a.coverage;
@@ -78,7 +83,12 @@ vi.mock("@/lib/month-seed-match", () => ({ loadNamelessMembers: m.loadNamelessMe
 vi.mock("@/lib/player-display-name", () => ({ loadSeenAs: m.loadSeenAs }));
 vi.mock("@/lib/user-merge", () => ({ applyUserMerge: m.applyUserMerge }));
 vi.mock("@/lib/month-seed-reply", () => ({ readSeedReply: m.readSeedReply }));
-vi.mock("@/lib/month-member-coverage", () => ({ loadCoverageView: cover.loadCoverageView, setMonthMemberCoverage: cover.setMonthMemberCoverage, checkMonthMemberCoverage: cover.checkMonthMemberCoverage }));
+vi.mock("@/lib/month-member-coverage", () => ({
+  loadCoverageView: cover.loadCoverageView,
+  setMonthMemberCoverage: cover.setMonthMemberCoverage,
+  checkMonthMemberCoverage: cover.checkMonthMemberCoverage,
+  previewMonthMemberCoverage: cover.previewMonthMemberCoverage,
+}));
 vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn() }));
 vi.mock("@/lib/club-quiet-hours", () => ({ loadClubQuietHours: async () => null }));
 vi.mock("@/lib/app-url", () => ({ appUrl: (p: string) => `https://mt.test${p}` }));
@@ -121,7 +131,7 @@ beforeEach(() => {
   m.membershipFindMany.mockResolvedValue(ROSTER);
   m.membershipFindFirst.mockImplementation(async (a: { where: { userId: string } }) => ROSTER.find((r) => r.user.id === a.where.userId) ?? null);
   m.loadLiveMonths.mockResolvedValue([MONTH]);
-  Object.assign(cover.state, { started: false, gamesLeft: 3, playable: 5, refuse: false });
+  Object.assign(cover.state, { started: false, gamesLeft: 3, playable: 5, refuse: false, needsYes: false });
   cover.state.stored.clear();
 });
 
@@ -377,6 +387,16 @@ describe("a month already under way: the whole month, or the games left (2026-11
     expect(m.applySignup).not.toHaveBeenCalled();
     expect(cover.setMonthMemberCoverage).toHaveBeenCalledWith(expect.objectContaining({ squadMonthId: "month-nov", userId: "u-shane", coverage: "whole" }));
     expect(r).toEqual({ outcome: "month-coverage-done", replyText: "✅ Shane covers the whole of November: 5 games.", changed: true });
+  });
+
+  it("Kemal, 2026-11-18: already on the month, in the organisers' group, and the change affects money: it waits for YES, nothing written", async () => {
+    cover.state.stored.set("u-shane", 3);
+    cover.state.needsYes = true;
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-shane", name: "Shane" }), readCoverage: async () => ({ coverage: "whole" as const, refs: [] }) });
+    expect(cover.setMonthMemberCoverage).not.toHaveBeenCalled();
+    expect(r.outcome).toBe("month-coverage-confirm");
+    expect(r.replyText).toBe("Make Shane cover the whole of November (5 games, £15 more)? Say *@Match Time YES*.");
+    expect(cover.state.stored.get("u-shane")).toBe(3);
   });
 
   it("already on the month and the words say neither: 'already on the list', as before", async () => {

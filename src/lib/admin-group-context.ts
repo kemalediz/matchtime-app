@@ -112,6 +112,9 @@ function waitingLine(i: PendingWithLabel): string {
       return `WAITING: YES to send ${i.names}, a guest who played here and wants to join, the players' group's invite link, asked at ${at}.`;
     case "list":
       return `WAITING: YES to apply the squad list pasted at ${at}.`;
+    // A change of what a monthly regular covers that affects money (Kemal, 2026-11-18).
+    case "coverage":
+      return `WAITING: YES to change what ${i.names} covers in ${i.day}, asked at ${at}.`;
   }
 }
 

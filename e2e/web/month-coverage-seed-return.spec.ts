@@ -43,6 +43,7 @@ const PAT_ADD = `@Match Time add Pat to the ${MONTH} list`;
 const PAT_LEFT = "@Match Time Pat covers the games left";
 const ZARA_LEFT = `@Match Time add Zara to the ${MONTH} list for the games left`;
 const ZARA_WHOLE = "@Match Time Zara covers the whole month";
+const YES = "@Match Time yes";
 
 const reading = (name: string) => ({
   kind: "signup", month: 0, gameDay: 0, listOf: "", benchPart: false, lines: [], residual: "", choice: "in",
@@ -108,6 +109,8 @@ test.beforeAll(async () => {
     [PAT_LEFT]: facts(["Pat"], "left"),
     [ZARA_LEFT]: facts(["Zara"], "left"),
     [ZARA_WHOLE]: facts(["Zara"], "whole"),
+    // A priced month: the change waits for YES (Kemal, 2026-11-18).
+    [YES]: { route: "approve" },
   });
 });
 
@@ -150,6 +153,7 @@ test("door 3, HQ: Pat added back with words saying neither, then 'Pat covers the
 test("review 2 of #611, item 4: Zara paid two games pay as you go, then is raised to the whole month: those two are never charged again", async ({ request, db }) => {
   expect((await hq(request, ZARA_LEFT)).outcome).toBe("month-add-done");
   expect(await rowOf(db, U.extra)).toMatchObject({ kind: "regular", gamesCovered: LEFT, amountDuePence: SHARE * LEFT });
-  await hq(request, ZARA_WHOLE);
+  expect((await hq(request, ZARA_WHOLE)).outcome).toBe("hq-month-coverage-confirm");
+  expect((await hq(request, YES)).outcome).toBe("hq-month-coverage-done");
   expect(await rowOf(db, U.extra)).toMatchObject({ kind: "regular", gamesCovered: WHOLE - 2, amountDuePence: SHARE * (WHOLE - 2) });
 });

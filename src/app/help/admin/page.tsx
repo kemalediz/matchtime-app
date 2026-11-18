@@ -570,11 +570,9 @@ export default async function AdminGuidePage() {
       </p>
       <p>
         Once the month has started, a new regular covers either the whole
-        month (he paid for it) or the games left, and you choose which. On
+        month or the games left, and you choose which. On
         the <strong>Months</strong>{" "}page, &quot;Add a player&quot; asks before
-        you add him; &quot;the whole month, already paid&quot; also marks him
-        as says paid, for the money collector to confirm, so he is not
-        chased for it. The whole month counts only the games that are on: a
+        you add him. The choice records no payment: record what he paid on its own, as in WhatsApp. The whole month counts only the games that are on: a
         week called off is credited to him as to everyone on the whole
         month. In the organisers&apos; group, say it in your own words,
         for example{" "}
@@ -584,7 +582,9 @@ export default async function AdminGuidePage() {
         answer settles it. To change it later, use <strong>Covers</strong>{" "}
         beside his games on the <strong>Months</strong>{" "}page, or tag
         MatchTime in the organisers&apos; group, for example{" "}
-        <code>@Match Time Dan covers the whole month</code>. It goes up to the
+        <code>@Match Time Dan covers the whole month</code>. When the month
+        has a price, or he has paid or says he has, MatchTime first says what the change does to his money and makes it when you say{" "}
+        <code>@Match Time YES</code>. It goes up to the
         whole month and never below the games he has played since he joined,
         the weeks called off he was credited for, and the games left (a
         player on the list you started the month from covers every game the

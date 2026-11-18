@@ -297,6 +297,56 @@ export function coverageAnswerTarget(p: { quoted: QuotedMessage | null; log: HqL
   return userIds.length >= 2 ? { kind: "which", userIds } : null;
 }
 
+// ── A change that affects money waits for YES (Kemal, 2026-11-18) ──────
+
+/**
+ * "@Match Time Dan covers the whole month" in the organisers' group: when
+ * the month has a price, or he paid or says he paid, MatchTime says the
+ * change and what it does to his money and applies it only on YES (the
+ * organisers' group's one confirm step, `admin-group-confirm-rules.ts`,
+ * as a free place does). With no price and no payment it applies at once.
+ */
+export function coverageChangeNeedsYes(p: { priced: boolean; paid: boolean }): boolean {
+  return p.priced || p.paid;
+}
+
+export const COVERAGE_CHANGE_PREFIX = "coverage-change:";
+/** As a free place question (`FEE_PROPOSAL_TTL_MS`): a YES later than this
+ *  changes nothing, and says so. */
+export const COVERAGE_CHANGE_TTL_MS = 30 * 60 * 1000;
+
+export interface CoverageChange {
+  coverage: Coverage;
+  /** What the money was when asked (`moneySig`): a YES after it changed
+   *  (a price set meanwhile) asks again with today's numbers. */
+  sig: string;
+  players: CoverageAsk[];
+}
+
+/** `coverage-change:<whole|left>:<sig>:<monthId>.<userId>,...` */
+export function coverageChangeRef(c: CoverageChange): string {
+  return `${COVERAGE_CHANGE_PREFIX}${c.coverage}:${c.sig}:${c.players.map((p) => `${p.monthId}.${p.userId}`).join(",")}`;
+}
+
+export function parseCoverageChangeRef(ref: string | null | undefined): CoverageChange | null {
+  if (!ref || !ref.startsWith(COVERAGE_CHANGE_PREFIX)) return null;
+  const [coverage, sig, list, ...rest] = ref.slice(COVERAGE_CHANGE_PREFIX.length).split(":");
+  if ((coverage !== "whole" && coverage !== "left") || !sig || !list || rest.length > 0) return null;
+  const players = list.split(",").map((x) => {
+    const [monthId, userId, ...more] = x.split(".");
+    return monthId && userId && more.length === 0 ? { monthId, userId } : null;
+  });
+  return players.every((p) => p) ? { coverage, sig, players: players as CoverageAsk[] } : null;
+}
+
+/** PURE. A short fingerprint of what decides the money (the price, what he
+ *  paid or says he paid, his games), so a YES can tell it changed. */
+export function moneySig(parts: string[]): string {
+  let h = 5381;
+  for (const ch of parts.join("|")) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;
+  return h.toString(36);
+}
+
 /** The id prefix of the line MatchTime logs when a regular's coverage is
  *  settled in HQ: a question about him before it is no longer open. */
 export function coverageSettledPrefix(monthId: string, userId: string): string {
