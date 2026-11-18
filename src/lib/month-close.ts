@@ -67,6 +67,7 @@ import {
   type MonthSummary,
   type Paid, freezePaidAmount, liveReleases, cancelledCreditAppliesNow } from "./month-close-rules";
 import { lockClubCredits, mayConfirmPayments } from "./month-payment";
+import { creditsCountFrom } from "./month-coverage-rules";
 import { lockMonth } from "./month-signup";
 import { WAITING_NOTE, monthKickoffs, nextMonthStart } from "./month-signup-rules";
 import { weekListHash } from "./monthly-week-rules";
@@ -540,7 +541,7 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
     // them only chose which matches to look at.
     const [match, state, rows, existing] = await Promise.all([
       tx.match.findUnique({ where: { id: matchId }, select: { status: true, date: true, updatedAt: true } }),
-      tx.squadMonth.findUnique({ where: { id: month.id }, select: { status: true, sharePerGamePence: true, concessionPerGamePence: true } }),
+      tx.squadMonth.findUnique({ where: { id: month.id }, select: { status: true, sharePerGamePence: true, concessionPerGamePence: true, gamesScheduled: true, startedMidMonthAt: true, listOpenedAt: true, createdAt: true } }),
       tx.squadMonthMember.findMany({
         where: { monthId: month.id },
         select: {
@@ -614,7 +615,9 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
         regular: r.kind === "regular" && r.leftAt === null,
         inClub: inClub.has(r.userId),
         paid: paidOf(r),
-        joinedAt: r.joinedAt,
+        // A member on the whole month is counted as the regulars counted
+        // with the month were (review of #611, item 7: `creditsCountFrom`).
+        joinedAt: creditsCountFrom(r, { gamesScheduled: state.gamesScheduled, countedAt: state.startedMidMonthAt ?? state.listOpenedAt ?? state.createdAt }),
         ...(commitment.get(r.userId)?.get(matchId)?.freeMiss ? { freeMiss: true } : {}),
       })),
       existing,

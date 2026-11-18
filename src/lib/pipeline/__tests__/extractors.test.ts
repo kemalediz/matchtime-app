@@ -1316,6 +1316,60 @@ describe("teams: restore, set, sides and toMatchTime (2026-10-30)", () => {
   });
 });
 
+describe("admin · month_coverage (2026-11-16, Kemal: whole month or games left)", () => {
+  const BASE = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", pastGame: false, phrase: "", remindAt: "", note: "", lookbackMatches: 0, playersFrom: [], clubRef: "", venueName: "", venueChoice: 0, breakMonths: [], playMonths: [], quietOff: false, quietFrom: "", quietTo: "", minPlayers: 0, maxPlayers: 0, fullTeams: false, size: 0, aSide: false, game: 0, newDay: "", newTime: "", everyWeek: false, coverage: "", toMatchTime: true };
+  const of = (fields: Record<string, unknown>) => parseFacts("admin", JSON.stringify({ ...BASE, ...fields }), "wa-1").facts;
+
+  it("ROUND 4 (option a): a coverage message never carries a payment; a stray 'paid' is dropped", () => {
+    const f = of({ action: "month_coverage", coveredRefs: ["Tom"], coverage: "whole", paid: true });
+    expect(f).toMatchObject({ coveredRefs: ["Tom"], coverage: "whole" });
+    expect(Object.keys(f as object).some((k) => /paid/i.test(k))).toBe(false);
+  });
+
+  it("carries the player and the coverage the words said", () => {
+    expect(of({ action: "month_coverage", coveredRefs: ["Dan"], coverage: "whole" })).toMatchObject({ kind: "admin", action: "month_coverage", coveredRefs: ["Dan"], coverage: "whole" });
+    expect(of({ action: "month_coverage", coveredRefs: ["Tom"], coverage: "left" })).toMatchObject({ coverage: "left" });
+  });
+
+  it("neither said, or a value the schema does not have, is absent: MatchTime asks, never guesses", () => {
+    expect("coverage" in of({ action: "month_coverage", coveredRefs: ["Tom"], coverage: "" })).toBe(false);
+    expect("coverage" in of({ action: "month_coverage", coverage: "all" })).toBe(false);
+  });
+
+  it("the coverage is dropped on every other action", () => {
+    for (const action of ["other", "fee_waiver", "bulk_payment"]) expect("coverage" in of({ action, coverage: "whole" }), action).toBe(false);
+  });
+
+  it("the schema offers month_coverage and requires coverage, a closed list", () => {
+    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    expect(schema.properties.action.enum).toContain("month_coverage");
+    expect(schema.required).toContain("coverage");
+    expect(schema.properties.coverage.enum).toEqual(["", "whole", "left"]);
+    // Round 4 (option a): coverage reads no payment.
+    expect(schema.required).not.toContain("paid");
+    expect(schema.properties).not.toHaveProperty("paid");
+  });
+
+  it("the prompt defines month_coverage and coverage once each, with EN and TR examples, an answer, and a question as other", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    expect(p.split(`\n  "month_coverage" `).length).toBe(2);
+    expect(p.split(`\n  coverage `).length).toBe(2);
+    // Round 4 (option a): no payment is read here. "Whole" is every game,
+    // saying only that somebody paid is not this action, and two players
+    // with different coverages give "".
+    expect(p).not.toMatch(/\n  paid \(month_coverage\)/);
+    expect(p).not.toMatch(/paid true/);
+    expect(p).not.toContain("he paid for every game of it");
+    expect(p).toContain('Saying only that somebody has paid ("Tom paid for the whole month", "Tom ayın tamamını ödedi") is not this.');
+    expect(p).toMatch(/"@Match Time add Tom for the games left, and Ian covers the whole month"[^\n]*-> month_coverage, coveredRefs \["Tom","Ian"\], coverage ""/);
+    expect(p).toMatch(/"@Match Time Dan covers the whole month" \/ "@Match Time Dan ayın tamamını kapsıyor" -> month_coverage, coveredRefs \["Dan"\], coverage "whole"/);
+    expect(p).toMatch(/"@Match Time add Tom to the November list, he's paid" \/ "@Match Time Tom'u Kasım listesine ekle, ödedi" -> month_coverage, coveredRefs \["Tom"\], coverage ""/);
+    expect(p).toMatch(/"whole month" \/ "ayın tamamı", answering MatchTime's[^\n]*-> month_coverage, coveredRefs \[\], coverage "whole"/);
+    expect(p).toMatch(/"@Match Time how many games does Dan cover\?"[^\n]*-> other/);
+    expect(p).not.toMatch(/[–—]/);
+  });
+});
+
 describe("admin · move_game (2026-11-10, Kemal: \"@Match Time move Monday's game to 8:15\")", () => {
   const BASE = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", pastGame: false, phrase: "", remindAt: "", note: "", lookbackMatches: 0, playersFrom: [], clubRef: "", venueName: "", venueChoice: 0, breakMonths: [], playMonths: [], quietOff: false, quietFrom: "", quietTo: "", minPlayers: 0, maxPlayers: 0, fullTeams: false, size: 0, aSide: false, game: 0, newDay: "", newTime: "", everyWeek: false, toMatchTime: true };
   const of = (fields: Record<string, unknown>) => parseFacts("admin", JSON.stringify({ ...BASE, ...fields }), "wa-1").facts;
