@@ -1,5 +1,5 @@
 /**
- * Apply prisma/migrations/20261116120000_deleted_messages (the tombstone of
+ * Apply prisma/migrations/20261118120000_deleted_messages (the tombstone of
  * a WhatsApp message deleted for everyone or edited by its author, kept 14
  * days, and the GroupMessage ("waChatId", "createdAt") index).
  *
@@ -18,8 +18,8 @@
  * foreign key), one unique index ("chatId", "waMessageId"), one index
  * ("lastChangeAt", for the pruning), one ("enforcedAt", "lastChangeAt", for
  * the sweep), and CREATE INDEX on the existing
- * "GroupMessage" ("waChatId", "createdAt"), and two "FormNote" columns
- * ("reasonSourceMessageId", "reasonMessageIds"). It rewrites, backfills, drops
+ * "GroupMessage" ("waChatId", "createdAt"), and three "FormNote" columns
+ * ("reasonSourceMessageId", "reasonMessageIds", "clearedMessageIds"). It rewrites, backfills, drops
  * or renames nothing. The dry run prints the state; the apply checks every
  * object is in place.
  */
@@ -29,7 +29,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
 
 const APPLY = process.argv.includes("--apply");
-const FILE = path.join(__dirname, "..", "prisma", "migrations", "20261116120000_deleted_messages", "migration.sql");
+const FILE = path.join(__dirname, "..", "prisma", "migrations", "20261118120000_deleted_messages", "migration.sql");
 
 /** The file's statements, without its comments and its own BEGIN, SET LOCAL
  *  and COMMIT (the transaction below stands in for them). */
@@ -61,9 +61,9 @@ async function main() {
     );
     const analyzed: any = await db.$queryRawUnsafe(`SELECT COUNT(*)::int AS n FROM "AnalyzedMessage";`);
     const noteCol: any = await db.$queryRawUnsafe(
-      `SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_name = 'FormNote' AND column_name IN ('reasonSourceMessageId', 'reasonMessageIds');`,
+      `SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_name = 'FormNote' AND column_name IN ('reasonSourceMessageId', 'reasonMessageIds', 'clearedMessageIds');`,
     );
-    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", enforcedAt: enforced[0].n === 3 && noteCol[0].n === 2 && sweepIdx[0].ok === true, analyzedRows: analyzed[0].n };
+    return { table: table[0].t ?? "MISSING", unique: unique[0].t ?? "MISSING", archiveIdx: archiveIdx[0].t ?? "MISSING", enforcedAt: enforced[0].n === 3 && noteCol[0].n === 3 && sweepIdx[0].ok === true, analyzedRows: analyzed[0].n };
   };
 
   const todo = statements(readFileSync(FILE, "utf8"));

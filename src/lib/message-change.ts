@@ -58,11 +58,14 @@
  *       route's dedupe key). pipelineTrace: null for a delete; for an
  *       edit, its structured reading only (`message-change-trace.ts`:
  *       enums, numbers, booleans, checked times; no names), so "try
- *       again" still finds the ask. An edited question with a "who do you
- *       mean?" still open keeps its question in the trace, for that
- *       clarification alone, until its hour is up; then the sweep takes
- *       it. The week of chat, the extractors' recent chat and the open
- *       clarification leave a null body out; only a delete closes it.
+ *       again" still finds the ask. The week of chat and the extractors'
+ *       recent chat leave a null body out.
+ *   SentNotification "who is that?" (`attendance-ask:<org>:<id>`, kept
+ *       apart from the message's own row; a re-ask names the ORIGINAL in
+ *       `aboutMessageId`): a delete closes it with no words (still the
+ *       asker's newest, so an older one stays superseded); an edit keeps an
+ *       OPEN one's words and name for that question alone, until its hour
+ *       is up, then the sweep takes them; an answered one loses them at once.
  *   GroupMessage      body "" (the row is the archive's dedupe key); the
  *       squad-from-list reader leaves an empty body out.
  *   AdminGroupMessage HQ's log (`<id>`) and the players' group's organiser
@@ -102,7 +105,8 @@ import { TOMBSTONE_UPSERT_SQL } from "./message-change-sql";
 import { groupReplyKey, hqReplyKey } from "./reply-context";
 import { listAskRef } from "./admin-group-log";
 import { feeAskRef } from "./fee-waiver-rules";
-import { heldQuestionOf, isTextFree, sameJson, textFreeTrace, withHeldQuestion } from "./message-change-trace";
+import { isTextFree, sameJson, textFreeFacts, textFreeTrace } from "./message-change-trace";
+import type { AttendanceAskPayload } from "./pipeline/awaiting-answer";
 
 export const DELETED_MESSAGE_RETENTION_DAYS = 14;
 const WINDOW_MS = DELETED_MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
@@ -307,6 +311,7 @@ type Tx = Pick<
   | "formNote"
   | "ratingAdjustment"
   | "sentNotification"
+  | "windowVerdict"
 >;
 
 /** The prefix of a reminder DM's `BotJob.aboutKey`: the message that asked for it (`owner-deps.ts`). */
@@ -330,7 +335,24 @@ interface Copies {
   archived: Array<{ id: string; waMessageId: string; senderPhone: string | null }>;
   hq: Array<{ id: string; waMessageId: string; prefix: string; text: string; pipelineTrace: unknown }>;
   mentions: Array<{ id: string; waMessageId: string }>;
-  notes: Array<{ id: string; orgId: string; matched: string; matchedPhone: string | null; heldIds: string[]; matchId: string; userId: string; reason: string }>;
+  notes: Array<{
+    id: string;
+    orgId: string;
+    matched: string;
+    matchedPhone: string | null;
+    /** "recorded": the note records this message now; "cleared": an earlier change of it cleared the note (only its late copies are looked at). */
+    via: "recorded" | "cleared";
+    heldIds: string[];
+    clearedIds: string[];
+    sourceMessageId: string | null;
+    reasonSourceMessageId: string | null;
+    matchId: string;
+    userId: string;
+    reason: string;
+  }>;
+  verdicts: Array<{ id: string; verdictJson: unknown }>;
+  /** MatchTime's open or answered "who is that?" about the message (`attendance-ask-store.ts`), by the message it is about. */
+  asks: Array<{ id: string; matched: string; text: string | null; createdAt: Date }>;
   squadProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
   feeProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
   reminders: Array<{ id: string; storedId: string; sent: boolean }>;
@@ -346,7 +368,7 @@ async function clubsOf(tx: Pick<typeof db, "organisation">, chatId: string): Pro
  * each checked exactly. Narrowed by indexes: the group, its club(s), the
  * time.
  */
-async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, orgIds: string[], withMade: boolean): Promise<Copies> {
+async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, orgIds: string[], withMade: boolean, ask: AskFormat): Promise<Copies> {
   const since = new Date(at.getTime() - WINDOW_MS);
   const analyzed = (
     await tx.analyzedMessage.findMany({
@@ -360,7 +382,7 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
       select: { id: true, waMessageId: true, senderPhone: true, body: true },
     })
   ).filter((r) => isStoredIdOf(r.waMessageId, chatId, messageId, { bare: true }) && r.body !== "");
-  const none = { hq: [], mentions: [], notes: [], squadProposals: [], feeProposals: [], reminders: [] };
+  const none = { hq: [], mentions: [], notes: [], verdicts: [], asks: [], squadProposals: [], feeProposals: [], reminders: [] };
   if (orgIds.length === 0) return { analyzed, archived, ...none };
   const hq = (
     await tx.adminGroupMessage.findMany({
@@ -390,14 +412,34 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
   const notes = (
     await tx.formNote.findMany({
       where: { orgId: { in: orgIds }, updatedAt: { gte: since } },
-      select: { id: true, orgId: true, sourceMessageId: true, reasonSourceMessageId: true, reasonMessageIds: true, matchId: true, userId: true, reason: true },
+      select: { id: true, orgId: true, sourceMessageId: true, reasonSourceMessageId: true, reasonMessageIds: true, clearedMessageIds: true, matchId: true, userId: true, reason: true },
     })
   ).flatMap((r) => {
     // ONE RULE (round 12): the note's recorded messages, or for an older note
-    // with none recorded, its two source ids.
+    // with none recorded, its two source ids. A message whose change already
+    // cleared the note is no longer recorded (round 13): it is kept in
+    // `clearedMessageIds`, for its late copies only.
     const held = [...new Set((r.reasonMessageIds?.length ? r.reasonMessageIds : [r.sourceMessageId, r.reasonSourceMessageId]).filter((x): x is string => !!x))];
-    const matched = held.find((x) => isStoredIdOf(x, chatId, messageId));
-    return matched ? [{ id: r.id, orgId: r.orgId, matched, matchedPhone: null as string | null, heldIds: held, matchId: r.matchId, userId: r.userId, reason: r.reason }] : [];
+    const cleared = r.clearedMessageIds ?? [];
+    const recorded = held.find((x) => isStoredIdOf(x, chatId, messageId));
+    const matched = recorded ?? cleared.find((x) => isStoredIdOf(x, chatId, messageId));
+    if (!matched) return [];
+    return [
+      {
+        id: r.id,
+        orgId: r.orgId,
+        matched,
+        matchedPhone: null as string | null,
+        via: recorded ? ("recorded" as const) : ("cleared" as const),
+        heldIds: held,
+        clearedIds: cleared,
+        sourceMessageId: r.sourceMessageId,
+        reasonSourceMessageId: r.reasonSourceMessageId,
+        matchId: r.matchId,
+        userId: r.userId,
+        reason: r.reason,
+      },
+    ];
   });
   // Who wrote the matched message: its stored copy's phone, as the
   // AnalyzedMessage clear uses (an id stored under a LID, a delete naming
@@ -405,8 +447,29 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
   for (const n of notes) {
     n.matchedPhone = analyzed.find((a) => a.waMessageId === n.matched)?.authorPhone ?? null;
   }
+  // The nightly none-bucket shadow's verdicts (`pipeline/none-shadow.ts`):
+  // an alert keeps the message's text, keyed by its id (`currentVerdictRefs`).
+  const verdicts = (
+    await tx.windowVerdict.findMany({ where: { orgId: { in: orgIds }, createdAt: { gte: since } }, select: { id: true, verdictJson: true, currentVerdictRefs: true } })
+  )
+    .filter((v) => (v.currentVerdictRefs ?? []).some((ref) => isStoredIdOf(ref, chatId, messageId, { bare: true })))
+    .map((v) => ({ id: v.id, verdictJson: v.verdictJson as unknown }));
+  // "Who is that?" (2026-11-17): the row holds the message's words, keyed by
+  // the message (`attendance-ask:<org>:<id>`); a re-ask from an answer holds
+  // the ORIGINAL message's words, named in its `aboutMessageId`.
+  const asks = (
+    await tx.sentNotification.findMany({
+      where: { kind: ask.kind, OR: orgIds.map((o) => ({ key: { startsWith: ask.prefix(o) } })), createdAt: { gte: since } },
+      select: { id: true, key: true, text: true, createdAt: true },
+    })
+  ).flatMap((r) => {
+    const org = orgIds.find((o) => r.key.startsWith(ask.prefix(o)));
+    const keyed = org ? r.key.slice(ask.prefix(org).length) : null;
+    const matched = [keyed, ask.parse(r.text)?.aboutMessageId ?? null].find((x): x is string => !!x && isStoredIdOf(x, chatId, messageId));
+    return matched ? [{ id: r.id, matched, text: r.text, createdAt: r.createdAt }] : [];
+  });
   // What MatchTime was about to do because of the message: only a delete cancels it.
-  if (!withMade) return { analyzed, archived, hq, mentions, notes, squadProposals: [], feeProposals: [], reminders: [] };
+  if (!withMade) return { analyzed, archived, hq, mentions, notes, verdicts, asks, squadProposals: [], feeProposals: [], reminders: [] };
   const proposalWhere = { orgId: { in: orgIds }, createdAt: { gte: since }, OR: idWhere(chatId, messageId) };
   const squadProposals = (await tx.adminSquadProposal.findMany({ where: proposalWhere, select: { id: true, orgId: true, waMessageId: true, resolvedAt: true } })).filter((r) =>
     isStoredIdOf(r.waMessageId, chatId, messageId),
@@ -427,7 +490,7 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
       return { id: r.id, storedId: key.slice(prefix.length), sent: r.sentAt !== null };
     })
     .filter((r) => isStoredIdOf(r.storedId, chatId, messageId));
-  return { analyzed, archived, hq, mentions, notes, squadProposals, feeProposals, reminders };
+  return { analyzed, archived, hq, mentions, notes, verdicts, asks, squadProposals, feeProposals, reminders };
 }
 
 /**
@@ -440,24 +503,25 @@ type Mode = "delete" | "edit" | null;
 /**
  * Take the words out of every copy a change applies to. Inside the caller's
  * transaction. Returns true when a copy was deliberately left for later (an
- * open "who do you mean?" holding its question): the tombstone is then not
- * marked enforced, so the sweep comes back for it.
+ * open "who is that?" about an edited message, within its hour): the
+ * tombstone is then not marked enforced, so the sweep comes back for it.
  *
  * A DELETE removes, as before. An EDIT purges the TEXT and keeps the FACTS
  * (the member's promise 2): every row a feature reads stays, with its
  * sender, time, kind and flags, and only its words go:
  *
  *   AnalyzedMessage   body and reasoning null; the trace keeps its
- *       structured reading (`message-change-trace.ts`). An open "who do you
- *       mean?" (intent stats_clarification, within its hour) keeps its
- *       question in the trace, for that clarification alone, until the
- *       hour is up.
+ *       structured reading (`message-change-trace.ts`).
+ *   "Who is that?"    an OPEN one (within its hour) keeps the message's
+ *       words and the name asked about, for that question alone, until the
+ *       hour is up; an answered or expired one loses them. A delete closes
+ *       it, with no words.
  *   AdminGroupMessage text "", the trace as above; the row (who spoke,
  *       when, its outcome) stays for the safe-YES rule and the "who shall
  *       I ask?" positional tests.
  *   MessageMentions   kept whole: it holds who was tagged, never words.
  */
-async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombstone, c: Copies, out: MessageChangeResult, now: Date, clar: Clarification, forms: FormNoteFormat): Promise<boolean> {
+async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombstone, c: Copies, out: MessageChangeResult, now: Date, ask: AskFormat, forms: FormNoteFormat): Promise<boolean> {
   const mode = (storedId: string, storedPhone?: string | null, prefix = ""): Mode => {
     const ref = { storedId, chatId, messageId, prefix, storedPhone };
     if (deletedFor(t, ref)) return "delete";
@@ -465,6 +529,8 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   };
   const applies = (storedId: string, storedPhone?: string | null, prefix = "") => mode(storedId, storedPhone, prefix) !== null;
   let deferred = false;
+  /** The phone a stored copy of the message was written under (for a LID-only id). */
+  const analyzedPhone = (id: string) => c.analyzed.find((a) => a.waMessageId === id)?.authorPhone ?? null;
 
   // AnalyzedMessage: one row at a time (each trace is its own).
   for (const r of c.analyzed) {
@@ -473,18 +539,7 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
       if (r.body !== null || r.reasoning !== null || r.pipelineTrace !== null) out.refused++;
       continue;
     }
-    let trace: unknown = null;
-    if (m === "edit") {
-      trace = textFreeTrace(r.pipelineTrace);
-      const until = new Date(r.createdAt.getTime() + clar.ttlMs);
-      if (r.intent === clar.intent && now.getTime() < until.getTime()) {
-        const question = r.body ?? heldQuestionOf(r.pipelineTrace)?.text ?? null;
-        if (question) {
-          trace = withHeldQuestion(trace as Record<string, unknown> | null, question, until);
-          deferred = true;
-        }
-      }
-    }
+    const trace: unknown = m === "edit" ? textFreeTrace(r.pipelineTrace) : null;
     const done = r.body === null && r.reasoning === null && sameJson(r.pipelineTrace ?? null, trace);
     if (done) continue;
     await tx.analyzedMessage.update({ where: { id: r.id }, data: { body: null, reasoning: null, pipelineTrace: trace === null ? Prisma.DbNull : (trace as object) } });
@@ -525,22 +580,87 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   // that is still valid only loses words.
   for (const n of c.notes) {
     if (!applies(n.matched, n.matchedPhone)) {
-      if (n.reason !== "") out.refused++;
+      if (n.reason !== "" && n.via === "recorded") out.refused++;
       continue;
     }
-    if (n.reason !== "") {
-      out.notes += (await tx.formNote.updateMany({ where: { id: n.id, NOT: { reason: "" } }, data: { reason: "" } })).count;
+    const isThis = (id: string | null) => !!id && isStoredIdOf(id, chatId, messageId);
+    if (n.via === "recorded") {
+      // The note's reason and every copy, then the message stops being one the
+      // note records (round 13): a later message's NEW reason is never cleared
+      // by this message's re-checks. Its id moves to `clearedMessageIds`.
+      if (n.reason !== "") out.notes += (await tx.formNote.updateMany({ where: { id: n.id, NOT: { reason: "" } }, data: { reason: "" } })).count;
+      const keys = n.heldIds.flatMap((id) => [groupReplyKey(n.orgId, id), hqReplyKey(n.orgId, id)]);
+      out.notes += (await tx.sentNotification.updateMany({ where: { key: { in: keys }, NOT: { text: null } }, data: { text: null } })).count;
+      await tx.formNote.update({
+        where: { id: n.id },
+        data: {
+          reasonMessageIds: n.heldIds.filter((id) => !isThis(id)),
+          clearedMessageIds: [...new Set([...n.clearedIds, n.matched])],
+          ...(isThis(n.sourceMessageId) ? { sourceMessageId: null } : {}),
+          ...(isThis(n.reasonSourceMessageId) ? { reasonSourceMessageId: null } : {}),
+        },
+      });
+    } else if (n.reason !== "") {
+      // Cleared before, and a newer message has written a reason since: that
+      // reason and its copies are the newer message's. Only this message's
+      // own ack is looked at.
+      out.notes += (
+        await tx.sentNotification.updateMany({ where: { key: { in: [groupReplyKey(n.orgId, n.matched), hqReplyKey(n.orgId, n.matched)] }, NOT: { text: null } }, data: { text: null } })
+      ).count;
+      continue;
     }
     // EVERY copy team generation made of a note's reason for that player in
     // that match: only `formNoteReason` writes this prefix, so the rating
-    // adjuster's own rows are never touched, and no text is rebuilt.
+    // adjuster's own rows are never touched, and no text is rebuilt. Again on
+    // a re-check while the note has no reason (a copy written after the purge).
     out.notes += (
       await tx.ratingAdjustment.updateMany({ where: { matchId: n.matchId, userId: n.userId, reason: { startsWith: forms.FORM_NOTE_REASON_PREFIX } }, data: { reason: "" } })
     ).count;
-    // MatchTime's acknowledgements ("Noted: -0.5 for Pete Power (tired) ..."),
-    // claimed under each message the note records: the WHOLE text goes.
-    const keys = n.heldIds.flatMap((id) => [groupReplyKey(n.orgId, id), hqReplyKey(n.orgId, id)]);
-    out.notes += (await tx.sentNotification.updateMany({ where: { key: { in: keys }, NOT: { text: null } }, data: { text: null } })).count;
+    if (n.via === "cleared") {
+      out.notes += (
+        await tx.sentNotification.updateMany({ where: { key: { in: [groupReplyKey(n.orgId, n.matched), hqReplyKey(n.orgId, n.matched)] }, NOT: { text: null } }, data: { text: null } })
+      ).count;
+    }
+  }
+  // "Who is that?" about the message. A delete closes it (answered, so it
+  // still supersedes an older one of the same asker) with no words. An edit
+  // keeps an open one for its hour (MatchTime acts on what it read), then
+  // the words go; the sweep comes back for it.
+  for (const a of c.asks) {
+    const p = ask.parse(a.text);
+    const m = mode(a.matched, analyzedPhone(a.matched));
+    if (!p || !m) {
+      if (p && (p.body || p.ref)) out.refused++;
+      continue;
+    }
+    if (m === "edit" && !p.answeredAt && now.getTime() < a.createdAt.getTime() + ask.ttlMs && (p.body || p.ref)) {
+      deferred = true;
+      continue;
+    }
+    const next = { ...p, body: "", ref: "", answeredAt: m === "delete" ? (p.answeredAt ?? now.toISOString()) : p.answeredAt };
+    if (sameJson(p, next)) continue;
+    await tx.sentNotification.update({ where: { id: a.id }, data: { text: JSON.stringify(next) } });
+    out.analyzed++;
+  }
+  // The none-bucket shadow's alerts for this message: the verdict, its counts
+  // and the reading stay; the words (the body, the claims' refs) go. For a
+  // delete and an edit alike.
+  for (const v of c.verdicts) {
+    const json = (v.verdictJson ?? {}) as { alerts?: Array<Record<string, unknown>> };
+    if (!Array.isArray(json.alerts)) continue;
+    let changed = false;
+    const alerts = json.alerts.map((a) => {
+      const id = typeof a.waMessageId === "string" ? a.waMessageId : "";
+      if (!isStoredIdOf(id, chatId, messageId, { bare: true })) return a;
+      const phone = analyzedPhone(id);
+      if (!applies(id, phone)) return a;
+      const next = { ...a, body: "", claims: textFreeFacts(a.claims ?? []) };
+      if (JSON.stringify(next) !== JSON.stringify(a)) changed = true;
+      return next;
+    });
+    if (!changed) continue;
+    await tx.windowVerdict.update({ where: { id: v.id }, data: { verdictJson: { ...json, alerts } as object } });
+    out.analyzed++;
   }
   // FOR A DELETE ONLY: what MatchTime was about to do because of the message.
   // An HQ proposal made from it (a pasted list, a fee): an open one is
@@ -619,9 +739,11 @@ async function withKnownPhones<T extends Tombstone & { deletedAt?: Date }>(t: T,
   }
 }
 
-/** An open "who do you mean?": its intent and its window (`pipeline/awaiting-answer.ts`). */
-interface Clarification {
-  intent: string;
+/** How a "who is that?" row is keyed and read, and its window (`pipeline/awaiting-answer.ts`). */
+interface AskFormat {
+  kind: string;
+  prefix: (orgId: string) => string;
+  parse: (text: string | null) => AttendanceAskPayload | null;
   ttlMs: number;
 }
 
@@ -636,10 +758,10 @@ async function clearMessage(chatId: string, messageId: string, t: Tombstone, at:
   const widened = await withKnownPhones(t, orgIds);
   // Loaded here, not imported above: the admin-group route's static graph
   // stays clear of the pipeline (`admin-group-model-door.source.test.ts`).
-  const { GROUP_QUESTION_TTL_MS, STATS_CLARIFICATION_INTENT } = await import("./pipeline/awaiting-answer");
-  const clar = { intent: STATS_CLARIFICATION_INTENT, ttlMs: GROUP_QUESTION_TTL_MS };
+  const { ATTENDANCE_ASK_KIND, GROUP_QUESTION_TTL_MS, attendanceAskKeyPrefix, parseAttendanceAsk } = await import("./pipeline/awaiting-answer");
+  const ask: AskFormat = { kind: ATTENDANCE_ASK_KIND, prefix: attendanceAskKeyPrefix, parse: parseAttendanceAsk, ttlMs: GROUP_QUESTION_TTL_MS };
   const forms = await import("./form-note-rules");
-  return db.$transaction(async (tx) => clearCopies(tx, chatId, messageId, widened, await copiesOf(tx, chatId, messageId, at, orgIds, hasDelete(widened)), out, now, clar, forms));
+  return db.$transaction(async (tx) => clearCopies(tx, chatId, messageId, widened, await copiesOf(tx, chatId, messageId, at, orgIds, hasDelete(widened), ask), out, now, ask, forms));
 }
 
 async function markEnforced(chatId: string, messageIds: string[], now: Date): Promise<void> {
@@ -847,8 +969,8 @@ export async function enforceDeletes(chatId: string, storedIds: Array<string | n
     for (const [bare, ts] of t) {
       const out = empty();
       const deferred = await clearMessage(chatId, bare, ts, ts.deletedAt, out, now);
-      // A copy left for later (a clarification written after the tombstone
-      // was enforced, holding its question): the tombstone is due again, so
+      // A copy left for later (an open "who is that?" written after the
+      // tombstone was enforced, about an edited message): the tombstone is due again, so
       // the sweep comes back for it, however long ago the change was.
       if (deferred) await db.deletedMessage.updateMany({ where: { chatId, waMessageId: bare }, data: { enforcedAt: null } }).catch(() => {});
       if (anyCleared(out)) {
@@ -865,49 +987,49 @@ export async function enforceDeletes(chatId: string, storedIds: Array<string | n
   }
 }
 
-/**
- * A held "who do you mean?" question read after its hour is up (round 9):
- * its words are dropped there and then, where the analyze route reads the
- * open clarifications (the pipeline's loader writes nothing). The sweep
- * drops them too. One indexed read of the club's last two hours. Never throws.
- */
-export async function dropExpiredHeldQuestions(orgId: string, now: Date = new Date()): Promise<number> {
-  try {
-    const { STATS_CLARIFICATION_INTENT } = await import("./pipeline/awaiting-answer");
-    const rows = await db.analyzedMessage.findMany({
-      where: { orgId, intent: STATS_CLARIFICATION_INTENT, body: null, createdAt: { gte: new Date(now.getTime() - 2 * 60 * 60 * 1000) } },
-      select: { id: true, pipelineTrace: true },
-    });
-    let dropped = 0;
-    for (const r of rows) {
-      const held = heldQuestionOf(r.pipelineTrace);
-      if (!held || held.until.getTime() > now.getTime()) continue;
-      await db.analyzedMessage.update({ where: { id: r.id }, data: { pipelineTrace: (textFreeTrace(r.pipelineTrace) ?? { v: 1, extractions: [] }) as object } });
-      dropped++;
-    }
-    return dropped;
-  } catch (err) {
-    console.error(`[message-change] ${orgId}: held questions not dropped:`, err instanceof Error ? err.message : "failed");
-    return 0;
-  }
-}
-
 /** How long after a change the sweep keeps re-checking it for late writers (team generation, a slow handler). */
 export const SWEEP_RECHECK_MS = 48 * 60 * 60 * 1000;
 
 /**
+ * A DM's dispatch claim whose job no longer exists keeps no words (round 13):
+ * `due-posts` can claim a reminder (writing `botjob-<id>` with its text) in
+ * the moment a delete cancels the job, and the cancelled job can then no
+ * longer be found by its message. Every `botjob-*` claim of the last 48
+ * hours whose BotJob is gone loses its text. Never throws.
+ */
+async function clearOrphanedDispatchClaims(now: Date): Promise<number> {
+  try {
+    const claims = await db.sentNotification.findMany({
+      where: { key: { startsWith: "botjob-" }, createdAt: { gte: new Date(now.getTime() - SWEEP_RECHECK_MS) }, NOT: { text: null } },
+      select: { id: true, key: true },
+    });
+    if (claims.length === 0) return 0;
+    const ids = claims.map((c) => c.key.slice("botjob-".length));
+    const live = new Set((await db.botJob.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((j) => j.id));
+    const orphans = claims.filter((c) => !live.has(c.key.slice("botjob-".length))).map((c) => c.id);
+    if (orphans.length === 0) return 0;
+    return (await db.sentNotification.updateMany({ where: { id: { in: orphans } }, data: { text: null } })).count;
+  } catch (err) {
+    console.error("[message-change] orphaned dispatch claims not cleared:", err instanceof Error ? err.message : "failed");
+    return 0;
+  }
+}
+
+/**
  * THE SAFETY SWEEP (hourly, /api/cron/bot-health). First the tombstones
  * never enforced yet (`enforcedAt` null: a request that died before its own
- * clear, a held clarification question), oldest first, at most
+ * clear, or an edited message's open "who is that?" waiting for its hour to
+ * end), oldest first, at most
  * SWEEP_NEVER_MAX; THEN, on their own cap (SWEEP_RECHECK_MAX, so a backlog
  * can never starve them), the enforced ones changed in the last 48 hours,
  * the longest unchecked first, for late writers (by the LATEST change, so a
  * second change is re-checked as the first was). Each is marked enforced
  * (`enforcedAt` moves to now; it is never made due again by a re-check).
- * Then the ones 14 days past their latest change are pruned. Idempotent;
- * each message is a handful of indexed reads. Never throws.
+ * Then the ones 14 days past their latest change are pruned, and orphaned
+ * dispatch claims lose their words (above). Idempotent; each message is a
+ * handful of indexed reads. Never throws.
  */
-export async function sweepRecentTombstones(now: Date = new Date()): Promise<{ checked: number; cleared: number; pruned: number }> {
+export async function sweepRecentTombstones(now: Date = new Date()): Promise<{ checked: number; cleared: number; pruned: number; orphans: number }> {
   try {
     const since = new Date(now.getTime() - WINDOW_MS);
     const pruned = (await db.deletedMessage.deleteMany({ where: { lastChangeAt: { lt: since } } })).count;
@@ -928,16 +1050,17 @@ export async function sweepRecentTombstones(now: Date = new Date()): Promise<{ c
         const out = empty();
         const deferred = await clearMessage(r.chatId, r.waMessageId, { ...r, changes: (r.changes ?? []) as unknown as ChangeRecord[] }, r.deletedAt, out, now);
         if (anyCleared(out)) cleared++;
-        // A copy left for later (an open clarification's question): not enforced yet, so the next run comes back.
+        // A copy left for later (an open "who is that?" about an edited message): not enforced yet, so the next run comes back.
         if (!deferred) await markEnforced(r.chatId, [r.waMessageId], now);
       } catch (err) {
         console.error(`[message-change] sweep: ${r.chatId} ${r.waMessageId} not cleared this run:`, err instanceof Error ? err.message : "failed");
       }
     }
     if (cleared > 0) console.log(`[message-change] sweep: ${cleared} of ${rows.length} deleted or edited message(s) had copies cleared`);
-    return { checked: rows.length, cleared, pruned };
+    const orphans = await clearOrphanedDispatchClaims(now);
+    return { checked: rows.length, cleared, pruned, orphans };
   } catch (err) {
     console.error("[message-change] sweep failed:", err instanceof Error ? err.message : "failed");
-    return { checked: 0, cleared: 0, pruned: 0 };
+    return { checked: 0, cleared: 0, pruned: 0, orphans: 0 };
   }
 }

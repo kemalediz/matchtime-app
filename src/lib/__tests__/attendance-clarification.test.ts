@@ -66,6 +66,10 @@ describe("the open question (its own row)", () => {
       }),
     ]);
   });
+  it("names the message its words are: the one recorded, or the key's on a row written before it was recorded", () => {
+    expect(openAttendanceAsks([askRow()], "org-1", NOW)[0].aboutMessageId).toBe("wa-0");
+    expect(openAttendanceAsks([askRow({}, { aboutMessageId: "wa-original" })], "org-1", NOW)[0].aboutMessageId).toBe("wa-original");
+  });
   it("is closed once answered", () => {
     expect(openAttendanceAsks([askRow({}, { answeredAt: ago(1).toISOString() })], "org-1", NOW)).toEqual([]);
   });
@@ -284,7 +288,7 @@ describe("the attendance batch", () => {
     expect(registered).toEqual([]);
     expect(r.outcomes.get("wa-1")?.reply).toBe(QUESTION);
     expect(recorded).toEqual([
-      { waMessageId: "wa-1", matchId: "match-1", askerUserId: "u-olly", body: ORIGINAL, ref: "Abu Ayoub", candidateIds: ["u-yoobie"] },
+      { waMessageId: "wa-1", matchId: "match-1", askerUserId: "u-olly", body: ORIGINAL, ref: "Abu Ayoub", candidateIds: ["u-yoobie"], aboutMessageId: "wa-1" },
     ]);
   });
 
@@ -331,7 +335,8 @@ describe("the attendance batch", () => {
     expect(r.outcomes.get("wa-1")?.reply).toBe("Do you mean Dan Smith or Dan Jones, or is Dan someone new?");
     expect(closed).toEqual(["sn-1"]);
     expect(recorded).toEqual([
-      { waMessageId: "wa-1", matchId: "match-1", askerUserId: "u-olly", body: ORIGINAL, ref: "Abu Ayoub", candidateIds: ["u-dansmith", "u-danjones"] },
+      // About the ORIGINAL message (wa-0), whose words it holds: a delete or an edit of it finds this row (#606).
+      { waMessageId: "wa-1", matchId: "match-1", askerUserId: "u-olly", body: ORIGINAL, ref: "Abu Ayoub", candidateIds: ["u-dansmith", "u-danjones"], aboutMessageId: "wa-0" },
     ]);
   });
 

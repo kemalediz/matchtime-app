@@ -31,6 +31,7 @@ export async function recordAttendanceAsk(
     ref: a.ref,
     candidateIds: a.candidateIds,
     answeredAt: null,
+    aboutMessageId: a.aboutMessageId ?? a.waMessageId,
   };
   const key = `${attendanceAskKeyPrefix(orgId)}${a.waMessageId}`;
   await db.sentNotification.upsert({

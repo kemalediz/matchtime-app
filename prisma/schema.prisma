@@ -2679,6 +2679,10 @@ model FormNote {
   /// the copies (the rating adjustment's, the acks), found by these ids,
   /// never by the current text.
   reasonMessageIds String[] @default([])
+  /// The messages whose delete or edit has cleared this note: no longer
+  /// recorded above, so their re-checks never clear a NEWER reason; kept only
+  /// so a copy written after the purge (team generation's) is still cleaned.
+  clearedMessageIds String[] @default([])
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -2772,7 +2776,7 @@ model GroupMessage {
 /// group's metadata) or from the message's own author (one of `senderJids` /
 /// `senderPhones`). Recorded only for a group linked to a club. Holds ids
 /// and phones, never words. RETENTION 14 days from `lastChangeAt`, pruned
-/// by the sweep. Migration 20261116120000_deleted_messages.
+/// by the sweep. Migration 20261118120000_deleted_messages.
 model DeletedMessage {
   id           String   @id @default(cuid())
   chatId       String

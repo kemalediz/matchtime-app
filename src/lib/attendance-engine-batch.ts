@@ -403,6 +403,9 @@ export interface AttendanceAskRecord {
   /** The name asked about (for a re-ask, still the original name). */
   ref: string;
   candidateIds: string[];
+  /** The message `body` is (for a re-ask, the ORIGINAL message); absent
+   *  means `waMessageId`. A delete or an edit of it finds the row. */
+  aboutMessageId?: string;
 }
 
 export interface EngineBatchDeps extends EngineApplyDeps {
@@ -1617,6 +1620,7 @@ export async function runAttendanceEngineBatch(args: {
           body: answered ? answered.questionBody : m.body,
           ref: answered?.ref ? answered.ref : asked.ref,
           candidateIds: asked.candidateIds,
+          aboutMessageId: answered ? answered.aboutMessageId : m.waMessageId,
         })
         .catch((err) =>
           degradations.push(`attendance-ask ${m.waMessageId}: question asked but not recorded (${err instanceof Error ? err.message : "failed"})`),

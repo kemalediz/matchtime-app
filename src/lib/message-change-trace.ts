@@ -41,11 +41,6 @@
  * kept only in an admin recruit from partner clubs, because "try again"
  * (`refused-ask-retry.ts`) repeats exactly that ask, to that club; it reads
  * nothing else that is a string beyond kind and action.
- *
- * `heldQuestion`: the one exception, for an open "who do you mean?" (an
- * edited stats question whose clarification window is still open): its
- * question, kept only until `until` so the answer can still be read against
- * it (`pipeline/load-awaiting-answer.ts`), then dropped by the next clear.
  */
 
 /** Keys whose string values are enums (identifiers): kept when they look like one. */
@@ -111,6 +106,11 @@ function factsWithoutText(v: unknown, key: string | null = null): unknown {
   return out;
 }
 
+/** PURE. Facts (or a list of them, e.g. the none-bucket shadow's claims) by the same allowlist. */
+export function textFreeFacts(facts: unknown): unknown {
+  return factsWithoutText(facts);
+}
+
 /** PURE. The trace with no free text (see the header). Null stays null. */
 export function textFreeTrace(trace: unknown): Obj | null {
   if (trace === null || trace === undefined) return null;
@@ -140,20 +140,7 @@ export function sameJson(a: unknown, b: unknown): boolean {
   return canonical(a) === canonical(b);
 }
 
-/** PURE. Is there no free text left in it (a held question counts as text)? */
+/** PURE. Is there no free text left in it? */
 export function isTextFree(trace: unknown): boolean {
   return sameJson(textFreeTrace(trace), trace ?? null);
-}
-
-/** PURE. A text-free trace that also holds an open clarification's question until `until`. */
-export function withHeldQuestion(trace: Obj | null, text: string, until: Date): Obj {
-  return { ...(trace ?? { v: 1, extractions: [] }), heldQuestion: { text, until: until.toISOString() } };
-}
-
-/** PURE. The question held in a trace, or null. */
-export function heldQuestionOf(trace: unknown): { text: string; until: Date } | null {
-  const h = isObj(trace) ? trace.heldQuestion : null;
-  if (!isObj(h) || typeof h.text !== "string" || typeof h.until !== "string") return null;
-  const until = new Date(h.until);
-  return Number.isNaN(until.getTime()) ? null : { text: h.text, until };
 }

@@ -5,7 +5,7 @@
  * free-text field goes. Made-up content.
  */
 import { describe, it, expect } from "vitest";
-import { heldQuestionOf, isTextFree, sameJson, textFreeTrace, withHeldQuestion } from "../message-change-trace";
+import { isTextFree, sameJson, textFreeTrace } from "../message-change-trace";
 
 const SECRET = "my door code is 4321";
 
@@ -149,13 +149,5 @@ describe("textFreeTrace", () => {
     expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(once));
     expect(sameJson(reordered, once)).toBe(true);
     expect(isTextFree(reordered)).toBe(true);
-  });
-
-  it("a question held for an open 'who do you mean?' is kept only while asked to, then goes", () => {
-    const held = withHeldQuestion(textFreeTrace(TRACE), "how many goals has Idirs scored?", new Date("2026-11-16T10:00:00.000Z"));
-    expect(heldQuestionOf(held)).toEqual({ text: "how many goals has Idirs scored?", until: new Date("2026-11-16T10:00:00.000Z") });
-    expect(isTextFree(held)).toBe(false);
-    expect(heldQuestionOf(textFreeTrace(held))).toBeNull();
-    expect(heldQuestionOf(null)).toBeNull();
   });
 });

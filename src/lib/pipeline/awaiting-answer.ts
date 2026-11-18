@@ -205,6 +205,10 @@ export interface StatsClarification {
   ref?: string;
   /** For `about: "attendance"`: the members MatchTime offered. */
   candidateIds?: string[];
+  /** For `about: "attendance"`: the message `questionBody` is (a re-ask
+   *  from an answer is still about the ORIGINAL), so a delete or an edit of
+   *  it finds this row (`message-change.ts`). */
+  aboutMessageId?: string;
 }
 
 function askerKey(userId: string | null, name: string | null): string | null {
@@ -261,6 +265,9 @@ export interface AttendanceAskPayload {
   candidateIds: string[];
   /** Set when the asker's answer was read. */
   answeredAt?: string | null;
+  /** The message `body` is (absent on rows written before 2026-11-18: the
+   *  key's message). */
+  aboutMessageId?: string | null;
 }
 
 /** The `SentNotification` columns an attendance question is read from. */
@@ -284,6 +291,7 @@ export function parseAttendanceAsk(text: string | null): AttendanceAskPayload | 
       ref: p.ref,
       candidateIds: p.candidateIds.filter((x): x is string => typeof x === "string"),
       answeredAt: typeof p.answeredAt === "string" ? p.answeredAt : null,
+      ...(typeof p.aboutMessageId === "string" ? { aboutMessageId: p.aboutMessageId } : {}),
     };
   } catch {
     return null;
@@ -318,6 +326,7 @@ export function openAttendanceAsks(rows: AttendanceAskRow[], orgId: string, now:
       about: "attendance",
       ref: p.ref,
       candidateIds: p.candidateIds,
+      aboutMessageId: p.aboutMessageId ?? r.key.slice(prefix.length),
     });
   }
   return out.sort((a, b) => a.askedAt.getTime() - b.askedAt.getTime());

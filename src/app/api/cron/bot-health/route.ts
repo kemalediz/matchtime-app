@@ -202,8 +202,8 @@ export async function GET(request: Request) {
   }
 
   // THE DELETE AND EDIT SAFETY SWEEP (2026-11-15): every tombstone not
-  // enforced yet (a request that died before its own clear, or a
-  // clarification's held question still waiting for its hour to end) is
+  // enforced yet (a request that died before its own clear, or an edited
+  // message's open "who is that?" still waiting for its hour to end) is
   // enforced against the stores, and each is re-checked for 48 hours after
   // its latest change, for late writers; rows 14 days past their latest
   // change are pruned. Idempotent, bounded (500 never-enforced and 200 re-checks a run), indexed; never

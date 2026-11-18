@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { makeDb, row, type Row } from "./fake-message-db";
 
-const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias", "organisation", "adminSquadProposal", "adminFeeProposal", "formNote", "ratingAdjustment", "onboardingSession", "clubConnect"];
+const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "sentNotification", "botJob", "user", "membership", "userAlias", "organisation", "adminSquadProposal", "adminFeeProposal", "formNote", "ratingAdjustment", "windowVerdict", "onboardingSession", "clubConnect"];
 const T: Record<string, Row[]> = {};
 const fake = makeDb(T, NAMES, { deletedMessage: [["chatId", "waMessageId"]] });
 vi.mock("@/lib/db", () => ({
@@ -27,7 +27,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { applyMessageChange, dropExpiredHeldQuestions, enforceDeletes, sweepRecentTombstones } from "../message-change";
+import { applyMessageChange, enforceDeletes, sweepRecentTombstones } from "../message-change";
 import { mentionsAbove } from "../group-mentions";
 import { decideApproval } from "../admin-group-confirm-rules";
 import { sourceQuestionAnswered } from "../ask-source-rules";
@@ -39,7 +39,7 @@ import { loadStoredGroupLines } from "../group-chat-history";
 import { groupLogSince, hqLogSince } from "../admin-group-log";
 import { loadSquadSourceMessages } from "../squad-from-list";
 import { loadOpenStatsClarifications } from "../pipeline/load-awaiting-answer";
-import { STATS_CLARIFICATION_INTENT } from "../pipeline/awaiting-answer";
+import { recordAttendanceAsk } from "../attendance-ask-store";
 import { latestAskFromRecords } from "../refused-ask-retry";
 
 const NOW = new Date("2026-11-15T18:00:00.000Z");
@@ -54,6 +54,14 @@ const KEEP = "see you all at 8";
 
 const BY_SAM = { byAdmin: false, senderJids: [`${SAM}@c.us`], senderPhone: SAM };
 const gid = (bare: string, phone: string, chat = G) => `false_${chat}_${bare}_${phone}@c.us`;
+
+/** MatchTime's "Do you mean Yoobie, or is Abu Ayoub a new player?" about Sam's message (`attendance-ask-store.ts`). */
+async function askAbout(bare: string, body: string, ref: string, at: Date): Promise<void> {
+  const waMessageId = gid(bare, SAM);
+  T.analyzedMessage.push(row({ waMessageId, orgId: ORG, groupId: G, authorUserId: "u-sam", authorPhone: SAM, authorName: "Sam", body, intent: "in", handledBy: "engine", createdAt: at }));
+  await recordAttendanceAsk(ORG, "Sam", { waMessageId, body, ref, candidateIds: ["u-ali"], askerUserId: "u-sam", matchId: "m1" } as Parameters<typeof recordAttendanceAsk>[2]);
+  T.sentNotification[T.sentNotification.length - 1].createdAt = at;
+}
 
 beforeEach(() => {
   for (const k of NAMES) T[k] = [];
@@ -138,13 +146,31 @@ describe("after an edit by its author (a purge)", () => {
 describe("what a delete or an edit leaves for the follow-ups", () => {
   const RECRUIT = { v: 1, extractions: [{ extractor: "admin", facts: { kind: "admin", action: "recruit", pool: true } }] };
 
-  it("a deleted stats question leaves no open 'who do you mean?' with an empty question", async () => {
-    T.analyzedMessage.push(
-      row({ waMessageId: gid("SAMQ00000001", SAM), orgId: ORG, groupId: G, authorUserId: "u-sam", authorPhone: SAM, authorName: "Sam", body: "how many goals has he scored?", intent: STATS_CLARIFICATION_INTENT, handledBy: "engine", createdAt: new Date(Date.now() - 5 * 60 * 1000) }),
-    );
-    expect(await loadOpenStatsClarifications(ORG)).toHaveLength(1);
+  it("a deleted message MatchTime asked 'who is that?' about: the question is closed, keeps no words, and an older one it superseded stays closed", async () => {
+    await askAbout("SAMQ00000000", "@Match Time Abu Ayoub is IN as a guest", "Abu Ayoub", new Date(Date.now() - 20 * 60 * 1000));
+    await askAbout("SAMQ00000001", "@Match Time Idirs is IN, 4321 is the door", "Idirs", new Date(Date.now() - 5 * 60 * 1000));
+    expect(await loadOpenStatsClarifications(ORG)).toMatchObject([{ ref: "Idirs" }]);
     await applyMessageChange({ kind: "revoke", chatId: G, messageId: "SAMQ00000001", ...BY_SAM });
     expect(await loadOpenStatsClarifications(ORG)).toEqual([]);
+    expect(JSON.stringify(T.sentNotification)).not.toMatch(/Idirs|4321/);
+    expect(JSON.stringify(T.sentNotification)).toContain("Abu Ayoub");
+  });
+
+  it("a re-ask from an answer (keyed by the answer, holding the ORIGINAL's words) loses them when the original is deleted", async () => {
+    const original = gid("SAMQ00000005", SAM);
+    await recordAttendanceAsk(ORG, "Sam", { waMessageId: gid("SAMANSWER005", SAM), aboutMessageId: original, body: "@Match Time Idirs is IN", ref: "Idirs", candidateIds: ["u-ali"], askerUserId: "u-sam", matchId: "m1" });
+    T.sentNotification[T.sentNotification.length - 1].createdAt = new Date(Date.now() - 2 * 60 * 1000);
+    T.analyzedMessage.push(row({ waMessageId: original, orgId: ORG, groupId: G, authorUserId: "u-sam", authorPhone: SAM, authorName: "Sam", body: "@Match Time Idirs is IN", intent: "in", handledBy: "engine", createdAt: new Date(Date.now() - 10 * 60 * 1000) }));
+    expect(await loadOpenStatsClarifications(ORG)).toMatchObject([{ aboutMessageId: original }]);
+    await applyMessageChange({ kind: "revoke", chatId: G, messageId: "SAMQ00000005", ...BY_SAM });
+    expect(JSON.stringify(T.sentNotification)).not.toContain("Idirs");
+    expect(await loadOpenStatsClarifications(ORG)).toEqual([]);
+  });
+
+  it("another member's delete of Sam's message is refused: Sam's 'who is that?' keeps its words", async () => {
+    await askAbout("SAMQ00000006", "@Match Time Idirs is IN", "Idirs", new Date(Date.now() - 5 * 60 * 1000));
+    await applyMessageChange({ kind: "revoke", chatId: G, messageId: "SAMQ00000006", byAdmin: false, senderJids: [`${ALI}@c.us`], senderPhone: ALI });
+    expect(await loadOpenStatsClarifications(ORG)).toMatchObject([{ ref: "Idirs" }]);
   });
 
   it("the refused-ask retry cannot repeat a request that was DELETED", async () => {
@@ -184,46 +210,42 @@ describe("an author's edit: MatchTime forgets the words and otherwise behaves as
     expect(JSON.stringify([T.analyzedMessage, T.adminGroupMessage])).not.toContain("find us a player");
   });
 
-  it("the 'who do you mean?' is KEPT open with its question (the 'Idirs' case), then the question goes once its hour is up", async () => {
-    const Q = "@Match Time how many goals has Idirs scored?";
-    T.analyzedMessage.push(
-      row({ waMessageId: gid("SAMQ00000002", SAM), orgId: ORG, groupId: G, authorUserId: "u-sam", authorPhone: SAM, authorName: "Sam", body: Q, intent: STATS_CLARIFICATION_INTENT, handledBy: "engine", createdAt: new Date(Date.now() - 5 * 60 * 1000) }),
-    );
+  it("the 'who is that?' about an EDITED message is KEPT open with its words for its hour (the 'Idirs' case), then the sweep takes them out", async () => {
+    const Q = "@Match Time Idirs is IN tonight";
+    await askAbout("SAMQ00000002", Q, "Idirs", new Date(Date.now() - 5 * 60 * 1000));
     await applyMessageChange({ ...EDIT_BY_SAM, chatId: G, messageId: "SAMQ00000002" });
-    // Only the clarification can still read the question: no reader of the chat shows it.
+    // Only the question can still read the words: no reader of the chat shows them.
     expect(T.analyzedMessage.find((r) => r.waMessageId === gid("SAMQ00000002", SAM))!.body).toBeNull();
     expect(await everythingShown()).not.toContain("Idirs");
+    expect(T.deletedMessage.find((t) => t.waMessageId === "SAMQ00000002")!.enforcedAt).toBeNull();
     const open = await loadOpenStatsClarifications(ORG);
-    expect(open).toHaveLength(1);
-    expect(open[0].questionBody).toBe(Q);
-    // The hour is up: the sweep takes the held question out.
+    expect(open).toMatchObject([{ questionBody: Q, ref: "Idirs", candidateIds: ["u-ali"] }]);
+    // The hour is up: the sweep takes the words out.
     const later = new Date(Date.now() + 61 * 60 * 1000);
     await sweepRecentTombstones(later);
-    expect(JSON.stringify(T.analyzedMessage)).not.toContain("Idirs");
+    expect(JSON.stringify(T.sentNotification)).not.toContain("Idirs");
     expect(await loadOpenStatsClarifications(ORG, later)).toEqual([]);
+    expect(T.deletedMessage.find((t) => t.waMessageId === "SAMQ00000002")!.enforcedAt).not.toBeNull();
   });
 
-  it("a clarification row written LONG after its edit's tombstone was enforced: kept due, so the sweep still drops the held question after its hour", async () => {
-    const Q = "@Match Time how many goals has Idirs scored?";
-    const id = gid("SAMQ00000003", SAM);
+  it("a 'who is that?' written LONG after its edit's tombstone was enforced: kept due, so the sweep still takes the words out after its hour", async () => {
     await applyMessageChange({ ...EDIT_BY_SAM, chatId: G, messageId: "SAMQ00000003" }, new Date(Date.now() - 8 * 60 * 60 * 1000));
     // The question is written now (a catch-up), and its own clear-after-write runs.
-    T.analyzedMessage.push(row({ waMessageId: id, orgId: ORG, groupId: G, authorUserId: "u-sam", authorPhone: SAM, authorName: "Sam", body: Q, intent: STATS_CLARIFICATION_INTENT, handledBy: "engine", createdAt: new Date() }));
-    await enforceDeletes(G, [id]);
+    await askAbout("SAMQ00000003", "@Match Time Idirs is IN", "Idirs", new Date());
+    await enforceDeletes(G, [gid("SAMQ00000003", SAM)]);
     expect(T.deletedMessage.find((t) => t.waMessageId === "SAMQ00000003")!.enforcedAt).toBeNull();
+    expect(await loadOpenStatsClarifications(ORG)).toHaveLength(1);
     await sweepRecentTombstones(new Date(Date.now() + 61 * 60 * 1000));
-    expect(JSON.stringify(T.analyzedMessage)).not.toContain("Idirs");
+    expect(JSON.stringify(T.sentNotification)).not.toContain("Idirs");
   });
 
-  it("a held question read after its hour is up is dropped then and there", async () => {
-    const id = gid("SAMQ00000004", SAM);
-    T.analyzedMessage.push(
-      row({ waMessageId: id, orgId: ORG, groupId: G, authorUserId: "u-sam", authorName: "Sam", body: null, intent: STATS_CLARIFICATION_INTENT, handledBy: "engine", createdAt: new Date(Date.now() - 50 * 60 * 1000), pipelineTrace: { v: 1, extractions: [], heldQuestion: { text: "Idirs?", until: new Date(Date.now() - 60 * 1000).toISOString() } } }),
-    );
-    expect(await loadOpenStatsClarifications(ORG)).toEqual([]);
-    // Where the analyze route reads them: dropped there and then.
-    expect(await dropExpiredHeldQuestions(ORG)).toBe(1);
-    expect(JSON.stringify(T.analyzedMessage)).not.toContain("Idirs");
+  it("an edited message whose 'who is that?' was already answered loses its words at once", async () => {
+    await askAbout("SAMQ00000004", "@Match Time Idirs is IN", "Idirs", new Date(Date.now() - 5 * 60 * 1000));
+    const ask = T.sentNotification[T.sentNotification.length - 1];
+    ask.text = JSON.stringify({ ...JSON.parse(ask.text as string), answeredAt: new Date().toISOString() });
+    await applyMessageChange({ ...EDIT_BY_SAM, chatId: G, messageId: "SAMQ00000004" });
+    expect(JSON.stringify(T.sentNotification)).not.toContain("Idirs");
+    expect(T.deletedMessage.find((t) => t.waMessageId === "SAMQ00000004")!.enforcedAt).not.toBeNull();
   });
 
   it("'DM the people above' still picks the person the EDITED message tagged, never an older message's", async () => {

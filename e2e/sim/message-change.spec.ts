@@ -7,7 +7,7 @@
  * Each spec stores a member's message, deletes or edits it the way the Pi
  * now reports it (`POST /api/whatsapp/message-change`, by WhatsApp id and
  * group), then asks a following question and reads what the STUBBED model
- * was shown: the extractors' recent chat, the open answer's week of chat,
+ * was shown: the extractors' recent chat,
  * the unified answer's chat, players' group and HQ. No model call, $0.
  * Made-up people, simulated numbers.
  */
@@ -110,20 +110,6 @@ async function storeTwoLines(g: SimGroup): Promise<string> {
     expect(call, "the attendance extractor was called for Pete's OUT").toBeTruthy();
     expect(recentChatOf(call!.user)).toEqual([`${g.player("pete").name}: ${OTHER}`]);
     expect(JSON.stringify(calls())).not.toContain("4321");
-  });
-
-  test("deleted: a tagged question's open answer is shown the week without it", async ({ request, db }) => {
-    const g = await createGroup(request, db);
-    const bare = await storeTwoLines(g);
-    await change(request, revokeBy(g, "dan", bare));
-
-    const Q = "@Match Time what did Dan say earlier?";
-    const res = await g.postBatch([{ player: "pete", body: Q, tag: true, route: "question", facts: { ...EMPTY, topic: "other", kind: "other", answer: "Nothing I can see." } }]);
-    expect(res.results[0].reply).toBe("Nothing I can see.");
-    const answer = calls().find((c) => c.label === "open-answer" && c.user.trimEnd().endsWith(Q));
-    expect(answer, "the open answer was asked").toBeTruthy();
-    expect(answer!.user).toContain(OTHER);
-    expect(answer!.user).not.toContain("4321");
   });
 
   test("deleted: the unified answer is shown the chat without it", async ({ request, db }) => {
