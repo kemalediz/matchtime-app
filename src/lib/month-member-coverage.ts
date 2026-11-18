@@ -34,6 +34,7 @@ import {
 import { hasStarted, loadSignupMonth, lockMonth, type SignupMonth } from "./month-signup";
 import { amountDuePence } from "./squad-month-rules";
 import { freezePaidAmount } from "./month-close-rules";
+import { formatLondon } from "./london-time";
 
 export type SetCoverageError = CoverageError | "not-found" | "closed";
 
@@ -56,7 +57,46 @@ const MONEY_SELECT = {
   monthStart: true,
   sharePerGamePence: true,
   concessionPerGamePence: true,
+  activityId: true,
+  startedMidMonthAt: true,
+  listOpenedAt: true,
+  createdAt: true,
 } as const;
+
+type Client = Pick<typeof db, "attendance">;
+
+/** When the month was counted: a seed-list row counts from the first game
+ *  only while he has been on it since (review 2 of #611, item 1). */
+const countedAtOf = (m: { startedMidMonthAt: Date | null; listOpenedAt: Date | null; createdAt: Date }): Date => m.startedMidMonthAt ?? m.listOpenedAt ?? m.createdAt;
+
+/**
+ * The games of this month each player paid for as pay as you go before he
+ * became a regular (`before`: his join date), one per London day (review 2
+ * of #611, item 4): never charged again by raising him to the whole month.
+ */
+async function paidPaygGames(client: Client, p: { activityId: string; monthStart: Date; userIds: string[]; before: (userId: string) => Date }): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (p.userIds.length === 0) return out;
+  const rows = await client.attendance.findMany({
+    where: {
+      userId: { in: p.userIds },
+      status: "CONFIRMED",
+      OR: [{ paidAt: { not: null } }, { paidViaUserId: { not: null } }],
+      match: { activityId: p.activityId, isHistorical: false, status: { not: "CANCELLED" }, date: { gte: p.monthStart } },
+    },
+    select: { userId: true, match: { select: { date: true } } },
+  });
+  const days = new Map<string, Set<string>>();
+  for (const r of rows as Array<{ userId?: string; match: { date: Date } }>) {
+    const uid = r.userId ?? p.userIds[0];
+    if (r.match.date.getTime() >= p.before(uid).getTime()) continue;
+    const set = days.get(uid) ?? new Set<string>();
+    set.add(formatLondon(r.match.date, "yyyy-MM-dd"));
+    days.set(uid, set);
+  }
+  for (const [uid, set] of days) out.set(uid, set.size);
+  return out;
+}
 
 /** The month as coverage sees it: its games left, whole month and playable games. */
 function monthOf(m: SignupMonth, row: { gamesScheduled: number }, now: Date): MonthCoverage {
@@ -85,11 +125,13 @@ export async function loadCoverageView(monthId: string, now: Date = new Date()):
   // Each regular's credited called-off weeks: the same floor the write checks.
   const credits = await db.squadCredit.findMany({ where: { earnedMonthId: monthId, reason: "cancelled-week", voidedAt: null }, select: { userId: true } });
   const creditedOf = (userId: string) => credits.filter((c) => c.userId === userId).length;
+  const joinedOf = new Map(row.members.map((x) => [x.userId, x.joinedAt]));
+  const payg = await paidPaygGames(db, { activityId: row.activityId, monthStart: row.monthStart, userIds: row.members.map((x) => x.userId), before: (u) => joinedOf.get(u) ?? now });
   const members = new Map(
     row.members.map((x) => [
       x.userId,
       {
-        ...memberCoverageBounds(month, { joinedAt: x.joinedAt, source: x.source, kickoffs: m.kickoffs, now, creditedCancelled: creditedOf(x.userId) }),
+        ...memberCoverageBounds(month, { joinedAt: x.joinedAt, source: x.source, kickoffs: m.kickoffs, now, creditedCancelled: creditedOf(x.userId), countedAt: countedAtOf(row), paidPayg: payg.get(x.userId) ?? 0 }),
         gamesCovered: x.gamesCovered,
         creditedCancelled: creditedOf(x.userId),
       },
@@ -119,13 +161,14 @@ export async function checkMonthMemberCoverage(args: {
     db.squadMonth.findUnique({ where: { id: month.id }, select: MONEY_SELECT }),
     db.squadMonthMember.findUnique({
       where: { monthId_userId: { monthId: month.id, userId: args.userId } },
-      select: { kind: true, joinedAt: true, source: true, gamesCovered: true, gamesCommitted: true, creditsApplied: true },
+      select: { kind: true, leftAt: true, joinedAt: true, source: true, gamesCovered: true, gamesCommitted: true, creditsApplied: true },
     }),
   ]);
   if (!m) return { ok: false, error: "not-found" };
   if (m.status === "closed") return { ok: false, error: "closed" };
   const cover = monthOf(month, m, now);
-  const regular = row?.kind === "regular";
+  // A leaver back is checked as a regular joining now (review 2 of #611, item 1).
+  const regular = row?.kind === "regular" && row.leftAt === null;
   const creditedCancelled = regular
     ? await db.squadCredit.count({ where: { orgId: m.orgId, userId: args.userId, earnedMonthId: month.id, reason: "cancelled-week", voidedAt: null } })
     : 0;
@@ -135,6 +178,8 @@ export async function checkMonthMemberCoverage(args: {
     kickoffs: month.kickoffs,
     now,
     creditedCancelled,
+    countedAt: countedAtOf(m),
+    paidPayg: (await paidPaygGames(db, { activityId: m.activityId, monthStart: m.monthStart, userIds: [args.userId], before: () => (regular ? row!.joinedAt : now) })).get(args.userId) ?? 0,
   });
   const d = decideCoverage({
     target: args.coverage,
@@ -169,7 +214,7 @@ export async function setMonthMemberCoverage(args: {
   if (!month) return { ok: false, error: "not-found" };
   if (month.status === "closed") return { ok: false, error: "closed" };
 
-  const res = await db.$transaction(async (tx): Promise<SetCoverageResult & { reprice?: boolean; monthStart?: Date }> => {
+  const res = await db.$transaction(async (tx): Promise<SetCoverageResult & { monthStart?: Date }> => {
     await lockMonth(tx, month.id);
     const [m, row] = await Promise.all([
       tx.squadMonth.findUnique({ where: { id: month.id }, select: MONEY_SELECT }),
@@ -201,8 +246,9 @@ export async function setMonthMemberCoverage(args: {
     const creditedCancelled = row
       ? await tx.squadCredit.count({ where: { orgId: m.orgId, userId: args.userId, earnedMonthId: month.id, reason: "cancelled-week", voidedAt: null } })
       : 0;
+    const paidPayg = row ? ((await paidPaygGames(tx, { activityId: m.activityId, monthStart: m.monthStart, userIds: [args.userId], before: () => row.joinedAt })).get(args.userId) ?? 0) : 0;
     const bounds = row
-      ? memberCoverageBounds(cover, { joinedAt: row.joinedAt, source: row.source, kickoffs: month.kickoffs, now, creditedCancelled })
+      ? memberCoverageBounds(cover, { joinedAt: row.joinedAt, source: row.source, kickoffs: month.kickoffs, now, creditedCancelled, countedAt: countedAtOf(m), paidPayg })
       : { min: cover.gamesLeft, max: cover.whole };
     const d = decideCoverage({
       target: args.coverage,
@@ -234,20 +280,18 @@ export async function setMonthMemberCoverage(args: {
           : {}),
       },
     });
-    return { ok: true, changed: true, gamesCovered: d.gamesCovered, bounds, month: cover, creditedCancelled, reprice: priced && !paid, monthStart: m.monthStart };
+    // Not paid and priced: priced again HERE, in this transaction, so a
+    // failure rolls the change back (review 2 of #611, item 5).
+    if (priced && !paid) {
+      const { settleMemberAmountTx } = await import("./month-payment");
+      await settleMemberAmountTx(tx, month.id, args.userId, now);
+    }
+    return { ok: true, changed: true, gamesCovered: d.gamesCovered, bounds, month: cover, creditedCancelled, monthStart: m.monthStart };
   });
 
   if (!res.ok) return res;
-  const { reprice, monthStart, ...out } = res;
+  const { monthStart, ...out } = res;
   if (!out.changed) return out;
-  if (reprice) {
-    try {
-      const { settleMemberAmount } = await import("./month-payment");
-      await settleMemberAmount(month.id, args.userId, now);
-    } catch (err) {
-      console.error(`[month-member-coverage] pricing ${args.userId} again on ${month.id} failed (the organiser can set the price again):`, err);
-    }
-  }
   if (monthStart) {
     const { afterMemberGamesChanged } = await import("./month-member-games");
     await afterMemberGamesChanged({ orgId: month.orgId, monthId: month.id, monthStart, userId: args.userId, now });

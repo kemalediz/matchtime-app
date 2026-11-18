@@ -20,6 +20,8 @@ describe("help players in a monthly club's admin group", () => {
     expect(text).toContain(`*"@Match Time Dan covers the whole month"*`);
     expect(text).toContain("whole month, or just the games left?");
     expect(text).toContain("never below the games he has played since he joined, the weeks called off he was credited for, and the games left");
+    // Review 2 of #611, item 4.
+    expect(text).toContain("up to the whole month, less any games he already paid as pay as you go");
     expect(text).not.toMatch(DASH);
   });
 
@@ -28,6 +30,7 @@ describe("help players in a monthly club's admin group", () => {
     expect(text).toContain(`*"@Match Time Tom'u Kasım listesine ekle, ayın tamamını ödedi"*`);
     expect(text).toContain(`*"@Match Time Dan ayın tamamını kapsıyor"*`);
     expect(text).toContain("ayın tamamı mı, yoksa sadece kalan maçlar mı?");
+    expect(text).toContain("maç başı ödediği maçlar hariç ayın tamamına kadar");
     expect(text).not.toMatch(DASH);
   });
 });
@@ -89,6 +92,9 @@ describe("the organiser guide on the web", () => {
     // Round 3, item 5: true after a cancellation too.
     expect(section).not.toContain("always covers the whole month");
     expect(section).toContain("covers every game the month had when you started it, and a week called off since is credited back to him");
+    // Review 2 of #611, items 1 and 4.
+    expect(section).toContain("taken off and added back, he covers from when he is back");
+    expect(section).toContain("games he already paid as pay as you go are never counted again");
     // Round 2, item 7.
     expect(section).toContain("Correcting what a player covers before the month has a price changes nothing he owes.");
     expect(section).toContain("what he paid, or says he paid, stays as it was");

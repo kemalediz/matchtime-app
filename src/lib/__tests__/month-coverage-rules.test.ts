@@ -78,6 +78,24 @@ describe("a member's bounds: coverage only changes the future (review of #611, i
     expect(memberCoverageBounds(month(at(24)), { joinedAt: at(10), source: "seed-list", kickoffs: KICKOFFS, now: at(24) })).toEqual({ min: 5, max: 5 });
   });
 
+  it("REVIEW 2 OF #611, item 1: a seed-list player taken off and added back after the month was counted counts from when he is back, never from the first game", () => {
+    // Counted on 1 Nov; Dan on the seed list, off after game 1, back on the 17th (games 23 and 30 left).
+    const b = memberCoverageBounds(month(at(17)), { joinedAt: at(17), source: "seed-list", countedAt: at(1), kickoffs: KICKOFFS, now: at(17) });
+    expect(b).toEqual({ min: 2, max: 5 });
+    const row = { kind: "regular" as const, out: false, gamesCovered: 2, gamesCommitted: null, creditsApplied: 0 };
+    expect(decideCoverage({ target: "left", bounds: b, row })).toMatchObject({ ok: true, changed: false, gamesCovered: 2 });
+    // Still on the list since it was counted: from the first game, as before.
+    expect(memberCoverageBounds(month(at(17)), { joinedAt: at(1), source: "seed-list", countedAt: at(1), kickoffs: KICKOFFS, now: at(17) })).toEqual({ min: 5, max: 5 });
+  });
+
+  it("REVIEW 2 OF #611, item 4: games he already paid as pay as you go are not in the most he can cover", () => {
+    // Joined on the 17th; played and paid 2 and 9 November pay as you go.
+    const b = memberCoverageBounds(month(at(17)), { joinedAt: at(17), source: "admin", kickoffs: KICKOFFS, now: at(17), paidPayg: 2 });
+    expect(b).toEqual({ min: 2, max: 3 });
+    const row = { kind: "regular" as const, out: false, gamesCovered: 2, gamesCommitted: null, creditsApplied: 0 };
+    expect(decideCoverage({ target: "whole", bounds: b, row })).toMatchObject({ ok: true, changed: true, gamesCovered: 3 });
+  });
+
   it("somebody added today covers at least the games left (the add's 'games left')", () => {
     expect(memberCoverageBounds(month(at(24)), { joinedAt: at(24), source: "admin", kickoffs: KICKOFFS, now: at(24) })).toEqual({ min: 1, max: 5 });
   });

@@ -341,6 +341,18 @@ export async function priceMonth(args: {
 export async function settleMemberAmount(monthId: string, userId: string, now: Date = new Date()): Promise<void> {
   await db.$transaction(async (tx) => {
     await lockMonth(tx, monthId);
+    await settleMemberAmountTx(tx, monthId, userId, now);
+  });
+}
+
+/**
+ * The same, inside a transaction that already holds the month's lock
+ * (review 2 of #611, item 5: a coverage change is priced in its own
+ * transaction, so a failure rolls the change back instead of leaving it
+ * unpriced). Takes the club's credits lock itself.
+ */
+export async function settleMemberAmountTx(tx: Tx, monthId: string, userId: string, now: Date = new Date()): Promise<void> {
+  {
     const month = await tx.squadMonth.findUnique({
       where: { id: monthId },
       select: { orgId: true, sharePerGamePence: true, concessionPerGamePence: true, pricedAt: true },
@@ -374,7 +386,7 @@ export async function settleMemberAmount(monthId: string, userId: string, now: D
       where: { id: row.id },
       data: { creditsApplied: Math.max(0, Math.min(row.gamesCovered, row.creditsApplied - released.count)), amountDuePence: null },
     });
-  });
+  }
 }
 
 // ── "Says paid" and "confirmed" (plan 4.3, D3) ─────────────────────────

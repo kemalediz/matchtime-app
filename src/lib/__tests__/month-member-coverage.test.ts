@@ -17,6 +17,8 @@ const m = vi.hoisted(() => ({
   loadSignupMonth: vi.fn(),
   lockMonth: vi.fn(async () => undefined),
   settleMemberAmount: vi.fn(async () => undefined),
+  settleMemberAmountTx: vi.fn(async () => undefined),
+  attendanceFind: vi.fn(async (): Promise<Array<{ match: { date: Date } }>> => []),
   afterMemberGamesChanged: vi.fn(async () => undefined),
   creditFind: vi.fn(async (): Promise<Array<{ userId: string }>> => []),
   creditCount: vi.fn(async () => 0),
@@ -27,11 +29,12 @@ vi.mock("@/lib/db", () => {
     squadMonth: { findUnique: (...a: unknown[]) => m.monthFind(...a) },
     squadMonthMember: { findUnique: (...a: unknown[]) => m.rowFind(...a), update: (...a: unknown[]) => m.rowUpdate(...(a as [])) },
     squadCredit: { findMany: (...a: unknown[]) => m.creditFind(...(a as [])), count: (...a: unknown[]) => m.creditCount(...(a as [])) },
+    attendance: { findMany: (...a: unknown[]) => m.attendanceFind(...(a as [])) },
   };
   return { db: { ...client, $transaction: (fn: (tx: unknown) => unknown) => fn(client) } };
 });
 vi.mock("@/lib/month-signup", () => ({ loadSignupMonth: m.loadSignupMonth, lockMonth: m.lockMonth, hasStarted: () => true }));
-vi.mock("@/lib/month-payment", () => ({ settleMemberAmount: m.settleMemberAmount }));
+vi.mock("@/lib/month-payment", () => ({ settleMemberAmount: m.settleMemberAmount, settleMemberAmountTx: m.settleMemberAmountTx }));
 vi.mock("@/lib/month-member-games", () => ({ afterMemberGamesChanged: m.afterMemberGamesChanged }));
 
 import { checkMonthMemberCoverage, loadCoverageView, setMonthMemberCoverage } from "@/lib/month-member-coverage";
@@ -75,6 +78,7 @@ beforeEach(() => {
   m.rowFind.mockResolvedValue(ROW);
   m.creditFind.mockResolvedValue([]);
   m.creditCount.mockResolvedValue(0);
+  m.attendanceFind.mockResolvedValue([]);
 });
 
 const update = () => (m.rowUpdate.mock.calls[0] as unknown as [{ where: unknown; data: Record<string, unknown> }])[0];
@@ -108,12 +112,52 @@ describe("the bounds (review item 1: coverage only changes the future)", () => {
   });
 });
 
+describe("review 2 of #611", () => {
+  const AT17 = new Date("2026-11-17T12:00:00Z");
+  const set17 = (coverage: "whole" | "left" | number) => setMonthMemberCoverage({ squadMonthId: "mo1", userId: "u1", coverage, now: AT17 });
+  const counted = { startedMidMonthAt: null, listOpenedAt: new Date("2026-10-27T12:00:00Z"), createdAt: new Date("2026-10-27T12:00:00Z") };
+
+  it("item 1: Dan, on the seed list, off after game 1 and back on the 17th: 'the games left' is 2 games (£10 at £5), never the whole month", async () => {
+    m.monthFind.mockResolvedValue(money({ sharePerGamePence: 500, ...counted }));
+    m.rowFind.mockResolvedValue({ ...ROW, source: "seed-list", joinedAt: AT17, gamesCovered: 5, amountDuePence: 2500 });
+    expect(await set17("left")).toMatchObject({ ok: true, changed: true, gamesCovered: 2, bounds: { min: 2, max: 5 } });
+    expect(update().data).toMatchObject({ gamesCovered: 2 });
+  });
+
+  it("item 1: the add's check for an out seed-list row is as for somebody joining now", async () => {
+    m.monthFind.mockResolvedValue(money({ sharePerGamePence: 500, ...counted }));
+    m.rowFind.mockResolvedValue({ ...ROW, source: "seed-list", joinedAt: new Date("2026-10-27T12:00:00Z"), leftAt: new Date("2026-11-03T12:00:00Z"), gamesCovered: 5 });
+    expect(await checkMonthMemberCoverage({ squadMonthId: "mo1", userId: "u1", coverage: "left", now: AT17 })).toEqual({ ok: true });
+  });
+
+  it("item 4: raised to the whole month, the games he paid as pay as you go are not charged again", async () => {
+    m.rowFind.mockResolvedValue({ ...ROW, joinedAt: AT17, gamesCovered: 2, amountDuePence: 1500 });
+    m.attendanceFind.mockResolvedValue([{ match: { date: KICKOFFS[0] } }, { match: { date: KICKOFFS[1] } }]);
+    expect(await set17("whole")).toMatchObject({ ok: true, changed: true, gamesCovered: 3, bounds: { min: 2, max: 3 } });
+  });
+
+  it("item 5: an unpaid change is priced again INSIDE the coverage's transaction, and a failure is not swallowed", async () => {
+    await set("whole");
+    expect(m.settleMemberAmountTx).toHaveBeenCalledWith(expect.anything(), "mo1", "u1", NOW);
+    expect(m.settleMemberAmount).not.toHaveBeenCalled();
+    vi.clearAllMocks();
+    m.loadSignupMonth.mockResolvedValue(MONTH);
+    m.monthFind.mockResolvedValue(money());
+    m.rowFind.mockResolvedValue(ROW);
+    m.creditCount.mockResolvedValue(0);
+    m.attendanceFind.mockResolvedValue([]);
+    m.settleMemberAmountTx.mockRejectedValueOnce(new Error("pricing failed"));
+    await expect(set("whole")).rejects.toThrow("pricing failed");
+    expect(m.afterMemberGamesChanged).not.toHaveBeenCalled();
+  });
+});
+
 describe("the money", () => {
-  it("raises an unpaid late joiner to the whole month; what he owes is priced again by settleMemberAmount", async () => {
+  it("raises an unpaid late joiner to the whole month; what he owes is priced again (inside the transaction)", async () => {
     expect(await set("whole")).toMatchObject({ ok: true, changed: true, gamesCovered: 5, bounds: { min: 4, max: 5 } });
     expect(m.lockMonth).toHaveBeenCalled();
     expect(update().data).toEqual({ gamesCovered: 5, gamesCommitted: null });
-    expect(m.settleMemberAmount).toHaveBeenCalledWith("mo1", "u1", NOW);
+    expect(m.settleMemberAmountTx).toHaveBeenCalledWith(expect.anything(), "mo1", "u1", NOW);
     expect(m.afterMemberGamesChanged).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org1", monthId: "mo1", userId: "u1" }));
   });
 
