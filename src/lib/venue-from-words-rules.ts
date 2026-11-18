@@ -18,7 +18,7 @@
  */
 import { normaliseVenueText } from "./venue-location-rules";
 import type { VenueSuggestion } from "./venue-suggest-rules";
-import { CONFIRM_WINDOW_MS, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
+import { questionInPlaceOfAnswer, type QuotedMessage } from "./admin-group-confirm-rules";
 import type { HqLogRow } from "./admin-group-log";
 
 /**
@@ -83,16 +83,5 @@ export function venueListAnswered(p: {
   now: Date;
   windowMs?: number;
 }): HqLogRow | null {
-  const windowMs = p.windowMs ?? CONFIRM_WINDOW_MS;
-  const asked = [...p.log].reverse().find((r) => r.fromMatchTime && parseVenuePickRef(r.askRef));
-  if (!asked) return null;
-  if (p.quoted && (p.quoted.text || p.quoted.fromMatchTime || p.quoted.messageId)) {
-    const { row } = quotedLogRow(p.quoted, p.log);
-    return row && row.waMessageId === asked.waMessageId ? asked : null;
-  }
-  const questions = p.log.filter((r) => r.fromMatchTime && r.askRef);
-  if (questions[questions.length - 1]?.waMessageId !== asked.waMessageId) return null;
-  const fresh = p.now.getTime() - asked.createdAt.getTime() <= windowMs;
-  const quiet = !p.log.some((r) => !r.fromMatchTime && r.createdAt.getTime() > asked.createdAt.getTime());
-  return fresh && quiet ? asked : null;
+  return questionInPlaceOfAnswer({ ...p, isAsk: (ref) => !!parseVenuePickRef(ref) });
 }

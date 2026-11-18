@@ -34,6 +34,8 @@
  */
 import { db } from "./db";
 import { t } from "./i18n/t";
+import { monthSetupCopy } from "./i18n/month-setup";
+import { normaliseAdminChannelMode } from "./admin-channel-rules";
 import { monthNameLabel } from "./i18n/dates";
 import { appUrl } from "./app-url";
 import { formatPhoneForDisplay } from "./phone";
@@ -42,6 +44,7 @@ import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import { loadClubQuietHours } from "./club-quiet-hours";
 import { nameKey } from "./squad-month-rules";
+import { coverageForAdded, shownCoverage, type CoverageRead } from "./month-coverage-rules";
 import { numberNameless } from "./month-seed-match-rules";
 import type { MonthlyReading } from "./monthly-reader-prompt";
 import type { PipelineModel } from "./pipeline/llm";
@@ -73,13 +76,26 @@ export interface JoinResult {
   changed: boolean;
   outcome: "regular" | "waiting" | "payg" | "out" | null;
   gamesLeft: number;
+  /**
+   * A regular, as his row is STORED after the join (review of #611, item 4:
+   * a reply never says what was asked for, only what was written): the
+   * games he covers, whether that is the whole month, the month's playable
+   * games, and `leftOnly`: a month under way, he covers fewer than the
+   * whole month, and nobody said which (the reply says how to change it).
+   */
+  covered?: { games: number; whole: boolean; playable: number; leftOnly: boolean };
+  /** What he covers was asked for and refused (round 4, item 5): the reply
+   *  says so. Nothing of it, nor his says-paid claim, was written. */
+  coverageRefused?: import("./month-member-coverage").SetCoverageError;
 }
 
 /**
  * The person joins the month as the organiser put him on it, exactly as
  * /admin/months "Add a player, Regular" does (or PAYG when the line says),
- * then the line's "says paid" and "4 only". `weekDay`: the day of the
- * game a plain PAYG line is for.
+ * then what he covers (the line's `coverage`, through the coverage
+ * editor's own write and bounds, for a new row and a returning one alike),
+ * the line's "says paid" and "4 only". `weekDay`: the day of the game a
+ * plain PAYG line is for.
  */
 export async function joinMonthAsOrganiser(p: {
   orgId: string;
@@ -114,11 +130,40 @@ export async function joinMonthAsOrganiser(p: {
   });
   if (!res.ok) return { ok: false, changed: false, outcome: null, gamesLeft };
   let changed = res.changed || !!res.gamesStored;
+  let covered: JoinResult["covered"];
+  let refused: JoinResult["coverageRefused"];
   if (res.outcome === "regular") {
-    if (p.line.paid) {
+    // What he covers, when the organiser said, CHECKED first (round 4, item
+    // 2): a refused coverage records neither it nor the claim, and the
+    // reply says so (item 5).
+    const wantCover = !!p.line.coverage && !p.line.payg;
+    const mc = wantCover ? await import("./month-member-coverage") : null;
+    const check = mc && p.line.coverage ? await mc.checkMonthMemberCoverage({ squadMonthId: p.monthId, userId: p.userId, coverage: p.line.coverage, now: p.now }) : null;
+    if (check && !check.ok) refused = check.error;
+    // Then the claim, then the coverage (review round 2, item 2): priced as
+    // one who says he paid, as a seeded says-paid regular is, a called-off
+    // week's credit kept for later, by every door; and his words say the
+    // claim is for that coverage (`claimCovers`), so it is not written down
+    // at the old amount first.
+    if (p.line.paid && !refused) {
       // D3: a claim, never a confirmation; the organiser said it.
       const { claimMonthPaid } = await import("./month-payment");
       if (await claimMonthPaid({ monthId: p.monthId, userId: p.userId, source: "organiser", amountPence: p.line.paidPence, now: p.now })) changed = true;
+    }
+    if (mc && p.line.coverage && !refused) {
+      const r = await mc.setMonthMemberCoverage({ squadMonthId: p.monthId, userId: p.userId, coverage: p.line.coverage, claimCovers: p.line.paid, now: p.now });
+      if (r.ok && r.changed) changed = true;
+      if (!r.ok) refused = r.error;
+    }
+    // His "4 only" went with the join (`applySignup`, PR #610), before the claim.
+    // The row as stored, for the reply.
+    const { loadCoverageView } = await import("./month-member-coverage");
+    const view = await loadCoverageView(p.monthId, p.now).catch(() => null);
+    const mine = view?.members.get(p.userId);
+    if (view && mine) {
+      // As the organiser reads it: in playable games (round 3, item 5).
+      const shown = shownCoverage(mine, view.month);
+      covered = { games: shown.games, whole: shown.wholeMonth, playable: view.month.playable, leftOnly: view.started && !shown.wholeMonth && !p.line.coverage };
     }
   }
   // As the months page does after an organiser's change: what a returning
@@ -131,7 +176,49 @@ export async function joinMonthAsOrganiser(p: {
       console.error(`[month-newcomers] working out what a leaver of ${p.monthId} is owed failed (the hourly sweep retries):`, err);
     }
   }
-  return { ok: true, changed, outcome: res.outcome, gamesLeft };
+  return { ok: true, changed, outcome: res.outcome, gamesLeft, ...(covered ? { covered } : {}), ...(refused ? { coverageRefused: refused } : {}) };
+}
+
+/**
+ * The one line every door with no coverage question says (review of #611,
+ * item 9: a re-posted list, the players' group's tagged add, a DM add, the
+ * "who is this?" answer): these regulars were added for the games left,
+ * and how to change it.
+ */
+export function gamesLeftNote(lang: string | null, names: string[], month: string, hasOrganisersGroup: boolean): string {
+  return monthSetupCopy(lang).added_left_note({
+    names: names.join(", "),
+    count: names.length,
+    first: names[0] ?? "",
+    month,
+    link: appUrl("/admin/months"),
+    // Round 2, item 5: the group is named only for a club that has one.
+    group: hasOrganisersGroup,
+  });
+}
+
+/** The club talks to its organisers in an organisers' group (HQ). */
+export function hasOrganisersGroup(org: { adminGroupId?: string | null; adminChannelMode?: string | null } | null | undefined): boolean {
+  return !!org?.adminGroupId && normaliseAdminChannelMode(org.adminChannelMode) === "admin-group";
+}
+
+/**
+ * ONE DM to the organiser (review round 2, items 3 and 4): when he is also
+ * asked "who is this?", the games-left note rides at the top of that
+ * question; otherwise the note goes on its own. `ask` sends the question
+ * with the prefix given and says whether it went.
+ */
+export async function tellOrganiserOnce(p: {
+  note: string | null;
+  ask: ((prefix: string | null) => Promise<boolean>) | null;
+  send: (text: string) => Promise<void>;
+}): Promise<"asked" | "note" | "none"> {
+  if (p.ask && (await p.ask(p.note))) return "asked";
+  if (p.note) {
+    await p.send(p.note);
+    return "note";
+  }
+  return "none";
 }
 
 /** A new player with no phone, named as the organiser wrote him. */
@@ -315,12 +402,14 @@ async function reply(input: Parameters<typeof handleNewcomerDmReply>[0]): Promis
   );
   if (resolutions.length === 0) return null;
 
-  const org = await db.organisation.findUnique({ where: { id: q.orgId }, select: { language: true } });
+  const org = await db.organisation.findUnique({ where: { id: q.orgId }, select: { language: true, adminGroupId: true, adminChannelMode: true } });
   const lang = org?.language ?? null;
   const s = t(lang);
   const phoneOf = new Map(memberships.map((m) => [m.user.id, m.user.phoneNumber]));
   const { nameMemberFromList } = await import("./month-seed-match");
   const done: string[] = [];
+  // Joined a month under way for the games left (review of #611, item 9).
+  const leftOnly: string[] = [];
   const failed: string[] = [];
   const settled = new Set<string>();
   for (const r of resolutions) {
@@ -345,6 +434,7 @@ async function reply(input: Parameters<typeof handleNewcomerDmReply>[0]): Promis
           failed.push(r.name);
           continue;
         }
+        if (j.covered?.leftOnly) leftOnly.push(r.name);
       }
       const to = r.kind === "merge" ? r.toUserId : r.userId;
       await nameMemberFromList(q.orgId, to, r.name);
@@ -359,7 +449,8 @@ async function reply(input: Parameters<typeof handleNewcomerDmReply>[0]): Promis
   // The names still open are asked again in the same DM, renumbered.
   const left = q.names.filter((n) => !settled.has(n.ref));
   const again = left.length > 0 ? await questionText(q.orgId, lang, q.monthId, left) : null;
-  const text = [s.mwk_dm_newcomers_done({ done, failed, link: appUrl("/admin/players") }), ...(again ? ["", again.text] : [])].join("\n").trim();
+  const leftLine = leftOnly.length > 0 ? [gamesLeftNote(lang, leftOnly, await monthLabelOf(q.monthId, lang), hasOrganisersGroup(org))] : [];
+  const text = [s.mwk_dm_newcomers_done({ done, failed, link: appUrl("/admin/players") }), ...leftLine, ...(again ? ["", again.text] : [])].join("\n").trim();
   const next: NewcomerQuestion | null = again ? { ...q, dm: text, names: left, nameless: again.nameless } : null;
   await db.sentNotification.update({
     where: { id: row.id },
@@ -371,7 +462,18 @@ async function reply(input: Parameters<typeof handleNewcomerDmReply>[0]): Promis
 
 // ── A tagged request: "@Match Time add Tom to the November list" ──────
 
-export type MonthAddOutcome = "month-add-done" | "month-add-asked" | "month-add-already" | "month-add-unclear" | "month-add-no-month" | "month-add-not-organiser" | "month-add-failed";
+export type MonthAddOutcome =
+  | "month-add-done"
+  | "month-add-asked"
+  | "month-add-already"
+  | "month-add-unclear"
+  | "month-add-no-month"
+  | "month-add-not-organiser"
+  | "month-add-failed"
+  // Already on the month, and the words said what he covers (2026-11-16).
+  | "month-coverage-done"
+  | "month-coverage-same"
+  | "month-coverage-failed";
 
 export interface MonthAddResult {
   outcome: MonthAddOutcome;
@@ -379,6 +481,13 @@ export interface MonthAddResult {
    *  only the ✅ (`changed`); the organiser's own DM carries any question. */
   replyText: string | null;
   changed: boolean;
+  /** `replyText` ends with "whole month, or just the games left?" about
+   *  this regular (2026-11-16): the caller logs it as MatchTime's question
+   *  (`askCoverageInHq`) so the answer is read against it. */
+  coverageAsk?: { monthId: string; userId: string };
+  /** The reply ends with the "added for the games left" line (a door with
+   *  no coverage question): the players' group DMs it to the organiser. */
+  gamesLeftNote?: boolean;
 }
 
 /**
@@ -405,9 +514,18 @@ export async function applyMonthAdd(p: {
   text?: string;
   /** Tests: who-is-who. Absent: `personPickerFor`. */
   identify?: import("./pipeline/who-is-who").PersonPicker;
+  /**
+   * A month already under way (2026-11-16, Kemal): whether the words say
+   * he covers the whole month or the games left, as the admin extractor
+   * reads them (`month_coverage`'s `coverage`); null when they say
+   * neither, and the reply then asks. Called only for a regular put on a
+   * month that has started. Absent (the players' group, a DM): the games
+   * left, as before.
+   */
+  readCoverage?: () => Promise<CoverageRead>;
 }): Promise<MonthAddResult> {
   const res = await addToMonth(p);
-  if (p.tellOrganiser && ["month-add-unclear", "month-add-no-month", "month-add-failed"].includes(res.outcome) && res.replyText) {
+  if (p.tellOrganiser && (["month-add-unclear", "month-add-no-month", "month-add-failed"].includes(res.outcome) || res.gamesLeftNote) && res.replyText) {
     try {
       const u = await db.user.findUnique({ where: { id: p.senderUserId }, select: { phoneNumber: true } });
       if (u?.phoneNumber) await dm(p.orgId, u.phoneNumber, res.replyText, p.now ?? new Date());
@@ -421,7 +539,7 @@ export async function applyMonthAdd(p: {
 async function addToMonth(p: Parameters<typeof applyMonthAdd>[0]): Promise<MonthAddResult> {
   const now = p.now ?? new Date();
   const { reading } = p;
-  const org = await db.organisation.findUnique({ where: { id: p.orgId }, select: { language: true } });
+  const org = await db.organisation.findUnique({ where: { id: p.orgId }, select: { language: true, adminGroupId: true, adminChannelMode: true } });
   const lang = org?.language ?? null;
   const s = t(lang);
   // The month's name only (any year names it the same).
@@ -490,8 +608,47 @@ async function addToMonth(p: Parameters<typeof applyMonthAdd>[0]): Promise<Month
     const k = month.kickoffs.find((x) => x.getTime() > now.getTime());
     return k ? Number(formatLondon(k, "d")) : null;
   })();
+  // A REGULAR PUT ON A MONTH ALREADY UNDER WAY (2026-11-16, Kemal): he
+  // covers the whole month (paid it, from the same list as the others) or
+  // the games left, as his words say (the admin extractor's read, never
+  // code's). Neither said: he joins for the games left and the reply asks.
+  // Doors with no reader (a DM, the players' group) say how to change it.
+  const view =
+    p.readCoverage && !line.payg && c.kind !== "unclear" ? await (await import("./month-member-coverage")).loadCoverageView(month.id, now) : null;
+  // Only when the choice means anything: fewer games left than the month's
+  // playable games (round 4, item 6: with a week called off, the games left
+  // can be every game still on, and then there is nothing to choose).
+  const choose = !!view?.started && view.month.gamesLeft < view.month.playable;
+  const read = choose ? await p.readCoverage!().catch((): CoverageRead => ({ coverage: null, refs: [] })) : null;
+  // Only coverage words about HIM (round 4, item 3): with somebody else
+  // named too, none is applied to him, and the reply says the others were
+  // left alone (they are changed by a message of their own).
+  const memberName = roster.find((m) => m.userId === memberId)?.name ?? "";
+  // The same quoted words of the one message (two reads of it may differ
+  // in case only). Not a match of names: anything else is "somebody else",
+  // and he gets no coverage from them, the safe side.
+  const sameQuote = (a: string, b: string) => refKey(a).toLocaleLowerCase() === refKey(b).toLocaleLowerCase();
+  const forHim = read ? coverageForAdded(read, [reading.person.name, memberName], sameQuote) : { coverage: null, others: [] };
+  const coverage = forHim.coverage;
+  const othersLine = forHim.others.length > 0 ? `\n${monthSetupCopy(lang).hq_cover_others({ names: forHim.others.join(", "), first: forHim.others[0] })}` : "";
+  if (coverage) line.coverage = coverage;
 
-  if (c.kind === "on-month") return { outcome: "month-add-already", replyText: s.mwk_month_add_already({ name, month: label }), changed: false };
+  if (c.kind === "on-month") {
+    // Already on it, and the words say what he covers: that is the change.
+    // Never a payment (round 4, option a): "he's paid" for somebody already
+    // on the month records nothing, as before this feature; what he paid,
+    // or says he paid, is kept and the reply says what that leaves.
+    if (coverage) {
+      const { applyCoverage } = await import("./month-coverage-words");
+      const r = await applyCoverage({ orgId: p.orgId, lang, monthId: month.id, userId: c.userId, name, monthDate: month.firstKickoff, coverage, now });
+      return {
+        outcome: r.outcome === "month-coverage-done" ? "month-coverage-done" : r.outcome === "month-coverage-same" ? "month-coverage-same" : "month-coverage-failed",
+        replyText: `${r.replyText}${othersLine}`,
+        changed: r.outcome === "month-coverage-done",
+      };
+    }
+    return { outcome: "month-add-already", replyText: `${s.mwk_month_add_already({ name, month: label })}${othersLine}`, changed: false };
+  }
   if (c.kind === "unclear") return { outcome: "month-add-unclear", replyText: s.mwk_month_add_unclear({ name: name || "?" }), changed: false };
   if (c.kind === "ask") {
     const asked = await askWhoTheyAre({ orgId: p.orgId, monthId: month.id, organiserUserId: p.senderUserId, sourceRef: p.sourceRef, names: [{ name, userId: null, line }], now });
@@ -502,22 +659,45 @@ async function addToMonth(p: Parameters<typeof applyMonthAdd>[0]): Promise<Month
   if (!userId) return { outcome: "month-add-failed", replyText: s.mwk_month_add_unclear({ name }), changed: false };
   const j = await joinMonthAsOrganiser({ orgId: p.orgId, monthId: month.id, userId, line, organiserUserId: p.senderUserId, weekDay: nextDay, words: p.text ?? null, now });
   if (!j.ok) return { outcome: "month-add-failed", replyText: s.mwk_month_add_unclear({ name }), changed: false };
-  const done = s.mwk_month_add_done({ name, month: label, games: j.gamesLeft, paid: line.paid, payg: line.payg });
+  // The reply says what his row says, never what was asked for (review item 4).
+  const whole = j.outcome === "regular" && !!j.covered?.whole;
+  const games = whole ? j.covered!.playable : (j.covered?.games ?? j.gamesLeft);
+  // The words did not say, in HQ: ONE question, at the end of the reply,
+  // logged by the caller. Elsewhere: one line saying how to change it.
+  const ask = choose && !coverage && j.outcome === "regular" && !whole;
+  const note = !p.readCoverage && j.covered?.leftOnly ? `\n${gamesLeftNote(lang, [name], label, hasOrganisersGroup(org))}` : "";
+  // A coverage his words asked for and that was refused is said so (round
+  // 4, item 5): nothing of it, nor the claim, was written.
+  const refusedLine = j.coverageRefused ? `\n${monthSetupCopy(lang).hq_cover_failed({ key: j.coverageRefused, name, month: label })}` : "";
+  const done = `${s.mwk_month_add_done({ name, month: label, games, paid: line.paid && !j.coverageRefused, payg: line.payg, whole })}${note}${refusedLine}${othersLine}`;
   let replyText: string | null = done;
+  // The players' group DMs the organiser the note (`tellOrganiser`); with a
+  // "who is this?" DM too, the note rides in it: ONE DM (round 2, item 3).
+  let noteFolded = false;
   if (c.kind === "new") {
+    const foldNote = !p.viaDm && !!p.tellOrganiser && !!note;
     const asked = await askWhoTheyAre({
       orgId: p.orgId,
       monthId: month.id,
       organiserUserId: p.senderUserId,
       sourceRef: p.sourceRef,
       names: [{ name, userId, line }],
-      prefix: p.viaDm ? done : null,
+      prefix: p.viaDm ? done : foldNote ? note.trim() : null,
       now,
     });
     if (asked) replyText = p.viaDm ? null : `${done}\n${s.mwk_month_add_asked({ name })}`;
+    noteFolded = asked && foldNote;
   }
-  console.log(`[month-newcomers] ${p.sourceRef}: ${c.kind} ${name} (${userId}) on ${month.id} by ${p.senderUserId}: ${j.outcome}`);
-  return { outcome: "month-add-done", replyText, changed: true };
+  // The words did not say: ONE question, at the end of the reply. The
+  // caller logs it as MatchTime's, so the answer is read against it.
+  let coverageAsk: MonthAddResult["coverageAsk"];
+  if (ask && view && replyText !== null) {
+    const { coverageQuestionText } = await import("./month-coverage-words");
+    replyText = `${replyText}\n\n${coverageQuestionText({ lang, name, monthDate: month.firstKickoff, month: view.month })}`;
+    coverageAsk = { monthId: month.id, userId };
+  }
+  console.log(`[month-newcomers] ${p.sourceRef}: ${c.kind} ${name} (${userId}) on ${month.id} by ${p.senderUserId}: ${j.outcome}${coverage ? `, covers ${coverage}` : coverageAsk ? ", asked what he covers" : ""}`);
+  return { outcome: "month-add-done", replyText, changed: true, ...(coverageAsk ? { coverageAsk } : {}), ...(note && !noteFolded ? { gamesLeftNote: true } : {}) };
 }
 
 // ── The same request by DM ────────────────────────────────────────────

@@ -1236,7 +1236,7 @@ export const tr: Strings = {
   onbHelpDmTaggedOrganiser: `📨 Biri oynayabilirler mi diye birkaç kişiyi mi etiketledi? O mesaja *@Match Time onlara özelden yaz* diye yanıt verin ya da *@Match Time yukarıdakilere özelden yaz* deyin, her birine sıradaki maçın davetini özelden gönderirim. Yalnızca tanıdığım numaralara, bir seferde en fazla 10 kişiye yazarım.`,
   onbHelpMonthListOrganiser:
     `📋 *Aylık kadro:* ayın listesini her zamanki gibi grupta paylaş, okuduğumu sana DM ile gönderirim. Listede tanımadığım bir isim varsa, adını bilmediğim üyeleri telefonlarıyla gösteririm; kim kimdir kendi sözlerinle söyle (örneğin _"Craig 3 numara"_) ya da aylar sayfasında seç. Evet yazınca ay başlar.\n\n` +
-    `*Ay ortasında düzenli oyuncu eklemek:* listeyi yeni isimle yeniden paylaş ya da beni etiketle (örneğin _"@Match Time Tom'u Kasım listesine ekle, ödedi"_). Kalan maçlar için aya ve bir sonraki maçın kadrosuna girer. İsmi tanımıyorsam, hangisi olduğunu söylemen için adını bilmediğim üyeleri sana DM ile gönderirim.`,
+    `*Ay ortasında düzenli oyuncu eklemek:* listeyi yeni isimle yeniden paylaş ya da beni etiketle (örneğin _"@Match Time Tom'u Kasım listesine ekle, ödedi"_). Aya ve bir sonraki maçın kadrosuna girer. Yönetici grubunda ayın tamamı (ödediyse) ya da kalan maçlar için mi olduğunu söyle, söylemezsen sorarım; sonra aylar sayfasından değiştirebilirsin. İsmi tanımıyorsam, hangisi olduğunu söylemen için adını bilmediğim üyeleri sana DM ile gönderirim.`,
 
   // Yönetici grubunda her şey kendi cümlelerinizle sorulur (paylaşılan
   // yönlendiricinin `help` rotası). Yalnızca konular, her biri tek satır
@@ -1309,7 +1309,9 @@ export const tr: Strings = {
   hq_help_players_monthly: (p) =>
     [
       `👥 *Oyuncular aylık kadronuza nasıl katılır*:`,
-      `📋 *"@Match Time Tom'u Kasım listesine ekle, ödedi"*: ayın kalan maçları için düzenli oyuncu olur ve bir sonraki maçın kadrosuna girer.`,
+      `📋 *"@Match Time Tom'u Kasım listesine ekle, ödedi"*: ayın düzenli oyuncusu olur ve bir sonraki maçın kadrosuna girer. Ay başladıysa ayın tamamını mı yoksa kalan maçları mı kapsadığını söyle, örneğin *"@Match Time Tom'u Kasım listesine ekle, ayın tamamını ödedi"*. Söylemezsen sorarım: ayın tamamı mı, yoksa sadece kalan maçlar mı?`,
+      `🧾 *"@Match Time Dan ayın tamamını kapsıyor"*, *"@Match Time Dan sadece kalan maçları ödüyor"*: düzenli bir oyuncunun kapsadığını ayın tamamına kadar değiştirir, katıldığından beri oynadığı maçlar, kredi aldığı iptal haftaları ve kalan maçların altına inmez; borcu da buna göre değişir. Ya da aylar sayfasından.`,
+      `💷 Ayın fiyatı belirlenmeden önce bir oyuncunun kapsadığını düzeltmek borcunu değiştirmez. Fiyat belirlendikten sonra ödediği ya da ödediğini söylediği tutar aynı kalır: kapsamını artırırsan aylar sayfası farkı borç olarak, azaltırsan geri verilecek para olarak gösterir. Cevabımda da bunu söylerim. Kapsamı değiştirmek onu ödemiş olarak işaretlemez.`,
       ...(p.attendance
         ? p.openSquad
           ? [
@@ -3484,7 +3486,9 @@ export const tr: Strings = {
   mwk_month_add_done: (p) =>
     p.payg
       ? `✅ ${p.name}, ${p.month} listesine maç başı ödeyen olarak eklendi.`
-      : `✅ ${p.name}, kalan ${p.games} maç için ${p.month} listesine düzenli oyuncu olarak eklendi${p.paid ? ", ödedi olarak işaretlendi" : ""}.`,
+      : p.whole
+        ? `✅ ${p.name}, ayın tamamı (${p.games} maç) için ${p.month} listesine düzenli oyuncu olarak eklendi${p.paid ? ", ödedi olarak işaretlendi" : ""}.`
+        : `✅ ${p.name}, kalan ${p.games} maç için ${p.month} listesine düzenli oyuncu olarak eklendi${p.paid ? ", ödedi olarak işaretlendi" : ""}.`,
   mwk_month_add_waiting: (p) =>
     `${p.name} kim, anlayamadım, bu yüzden henüz ${p.month} listesinde değil. Hangi üye olduğunu söylemen için sana özelden mesaj attım.`,
   mwk_month_add_asked: (p) => `${p.name} henüz adını bilmediğim bir üyeyse, hangisi olduğunu söylemen için sana özelden mesaj attım.`,

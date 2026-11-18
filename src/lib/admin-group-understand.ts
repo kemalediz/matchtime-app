@@ -172,6 +172,8 @@ import { adminVenueCopy } from "./i18n/admin-venue";
 import { dmNamedPeople } from "./named-invite";
 import { namedInviteReply } from "./named-invite-rules";
 import { applyMoveGameWords, loadGamesToCome } from "./game-move-words";
+import { coverageAnswerTarget, type CoverageRead } from "./month-coverage-rules";
+import { answerCoverageQuestion, applyMonthCoverageWords, askCoverageInHq, askWhichCoveragePlayer } from "./month-coverage-words";
 import { gamesToComeLines, moveGameWordsOf, type GameToCome } from "./game-move-rules";
 
 /** MatchTime's "which game?" in HQ, recorded so the answer is read with it. */
@@ -517,8 +519,30 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       const reading = await readHqMonthly({ orgId: org.id, senderUserId: input.senderUserId, text: input.text, now });
       if (reading?.kind === "add") {
         const { applyMonthAdd } = await import("./month-newcomers");
-        const r = await applyMonthAdd({ orgId: org.id, reading, senderUserId: input.senderUserId, sourceRef: messageId, now, text: input.text });
-        console.log(`[admin-group] ${messageId}: somebody put on the month: ${r.outcome}`);
+        // A month already under way (2026-11-16, Kemal): whether he covers
+        // the whole month or the games left is the admin extractor's read
+        // of the same words (`month_coverage`), asked only then.
+        // Who the coverage words name too (round 4, item 3): the add applies
+        // them to the person added only when they name nobody else.
+        const readCoverage = async (): Promise<CoverageRead> => {
+          const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
+          const extracted = await extractForRouteTraced("admin_ops", model, "admin_ops", {
+            id: messageId,
+            body: input.text,
+            authorName: input.senderName,
+            tagged: true,
+            history: [],
+            lastBotPost: [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null,
+            now,
+          }).catch(() => null);
+          const f = extracted?.facts;
+          return f?.kind === "admin" && f.action === "month_coverage" ? { coverage: f.coverage ?? null, refs: f.coveredRefs ?? [] } : { coverage: null, refs: [] };
+        };
+        const r = await applyMonthAdd({ orgId: org.id, reading, senderUserId: input.senderUserId, sourceRef: messageId, now, text: input.text, readCoverage });
+        // "Whole month, or just the games left?" ends the reply: logged as
+        // MatchTime's question, so the answer is read against it.
+        if (r.coverageAsk && r.replyText) await askCoverageInHq({ orgId: org.id, ...r.coverageAsk, text: r.replyText, now });
+        console.log(`[admin-group] ${messageId}: somebody put on the month: ${r.outcome}${r.coverageAsk ? " (asked what he covers)" : ""}`);
         return { route: null, outcome: r.outcome, replyText: r.replyText };
       }
       if (input.organiser && reading?.kind === "list") {
@@ -1024,6 +1048,48 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       console.log(`[admin-group] ${messageId}: in the place of an answer to the source question: ${picked?.join("+") ?? "not an answer"}`);
       if (picked) return askFromSources(picked, actor, answer?.clubRef ?? null);
     }
+    // AN ANSWER TO "WHOLE MONTH, OR JUST THE GAMES LEFT?" (2026-11-16), from
+    // an organiser of a monthly club: the admin extractor reads the words,
+    // whatever the router called them (review of #611):
+    //   - it NAMES somebody: it is about that person, the one asked about
+    //     or not ("Riley covers the whole month" right after a question
+    //     about Ben changes Riley's, never Ben's);
+    //   - it names nobody: the question a reply quotes, else the newest
+    //     (`coverageAnswerTarget`), with the month and player from its ask
+    //     ref; when it is not clear which, ONE line asks which player.
+    // Anything else is handled as it would have been with no question.
+    // "Dan covers the whole month": every player named, through
+    // `month-coverage-words.ts`. Never a payment (round 4, option a). Any question it asks
+    // is logged with the WHOLE reply as its words (round 4, item 4).
+    const coverageWordsHere = async (f: AdminFacts, by: string) => {
+      const r = await applyMonthCoverageWords({
+        orgId: org.id,
+        lang,
+        refs: f.coveredRefs ?? [],
+        coverage: f.coverage ?? null,
+        body,
+        senderName: input.senderName ?? null,
+        senderUserId: by,
+        now,
+      });
+      for (const a of r.asks ?? []) await askCoverageInHq({ orgId: org.id, ...a, text: r.replyText, now });
+      return r;
+    };
+    const coverageTarget = actor && !weekly ? coverageAnswerTarget({ quoted, log, now }) : null;
+    if (coverageTarget && actor) {
+      const answer = await readAdminFacts();
+      let r: Awaited<ReturnType<typeof answerCoverageQuestion>> = null;
+      if (answer?.action === "month_coverage" && (answer.coveredRefs ?? []).length > 0) {
+        r = await coverageWordsHere(answer, actor);
+      } else if (answer?.action === "month_coverage" && answer.coverage) {
+        r =
+          coverageTarget.kind === "asked"
+            ? await answerCoverageQuestion({ orgId: org.id, lang, asked: coverageTarget, coverage: answer.coverage, now })
+            : await askWhichCoveragePlayer({ orgId: org.id, lang, userIds: coverageTarget.userIds, log, now, quoted: !!quoted?.messageId || !!quoted?.text });
+      }
+      console.log(`[admin-group] ${messageId}: in the place of an answer to the coverage question (${coverageTarget.kind}): ${r?.outcome ?? "not an answer"}`);
+      if (r) return said(`hq-${r.outcome}`, r.replyText);
+    }
     // AN ANSWER TO MATCHTIME'S LIST OF PLACES (2026-10-28), by the same two
     // positional tests: read by the admin extractor whatever the router
     // said ("@Match Time 2" is often routed elsewhere). A pick sets the
@@ -1373,6 +1439,16 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             now,
           });
           return r ? said(r.outcome, r.replyText) : null;
+        }
+        // What a monthly regular covers (2026-11-16, Kemal: "Dan covers the
+        // whole month"): the months page's own write, through
+        // `month-coverage-words.ts`; words that say neither get ONE
+        // question, logged there. An organiser's alone, a monthly club's.
+        if (facts.kind === "admin" && facts.action === "month_coverage") {
+          if (!actor) return onlyOrganisers();
+          if (weekly) return notHere();
+          const r = await coverageWordsHere(facts, actor);
+          return said(`hq-${r.outcome}`, r.replyText);
         }
         if (facts.kind === "admin" && facts.action === "fee_waiver") {
           // MatchTime ASKS; the YES applies it (review of #301, item 2).

@@ -1508,7 +1508,7 @@ export const en = {
    *  MatchTime cannot match are matched by him, in his words or on the page. */
   onbHelpMonthListOrganiser:
     `📋 *Monthly squad:* post the month's list in the group as you always do and I'll DM you what I read. If a name on it matches nobody I know, I show you the members I have no name for, by phone, and you tell me who is who in your own words (for example _"Craig is 3"_) or pick them on the months page. Reply yes and the month starts.\n\n` +
-    `*Adding a regular mid-month:* post the list again with the new name on it, or tag me (for example _"@Match Time add Tom to the November list, he's paid"_). He goes on the month for the games left and on the next game's squad. If I don't know the name, I DM you the members I have no name for so you can tell me which one he is.`,
+    `*Adding a regular mid-month:* post the list again with the new name on it, or tag me (for example _"@Match Time add Tom to the November list, he's paid"_). He goes on the month and on the next game's squad. In the organisers' group, say whether he covers the whole month (if he paid for it) or the games left, or I ask; you can change it later on the months page. If I don't know the name, I DM you the members I have no name for so you can tell me which one he is.`,
 
   /** "help" in a club's admin group (admin-group-help.ts), asked in any
    *  words (the shared router's `help` route): the topics, one line each
@@ -1605,7 +1605,9 @@ export const en = {
   hq_help_players_monthly: (p: { attendance: boolean; pool: boolean; openSquad?: boolean }): string =>
     [
       `👥 *How players join your monthly squad*:`,
-      `📋 *"@Match Time add Tom to the November list, he's paid"*: a regular for the month's games still to play, and on the next game's squad.`,
+      `📋 *"@Match Time add Tom to the November list, he's paid"*: a regular of the month, and on the next game's squad. Once the month has started, say whether he covers the whole month or the games left, for example *"@Match Time add Tom to the November list, he's paid the whole month"*. If you don't say, I ask: whole month, or just the games left?`,
+      `🧾 *"@Match Time Dan covers the whole month"*, *"@Match Time Dan only pays for the games left"*: change what a regular covers, up to the whole month and never below the games he has played since he joined, the weeks called off he was credited for, and the games left; what he owes follows. Or on the months page.`,
+      `💷 Correcting what a player covers before the month has a price changes nothing he owes. Once it has a price, what he paid, or says he paid, stays as it was: raise him and the months page shows the extra as owed; lower him and it shows the difference as money to give back. My reply says so too. Changing what he covers never marks him as paid.`,
       ...(p.attendance
         ? p.openSquad
           ? [
@@ -4920,10 +4922,13 @@ export const en = {
       ...(p.failed.length > 0 ? [`I couldn't put ${p.failed.join(", ")} together with the member you said. You can do it on the players page: ${p.link}`] : []),
     ].join("\n"),
   /** An organiser's tagged request put somebody on a month (2026-11-03). */
-  mwk_month_add_done: (p: { name: string; month: string; games: number; paid: boolean; payg: boolean }): string =>
+  /** `whole` (2026-11-16): the organiser said he covers the whole month. */
+  mwk_month_add_done: (p: { name: string; month: string; games: number; paid: boolean; payg: boolean; whole?: boolean }): string =>
     p.payg
       ? `✅ ${p.name} is on the ${p.month} list, paying as they go.`
-      : `✅ ${p.name} is on the ${p.month} list as a regular for the ${p.games} ${p.games === 1 ? "game" : "games"} left${p.paid ? ", marked as says paid" : ""}.`,
+      : p.whole
+        ? `✅ ${p.name} is on the ${p.month} list as a regular for the whole month, ${p.games} ${p.games === 1 ? "game" : "games"}${p.paid ? ", marked as says paid" : ""}.`
+        : `✅ ${p.name} is on the ${p.month} list as a regular for the ${p.games} ${p.games === 1 ? "game" : "games"} left${p.paid ? ", marked as says paid" : ""}.`,
   /** The name could be a member with no name yet: nobody added, he is asked by DM. */
   mwk_month_add_waiting: (p: { name: string; month: string }): string =>
     `I couldn't tell who ${p.name} is, so they are not on the ${p.month} list yet. I've sent you a DM to say which member they are.`,

@@ -286,6 +286,16 @@ export function amountDuePence(p: {
   return p.sharePence * Math.max(0, chargedGames(p) - p.creditsApplied);
 }
 
+/**
+ * The games a regular covers who is on the WHOLE month: every game it has
+ * scheduled, the ones already played included (plan 4.5). The seed's rule
+ * for its regulars, and the one an organiser chooses for somebody added
+ * part-way who paid the whole month (`month-coverage-rules.ts`).
+ */
+export function wholeMonthGames(gamesScheduled: number): number {
+  return Math.max(0, gamesScheduled);
+}
+
 // ── Starting a month part-way through (plan 4.5) ───────────────────────
 
 export const MEMBER_KINDS = ["regular", "payg"] as const;
@@ -487,13 +497,15 @@ export function planMonthSeed(
     const creditsApplied = r.creditsCarriedIn ?? 0;
     const committed = checkGamesCommitted(r.gamesCommitted ?? null, gamesScheduled);
     const gamesCommitted = committed.ok ? committed.value : null;
-    const due = amountDuePence({ sharePence: tier === "concession" ? concession : share, gamesCovered: gamesScheduled, gamesCommitted, creditsApplied });
+    // A regular on the list covers the whole month (plan 4.5).
+    const gamesCovered = wholeMonthGames(gamesScheduled);
+    const due = amountDuePence({ sharePence: tier === "concession" ? concession : share, gamesCovered, gamesCommitted, creditsApplied });
     const paid = r.paid ?? "none";
     const amount = r.paidAmountPence ?? null;
     members.push({
       ...base,
       tier,
-      gamesCovered: gamesScheduled,
+      gamesCovered,
       gamesCommitted,
       creditsApplied,
       amountDuePence: due,

@@ -23,6 +23,9 @@ import { buildMonthFeeTip } from "@/lib/month-payment-copy";
 import { monthFeeShare } from "@/lib/month-payment-rules";
 import { StartMonthForm } from "./start-month-form";
 import { MemberGamesForm } from "./games-form";
+import { MemberCoverageForm } from "./coverage-form";
+import { loadCoverageView, type CoverageView } from "@/lib/month-member-coverage";
+import { coverageOptions, shownCoverage } from "@/lib/month-coverage-rules";
 import { SeasonBreakForm } from "./season-break-form";
 import { SeedMatchRow } from "./seed-match-form";
 import { loadSeedMatchView } from "@/lib/month-seed-match";
@@ -111,6 +114,48 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
     if (res) summaries.set(m.id, buildMonthSummaryLines({ summary: res.summary, monthDate: new Date(`${res.monthStart}T12:00:00.000Z`), lang }));
   }
   const noMoney: MonthMoney = { balances: {}, refunded: {}, leavers: [] };
+  // 2026-11-16: what a regular covers, from the games left to the whole
+  // month, for every month on the page that has started and is not closed
+  // (`month-member-coverage.ts`). Absent: no choice and no editor. Each
+  // regular's editor offers exactly the server's bounds (review of #611:
+  // never fewer than he played since he joined plus the games left).
+  const coverageOf = new Map<string, CoverageView>();
+  // Every month's view, for the games column: what a regular covers read in
+  // playable games, the editor's own number (round 4, item 6).
+  const viewOf = new Map<string, CoverageView>();
+  for (const m of shown) {
+    const v = await loadCoverageView(m.id, now).catch(() => null);
+    if (!v) continue;
+    viewOf.set(m.id, v);
+    if (v.started && m.status !== "closed") coverageOf.set(m.id, v);
+  }
+  /** The games column: what he covers in playable games (`shownCoverage`),
+   *  the stored number only where the month could not be read. */
+  const gamesShownOf = (monthId: string, userId: string, gamesCovered: number): number => {
+    const v = viewOf.get(monthId);
+    if (!v) return gamesCovered;
+    return shownCoverage({ gamesCovered, creditedCancelled: v.members.get(userId)?.creditedCancelled ?? 0 }, v.month).games;
+  };
+  /** The add form's choice: a month under way with fewer games left than it has. */
+  const addChoice = (monthId: string) => {
+    const v = coverageOf.get(monthId);
+    // Round 4, item 6: only when the games left are fewer than the playable month.
+    return v && v.month.gamesLeft < v.month.playable ? { left: v.month.gamesLeft, whole: v.month.playable } : null;
+  };
+  /** A regular's editor: his choices in playable games (`coverageOptions`),
+   *  only when his bounds leave more than one. */
+  const editorOf = (monthId: string, userId: string) => {
+    const v = coverageOf.get(monthId);
+    const b = v?.members.get(userId);
+    if (!v || !b || b.min >= b.max) return null;
+    const options = coverageOptions(b, v.month, b.creditedCancelled);
+    // What he covers now is always offered, read the same way.
+    if (!options.some((o) => o.value === b.gamesCovered)) {
+      const s = shownCoverage(b, v.month);
+      options.unshift({ value: b.gamesCovered, games: s.games, of: s.of, least: false, wholeMonth: s.wholeMonth });
+    }
+    return options.length > 1 ? options : null;
+  };
   // Slice 4. Only the club's money collector confirms a payment (D3).
   const canConfirm = await mayConfirmPayments(orgId, session.user.id);
   const clubFeePence = membership.org.billingStatus === "exempt" ? null : planPricePence(membership.org.billingPlan, membership.org.billingPricePence);
@@ -264,9 +309,19 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
                             monthId={mo.id}
                             userId={m.userId}
                             lang={lang}
-                            covered={m.gamesCovered}
+                            covered={gamesShownOf(mo.id, m.userId, m.gamesCovered)}
                             committed={shownCommitted(m)}
                             readOnly={mo.status === "closed"}
+                          />
+                        )}
+                        {m.kind === "regular" && !m.waiting && editorOf(mo.id, m.userId) && (
+                          <MemberCoverageForm
+                            orgId={orgId}
+                            monthId={mo.id}
+                            userId={m.userId}
+                            lang={lang}
+                            covered={m.gamesCovered}
+                            options={editorOf(mo.id, m.userId)!}
                           />
                         )}
                       </td>
@@ -338,6 +393,7 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
                 monthId={mo.id}
                 lang={lang}
                 players={data.players.filter((p) => !mo.members.some((m) => m.userId === p.userId))}
+                coverage={addChoice(mo.id)}
               />
             )}
           </div>

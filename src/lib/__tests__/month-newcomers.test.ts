@@ -7,6 +7,31 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// 2026-11-16: what a regular put on a month under way covers, as STORED:
+// the coverage editor's write (`setMonthMemberCoverage`) and its view of
+// the rows (`loadCoverageView`), over one in-memory store. A new regular
+// joins for the 3 games left (`applySignup`'s own rule).
+const cover = vi.hoisted(() => {
+  const state = { started: false, gamesLeft: 3, playable: 5, stored: new Map<string, number>(), refuse: false };
+  const month = () => ({ gamesLeft: state.gamesLeft, whole: 5, playable: state.playable });
+  return {
+    state,
+    loadCoverageView: vi.fn(async () => ({
+      started: state.started,
+      month: month(),
+      members: new Map([...state.stored].map(([u, g]) => [u, { min: 3, max: 5, gamesCovered: g }])),
+    })),
+    checkMonthMemberCoverage: vi.fn(async (): Promise<{ ok: true } | { ok: false; error: string }> => (state.refuse ? { ok: false, error: "below-credits" } : { ok: true })),
+    setMonthMemberCoverage: vi.fn(async (a: { userId: string; coverage: "whole" | "left" | number }) => {
+      if (state.refuse) return { ok: false, error: "below-credits" };
+      const g = a.coverage === "whole" ? 5 : a.coverage === "left" ? 3 : a.coverage;
+      const changed = state.stored.get(a.userId) !== g;
+      state.stored.set(a.userId, g);
+      return { ok: true, changed, gamesCovered: g, bounds: { min: 3, max: 5 }, month: month() };
+    }),
+  };
+});
+
 const m = vi.hoisted(() => ({
   membershipFindFirst: vi.fn(),
   membershipFindMany: vi.fn(),
@@ -18,7 +43,10 @@ const m = vi.hoisted(() => ({
   notifUpdate: vi.fn(async () => ({})),
   notifDeleteMany: vi.fn(async () => ({ count: 1 })),
   botJobCreate: vi.fn(async () => ({})),
-  applySignup: vi.fn(async () => ({ ok: true, changed: true, locked: false, outcome: "regular", unknownDays: [] })),
+  applySignup: vi.fn(async (a: { userId: string; choice: string }) => {
+    if (a.choice === "in" && !cover.state.stored.has(a.userId)) cover.state.stored.set(a.userId, cover.state.gamesLeft);
+    return { ok: true, changed: true, locked: false, outcome: "regular", unknownDays: [] };
+  }),
   commitMonthGames: vi.fn(async () => true),
   loadSignupMonth: vi.fn(async () => ({ firstKickoff: new Date("2026-11-02T20:30:00Z"), kickoffs: [new Date("2026-11-09T20:30:00Z"), new Date("2026-11-16T20:30:00Z"), new Date("2026-11-23T20:30:00Z")] })),
   loadLiveMonths: vi.fn(),
@@ -50,11 +78,12 @@ vi.mock("@/lib/month-seed-match", () => ({ loadNamelessMembers: m.loadNamelessMe
 vi.mock("@/lib/player-display-name", () => ({ loadSeenAs: m.loadSeenAs }));
 vi.mock("@/lib/user-merge", () => ({ applyUserMerge: m.applyUserMerge }));
 vi.mock("@/lib/month-seed-reply", () => ({ readSeedReply: m.readSeedReply }));
+vi.mock("@/lib/month-member-coverage", () => ({ loadCoverageView: cover.loadCoverageView, setMonthMemberCoverage: cover.setMonthMemberCoverage, checkMonthMemberCoverage: cover.checkMonthMemberCoverage }));
 vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn() }));
 vi.mock("@/lib/club-quiet-hours", () => ({ loadClubQuietHours: async () => null }));
 vi.mock("@/lib/app-url", () => ({ appUrl: (p: string) => `https://mt.test${p}` }));
 
-import { applyMonthAdd, handleNewcomerDmReply, joinMonthAsOrganiser } from "@/lib/month-newcomers";
+import { applyMonthAdd, handleNewcomerDmReply, joinMonthAsOrganiser, tellOrganiserOnce } from "@/lib/month-newcomers";
 import { NEWCOMER_ASK_KIND, type NewcomerQuestion } from "@/lib/month-newcomer-rules";
 import type { MonthlyReading } from "@/lib/monthly-reader-prompt";
 
@@ -92,6 +121,8 @@ beforeEach(() => {
   m.membershipFindMany.mockResolvedValue(ROSTER);
   m.membershipFindFirst.mockImplementation(async (a: { where: { userId: string } }) => ROSTER.find((r) => r.user.id === a.where.userId) ?? null);
   m.loadLiveMonths.mockResolvedValue([MONTH]);
+  Object.assign(cover.state, { started: false, gamesLeft: 3, playable: 5, refuse: false });
+  cover.state.stored.clear();
 });
 
 describe("the join, as the months page's 'Add a player, Regular'", () => {
@@ -196,6 +227,193 @@ describe("a tagged request ('@Match Time add Tom to the November list, he's paid
   });
 });
 
+describe("a month already under way: the whole month, or the games left (2026-11-16, review of #611)", () => {
+  const base = { orgId: "o", senderUserId: "u-davide", sourceRef: "wa1", now: NOW };
+  // Round 2, item 5: the organisers' group is named only for a club that has one.
+  const NOTE = (names: string, hq = false) =>
+    `${names} is on the November list for the games left. If he paid for the whole month, set him to the whole month under Covers on the months page (https://mt.test/admin/months)${hq ? ` or tag me in your organisers' group, for example "@Match Time ${names} covers the whole month"` : ""}; the page then shows what's left to pay or confirm.`;
+  beforeEach(() => {
+    cover.state.started = true;
+  });
+
+  it("ROUND 2, item 5: a club with an organisers' group is told it can tag there; one without is not", async () => {
+    m.orgFindUnique.mockResolvedValue({ language: "en", adminGroupId: "hq@g.us", adminChannelMode: "admin-group" } as never);
+    const withHq = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), viaDm: true });
+    expect(withHq.replyText).toContain(NOTE("Tom", true));
+    m.orgFindUnique.mockResolvedValue({ language: "en" });
+    cover.state.stored.clear();
+    const without = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), viaDm: true });
+    expect(without.replyText).toContain(NOTE("Tom"));
+    expect(without.replyText).not.toContain("organisers' group");
+  });
+
+  it("ROUND 2, item 5, in Turkish: no organisers' group named without one", async () => {
+    const { monthSetupCopy } = await import("@/lib/i18n/month-setup");
+    const tr = monthSetupCopy("tr");
+    expect(tr.added_left_note({ names: "Tom", count: 1, first: "Tom", month: "Kasım", link: "https://x", group: false })).toBe(
+      "Tom, Kasım listesinde kalan maçlar için. Ayın tamamını ödediyse aylar sayfasında Kapsadığı kısmından (https://x) ayın tamamına ayarla; sayfa sonra ödenecek ya da onaylanacak kalanı gösterir.",
+    );
+    expect(tr.added_left_note({ names: "Tom", count: 1, first: "Tom", month: "Kasım", link: "https://x", group: true })).toContain("yönetici grubunda");
+  });
+
+  it("ROUND 2, item 3: the players' group's tagged add of a brand-new name sends the organiser exactly ONE DM: the note folded into 'who is this?'", async () => {
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: null, name: "Zak" }), tellOrganiser: true });
+    expect(r.outcome).toBe("month-add-done");
+    const dms = m.botJobCreate.mock.calls.map((c) => (c as unknown as [{ data: { text: string } }])[0].data.text);
+    expect(dms).toHaveLength(1);
+    expect(dms[0]).toContain(NOTE("Zak"));
+    expect(dms[0]).toContain("Zak is on it now as a new player");
+  });
+
+  it("ROUND 2, item 2: 'he's paid the whole month' records the claim BEFORE the coverage, as a seeded says-paid regular is priced", async () => {
+    await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage: async () => ({ coverage: "whole" as const, refs: [] }) });
+    const claimed = m.claimMonthPaid.mock.invocationCallOrder[0];
+    const covered = cover.setMonthMemberCoverage.mock.invocationCallOrder[0];
+    expect(claimed).toBeDefined();
+    expect(covered).toBeDefined();
+    expect(claimed).toBeLessThan(covered);
+  });
+
+  it("the words say the whole month: he joins, the editor's write covers it, and the reply says what is stored", async () => {
+    const readCoverage = vi.fn(async () => ({ coverage: "whole" as const, refs: [] as string[] }));
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage });
+    expect(readCoverage).toHaveBeenCalledTimes(1);
+    // The sign-up itself is unchanged; the coverage is the editor's write.
+    expect((m.applySignup.mock.calls[0] as unknown as [Record<string, unknown>])[0]).not.toHaveProperty("coverage");
+    expect(cover.setMonthMemberCoverage).toHaveBeenCalledWith(expect.objectContaining({ squadMonthId: "month-nov", userId: "u-tom", coverage: "whole" }));
+    expect(cover.state.stored.get("u-tom")).toBe(5);
+    expect(r).toMatchObject({ outcome: "month-add-done", changed: true });
+    expect(r.replyText).toBe("✅ Tom is on the November list as a regular for the whole month, 5 games, marked as says paid.");
+    expect(r.coverageAsk).toBeUndefined();
+  });
+
+  it("the words say the games left: he joins for them, nothing asked, no note", async () => {
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage: async () => ({ coverage: "left" as const, refs: [] }) });
+    expect(cover.setMonthMemberCoverage).toHaveBeenCalledWith(expect.objectContaining({ coverage: "left" }));
+    expect(r.replyText).toBe("✅ Tom is on the November list as a regular for the 3 games left, marked as says paid.");
+    expect(r.coverageAsk).toBeUndefined();
+  });
+
+  it("the words say neither ('he's paid'): he joins for the games left and the reply asks once, for the caller to log", async () => {
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage: async () => ({ coverage: null, refs: [] }) });
+    expect(cover.setMonthMemberCoverage).not.toHaveBeenCalled();
+    expect(r.replyText).toBe(
+      "✅ Tom is on the November list as a regular for the 3 games left, marked as says paid.\n\n📋 Tom on the November list: whole month, or just the games left? The whole month is 5 games; 3 are left. Tag me with your answer.",
+    );
+    expect(r.coverageAsk).toEqual({ monthId: "month-nov", userId: "u-tom" });
+  });
+
+  it("ROUND 4, item 3: words naming somebody else too give the added player NO coverage; the reply says the other was left alone", async () => {
+    const r = await applyMonthAdd({
+      ...base,
+      reading: add({ memberId: "u-tom", name: "Tom" }),
+      // "add Tom for the games left, and Ian has paid the whole month"
+      readCoverage: async () => ({ coverage: "whole" as const, refs: ["Tom", "Ian"] }),
+    });
+    expect(cover.setMonthMemberCoverage).not.toHaveBeenCalled();
+    expect(cover.state.stored.get("u-tom")).not.toBe(5);
+    expect(r.replyText).toContain("for the 3 games left");
+    expect(r.replyText).toContain('I didn\'t change what Ian covers: tag me about that in a message of its own, for example "@Match Time Ian covers the whole month".');
+    // Asked once about Tom, never about Ian.
+    expect(r.coverageAsk).toEqual({ monthId: "month-nov", userId: "u-tom" });
+  });
+
+  it("ROUND 4, item 6: a week called off and every game still on is left: nothing to choose, nothing asked", async () => {
+    // 5 games, one called off: 4 playable, and all 4 are still to come.
+    Object.assign(cover.state, { gamesLeft: 4, playable: 4 });
+    const readCoverage = vi.fn(async () => ({ coverage: null, refs: [] as string[] }));
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage });
+    expect(readCoverage).not.toHaveBeenCalled();
+    expect(r.coverageAsk).toBeUndefined();
+    expect(r.replyText).not.toContain("whole month, or just the games left?");
+  });
+
+  it("ROUND 4, item 3: only the added player named (as the list has him): his coverage applies", async () => {
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage: async () => ({ coverage: "whole" as const, refs: ["tom"] }) });
+    expect(cover.state.stored.get("u-tom")).toBe(5);
+    expect(r.replyText).not.toContain("I didn't change");
+  });
+
+  it("ROUND 4, items 2 and 5: a refused coverage records no claim, and the reply says it was refused", async () => {
+    cover.state.stored.set("u-tom", 3);
+    cover.state.refuse = true;
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage: async () => ({ coverage: "whole" as const, refs: [] }) });
+    expect(m.claimMonthPaid).not.toHaveBeenCalled();
+    expect(r.replyText).not.toContain("says paid");
+    expect(r.replyText).toContain("Tom has more credits taken off November than that, so I didn't change what Tom covers.");
+  });
+
+  it("REVIEW ITEM 4: a returning paid regular re-added with 'whole month' is raised to it (a returning row too)", async () => {
+    cover.state.stored.set("u-tom", 3);
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage: async () => ({ coverage: "whole" as const, refs: [] }) });
+    expect(cover.state.stored.get("u-tom")).toBe(5);
+    expect(r.replyText).toContain("for the whole month, 5 games");
+  });
+
+  it("REVIEW ITEM 4: when the write is refused, the reply says what is stored, never 'whole month'", async () => {
+    cover.state.stored.set("u-tom", 3);
+    cover.state.refuse = true;
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage: async () => ({ coverage: "whole" as const, refs: [] }) });
+    expect(cover.state.stored.get("u-tom")).toBe(3);
+    expect(r.replyText).not.toContain("whole month");
+    expect(r.replyText).toContain("for the 3 games left");
+  });
+
+  it("not asked when the month has not started, when the games left are the whole month, or for pay as you go", async () => {
+    const readCoverage = vi.fn(async () => ({ coverage: "whole" as const, refs: [] as string[] }));
+    cover.state.started = false;
+    expect((await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage })).coverageAsk).toBeUndefined();
+    cover.state.started = true;
+    cover.state.gamesLeft = 5;
+    await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), readCoverage });
+    await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }, { choice: "payg" }), readCoverage });
+    expect(readCoverage).not.toHaveBeenCalled();
+    expect(cover.setMonthMemberCoverage).not.toHaveBeenCalled();
+  });
+
+  it("already on the month and the words say the whole month: that is the change, through the editor's write", async () => {
+    cover.state.stored.set("u-shane", 3);
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-shane", name: "Shane" }), readCoverage: async () => ({ coverage: "whole" as const, refs: [] }) });
+    expect(m.applySignup).not.toHaveBeenCalled();
+    expect(cover.setMonthMemberCoverage).toHaveBeenCalledWith(expect.objectContaining({ squadMonthId: "month-nov", userId: "u-shane", coverage: "whole" }));
+    expect(r).toEqual({ outcome: "month-coverage-done", replyText: "✅ Shane covers the whole of November: 5 games.", changed: true });
+  });
+
+  it("already on the month and the words say neither: 'already on the list', as before", async () => {
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-shane", name: "Shane" }), readCoverage: async () => ({ coverage: null, refs: [] }) });
+    expect(r.outcome).toBe("month-add-already");
+    expect(cover.setMonthMemberCoverage).not.toHaveBeenCalled();
+  });
+
+  it("REVIEW ITEM 9, a DM add: the reply says he was added for the games left and how to change it", async () => {
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), viaDm: true });
+    expect(cover.setMonthMemberCoverage).not.toHaveBeenCalled();
+    expect(r.replyText).toBe(`✅ Tom is on the November list as a regular for the 3 games left, marked as says paid.\n${NOTE("Tom")}`);
+  });
+
+  it("REVIEW ITEM 9, the players' group's tagged add: the organiser is DMed the same, the group hears nothing", async () => {
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), tellOrganiser: true });
+    expect(r.gamesLeftNote).toBe(true);
+    const dms = m.botJobCreate.mock.calls.map((c) => (c as unknown as [{ data: { text: string; phone: string } }])[0].data);
+    expect(dms).toEqual([expect.objectContaining({ phone: "447700900001", text: expect.stringContaining(NOTE("Tom")) })]);
+  });
+
+  it("a month not under way: no note", async () => {
+    cover.state.started = false;
+    const r = await applyMonthAdd({ ...base, reading: add({ memberId: "u-tom", name: "Tom" }), viaDm: true });
+    expect(r.replyText).toBe("✅ Tom is on the November list as a regular for the 3 games left, marked as says paid.");
+  });
+});
+
+describe("the Turkish note (review item 9)", () => {
+  it("says the same in Turkish, with no long dash", async () => {
+    const { monthSetupCopy } = await import("@/lib/i18n/month-setup");
+    const tr = monthSetupCopy("tr").added_left_note({ names: "Tom", count: 1, first: "Tom", month: "Kasım", link: "https://x", group: true });
+    expect(tr).toBe('Tom, Kasım listesinde kalan maçlar için. Ayın tamamını ödediyse aylar sayfasında Kapsadığı kısmından (https://x) ya da yönetici grubunda beni etiketleyerek ayın tamamına ayarla, örneğin "@Match Time Tom ayın tamamını kapsıyor"; sayfa sonra ödenecek ya da onaylanacak kalanı gösterir.');
+    expect(tr).not.toMatch(/[–—]/);
+  });
+});
+
 describe("his answer: 'Zak is 2'", () => {
   const q: NewcomerQuestion = {
     v: 1,
@@ -252,5 +470,51 @@ describe("his answer: 'Zak is 2'", () => {
     expect(await reply({ waMessageId: "dm2" })).toBeNull();
     expect(await reply({ userId: "u-shane", waMessageId: "dm3" })).toBeNull();
     expect(m.applyUserMerge).not.toHaveBeenCalled();
+  });
+});
+
+describe("his answer in a month under way (review of #611, item 9)", () => {
+  it("a member who joins for the games left: the DM says so, and how to change it", async () => {
+    cover.state.started = true;
+    const q: NewcomerQuestion = { v: 1, orgId: "o", monthId: "month-nov", dm: "the question", names: [{ ref: "u1", name: "Luca", userId: null, line }], nameless: [{ n: 1, userId: "u-luca" }] };
+    m.notifFindFirst.mockResolvedValue({ id: "n1", text: JSON.stringify(q) });
+    m.readSeedReply.mockResolvedValue({ kind: "change", changes: [{ action: "match", userId: "u-luca", listed: "u1" }] });
+    await handleNewcomerDmReply({ userId: "u-davide", text: "Luca is 1", replyPhone: "447700900001", waMessageId: "dm9", answering: async () => "the question", now: NOW });
+    const text = (m.botJobCreate.mock.calls.at(-1) as unknown as [{ data: { text: string } }])[0].data.text;
+    expect(text).toContain("Luca is on the November list for the games left. If he paid for the whole month, set him to the whole month under Covers on the months page");
+    // Round 4, item 5: true under "a coverage change is never a payment".
+    expect(text).toContain("the page then shows what's left to pay or confirm");
+  });
+});
+
+/**
+ * Round 2, item 4: a re-posted list with a new regular puts him both on
+ * the games-left note and on the "who is this?" question. The organiser
+ * gets exactly ONE DM (`tellOrganiserOnce`, what `monthly-paste.ts` uses).
+ */
+describe("tellOrganiserOnce: one DM, the note folded into 'who is this?'", () => {
+  it("both: the question carries the note; nothing else is sent", async () => {
+    const ask = vi.fn(async () => true);
+    const send = vi.fn(async () => undefined);
+    expect(await tellOrganiserOnce({ note: "the note", ask, send })).toBe("asked");
+    expect(ask).toHaveBeenCalledWith("the note");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("the question could not be sent: the note goes on its own, once", async () => {
+    const send = vi.fn(async () => undefined);
+    expect(await tellOrganiserOnce({ note: "the note", ask: async () => false, send })).toBe("note");
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith("the note");
+  });
+
+  it("nobody to ask: the note alone; no note: the question alone", async () => {
+    const send = vi.fn(async () => undefined);
+    expect(await tellOrganiserOnce({ note: "the note", ask: null, send })).toBe("note");
+    expect(send).toHaveBeenCalledTimes(1);
+    const ask = vi.fn(async () => true);
+    expect(await tellOrganiserOnce({ note: null, ask, send })).toBe("asked");
+    expect(ask).toHaveBeenCalledWith(null);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });
