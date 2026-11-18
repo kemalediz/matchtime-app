@@ -352,9 +352,12 @@ async function makeClub(db: TestDb, c: Club, name: string) {
      VALUES ($1, $2, $3, 'Weekly 6-a-side', $4, $5, $6, 5, now())`,
     [c.act, c.org, `${c.org}-sport`, c.weekday, c.time, `Goals ${c.org}`],
   );
+  // Called off BEFORE the month was counted (2 hours ago; the month 1 hour
+  // ago): already out of `gamesScheduled`, so nobody is credited for them,
+  // as in production (`creditsCountFrom`, PR #611).
   for (const [i, k] of c.cancelled.entries()) {
     await db.run(
-      `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt") VALUES ($1, $2, $3, 12, 'CANCELLED', $3, now())`,
+      `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt") VALUES ($1, $2, $3, 12, 'CANCELLED', $3, now() - interval '2 hours')`,
       [`${c.org}-cancelled-${i}`, c.act, k.toISOString()],
     );
   }

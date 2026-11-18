@@ -39,7 +39,7 @@
  */
 import type { AdminFacts } from "./pipeline/types";
 import type { HqLogRow } from "./admin-group-log";
-import { CONFIRM_WINDOW_MS, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
+import { questionInPlaceOfAnswer, type QuotedMessage } from "./admin-group-confirm-rules";
 
 /** Where players may be found: the club's own players' group, its partner
  *  clubs, or the MatchTime player pool. */
@@ -143,19 +143,8 @@ export function sourceQuestionAnswered(p: {
   now: Date;
   windowMs?: number;
 }): RecruitSource[] | null {
-  const windowMs = p.windowMs ?? CONFIRM_WINDOW_MS;
-  const asked = [...p.log].reverse().find((r) => r.fromMatchTime && parseAskSourceRef(r.askRef));
-  if (!asked) return null;
-  const options = parseAskSourceRef(asked.askRef)!;
-  if (p.quoted && (p.quoted.text || p.quoted.fromMatchTime || p.quoted.messageId)) {
-    const { row } = quotedLogRow(p.quoted, p.log);
-    return row && row.waMessageId === asked.waMessageId ? options : null;
-  }
-  const questions = p.log.filter((r) => r.fromMatchTime && r.askRef);
-  if (questions[questions.length - 1]?.waMessageId !== asked.waMessageId) return null;
-  const fresh = p.now.getTime() - asked.createdAt.getTime() <= windowMs;
-  const quiet = !p.log.some((r) => !r.fromMatchTime && r.createdAt.getTime() > asked.createdAt.getTime());
-  return fresh && quiet ? options : null;
+  const asked = questionInPlaceOfAnswer({ ...p, isAsk: (ref) => parseAskSourceRef(ref) !== null });
+  return asked ? parseAskSourceRef(asked.askRef) : null;
 }
 
 /**

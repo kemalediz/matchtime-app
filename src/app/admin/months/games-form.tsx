@@ -17,6 +17,7 @@ export function MemberGamesForm(props: {
   monthId: string;
   userId: string;
   lang: string | null | undefined;
+  /** What he covers, in playable games (`shownCoverage`). */
   covered: number;
   committed: number | null;
   /** A closed month is read only. */
@@ -27,7 +28,9 @@ export function MemberGamesForm(props: {
   const [value, setValue] = useState(props.committed != null ? String(props.committed) : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const shown = props.committed != null ? c.games_of({ games: props.committed, of: props.covered }) : String(props.covered);
+  // `covered`: in playable games, as the coverage editor reads it (round 4,
+  // item 6); a "4 only" reads "4 of" that, never more than it.
+  const shown = props.committed != null ? c.games_of({ games: Math.min(props.committed, props.covered), of: props.covered }) : String(props.covered);
   if (props.readOnly) return <span data-testid="member-games">{shown}</span>;
   const changed = value.trim() !== (props.committed != null ? String(props.committed) : "");
 

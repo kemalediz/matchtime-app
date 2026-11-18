@@ -476,6 +476,10 @@ test("a regular added to a month started part-way is charged for the games LEFT 
   const add = page.getByTestId("month-card").getByTestId("member-add");
   await expect(add).toBeVisible({ timeout: 30_000 });
   await add.getByTestId("member-add-select").selectOption(newcomer.id);
+  // 2026-11-16: with games already played, the organiser chooses; here
+  // the games left, as before (month-coverage.spec.ts covers the choice).
+  const coverLeft = add.getByTestId("member-add-cover-left");
+  if ((await coverLeft.count()) > 0) await coverLeft.check();
   await add.getByTestId("member-add-regular").click();
   await expect(page.locator(`[data-testid="month-member"][data-user="${newcomer.id}"]`)).toBeVisible();
   const row = await db.one<{ kind: string; gamesCovered: number }>(
