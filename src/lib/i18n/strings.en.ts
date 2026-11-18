@@ -1606,7 +1606,7 @@ export const en = {
     [
       `👥 *How players join your monthly squad*:`,
       `📋 *"@Match Time add Tom to the November list, he's paid"*: a regular of the month, and on the next game's squad. Once the month has started, say whether he covers the whole month or the games left, for example *"@Match Time add Tom to the November list, he's paid the whole month"*. If you don't say, I ask: whole month, or just the games left?`,
-      `🧾 *"@Match Time Dan covers the whole month"*, *"@Match Time Dan only pays for the games left"*: change what a regular covers, up to the whole month and never below the games he has played since he joined, the weeks called off he was credited for, and the games left; what he owes follows. Or on the months page.`,
+      `🧾 *"@Match Time Dan covers the whole month"*, *"@Match Time Dan only pays for the games left"*: change what a regular covers, up to the whole month, less any games he already paid as pay as you go, and never below the games he has played since he joined, the weeks called off he was credited for, and the games left; what he owes follows. Or on the months page.`,
       `💷 Correcting what a player covers before the month has a price changes nothing he owes. Once it has a price, what he paid, or says he paid, stays as it was: raise him and the months page shows the extra as owed; lower him and it shows the difference as money to give back. My reply says so too. Changing what he covers never marks him as paid.`,
       ...(p.attendance
         ? p.openSquad

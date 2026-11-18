@@ -762,7 +762,7 @@ export async function applySignup(args: {
     await lockMonth(tx, month.id);
     const rows = await tx.squadMonthMember.findMany({
       where: { monthId: month.id },
-      select: { id: true, userId: true, kind: true, slot: true, note: true, leftAt: true, paidAt: true, paidClaimedAt: true, paygMatchIds: true, gamesCovered: true, gamesCommitted: true },
+      select: { id: true, userId: true, kind: true, slot: true, note: true, leftAt: true, paidAt: true, paidClaimedAt: true, paygMatchIds: true, gamesCovered: true, gamesCommitted: true, source: true },
     });
     const view = (r: (typeof rows)[number]): SignupMember => ({
       userId: r.userId,
@@ -866,6 +866,10 @@ export async function applySignup(args: {
                 : {
                   gamesCovered: gamesLeft,
                   joinedAt: now,
+                  // He joins now, whatever list he first came from: a seed-list
+                  // player taken off and back is not counted from the first game
+                  // (review 2 of #611, item 1; also his games played, #610).
+                  ...(mine.source.startsWith("seed") ? { source: args.source } : {}),
                   // A count from before he became a regular now (an old
                   // row's, or one kept on the bench) is not his word about
                   // these games: his message's own count is set below, and
