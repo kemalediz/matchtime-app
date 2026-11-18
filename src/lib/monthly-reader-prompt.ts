@@ -75,13 +75,6 @@ export interface MonthlyReaderInput {
   /** The message this one replies to, when it is a reply. */
   reply: ContextMessage | null;
   now: Date;
-  /** He is answering MatchTime's "which of them will you play?" for this
-   *  month: the games that question listed (written, those played since
-   *  marked). His answer is counted against these. */
-  answering?: { label: string; dates: Array<{ day: string; played: boolean }> };
-  /** The message is his DM to MatchTime, answering its question (the
-   *  reply): only there is a bare "yes" a sign-up. */
-  dm?: boolean;
 }
 
 
@@ -134,10 +127,9 @@ HOW MANY GAMES, for a sign-up and a list line alike: the games the person commit
 - The games the sender covers are given for each month (THE SENDER COVERS): a regular on its list covers the games on his row (a late joiner, only those left when he joined); anybody else, a pay-as-you-go or bench player included, would cover the games still to play from now. For somebody else on a list line: the games that month's "Games each regular on it covers" gives for him; somebody not there would cover the games still to play.
 - Count from his words against those games: "except the last week" is one fewer than he covers; "not the 23rd" is one fewer when the 23rd is one of them; "just two games" is 2; "4 only" is 4.
 - A count that comes to every game he covers is 0: "all of them", "every week", "the rest of the month", "4 games" when he covers four, "just the one" when he covers one.
-- His DM answer to MatchTime's question about which games he will play counts against the games that question listed (given in THE SENDER COVERS), and is read with what he said before it (RECENT CHAT): a plain "yes" or "ok" keeps the count he gave there, or is every game when he gave none.
 
 kind: what THE MESSAGE is.
-- "signup": somebody joins a month, leaves it, or plays it pay-as-you-go, in any words: "IN FOR NOVEMBER", "November good for me", "I can play most weeks in November", "Kasım varım", "Kasım'da yokum", "PAYG for November 9th", a bare "IN" replying to MatchTime's own month sign-up list, his answer to MatchTime's own question to him about joining a month or about his games, only in a DM (THE MESSAGE is marked as his DM, the question is the message replied to: "yes", "all but the last one", "evet", "sonuncusu hariç"; in the group a bare "yes" is not a sign-up), or somebody asking for another person to be put on a month's list ("add Tom to the November list, he's paid", "Tom'u Kasım listesine ekle").
+- "signup": somebody joins a month, leaves it, or plays it pay-as-you-go, in any words: "IN FOR NOVEMBER", "November good for me", "I can play most weeks in November", "Kasım varım", "Kasım'da yokum", "PAYG for November 9th", a bare "IN" replying to MatchTime's own month sign-up list, or somebody asking for another person to be put on a month's list ("add Tom to the November list, he's paid", "Tom'u Kasım listesine ekle").
 - "list": the club's list for a game or for a month, pasted or typed, even a short one ("List for November 1. Davide 2."). A numbered list of something else (kit, teams, votes, who owes money) is not.
 - "none": anything else, including a plain "IN" or "out" for this week's game (the sender's or anybody else's), a question, and a maybe that depends on something ("if my knee is ok").
 
@@ -192,7 +184,6 @@ How many games:
 - A regular who joined late and covers three: "actually except the last week" | "aslında son hafta hariç": games 2, never 4.
 - His own line on November's list, covering three: "9. Will except the last week" | "9. Burak son hafta hariç": games 2.
 - An organiser's line about a regular whose cover there is 3 ("Lee Late (p4) 3"): "4. Lee except the last week" | "4. Lee son hafta hariç": games 2, never 4.
-- His DM answering MatchTime's question that listed three games: "all but the last one" | "sonuncusu hariç": signup in, month 11, signupFor "sender", games 2; "all of them" | "hepsi": games 0; "yes" | "evet" after his "I'm in except the last week" in RECENT CHAT: games 2.
 - He covers one game: "just the one" | "sadece o maç": games 0.
 Lists:
 - "List for November\\n1. Davide\\n7. smiler 4 only" | "Kasım listesi\\n1. Erdal\\n2. Mehmet sadece 3 hafta": list, month 11, listOf month; smiler is the member Smiler, games 4 | Mehmet games 3.
@@ -296,8 +287,7 @@ export function buildMonthlyReaderUserTurn(input: MonthlyReaderInput, ctx: Month
     ? `${input.sender.name ?? "a member"} (${senderRef}${input.sender.organiser ? ", an organiser" : ""})`
     : `${input.sender.name ?? "somebody"} (not on the MEMBERS list)`;
   lines.push(`From ${who}.`);
-  if (senderRef) lines.push(...senderCoversLines(input.sender.userId!, ctx, input.answering));
-  if (input.dm) lines.push("THE MESSAGE is his DM to MatchTime, answering its question above.");
+  if (senderRef) lines.push(...senderCoversLines(input.sender.userId!, ctx));
   lines.push(MONTHLY_READER_MESSAGE_HEADER, input.body.trim());
   return lines.join("\n");
 }
@@ -319,18 +309,13 @@ const gamesWord = (n: number) => `${n} ${n === 1 ? "game" : "games"}`;
  * PURE. THE SENDER COVERS, per live month (2026-11-16): the games his count
  * is counted against. A regular on the month covers his row's games (the
  * month's last N: a late joiner covers the games that were left when he
- * joined); anybody else, a pay-as-you-go or bench player included, would
- * cover the games still to play. Answering MatchTime's "which of them?",
- * the games that question listed.
+ * joined); anybody else, a pay-as-you-go or bench player or a leaver
+ * coming back included, would cover the games still to play.
  */
-export function senderCoversLines(userId: string, ctx: MonthlyReaderContext, answering?: MonthlyReaderInput["answering"]): string[] {
+export function senderCoversLines(userId: string, ctx: MonthlyReaderContext): string[] {
   const out: string[] = [];
   for (const m of ctx.cover ?? []) {
     const head = `THE SENDER COVERS in ${m.label}:`;
-    if (answering && answering.label === m.label) {
-      out.push(`${head} ${gamesWord(answering.dates.length)}, ${written(answering.dates)} (as MatchTime's question to him listed them; count his answer against these).`);
-      continue;
-    }
     const regular = m.regulars.find((r) => r.userId === userId);
     if (regular) {
       // His row's games are the month's last N; none for a row covering 0,
