@@ -196,6 +196,65 @@ export function checkGamesCommitted(
   return { ok: true, value: games === gamesCovered ? null : games };
 }
 
+/**
+ * THE ONE FIT RULE FOR A GAMES COUNT read from a message (2026-11-16):
+ * every door (typed, a pasted month or week list, an organiser's add, a
+ * newcomer's DM, the answer to the join question, the bench, a paid
+ * leaver back) gives its count to the one setter (`setMonthMemberGames`,
+ * `fitted`), which applies this. `count` is the count as read (a TOTAL
+ * against the games he covers), `covers` the games he covers (his row's
+ * `gamesCovered`: a late joiner's games left, a paid leaver's kept
+ * games), `played` the games of them he has actually played.
+ *   - no count, or a count at or above the games he covers: every game
+ *     (null);
+ *   - a count from the games played up to below the cover: stored as read
+ *     ("3 games, that's me done" with 3 played is 3);
+ *   - a count below the games played: the games played (he has played
+ *     them; they are never taken back).
+ * `changed`: the count was not what was said (above the cover, or below
+ * the games played). The organisers are then told once.
+ */
+export function fitGamesCount(p: { count: number | null; covers: number; played: number }): { games: number | null; changed: boolean } {
+  if (p.count === null) return { games: null, changed: false };
+  const played = Math.max(0, p.played);
+  const changed = p.count > p.covers || p.count < played;
+  const games = Math.max(p.count, played);
+  return { games: games >= p.covers ? null : games, changed };
+}
+
+/**
+ * PURE. When the games a member PLAYED in a month can be (2026-11-18): from
+ * the month's first London midnight to now, and never past the month's
+ * end. A count read while a month is still open after it ended (the close
+ * runs later) must not count next month's games: they would raise his
+ * played count, and the fit rule never stores fewer games than he played.
+ */
+export function monthPlayedWindow(monthStart: string, now: Date): { gte: Date; lt: Date } {
+  const d = monthStartToDate(monthStart);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  const end = londonDateTimeToUtc(d.toISOString().slice(0, 10), "00:00");
+  return { gte: londonDateTimeToUtc(monthStart, "00:00"), lt: now.getTime() < end.getTime() ? now : end };
+}
+
+/**
+ * PURE. The games a row covers (2026-11-16): the month's last N games (a
+ * late joiner covers those that were left when he joined); a row covering
+ * 0 covers none, and a cover above the games scheduled (a week cancelled
+ * since) covers the games there are. `rowCovered` null: somebody with no
+ * regular row, who would cover the games still to play from now.
+ */
+export function coverFor(p: { kickoffs: Date[]; rowCovered: number | null; now: Date }): { covers: number; remaining: Date[] } {
+  const future = (d: Date) => d.getTime() > p.now.getTime();
+  if (p.rowCovered === null) {
+    const remaining = p.kickoffs.filter(future);
+    return { covers: remaining.length, remaining };
+  }
+  const n = Math.min(Math.max(0, p.rowCovered), p.kickoffs.length);
+  const covered = n === 0 ? [] : p.kickoffs.slice(-n);
+  return { covers: n, remaining: covered.filter(future) };
+}
+
+
 /** share x (games paid for - credits applied). null while no share is set; never negative. */
 export function amountDuePence(p: {
   sharePence: number | null | undefined;

@@ -88,9 +88,12 @@ export async function joinMonthAsOrganiser(p: {
   line: NewcomerLine;
   organiserUserId: string;
   weekDay?: number | null;
+  /** The organiser's words for him (his line, or his message): what the
+   *  organisers' line quotes when the one fit rule changed the count. */
+  words?: string | null;
   now: Date;
 }): Promise<JoinResult> {
-  const { applySignup, commitMonthGames, loadSignupMonth } = await import("./month-signup");
+  const { applySignup, loadSignupMonth } = await import("./month-signup");
   const month = await loadSignupMonth(p.monthId);
   const gamesLeft = month ? month.kickoffs.filter((k) => k.getTime() > p.now.getTime()).length : 0;
   const days = p.line.payg ? (p.line.paygDays.length > 0 ? p.line.paygDays : p.weekDay ? [p.weekDay] : []) : [];
@@ -102,17 +105,21 @@ export async function joinMonthAsOrganiser(p: {
     source: "admin",
     actorUserId: p.organiserUserId,
     byOrganiser: true,
+    // His games go with the join (2026-11-16): through the one fit rule,
+    // recorded before anybody is told what he owes, and counted from now
+    // for a leaver who paid and keeps his row (`applySignup`).
+    games: p.line.payg ? null : p.line.games,
+    words: p.words ?? null,
     now: p.now,
   });
   if (!res.ok) return { ok: false, changed: false, outcome: null, gamesLeft };
-  let changed = res.changed;
+  let changed = res.changed || !!res.gamesStored;
   if (res.outcome === "regular") {
     if (p.line.paid) {
       // D3: a claim, never a confirmation; the organiser said it.
       const { claimMonthPaid } = await import("./month-payment");
       if (await claimMonthPaid({ monthId: p.monthId, userId: p.userId, source: "organiser", amountPence: p.line.paidPence, now: p.now })) changed = true;
     }
-    if (p.line.games !== null && (await commitMonthGames(p.monthId, p.userId, p.line.games))) changed = true;
   }
   // As the months page does after an organiser's change: what a returning
   // regular is owed is worked out at once (the hourly sweep retries).
@@ -333,7 +340,7 @@ async function reply(input: Parameters<typeof handleNewcomerDmReply>[0]): Promis
         }
       } else {
         // Nobody was added for the name: this member joins with its line.
-        const j = await joinMonthAsOrganiser({ orgId: q.orgId, monthId: q.monthId, userId: r.userId, line: r.line, organiserUserId: userId, now });
+        const j = await joinMonthAsOrganiser({ orgId: q.orgId, monthId: q.monthId, userId: r.userId, line: r.line, organiserUserId: userId, words: input.text, now });
         if (!j.ok) {
           failed.push(r.name);
           continue;
@@ -493,7 +500,7 @@ async function addToMonth(p: Parameters<typeof applyMonthAdd>[0]): Promise<Month
   }
   const userId = c.kind === "join" ? c.userId : await createNewcomer(p.orgId, name);
   if (!userId) return { outcome: "month-add-failed", replyText: s.mwk_month_add_unclear({ name }), changed: false };
-  const j = await joinMonthAsOrganiser({ orgId: p.orgId, monthId: month.id, userId, line, organiserUserId: p.senderUserId, weekDay: nextDay, now });
+  const j = await joinMonthAsOrganiser({ orgId: p.orgId, monthId: month.id, userId, line, organiserUserId: p.senderUserId, weekDay: nextDay, words: p.text ?? null, now });
   if (!j.ok) return { outcome: "month-add-failed", replyText: s.mwk_month_add_unclear({ name }), changed: false };
   const done = s.mwk_month_add_done({ name, month: label, games: j.gamesLeft, paid: line.paid, payg: line.payg });
   let replyText: string | null = done;

@@ -42,6 +42,7 @@ import type { MonthlyList } from "./monthly-list";
 import { placeListLines, unplacedLineNames } from "./monthly-line-placement";
 import { askWhoTheyAre, createNewcomer, joinMonthAsOrganiser } from "./month-newcomers";
 import type { NewcomerLine } from "./month-newcomer-rules";
+import { pastedLineOf } from "./month-signup-rules";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek, weekListKeyPrefix } from "./monthly-week";
 import {
   buildPasteGuestsAddedDm,
@@ -369,7 +370,7 @@ export async function handleMonthlyPaste(args: {
           failures.push(a.name);
           continue;
         }
-        const j = await joinMonthAsOrganiser({ orgId, monthId: week.monthId, userId, line: a.line, organiserUserId: sender.userId, weekDay, now });
+        const j = await joinMonthAsOrganiser({ orgId, monthId: week.monthId, userId, line: a.line, organiserUserId: sender.userId, weekDay, words: pastedLineOf(args.text ?? null, { name: a.name }), now });
         if (!j.ok) {
           failures.push(a.name);
           continue;
@@ -508,11 +509,15 @@ export async function handleMonthlyPaste(args: {
 
   // "4 only" beside a regular: their own line, or an organiser's paste.
   // Anybody else's note is left alone. The one setter works out the money.
+  const entries = [...args.reading.list.slots, ...args.reading.list.sections.cantPlay, ...args.reading.list.sections.reserves, ...args.reading.list.sections.other];
+  const lineOf = (userId: string) =>
+    pastedLineOf(args.text ?? null, entries.find((e) => e.facts?.memberId === userId) ?? { name: roster.find((r) => r.userId === userId)?.name ?? "" });
   for (const g of outcome.games) {
     if (!g.self && !senderIsAdmin) continue;
-    // Loaded here: month-signup imports this module's neighbours.
+    // Loaded here: month-signup imports this module's neighbours. The one
+    // fit rule (2026-11-16) quotes his line when it changes the count.
     const { commitMonthGames } = await import("./month-signup");
-    if (await commitMonthGames(week.monthId, g.userId, g.games)) applied.push(`games:${g.games}:${g.userId}`);
+    if (await commitMonthGames(week.monthId, g.userId, g.games, lineOf(g.userId))) applied.push(`games:${g.games}:${g.userId}`);
   }
 
   // The member who brought guests is told who was added, once per paste.
