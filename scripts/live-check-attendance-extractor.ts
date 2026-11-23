@@ -186,7 +186,36 @@ function fromCorpus(id: string, index = 0): Pick<Case, "body" | "author" | "tagg
   return { body: m.body, author, tagged: !!m.tag || /@Match Time/.test(m.body), history: c.history, lastBotPost: last };
 }
 
+// ── Vets MNF, 2026-11-23 18:29 UTC: Shane answers Kemal's "so are you in?" ──
+// AnalyzedMessage cmwtlo7hw002e07l3mfc7ok4r and the stored lines before it,
+// under roster labels, as `groupChatHistory` built them; MatchTime's last
+// post was the 17 Nov group BotJob. Production read no claim (route offer).
+const VETS_HISTORY: Line[] = [
+  { author: "CM⚡️", body: "I’m in if there’s space" },
+  { author: "Shane", body: "There is indeed space my friend" },
+  { author: "Kemal", body: "@Shane can you stay IN as with you the squad is 14 players?" },
+  { author: "Kemal", body: "@Shane are you IN? If so, I will ask MT to generate the teams. \n\nThere is a small chance I may come depending on my arrival to Sutton. If I come, I will come with David, my son. For the time being, consider me as OUT" },
+  { author: "Steff", body: "@Shane !!!!!" },
+  { author: "Shane", body: "So 7v7 if I’m in ?" },
+  { author: "Kemal", body: "yes" },
+  { author: "Kemal", body: "so are you in? :)" },
+];
+const vets = { author: "Shane", route: "offer" as Route, history: VETS_HISTORY, lastBotPost: "👋 *Sutton Football Club*'s ask for Tue 17 Nov, 21:15 is closed now, thanks all.", now: new Date("2026-11-23T18:29:25Z") };
+/** The sender in, decided, and nobody else in for sure. */
+const answeredIn = (f: AttendanceFacts) =>
+  self(f).some((c) => c.polarity === "in" && !c.contingent) && noSelfOut(f) && !f.claims.some((c) => c.subject === "other" && c.polarity === "in" && !c.contingent);
+
 const CASES: Case[] = [
+  // ── Vets 2026-11-23: an answer to a member's "are you in?" (repeat) ──
+  { id: "Y1", ...vets, body: "Yeah and you and your lad come then it’s 8v8 👌", repeat: true, check: answeredIn, want: "the sender in, not contingent, no one else in (the incident)" },
+  { id: "Y2", ...vets, body: "Yeah", repeat: true, check: answeredIn, want: "the sender in" },
+  // Held out: not quoted in the prompt.
+  { id: "Y3", author: "Dan", route: "offer", history: [{ author: "Rob", body: "lads 12 so far for tonight" }, { author: "Gus", body: "@Dan can you play tonight?" }], body: "yep, and if Tom turns up we've got 14", repeat: true, check: answeredIn, want: "the sender in, Tom only a remark" },
+  { id: "Y4", author: "Kerem", route: "offer", history: [{ author: "Gus", body: "bu akşam 12 kişiyiz" }, { author: "Gus", body: "@Kerem sen geliyor musun?" }], body: "evet, Ali de gelirse 7'ye 7 oluruz", repeat: true, check: answeredIn, want: "the sender in, Ali only a remark (Turkish)" },
+  { id: "Y5", author: "Dan", route: "unsure", history: [{ author: "Gus", body: "@Dan are you in tonight?" }], body: "no sorry mate", check: selfOutDecided, want: "the sender out" },
+  { id: "Y6", author: "Dan", route: "unsure", history: [{ author: "Gus", body: "is it 7v7 tonight?" }], body: "yes", check: noClaims, want: "no claim: the question is not about a place" },
+  { id: "Y7", author: "Dan", route: "unsure", history: [{ author: "Gus", body: "did everyone get the pitch address?" }], body: "yeah got it", check: noClaims, want: "no claim: not about a place" },
+
   // ── The incident and its family (repeat) ───────────────────────────
   { id: "K1", ...sutton, body: "I’ve got a bad hamstring so taking it easy", route: "unsure", reply: ABID_QUOTE, repeat: true, check: noSelfOut, want: "no out: he is playing carefully" },
   { id: "I1", ...sutton, body: "bit sore from Sunday but I'll be there", route: "unsure", repeat: true, check: selfIn, want: "the sender in, never out" },
