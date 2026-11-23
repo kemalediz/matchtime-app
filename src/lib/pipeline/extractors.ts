@@ -370,18 +370,24 @@ export function extractorFor(route: Route): ExtractorKind {
 
 // ── Prompts ────────────────────────────────────────────────────────────
 //
-// ATTENDANCE, 2026-11-23: AN ANSWER TO A MEMBER'S "ARE YOU IN?". Vets MNF:
-// Kemal asked Shane "so are you in? :)" and Shane answered "Yeah and you and
-// your lad come then it's 8v8 👌"; the extractor returned no claim, so he was
-// not signed in. Traced: the question WAS in RECENT CHAT (rebuilt from the
-// stored rows), and the same context with a bare "Yeah" read the sender in.
-// The prompt defined an answer only to MatchTime (affirmation). Now an
-// answer to a member's question about the sender's place is defined once,
-// where the context is explained (the sender's claim, whatever remark about
-// other people sits beside it); affirmation says it is not one of its own;
-// the examples sit in their groups, EN | TR. 17,461 to 19,161 characters.
-// Live results in the PR (scripts/live-check-attendance-extractor.ts, Y*
-// cases, then one full pass).
+// ATTENDANCE, 2026-11-23: ANSWERS TO A MEMBER'S QUESTION. Vets MNF: Kemal
+// asked Shane "so are you in? :)" and Shane answered "Yeah and you and your
+// lad come then it's 8v8 👌"; the extractor returned no claim, so he was not
+// signed in. Traced: the question WAS in RECENT CHAT (rebuilt from the stored
+// rows), and the same context with a bare "Yeah" read the sender in. The
+// prompt defined an answer only to MatchTime (affirmation). Now ANSWERS, in
+// WHAT YOU ARE SHOWN, defines once how a yes or no to a member's question
+// about the sender's own place reads: it takes the question's meaning (in,
+// the offer to fill a gap, the offer to drop out, the bench), only for the
+// latest question put to the sender; a condition on the sender stays
+// contingent, a remark about what others' coming would make is no
+// condition; no claim when the question was about someone else's place, put
+// to another member, or not about a place. affirmation points to it, and the
+// examples are one group, EN | TR. A self IN skips the confidence floor
+// (engine.ts), so a misread answer signs someone in: the negatives are live
+// cases too. 17,461 to 20,796 characters. Live results in the PR
+// (scripts/live-check-attendance-extractor.ts, Y* and YN* cases, then one
+// full pass).
 //
 // ATTENDANCE, 2026-10-28: BEING FREE TO PLAY IS THE BENCH. FNF, Seb, to a
 // full squad: "I'm free to play this Friday if there's any drop outs" was
@@ -444,7 +450,7 @@ THE MESSAGE is the one message you report on, with the name of the person who ty
   CLUB MEMBERS NAMED     members of this club whose names appear in THE MESSAGE, from the club's records. A member the message calls by a nickname the club has on record is shown as that nickname with their name in brackets: "AH (Abdul-Hafeez)"
   MATCHTIME ASKED        MatchTime could not tell who someone in the sender's earlier message was and asked them: that earlier message, quoted. See answersClarification
 Use the context to work out what THE MESSAGE refers to: who "he" is, which line a "same" or "ben de" answers (the quoted message, when there is one), and which question a "yes" or "no" answers. A claim made in the context is never reported again: "same" under Ali's "IN" is one claim, the sender's.
-An answer says what its question asked. When a member asked the sender whether they are playing, by name, with an @mention or straight after the sender spoke ("@Shane are you in?", "so are you in?", "can you stay in?" | "geliyor musun?", "var mısın?"), and THE MESSAGE answers it, the answer is the sender's own claim, as if they had said it in those words: "yes", "yeah", "yep", "of course" | "evet", "tabii", "olur" is the sender in, "no", "nope" | "hayır" is the sender out, and "maybe" | "belki" is the hedge. The answer keeps that meaning whatever else the message says: a remark beside it about other people or the numbers ("yeah, and if you and your lad come it's 8v8") adds no condition to it and no claim for them, unless it says they are playing. A "yes" to a question that is not about anyone's place ("is it 7v7?"), or one that answers no question in the chat, is no claim. An answer to MatchTime is read in affirmation, below.
+ANSWERS. A message that answers a member's question about the SENDER's own place takes its meaning from that question: a yes says what the question asked, a no says the opposite, and a maybe is the hedge. Read it as if the sender had said the question's words about themselves, and fill every field as the rules below give it for those words: asked whether they are in, a yes is in; asked whether they can play if the team is short, a yes is the offer to fill a gap; asked whether they can drop out, a yes is the offer to give up a place; asked whether they will go on the bench, a yes is the bench. The question counts only when it was put to the sender, by name, with an @mention or straight after the sender spoke, and is the latest thing said to them: when a later line put something else to the sender, a yes answers that line, not the question further back. A condition the answer puts on the sender playing keeps the claim contingent, as any condition does. A remark beside the answer about what other people's coming would make, a head count or a format, is no condition on the sender and no claim for those people. A yes or no is no claim for the sender when the question was about someone else's place (the asker's own included), was put to another member, was not about a place, or when no such question was put to them. An answer to MatchTime is read in affirmation.
 A name on the CLUB MEMBERS NAMED line is a person in this club, even when it is also an ordinary word, a short nickname, a team or a well-known phrase: with Glazers listed, "Glazers out" says Glazers is out, and with "AH (Abdul-Hafeez)" listed, "AH IN" says AH is in. Such a claim is about that member, not the sender, and its personRef is the words the message used ("AH"). Read the sentence as you always would: a listed Will in "will you play?" is still the word "will".
 The context often shows the squad: a count such as "13/14" or "14/14", a list of names, a bench, the teams. The squad shown is never a reason for any field. Code holds the real squad and places every player, so a plain "in" is "in" when the list looks full and when the sender is already on it.
 
@@ -467,7 +473,7 @@ Return one claim for each person the message speaks about as a player in the clu
   newPlayer    true only on a claim that answers MATCHTIME ASKED by saying the person is someone new; false everywhere else
 
 THE WHOLE MESSAGE
-  affirmation  "yes" or "no" when the message is a bare answer to MatchTime ("Confirmed", "yes", "no"): to the MatchTime message it replies to, else to MATCHTIME'S LAST POST. Otherwise "none". Words that state the sender's own place ("in", "varım", "out") are a claim, whatever they answer, and an answer to a member is not an affirmation: when the member asked whether the sender is playing, it is the sender's claim, as WHAT YOU ARE SHOWN says
+  affirmation  "yes" or "no" when the message is a bare answer to MatchTime ("Confirmed", "yes", "no"): to the MatchTime message it replies to, else to MATCHTIME'S LAST POST. Otherwise "none". Words that state the sender's own place ("in", "varım", "out") are a claim, whatever they answer. An answer to a member is never an affirmation: see ANSWERS
   sideRequests any of, for what else the message asks for beside its claims:
                  "recruit"   it says how many players are needed, as a number, or whose place needs taking ("we're 4 short, anyone free?", "can someone take my spot?")
                  "chase"     it nudges for more players with no number and no name ("@all we need more players pls")
@@ -483,12 +489,23 @@ The sender's own place: subject sender, contingent false.
   "I'm out", "can't make it", "I'm away that week" | "yokum", "ben yokum", "gelemiyorum", "yok", "bu hafta yokum" -> out
   "@Match Time in", "@Match Time out" -> the sender in, the sender out: the tag addresses MatchTime
   "me too", or "same" replying to a neighbour's "I'm in" | "ben de" after "ben varım" -> the sender's own claim, the same polarity as the line it answers
-  A member asked the sender "@Shane are you in?" or "so are you in?", and the sender answers "yes", "yeah", "yep" | "geliyor musun?" answered "evet", "tabii" -> in; "no", "nope" | "hayır" -> out
-  "Yeah and you and your lad come then it's 8v8", answering "so are you in?" | "evet, sen de oğlunla gelirsen 8'e 8 oluruz", answering "geliyor musun?" -> the sender in, contingent false, and no claim for "you" or "your lad": what their coming would make is a remark
   Other members typing the same "in" or "out" just before does not make the sender's line an echo: it is the sender's own claim
   "I'll go in goal" | "kaleye geçerim" -> the sender in, contingent false: they are playing, and the position is a note
   "in, for bench", "In as a reserve", "put me on standby" | "yedekte kalayım", "yedeğe yaz beni" -> bench
   The chat shows 14/14 with the sender already on the list, and the sender types "in" | "varım" -> polarity in, not bench
+
+Answers to a member's question (ANSWERS): the claim the question asked about the sender, or none.
+  "@Shane are you in?" answered "yes", "yeah", "yep" | "geliyor musun?" answered "evet", "tabii" -> the sender in
+  "so are you in?" answered "no", "nope" | "geliyor musun?" answered "hayır", "yok" -> the sender out
+  "can you play if we're short?" answered "yes" | "eksik olursak gelebilir misin?" answered "evet" -> the sender bench, contingent true, conditionOn "squad": the offer to fill a gap
+  "can you drop out if we're over?" answered "yeah" | "fazla olursak çıkabilir misin?" answered "olur" -> the sender out, contingent true, conditionOn "squad"
+  "can you go on the bench this week?" answered "yes" | "bu hafta yedekte kalır mısın?" answered "evet" -> the sender bench
+  "are you in?" answered "yes if Tom plays", "yeah if my back's ok" | "geliyor musun?" answered "evet, sırtım iyi olursa" -> the sender in, contingent true
+  "so are you in?" answered "Yeah and you and your lad come then it's 8v8" | "geliyor musun?" answered "evet, sen de oğlunla gelirsen 8'e 8 oluruz" -> the sender in, contingent false, and no claim for "you" or "your lad": the count their coming would make is a remark
+  A member asks "so 7v7 if I'm in?" and the sender answers "yes" | "girersem 7'ye 7 mi?" answered "evet" -> no claim for the sender: the question was about the asker's place
+  "@Shane are you in?", and the sender, who is not Shane, answers "yes!!" | "@Shane geliyor musun?" answered "evet" by someone else -> no claim for the sender: it was put to Shane
+  "are you in Tuesday?", then "did you bring the ball back?", both to the sender, answered "yes" | "salı var mısın?", then "topu getirdin mi?", answered "evet" -> no claim: the yes answers the ball
+  "is it 7v7 tonight?" answered "yes" | "bu akşam 7'ye 7 mi?" answered "evet" -> no claim: the question is not about a place
 
 The sender's own offers: they COULD and have not yet. Contingent true, conditionOn "squad", tense future.
   To fill a gap, playing themselves: "ping me if you need one more", "I can play if you're short", "count me in if someone drops", "count me in whenever you are short", "I'll be the 14th if you're short", "put me down if you're short" | "eksik olursa ben gelirim", "biri çıkarsa beni yazın", "biri düşerse oynarım" -> the sender bench
@@ -502,7 +519,6 @@ Not about anyone's place: no claim.
   "I was free last week, shame there was no game" | "geçen hafta boştum" -> no claim: it is over
   "Mojib, Habib and Kieran on the same side" | "Mojib ile Habib aynı takımda" -> no claim
   "@Yusuf how fit are you?" | "Yusuf ne kadar formda?" -> no claim
-  "yes" answering "is it 7v7 tonight?" | "evet" answering "bu akşam 7'ye 7 mi?" -> no claim: the question is not about a place
 
 Fitness and injuries: out only when the person says they will not or cannot play, and a hedge when they say they will decide later.
   "I've got a bad hamstring so taking it easy", "knee's a bit dodgy tonight" | "dizim ağrıyor, yavaş oynarım" -> no claim: they are still playing

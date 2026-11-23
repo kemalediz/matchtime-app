@@ -4,7 +4,7 @@
  *
  *   16:29 Kemal   "@Shane are you IN? If so, I will ask MT to generate the teams. ..."
  *   17:09 Shane   "So 7v7 if I'm in ?"
- *   17:39 Kemal   "yes"
+ *   17:39 Kemal   "yes"                 (stored 17:49, one flush with the next)
  *   17:49 Kemal   "so are you in? :)"
  *   18:29 Shane   "Yeah and you and your lad come then it's 8v8 👌"
  *
@@ -22,9 +22,10 @@
  * remark about other people beside the answer leaves the answer standing.
  *
  * These tests pin both halves: the wiring (the question reaches the
- * extractor) and the prompt (it says what such an answer is). Whether the
- * model obeys is measured live: scripts/live-check-attendance-extractor.ts,
- * the Y* cases.
+ * extractor) and the prompt (it says what such an answer is). They are
+ * wiring and wording checks only: whether the model reads answers right,
+ * the negatives included, is measured live
+ * (scripts/live-check-attendance-extractor.ts, the Y* and YN* cases).
  */
 import { describe, it, expect } from "vitest";
 import { EXTRACTOR_PROMPTS, extractForRoute } from "../extractors";
@@ -104,28 +105,56 @@ describe("the question Shane answered reaches the extractor (the wiring, traced)
 
 describe("the attendance prompt says what an answer to a member's question is", () => {
   const shown = () => P.slice(P.indexOf("WHAT YOU ARE SHOWN"), P.indexOf("THE CLAIMS"));
+  const answers = () => {
+    const s = shown();
+    return s.slice(s.indexOf("ANSWERS."));
+  };
+  const group = () => P.slice(P.indexOf("Answers to a member's question (ANSWERS)"), P.indexOf("The sender's own offers:"));
 
-  it("defines it once, where the context is explained: the answer is the sender's own place", () => {
-    expect(shown()).toMatch(/a member asked the sender whether they are playing/i);
-    expect(shown()).toMatch(/"yes"[^\n]*is the sender in/);
-    expect(shown()).toMatch(/"no"[^\n]*the sender out/);
-    expect(P.match(/a member asked the sender whether they are playing/gi)?.length).toBe(1);
+  it("defines ANSWERS once, in WHAT YOU ARE SHOWN, about the sender's own place", () => {
+    expect(answers()).toMatch(/^ANSWERS\. A message that answers a member's question about the SENDER's own place/);
+    expect(P.match(/ANSWERS\. /g)?.length).toBe(1);
   });
 
-  it("says what else the message says does not make the answer conditional or claim anyone else", () => {
-    expect(shown()).toMatch(/whatever else the message says/i);
-    expect(shown()).toMatch(/adds no condition to it and no claim for them/i);
+  it("takes the question's meaning, never a fixed yes = in (a self IN skips the confidence floor)", () => {
+    const a = answers();
+    expect(a).toMatch(/a yes says what the question asked, a no says the opposite/);
+    expect(a).toMatch(/whether they can play if the team is short, a yes is the offer to fill a gap/);
+    expect(a).toMatch(/whether they can drop out, a yes is the offer to give up a place/);
+    expect(a).toMatch(/whether they will go on the bench, a yes is the bench/);
   });
 
-  it("keeps a yes with no question about a place, and a yes to MatchTime, out of it", () => {
-    expect(shown()).toMatch(/not about anyone's place[^\n]*is no claim/i);
-    expect(fieldSection("affirmation")).toMatch(/to MatchTime/);
-    expect(fieldSection("affirmation")).toMatch(/an answer to a member is not an affirmation/i);
+  it("counts only the latest question put to the sender", () => {
+    expect(answers()).toMatch(/put to the sender[^\n]*the latest thing said to them/);
   });
 
-  it("teaches it in the sender's own place group, English beside Turkish, the incident included", () => {
-    const g = P.slice(P.indexOf("The sender's own place:"), P.indexOf("The sender's own offers:"));
-    expect(g).toMatch(/"so are you in\?"[^\n]*"yes", "yeah"[^\n]*\| [^\n]*"evet"[^\n]*-> in/);
-    expect(g).toMatch(/"Yeah and you and your lad come then it's 8v8"[^\n]*\| [^\n]*-> the sender in, contingent false, and no claim for/);
+  it("keeps a condition on the sender, and only a remark about what others' coming makes is no condition", () => {
+    expect(answers()).toMatch(/A condition the answer puts on the sender playing keeps the claim contingent/);
+    expect(answers()).toMatch(/what other people's coming would make, a head count or a format, is no condition on the sender and no claim for those people/);
+  });
+
+  it("is no claim for someone else's place, a question put to another member, or no place at all", () => {
+    expect(answers()).toMatch(/about someone else's place \(the asker's own included\), was put to another member, was not about a place/);
+  });
+
+  it("affirmation is a pointer, with no word list of its own for answers to members", () => {
+    const f = P.slice(P.indexOf("\n  affirmation  "), P.indexOf("\n  sideRequests "));
+    expect(f).toMatch(/An answer to a member is never an affirmation: see ANSWERS$/);
+    expect(f).not.toMatch(/yeah|evet/);
+  });
+
+  it("examples live in one group, EN | TR on every line, with each negative once", () => {
+    const g = group();
+    const lines = g.split("\n").slice(1).filter((l) => l.startsWith("  "));
+    expect(lines.length).toBeGreaterThanOrEqual(10);
+    for (const l of lines) expect(l, l).toMatch(/ \| [^\n]*-> /);
+    expect(g).toMatch(/"Yeah and you and your lad come then it's 8v8" \| [^\n]*-> the sender in, contingent false, and no claim for/);
+    expect(g).toMatch(/"yes if Tom plays"[^\n]*-> the sender in, contingent true/);
+    expect(g).toMatch(/"can you play if we're short\?" answered "yes"[^\n]*-> the sender bench, contingent true, conditionOn "squad"/);
+    expect(P.match(/is it 7v7 tonight\?/g)?.length).toBe(1);
+    expect(P.match(/@Shane are you in\?/g)?.length).toBe(2);
+    // Nothing about answers left in the sender's own place group.
+    const own = P.slice(P.indexOf("The sender's own place:"), P.indexOf("Answers to a member's question (ANSWERS)"));
+    expect(own).not.toMatch(/answered|are you in\?/);
   });
 });

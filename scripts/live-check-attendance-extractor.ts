@@ -215,6 +215,19 @@ const CASES: Case[] = [
   { id: "Y5", author: "Dan", route: "unsure", history: [{ author: "Gus", body: "@Dan are you in tonight?" }], body: "no sorry mate", check: selfOutDecided, want: "the sender out" },
   { id: "Y6", author: "Dan", route: "unsure", history: [{ author: "Gus", body: "is it 7v7 tonight?" }], body: "yes", check: noClaims, want: "no claim: the question is not about a place" },
   { id: "Y7", author: "Dan", route: "unsure", history: [{ author: "Gus", body: "did everyone get the pitch address?" }], body: "yeah got it", check: noClaims, want: "no claim: not about a place" },
+  // Held out, the review of #630: a self IN skips the confidence floor, so
+  // every misread answer is a wrong sign-in. The answer takes the question's
+  // meaning, and is no claim when the question is not the sender's.
+  // Kemal's real "yes" (17:39) under Shane's "So 7v7 if I’m in ?": the asker's place, not Kemal's.
+  { id: "YN1", ...vets, author: "Kemal", route: "unsure", history: VETS_HISTORY.slice(0, 6), body: "yes", check: (f) => self(f).length === 0, want: "no claim for Kemal: the question was Shane's place" },
+  { id: "YN2", author: "Rob", route: "unsure", history: [{ author: "Gus", body: "@Dan are you in tonight?" }], body: "yes!!", check: (f) => self(f).length === 0, want: "no claim for Rob: it was put to Dan" },
+  { id: "YN3", author: "Dan", route: "offer", history: [{ author: "Gus", body: "@Dan could you play if we end up a man short?" }], body: "yeah sure", check: gapOffer, want: "the bench offer, contingent, squad: not a plain in" },
+  { id: "YN4", author: "Kerem", route: "offer", history: [{ author: "Gus", body: "@Kerem eksik kalırsak oynayabilir misin?" }], body: "evet olur", check: gapOffer, want: "the bench offer (Turkish)" },
+  { id: "YN5", author: "Dan", route: "offer", history: [{ author: "Gus", body: "@Dan would you be ok to step out if we end up with 15?" }], body: "yes no problem", check: (f) => self(f).some((c) => c.polarity === "out" && c.contingent) && !self(f).some((c) => c.polarity === "in"), want: "the offer to give up a place, contingent" },
+  { id: "YN6", author: "Dan", route: "self_att", history: [{ author: "Gus", body: "@Dan happy to sit on the bench this week?" }], body: "yep", check: (f) => self(f).some((c) => c.polarity === "bench") && !self(f).some((c) => c.polarity === "in"), want: "the bench" },
+  { id: "YN7", author: "Dan", route: "offer", history: [{ author: "Gus", body: "@Dan you in tonight?" }], body: "yes as long as my knee holds up", check: (f) => self(f).some((c) => c.polarity === "in" && c.contingent) && noSelfOut(f), want: "in, contingent: a condition on the sender" },
+  { id: "YN8", author: "Dan", route: "offer", history: [{ author: "Gus", body: "@Dan you in tonight?" }], body: "yeah if Rob's playing", check: (f) => self(f).some((c) => c.polarity === "in" && c.contingent) && noSelfOut(f), want: "in, contingent: a condition on the sender" },
+  { id: "YN9", author: "Dan", route: "unsure", history: [{ author: "Gus", body: "@Dan you in Thursday?" }, { author: "Rob", body: "new kits look class" }, { author: "Gus", body: "@Dan did you remember the pump?" }], body: "yes", check: (f) => !self(f).some((c) => c.polarity === "in" || c.polarity === "bench"), want: "no in: the yes answers the pump (a stale question)" },
 
   // ── The incident and its family (repeat) ───────────────────────────
   { id: "K1", ...sutton, body: "I’ve got a bad hamstring so taking it easy", route: "unsure", reply: ABID_QUOTE, repeat: true, check: noSelfOut, want: "no out: he is playing carefully" },

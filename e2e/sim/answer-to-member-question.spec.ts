@@ -9,7 +9,7 @@
  *   16:29 Kemal   cmwthdyzc001a08l5w29vtm2o  "@Shane are you IN? If so, ..."
  *   16:59 Steff   cmwtigcc8000208jwvrdv8onu  "@Shane !!!!!"
  *   17:09 Shane   cmwtitb9o000108l5ylgz46v6  "So 7v7 if I’m in ?"
- *   17:49 Kemal   cmwtk8mqk002007jvlsovy13b  "yes"         (one flush with the next)
+ *   17:39 Kemal   cmwtk8mqk002007jvlsovy13b  "yes"         (stored 17:49, one flush with the next)
  *   17:49 Kemal   cmwtk8msr002107jvwnvv9omp  "so are you in? :)"
  *   18:29 Shane   cmwtlo7hw002e07l3mfc7ok4r  "Yeah and you and your lad come then it’s 8v8 👌"
  *
