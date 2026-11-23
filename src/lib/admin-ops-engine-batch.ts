@@ -200,6 +200,8 @@ import {
   type EngineReminderWrite,
 } from "./admin-ops-engine";
 import { compose } from "./pipeline/compose";
+import { mergeOneReply } from "./pipeline/clause-peel";
+import { actionsNotDoneLine, letsNextActionRun } from "./multi-instruction-reply";
 import { decide as decideDefault } from "./pipeline/engine";
 import { identifyPeople, personPickerFor } from "./pipeline/identify-batch";
 import type { PersonPicker } from "./pipeline/who-is-who";
@@ -477,7 +479,8 @@ function empty(degradations: string[] = []): AdminOpsBatchResult {
   };
 }
 
-export async function runAdminOpsBatch(args: {
+/** What `runAdminOpsBatch` is called with. */
+export interface AdminOpsBatchArgs {
   orgId: string;
   now: Date;
   messages: AdminOpsBatchMessage[];
@@ -507,7 +510,183 @@ export async function runAdminOpsBatch(args: {
   /** What an earlier pass of this batch already read (`deferred`): those
    *  messages are not read again, and the games shown are the same. */
   preRead?: AdminOpsPreRead;
-}): Promise<AdminOpsBatchResult> {
+}
+
+/** One pass's result, with what the steps after it need. */
+interface AdminOpsPassResult extends AdminOpsBatchResult {
+  /** Every action of each message applied in this pass that asked for
+   *  more than one (`AdminFacts.then`), in order, the first included. */
+  steps?: Map<string, AdminFacts[]>;
+  /** The games to come the extractor was shown, for the steps after. */
+  games?: readonly GameToCome[];
+  /** The club's language, for the line naming a step not done. */
+  lang?: string | null;
+}
+
+/**
+ * SEVERAL ACTIONS IN ONE MESSAGE, CARRIED OUT IN ORDER (Sutton FC,
+ * 2026-11-23 14:44: "@Match Time switch to 5aside, then invite local player
+ * pool for the remaining slots" switched the game and never asked the pool,
+ * and said nothing about it).
+ *
+ * The admin extractor reports every action a message asks for, in the order
+ * asked (`AdminFacts.then`, the model's list; nothing here reads words).
+ * The first pass below reads and does each message's FIRST action, exactly
+ * as a message with one action always was. Each later action is then done
+ * by its own pass over the same code, from what was read (`preRead`, no
+ * second extractor call): every gate it has alone (the tag, organiser
+ * rights, the engine's own refusals) applies to it, and the state is read
+ * again, so it sees what the action before it changed (the pool is asked
+ * for the places left at the NEW size; the ask itself runs in the route's
+ * batch-final pass, after every write, as every ask does).
+ *
+ * The message keeps ONE outcome (`mergeActionOutcomes`): one reply, the
+ * actions' lines in order, joined by `mergeOneReply`, and one plain line
+ * naming any action that did nothing, in the sender's words. A message
+ * with one action is exactly one pass, as before.
+ */
+export async function runAdminOpsBatch(args: AdminOpsBatchArgs): Promise<AdminOpsBatchResult> {
+  const first = await runAdminOpsPass(args);
+  const { steps, games, lang, ...result } = first;
+  if (!steps || steps.size === 0) return result;
+
+  const outcomesById = new Map<string, Array<AdminOpsMessageOutcome | undefined>>();
+  for (const id of steps.keys()) outcomesById.set(id, [result.outcomes.get(id)]);
+  // A later action runs only on what the ones before it did: once one did
+  // not go through (it asked a question back, found no game, threw), the
+  // rest of that message is not run, and is named as not done. An "other"
+  // neither runs anything nor holds anything back.
+  const held = new Set<string>();
+  const holdIfNotThrough = (id: string, k: number) => {
+    const o = outcomesById.get(id)![k];
+    if (steps.get(id)![k].action !== "other" && !nextMayRun(o)) held.add(id);
+  };
+  for (const id of steps.keys()) holdIfNotThrough(id, 0);
+  const longest = Math.max(...[...steps.values()].map((s) => s.length));
+  for (let k = 1; k < longest; k++) {
+    for (const [id, s] of steps) if (s.length > k && held.has(id)) outcomesById.get(id)!.push(undefined);
+    const ids = [...steps].filter(([id, s]) => s.length > k && !held.has(id)).map(([id]) => id);
+    if (ids.length === 0) continue;
+    const pass = await runAdminOpsPass({
+      ...args,
+      messages: args.messages.filter((m) => ids.includes(m.waMessageId)),
+      preRead: { facts: new Map(ids.map((id) => [id, steps.get(id)![k]])), games: games ?? [] },
+      applyNow: undefined,
+    });
+    result.degradations.push(...pass.degradations);
+    result.cost = { usd: result.cost.usd + pass.cost.usd, calls: result.cost.calls + pass.cost.calls, ms: result.cost.ms + pass.cost.ms };
+    for (const id of ids) {
+      outcomesById.get(id)!.push(pass.outcomes.get(id));
+      holdIfNotThrough(id, k);
+    }
+  }
+
+  for (const [id, outcomes] of outcomesById) {
+    const m = args.messages.find((x) => x.waMessageId === id)!;
+    const merged = mergeActionOutcomes({
+      actions: steps.get(id)!,
+      outcomes,
+      tagged: m.tagged && m.taggedExplicitly === true,
+      partOfSeveral: args.partOfSeveral === true,
+      lang: lang ?? null,
+    });
+    if (merged) {
+      result.ownedIds.add(id);
+      result.outcomes.set(id, merged);
+    }
+  }
+  return result;
+}
+
+/**
+ * PURE. May the message's next action run after this outcome? When this
+ * one went through: its core's code says so (`letsNextActionRun`), it was
+ * acted on with a tick (a cancel, a payment, a reminder), or its ask was
+ * handed to the batch-final pass. A write that threw, or no outcome at all,
+ * holds the rest back.
+ */
+function nextMayRun(o: AdminOpsMessageOutcome | undefined): boolean {
+  if (!o || o.writeFailed) return false;
+  return (
+    o.react !== null ||
+    o.recruitRequest ||
+    o.statsBlastRequest ||
+    o.partnerAskRequest !== null ||
+    o.poolAskRequest !== null ||
+    o.namedInviteRequest ||
+    letsNextActionRun(o.intent)
+  );
+}
+
+/** PURE. Did this action's outcome do or say anything? */
+function actionDid(o: AdminOpsMessageOutcome | undefined): o is AdminOpsMessageOutcome {
+  return (
+    !!o &&
+    !o.writeFailed &&
+    o.intent !== "request_not_handled" &&
+    !!(o.reply || o.react || o.recruitRequest || o.statsBlastRequest || o.partnerAskRequest || o.poolAskRequest || o.namedInviteRequest)
+  );
+}
+
+/**
+ * PURE. The ONE outcome of a message whose actions were done one after the
+ * other (`runAdminOpsBatch`). Each action that did something says what it
+ * says, in order (a line already said is said once); its asks go to the
+ * batch-final pass. An action that did nothing (no outcome, a write that
+ * threw, or one MatchTime has no action for) is named in one plain line,
+ * in the sender's words, when the message really tagged MatchTime (the
+ * interaction contract: an untagged message is never told what was not
+ * done). An "other" that is one part of a message with several routes is
+ * another owner's part (who plays, the teams), never named here. When no
+ * action did anything, the first outcome there is stands as it would alone
+ * (a dead end stays a dead end), or the message has none.
+ */
+export function mergeActionOutcomes(p: {
+  actions: readonly AdminFacts[];
+  outcomes: ReadonlyArray<AdminOpsMessageOutcome | undefined>;
+  tagged: boolean;
+  partOfSeveral: boolean;
+  lang: string | null;
+}): AdminOpsMessageOutcome | undefined {
+  const did = p.outcomes.filter(actionDid);
+  if (did.length === 0) return p.outcomes.find((o) => o !== undefined);
+  const notDone = p.actions.filter((a, i) => !actionDid(p.outcomes[i]) && !(p.partOfSeveral && a.action === "other"));
+  const join = (pick: (o: AdminOpsMessageOutcome) => string | null): string | null =>
+    did.reduce<string | null>((text, o) => {
+      const line = pick(o);
+      return line && (text ?? "").includes(line.trim()) ? text : mergeOneReply(text, line);
+    }, null);
+  const notDoneLine = p.tagged ? actionsNotDoneLine(notDone.map((a) => a.words), p.lang) : null;
+  const reply = mergeOneReply(join((o) => o.reply), notDoneLine);
+  const teamsMade = did.some((o) => o.replyIfTeamsMade !== undefined)
+    ? mergeOneReply(join((o) => o.replyIfTeamsMade ?? o.reply), notDoneLine)
+    : null;
+  const first = did[0];
+  const switched = did.find((o) => o.switchedMatchId)?.switchedMatchId;
+  return {
+    waMessageId: first.waMessageId,
+    route: first.route,
+    reply,
+    react: did.find((o) => o.react)?.react ?? null,
+    intent: [...did.map((o) => o.intent), ...(notDoneLine ? ["part-not-done"] : [])].join("+"),
+    action: did.map((o) => o.action).join("+"),
+    reasoning: p.outcomes
+      .map((o, i) => `[action ${i + 1}: ${p.actions[i]?.action ?? "?"}] ${o?.reasoning ?? "nothing done"}`)
+      .join(" | "),
+    recruitRequest: did.some((o) => o.recruitRequest),
+    recruitLookbackMatches: did.find((o) => o.recruitRequest)?.recruitLookbackMatches ?? null,
+    recruitSourceUnsaid: did.some((o) => o.recruitSourceUnsaid),
+    statsBlastRequest: did.some((o) => o.statsBlastRequest),
+    partnerAskRequest: did.find((o) => o.partnerAskRequest)?.partnerAskRequest ?? null,
+    poolAskRequest: did.find((o) => o.poolAskRequest)?.poolAskRequest ?? null,
+    namedInviteRequest: did.some((o) => o.namedInviteRequest),
+    writeFailed: false,
+    ...(teamsMade ? { replyIfTeamsMade: teamsMade } : {}),
+    ...(switched ? { switchedMatchId: switched } : {}),
+  };
+}
+
+async function runAdminOpsPass(args: AdminOpsBatchArgs): Promise<AdminOpsPassResult> {
   const { orgId, now, messages, history, enabled, deps } = args;
   const t0 = Date.now();
 
@@ -642,6 +821,19 @@ export async function runAdminOpsBatch(args: {
     deferred = { facts: new Map(later.map((m) => [m.waMessageId, factsById.get(m.waMessageId)!])), games: gamesShown };
     for (const m of later) factsById.delete(m.waMessageId);
     candidates = candidates.filter((m) => now_.has(m.waMessageId));
+  }
+
+  // ── Several actions (2026-11-23): what the steps after this pass do ─
+  // Each message applied here whose facts list more than one action; the
+  // first is done below, the rest by `runAdminOpsBatch`, in order.
+  const steps = new Map<string, AdminFacts[]>();
+  for (const m of candidates) {
+    const f = factsById.get(m.waMessageId);
+    if (f?.kind === "admin" && (f.then?.length ?? 0) > 0) {
+      const { then, ...firstAction } = f;
+      steps.set(m.waMessageId, [firstAction, ...(then ?? [])]);
+      factsById.set(m.waMessageId, firstAction);
+    }
   }
 
   // ── The payment target, decided once, before anything is owned ─────
@@ -1161,8 +1353,10 @@ export async function runAdminOpsBatch(args: {
   /** Adds the one-line answers for tagged `other`s, and the cancels, to
    *  whatever the rest of this function returns, on EVERY path below:
    *  they depend on nothing the engine or the apply layer does. */
-  const finish = (r: AdminOpsBatchResult): AdminOpsBatchResult => {
+  const finish = (r: AdminOpsBatchResult): AdminOpsPassResult => {
     if (deferred) r.deferred = deferred;
+    const pass: AdminOpsPassResult = r;
+    if (steps.size > 0) Object.assign(pass, { steps, games: gamesShown, lang: state.features.language ?? null });
     for (const o of cancelOutcomes) {
       r.ownedIds.add(o.waMessageId);
       r.outcomes.set(o.waMessageId, o);
@@ -1198,9 +1392,9 @@ export async function runAdminOpsBatch(args: {
         writeFailed: false,
       });
     }
-    return r;
+    return pass;
   };
-  if (ownedIds.size === 0) return finish(empty(degradations));
+  if (ownedIds.size === 0) return finish({ ...empty(degradations), cost: { ...cost, ms: Date.now() - t0 } });
 
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
   const engineMessages: EngineMessage[] = messages.map((m) => ({

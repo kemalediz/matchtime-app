@@ -22,7 +22,7 @@ const count = (needle: string) => P.split(needle).length - 1;
 describe("the admin prompt", () => {
   it("states the one-game rule once, before the actions", () => {
     expect(count("ONE GAME, OR THE CLUB FROM NOW ON.")).toBe(1);
-    expect(P.indexOf("ONE GAME, OR THE CLUB FROM NOW ON.")).toBeLessThan(P.indexOf("THE ACTION, exactly one."));
+    expect(P.indexOf("ONE GAME, OR THE CLUB FROM NOW ON.")).toBeLessThan(P.indexOf("THE ACTIONS, in the order asked."));
   });
 
   it("defines open_squad once, as a standing change for the whole club", () => {
@@ -52,7 +52,7 @@ describe("the admin prompt", () => {
       "A short answer to MatchTime's own question takes that question's action only when it agrees or picks one of the options offered; " +
       'a no or a change of mind ("no, leave it", "hold on, not him", "hayır, kalsın") asks for nothing and is "other", unless it asks for something else instead.';
     expect(count(rule)).toBe(1);
-    expect(P.indexOf(rule)).toBeLessThan(P.indexOf("THE ACTION, exactly one."));
+    expect(P.indexOf(rule)).toBeLessThan(P.indexOf("THE ACTIONS, in the order asked."));
     expect(P).toContain('"no, leave it" / "hayır, kalsın", answering MatchTime\'s "Make Tom free for Friday?" -> other');
   });
 

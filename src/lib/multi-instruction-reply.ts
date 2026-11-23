@@ -52,3 +52,59 @@ export function notDoneLine(parts: readonly Route[], lang?: string | null): stri
   const names = [...new Set(parts.map((r) => copy.part[partOf(r)]))];
   return copy.notDone({ parts: copy.join(names), count: names.length });
 }
+
+/**
+ * PURE. The one line naming the ACTIONS of a message that were not done,
+ * when one message asked for several admin actions (Sutton FC, 2026-11-23:
+ * "switch to 5aside, then invite local player pool for the remaining
+ * slots"). Each is named in the sender's own words, as the admin extractor
+ * reported them (`AdminFacts.words`), or as "the rest" when it gave none.
+ * Null when every action was done. The players' group
+ * (`admin-ops-engine-batch.ts`) and HQ (`admin-group-understand.ts`) say it
+ * the same way, with the same copy as `notDoneLine`.
+ */
+/**
+ * The outcome codes of the admin cores that mean the action WENT THROUGH:
+ * the change is made, or was already so ("unchanged"), or the ask was
+ * made. Without the "hq-" prefix HQ puts on some. Anything else (a
+ * question back, "which game?", a refusal, no match) did not.
+ */
+const ACTION_DONE_CODES: ReadonlySet<string> = new Set([
+  "format-switched", "format-switched-activity", "format-unchanged",
+  "quiet-hours-on", "quiet-hours-off", "quiet-hours-unchanged",
+  "player-range-set", "player-range-cleared", "player-range-unchanged",
+  "season-break-set", "season-break-unchanged",
+  "open-squad-on", "open-squad-off", "open-squad-unchanged",
+  "game-move-moved", "game-move-weekly-moved", "game-move-weekly-unchanged",
+  "venue-set",
+  "match-cancelled", "match-restored", "match-not-played", "match-played-restored",
+  "match_cancelled", "match_restored", "match_not_played", "match_played_restored",
+  "pool-asked", "xask-words-asked", "group-asked", "named-done",
+]);
+
+/** The organisers-only refusal (players' group, HQ): nothing changed, and
+ *  every later action checks the same right itself, so it holds none back. */
+const ORGANISERS_ONLY_CODES: ReadonlySet<string> = new Set(["organisers_only", "only-organisers"]);
+
+/**
+ * PURE. May the next admin action of the same message run, after one whose
+ * outcome code is this (2026-11-23, live run: "switch to 5aside, then
+ * invite the pool for the remaining slots" read no "a side", the switch
+ * asked "How many a side?", and the pool was asked for the places at the
+ * OLD size)? Only when this one went through, or was the organisers-only
+ * refusal. A code joined with "+" (several places asked) goes through when
+ * any part did. The later actions that may not run are named as not done.
+ */
+export function letsNextActionRun(outcome: string): boolean {
+  return outcome.split("+").some((c) => {
+    const code = c.replace(/^hq-/, "");
+    return ACTION_DONE_CODES.has(code) || ORGANISERS_ONLY_CODES.has(code);
+  });
+}
+
+export function actionsNotDoneLine(words: ReadonlyArray<string | undefined>, lang?: string | null): string | null {
+  if (words.length === 0) return null;
+  const copy = multiInstructionCopy(lang);
+  const names = [...new Set(words.map((w) => (w && w.trim() ? `"${w.trim()}"` : copy.part.other)))];
+  return copy.notDone({ parts: copy.join(names), count: names.length });
+}

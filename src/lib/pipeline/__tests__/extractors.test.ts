@@ -53,6 +53,13 @@ const MSG = {
 
 // ── The schemas are facts-only ─────────────────────────────────────────
 
+
+/** The schema of ONE action of the admin extractor's list (2026-11-23: a
+ *  message may ask for several). `toMatchTime` stays the message's. */
+function adminActionSchema(): unknown {
+  return (factsSchemaFor("admin_ops") as { properties: { actions: { items: unknown } } }).properties.actions.items;
+}
+
 describe("the extractor schemas contain no decision", () => {
   const forbidden = [
     "intent",
@@ -591,7 +598,7 @@ describe("parseFacts (other routes)", () => {
   });
 
   it("admin · a game whose time has gone (2026-10-28): pastGame required, carried only on a cancel or restore, and only when true", () => {
-    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
+    const schema = adminActionSchema() as { required: string[]; properties: Record<string, unknown> };
     expect(schema.required).toContain("pastGame");
     expect(schema.properties.pastGame).toEqual({ type: "boolean" });
     const base = '"payerRef":"","count":0,"coveredRefs":[],"undo":false,"phrase":"","note":"","lookbackMatches":0,"playersFrom":"","clubRef":"","toMatchTime":true';
@@ -604,7 +611,7 @@ describe("parseFacts (other routes)", () => {
   });
 
   it("admin · the schema requires where the players come from, and the club named", () => {
-    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
+    const schema = adminActionSchema() as { required: string[]; properties: Record<string, unknown> };
     expect(schema.required).toEqual(expect.arrayContaining(["playersFrom", "clubRef"]));
     // Every place named, as a list (2026-10-28: "partner clubs and the pool").
     // 2026-11-09: or the particular people tagged ("named").
@@ -837,7 +844,7 @@ describe("parseFacts (other routes)", () => {
   });
 
   it("admin · the schema requires both venue fields", () => {
-    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    const schema = adminActionSchema() as { required: string[]; properties: Record<string, { enum?: string[] }> };
     expect(schema.required).toEqual(expect.arrayContaining(["venueName", "venueChoice"]));
     expect(schema.properties.action.enum).toEqual(expect.arrayContaining(["set_venue", "retry_ask"]));
   });
@@ -1171,7 +1178,7 @@ describe("admin · season_break (2026-10-29, the prompt rewritten whole)", () =>
     expect(p).toMatch(/"@Match Time no football in December" \/ "@Match Time aralıkta maç yok" -> season_break, breakMonths \["2026-12"\]/);
     expect(p).toMatch(/"storm, no game Friday" \/ "bu hafta maç yok" -> cancel_match/);
     expect(p).not.toMatch(/[–—]/);
-    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    const schema = adminActionSchema() as { required: string[]; properties: Record<string, { enum?: string[] }> };
     expect(schema.properties.action.enum).toContain("season_break");
     expect(schema.required).toEqual(expect.arrayContaining(["breakMonths", "playMonths"]));
   });
@@ -1204,7 +1211,7 @@ describe("admin · quiet_hours (2026-10-31, MT Test: \"@Match Time turn off quie
   });
 
   it("the schema offers quiet_hours and requires its three fields", () => {
-    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    const schema = adminActionSchema() as { required: string[]; properties: Record<string, { enum?: string[] }> };
     expect(schema.properties.action.enum).toContain("quiet_hours");
     expect(schema.required).toEqual(expect.arrayContaining(["quietOff", "quietFrom", "quietTo"]));
   });
@@ -1260,7 +1267,7 @@ describe("admin · player_numbers and switch_format (2026-11-03, the Vets play 6
   });
 
   it("the schema offers both actions and requires their fields", () => {
-    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    const schema = adminActionSchema() as { required: string[]; properties: Record<string, { enum?: string[] }> };
     expect(schema.properties.action.enum).toEqual(expect.arrayContaining(["player_numbers", "switch_format"]));
     expect(schema.properties.action.enum).not.toContain("min_players");
     expect(schema.required).toEqual(expect.arrayContaining(["minPlayers", "maxPlayers", "fullTeams", "size", "aSide"]));
@@ -1341,7 +1348,7 @@ describe("admin · month_coverage (2026-11-16, Kemal: whole month or games left)
   });
 
   it("the schema offers month_coverage and requires coverage, a closed list", () => {
-    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    const schema = adminActionSchema() as { required: string[]; properties: Record<string, { enum?: string[] }> };
     expect(schema.properties.action.enum).toContain("month_coverage");
     expect(schema.required).toContain("coverage");
     expect(schema.properties.coverage.enum).toEqual(["", "whole", "left"]);
@@ -1404,7 +1411,7 @@ describe("admin · move_game (2026-11-10, Kemal: \"@Match Time move Monday's gam
   });
 
   it("the schema offers move_game and requires its four fields, the day a closed list of weekdays", () => {
-    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    const schema = adminActionSchema() as { required: string[]; properties: Record<string, { enum?: string[] }> };
     expect(schema.properties.action.enum).toContain("move_game");
     expect(schema.required).toEqual(expect.arrayContaining(["game", "newDay", "newTime", "everyWeek"]));
     expect(schema.properties.newDay.enum).toEqual(["", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);

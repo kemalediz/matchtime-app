@@ -700,6 +700,22 @@ export interface AdminFacts {
    * answer to MatchTime's question names nobody.
    */
   coverage?: "whole" | "left";
+  /**
+   * SEVERAL ACTIONS IN ONE MESSAGE (Sutton FC, 2026-11-23: "@Match Time
+   * switch to 5aside, then invite local player pool for the remaining
+   * slots" was read as the switch alone, and the pool was never asked).
+   * The extractor reports every action the message asks for, in the order
+   * asked; these facts are the FIRST, and `then` the rest, each a whole
+   * action of its own (never with a `then` of its own). Absent for one
+   * action, which is exactly the facts as before. Code carries them out one
+   * after the other, each through its own gates, each against the state the
+   * one before left (`admin-ops-engine-batch.ts`, `admin-group-understand.ts`).
+   */
+  then?: AdminFacts[];
+  /** The part of the message that asks for this action, as written. Only
+   *  ever said back to name a part that was not done; never read for
+   *  meaning. Absent when the model gave none. */
+  words?: string;
   /** bulk_payment */
   payerRef?: string;
   count?: number;

@@ -1580,6 +1580,7 @@ export const en = {
       if (p.squad) lines.push(`❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`);
       lines.push(`🔁 *"@Match Time make it 8 a side"*, *"@Match Time 6 a side on Monday"*: one game a different size, inside those numbers. Going up, the bench moves in; going down, the last to join go to the bench. Each is told by DM, and I post the new list.`);
       lines.push(`🕗 *"@Match Time move Monday's game to 20:15"*, *"@Match Time from now on we kick off at 20:15"*: one game to another time or day of its week, or your weekly game from now on, with its games still to be played. Quietly: I don't post it in the players' group.`);
+      if (p.squad) lines.push(`🔗 *"@Match Time make it 5 a side, then ask the group for the places left"*: several things in one message. I do them in the order you ask, each one after the one before it. If I can't do one of them, I say which.`);
     }
     if (p.topic === "settings") {
       lines.push(`🌙 *"@Match Time turn on quiet hours from 23:00 to 09:00"*, *"@Match Time turn off quiet hours"*: I hold my own messages overnight, or send at any time. A new club starts with quiet hours off.`);

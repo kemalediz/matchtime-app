@@ -1291,6 +1291,7 @@ export const tr: Strings = {
       if (p.squad) lines.push(`❌ *"@Match Time cuma maçını iptal et"*, *"@Match Time maç yapılıyor"*: sıradaki maçı iptal ederim ya da yeniden açarım, oyuncu grubuna da haber veririm.`);
       lines.push(`🔁 *"@Match Time 8'e 8 yapalım"*, *"@Match Time pazartesi 6'ya 6 oynayalım"*: bu sayılar içinde tek bir maçın formatı. Büyürken yedekler kadroya girer, küçülürken en son katılanlar yedeğe geçer. Herkese mesajla haber verir, yeni listeyi atarım.`);
       lines.push(`🕗 *"@Match Time pazartesi maçını 20:15'e al"*, *"@Match Time artık 20:15'te başlıyoruz"*: tek bir maçın saati ya da haftası içindeki günü, ya da bundan sonra haftalık maçınız, oynanmamış maçlarıyla birlikte. Sessizce: oyuncu grubuna yazmam.`);
+      if (p.squad) lines.push(`🔗 *"@Match Time 5'e 5 yap, sonra boş yerler için gruba sor"*: tek mesajda birkaç iş. İstediğin sırayla yaparım, her biri bir öncekinin bıraktığı durumla. Birini yapamazsam hangisi olduğunu söylerim.`);
     }
     if (p.topic === "settings") {
       lines.push(`🌙 *"@Match Time sessiz saatleri 23:00 ile 09:00 arası aç"*, *"@Match Time sessiz saatleri kapat"*: kendi mesajlarımı gece bekletirim ya da her saatte gönderirim. Yeni bir kulüpte sessiz saatler kapalı başlar.`);

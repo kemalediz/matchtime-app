@@ -209,7 +209,9 @@ describe("(b) every line of the old full HQ help is in exactly one topic", () =>
 
   // Lines added to a topic after the snapshot, each named with its feature:
   // the old help cannot have said them.
-  const addedSince = (l: string) => l.startsWith("👤 "); // bringing a guest by contact card (2026-11-17)
+  const addedSince = (l: string) =>
+    l.startsWith("👤 ") || // bringing a guest by contact card (2026-11-17)
+    l.startsWith("🔗 "); // several things in one message, done in order (2026-11-23)
 
   it("for every club shape, EN and TR", () => {
     let checked = 0;
