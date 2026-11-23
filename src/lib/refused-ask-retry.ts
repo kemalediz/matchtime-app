@@ -34,6 +34,7 @@
  * back. Nothing to repeat: the caller says so in one short line.
  */
 import type { AdminFacts } from "./pipeline/types";
+import { pickAdminAction } from "./admin-actions";
 
 /** How long after an ask "try again" still means it. */
 export const RETRY_WINDOW_MS = 6 * 60 * 60 * 1000;
@@ -56,10 +57,11 @@ export type LatestAskForRetry = (a: { orgId: string; where: AskPlace; now: Date 
 
 /** The facts to act on again, or null when there is nothing to repeat. */
 export function retryFactsOf(ask: StoredAsk | null, now: Date): AdminFacts | null {
-  if (!ask || ask.facts.kind !== "admin" || ask.facts.action !== "recruit") return null;
+  if (!ask) return null;
   if (now.getTime() - ask.at.getTime() > RETRY_WINDOW_MS) return null;
-  const f = ask.facts;
-  if (!f.partnerClubs && !f.pool) return null;
+  // The ask, wherever it sat among its message's actions (review of #629).
+  const f = askOf(ask.facts);
+  if (!f) return null;
   return {
     kind: "admin",
     action: "recruit",
@@ -68,6 +70,11 @@ export function retryFactsOf(ask: StoredAsk | null, now: Date): AdminFacts | nul
     ...(f.pool ? { pool: true as const } : {}),
     toMatchTime: true,
   };
+}
+
+/** The ask to the partner clubs or the pool among a reading's actions. */
+function askOf(f: AdminFacts): AdminFacts | null {
+  return pickAdminAction(f, (a) => a.action === "recruit" && (a.partnerClubs === true || a.pool === true)).picked;
 }
 
 /** The admin extractor's facts off a stored pipeline trace, or null. */
@@ -102,7 +109,7 @@ export const latestAskFromRecords: LatestAskForRetry = async ({ orgId, where, no
         });
   for (const r of rows ?? []) {
     const facts = adminFactsInTrace(r.pipelineTrace);
-    if (facts?.action === "recruit" && (facts.partnerClubs || facts.pool)) return { facts, at: r.createdAt };
+    if (facts && askOf(facts)) return { facts, at: r.createdAt };
   }
   return null;
 };

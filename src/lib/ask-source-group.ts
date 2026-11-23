@@ -38,6 +38,7 @@ import { parseAskSourceRef, sourceQuestionAnswered, sourcesFromAnswer, type Recr
 import type { QuotedMessage } from "./admin-group-confirm-rules";
 import { extractForRouteTraced } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
+import { severalActions } from "./admin-actions";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import type { QuotedGroupMessage } from "./reply-context";
 
@@ -108,7 +109,9 @@ export async function groupSourceAnswers(args: {
         ...(m.reply ? { reply: m.reply } : {}),
         now,
       }).catch(() => null);
-      const facts = extracted?.facts.kind === "admin" ? extracted.facts : null;
+      // Several actions (review of #629): not a bare answer; the message's
+      // own route carries out every action, in order.
+      const facts = extracted?.facts.kind === "admin" && !severalActions(extracted.facts) ? extracted.facts : null;
       const sources = sourcesFromAnswer(facts);
       console.log(`[ask-source-group] ${m.id}: in the place of an answer to the source question: ${sources?.join("+") ?? "not an answer"}`);
       if (sources) out.set(m.id, { sources, clubRef: facts?.clubRef?.trim() || null });

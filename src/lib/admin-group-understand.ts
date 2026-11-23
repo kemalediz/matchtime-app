@@ -157,7 +157,7 @@ import { parseJoinRequestRef, parsePoolAskRef } from "./admin-group-pool-refs";
 import { decideRecruitSource, namedSources, sourcesFromAnswer, sourceQuestionAnswered, type RecruitSource } from "./ask-source-rules";
 import { mergeOneReply } from "./pipeline/clause-peel";
 import { isAttendanceRoute, orderedRoutes } from "./pipeline/multi-route";
-import { notDoneLine } from "./multi-instruction-reply";
+import { actionsNotDoneLine, letsNextActionRun, notDoneLine } from "./multi-instruction-reply";
 import { askWhichSource, sourcesAvailable } from "./ask-source";
 import { RETRY_FOLLOWUP_MS, latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./refused-ask-retry";
 import { applyQuietHoursWords } from "./quiet-hours-words";
@@ -941,10 +941,14 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // ("ask the pool", "find someone nearby"), for the club's next match,
     // through the match page tick's own function (`pool-ask-words.ts`).
     // An organiser's alone; a weekly club's (as asking the group is).
+    /** The game a size switch of this message changed (2026-11-23, review of
+     *  #629): an ask later in the same message is for that game, not the
+     *  club's next one. Null: the next one, as always. */
+    let switchedMatchId: string | null = null;
     const askPoolInWords = async (): Promise<Understood> => {
       if (!actor) return onlyOrganisers("players");
       if (!weekly) return notHere();
-      const r = await askPoolFromWords({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv, remember: { askMessageId: messageId } });
+      const r = await askPoolFromWords({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv, remember: { askMessageId: messageId }, ...(switchedMatchId ? { matchId: switchedMatchId } : {}) });
       return said(r.outcome, r.replyText);
     };
     // "@Match Time DM these people" (2026-11-09): the club's invite to the
@@ -992,7 +996,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     const askOne = async (source: RecruitSource, organiser: string, clubRef: string | null): Promise<Understood> => {
       if (source === "pool") return askPoolInWords();
       if (source === "partners") {
-        const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: organiser, via: "hq", clubRef, sourceMessageId: messageId, lang, now });
+        const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: organiser, via: "hq", clubRef, sourceMessageId: messageId, lang, now, ...(switchedMatchId ? { matchId: switchedMatchId } : {}) });
         return said(r.outcome, r.replyText);
       }
       const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
@@ -1046,35 +1050,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       return named && named.some((x) => x !== "club") ? named : null;
     };
 
-    // A message the router could not place while the score waits is read
-    // by the score handling, which says nothing unless it is the score.
-    const unsureWhileScoreWaits = !!score.waiting && route === "unsure";
-    // AN ANSWER TO "WHO SHALL I ASK FOR PLAYERS?" (2026-10-28), in the place
-    // of one by the safe-YES rule's own tests (a reply quoting it, or the
-    // next message after it), from an organiser: the admin extractor reads
-    // the words against the question (MatchTime's last post), whatever the
-    // router called them. A source named is asked; anything else is handled
-    // as it would have been with no question asked.
-    const sourceOptions = actor && weekly ? sourceQuestionAnswered({ quoted, log, now }) : null;
-    if (sourceOptions && actor) {
-      const answer = await readAdminFacts();
-      const picked = sourcesFromAnswer(answer);
-      console.log(`[admin-group] ${messageId}: in the place of an answer to the source question: ${picked?.join("+") ?? "not an answer"}`);
-      if (picked) return askFromSources(picked, actor, answer?.clubRef ?? null);
-    }
-    // AN ANSWER TO "WHOLE MONTH, OR JUST THE GAMES LEFT?" (2026-11-16), from
-    // an organiser of a monthly club: the admin extractor reads the words,
-    // whatever the router called them (review of #611):
-    //   - it NAMES somebody: it is about that person, the one asked about
-    //     or not ("Riley covers the whole month" right after a question
-    //     about Ben changes Riley's, never Ben's);
-    //   - it names nobody: the question a reply quotes, else the newest
-    //     (`coverageAnswerTarget`), with the month and player from its ask
-    //     ref; when it is not clear which, ONE line asks which player.
-    // Anything else is handled as it would have been with no question.
     // "Dan covers the whole month": every player named, through
-    // `month-coverage-words.ts`. Never a payment (round 4, option a). Any question it asks
-    // is logged with the WHOLE reply as its words (round 4, item 4).
+    // `month-coverage-words.ts` (defined here: the readers below use it).
     const coverageWordsHere = async (f: AdminFacts, by: string) => {
       const r = await applyMonthCoverageWords({
         orgId: org.id,
@@ -1092,9 +1069,218 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       if (r.confirm) await askCoverageChangeInHq({ orgId: org.id, change: r.confirm, text: r.replyText, now });
       return r;
     };
+    // THE ADMIN EXTRACTOR'S READING, CARRIED OUT (hoisted 2026-11-23, review
+    // of #629): the admin_ops route and EVERY other reader of the admin
+    // extractor here (ask_group, the answers to MatchTime's questions, the
+    // follow-up to the organisers' ask) do a reading of several actions
+    // through this, so a later action is never dropped or acted on alone.
+    // ONE ACTION of what the message asks, through its own door, with
+    // its own gates. `several`: one part of several (another route's
+    // part, or another action of this message), never a dead end alone.
+    const adminAction = async (facts: AdminFacts | { kind: "none" }, several: boolean): Promise<Understood | null> => {
+      // The people tagged (2026-11-09, "DM these people"): their invite,
+      // never a place asked. An organiser's alone (not the collector's).
+      if (facts.kind === "admin" && facts.action === "recruit" && facts.namedPeople) return dmTagged();
+      // Another place named: the MatchTime player pool (L10, "get us a
+      // player from the app"), another club's players (slice S6, "ask
+      // Sutton if anyone can play"), or several ("partner clubs and the
+      // pool", 2026-10-28). Each through the shared door every surface
+      // uses (`pool-ask-words.ts`, `partner-ask-words.ts`); an
+      // organiser's alone, like ask_group (the collector may not).
+      const places = facts.kind === "admin" ? otherPlacesNamed(facts) : null;
+      if (places) {
+        if (!actor) return onlyOrganisers("players");
+        return askFromSources(places, actor, facts.kind === "admin" ? (facts.clubRef ?? null) : null);
+      }
+      // The club's own players, as one action of several (review of #629:
+      // the ask_group route's own door, so a message read with several
+      // actions asks the group as ask_group would).
+      if (several && facts.kind === "admin" && facts.action === "recruit" && facts.ownClub) {
+        if (!actor) return onlyOrganisers("players");
+        if (!weekly) return notHere();
+        const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
+        return said(r.outcome, r.replyText);
+      }
+      // Setting the pitch, or "try again" after a refusal (2026-10-28).
+      if (facts.kind === "admin" && (facts.action === "set_venue" || facts.action === "retry_ask")) return venueOrRetry(facts, null);
+      // Players asked for, no source named (2026-10-28): an organiser's
+      // question back when the club has partners or the pool; otherwise
+      // the one line below, as before.
+      if (facts.kind === "admin" && facts.action === "recruit" && facts.sourceUnsaid) {
+        if (!actor) return onlyOrganisers("players");
+        const which = await askWhichIfUnsaid(facts);
+        if (which) return which;
+      }
+      // Calling a match off, or putting it back on (2026-10-22): an owner's
+      // or admin's alone (the collector may not), weekly or monthly (a
+      // monthly club's cancelled-week credits come with it, 2026-10-29).
+      // The one path the web page uses (`match-cancel.ts`).
+      // A season break (2026-10-29): "no football in December", "we're
+      // back mid January". An organiser's alone, like a cancel.
+      // Quiet hours (2026-10-31): off, on, or new times, through the
+      // settings page's own save core. An organiser's alone.
+      if (facts.kind === "admin" && facts.action === "quiet_hours") {
+        if (!actor) return onlyOrganisers("settings");
+        const r = await applyQuietHoursWords({ orgId: org.id, off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null, lang, now });
+        return said(`hq-${r.outcome}`, r.replyText);
+      }
+      // A game's fewest and most players (2026-11-03, the Vets play 6, 7
+      // or 8 a side), through the activities page's own save core; and
+      // one game switched to another size, through the switch page's own
+      // core. An organiser's alone.
+      if (facts.kind === "admin" && facts.action === "player_numbers") {
+        if (!actor) return onlyOrganisers("settings");
+        const r = await applyPlayerRangeWords({ orgId: org.id, ...playerRangeWordsOf(facts), lang });
+        return said(`hq-${r.outcome}`, r.replyText);
+      }
+      // No squad limit, or a limit back (2026-11-17, the Vets), through
+      // the settings page's own core (`open-squad-save.ts`). An
+      // organiser's alone.
+      if (facts.kind === "admin" && facts.action === "open_squad") {
+        if (!actor) return onlyOrganisers("settings");
+        const { setOpenSquad } = await import("./open-squad-save");
+        const r = await setOpenSquad({ orgId: org.id, on: facts.openSquadOff !== true, actorUserId: actor, now });
+        return said(`hq-${r.outcome}`, r.replyText);
+      }
+      if (facts.kind === "admin" && facts.action === "switch_format") {
+        if (!actor) return onlyOrganisers("settings");
+        // HQ acts on a real tag only; the suggestion is the players' group's.
+        const r = await applySwitchFormatWords({ orgId: org.id, perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: actor, via: "hq", lang, now, explicit: true });
+        if (r.matchId && r.outcome.startsWith("format-switched")) switchedMatchId = r.matchId;
+        return r.replyText ? said(`hq-${r.outcome}`, r.replyText) : null;
+      }
+      // A game's day or time (2026-11-10, Kemal: "@Match Time move
+      // Monday's game to 8:15", "from now on we kick off at 8:15"): one
+      // game, or the weekly game from now on, through the one place a
+      // kickoff moves (`game-move-words.ts`, `activity-kickoff-move.ts`,
+      // the activities page's own code). Quiet: nothing is posted in the
+      // players' group. An organiser's alone. "Which game?" is recorded
+      // as MatchTime's line, so the answer is read with it.
+      if (facts.kind === "admin" && facts.action === "move_game") {
+        if (!actor) return onlyOrganisers("settings");
+        const r = await applyMoveGameWords({ orgId: org.id, words: moveGameWordsOf(facts), games: gamesShown, lang, now });
+        if (r.outcome.startsWith("game-move-which") || r.outcome === "game-move-say-what") {
+          await recordMatchTimeLine({ orgId: org.id, idPrefix: GAME_MOVE_LINE_PREFIX, text: r.replyText, now });
+        }
+        return said(`hq-${r.outcome}`, r.replyText);
+      }
+      if (facts.kind === "admin" && facts.action === "season_break") {
+        if (!actor) return onlyOrganisers("settings");
+        const { applySeasonBreakWords } = await import("./season-break-words");
+        const r = await applySeasonBreakWords({ orgId: org.id, breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [], lang, now });
+        return { route, outcome: r.outcome, replyText: r.replyText };
+      }
+      if (facts.kind === "admin" && (facts.action === "cancel_match" || facts.action === "restore_match")) {
+        // Kemal, 2026-10-22: "it only acts when an admin tags it" (the gate).
+        if (!actor) return onlyOrganisers(facts.action === "cancel_match" ? "cancel" : "restore");
+        const r = await hqCancelOrRestore({
+          orgId: org.id,
+          lang,
+          mode: facts.action === "cancel_match" ? "cancel" : "restore",
+          dayPhrase: facts.matchDay ?? null,
+          pastGame: facts.pastGame === true,
+          addressed: true,
+          now,
+        });
+        return r ? said(r.outcome, r.replyText) : null;
+      }
+      // What a monthly regular covers (2026-11-16, Kemal: "Dan covers the
+      // whole month"): the months page's own write, through
+      // `month-coverage-words.ts`; words that say neither get ONE
+      // question, logged there. An organiser's alone, a monthly club's.
+      if (facts.kind === "admin" && facts.action === "month_coverage") {
+        if (!actor) return onlyOrganisers();
+        if (weekly) return notHere();
+        const r = await coverageWordsHere(facts, actor);
+        return said(`hq-${r.outcome}`, r.replyText);
+      }
+      if (facts.kind === "admin" && facts.action === "fee_waiver") {
+        if (!feeActor) return onlyOrganisers();
+        // MatchTime ASKS; the YES applies it (review of #301, item 2).
+        const r = await proposeFeeFreeInHq({
+          orgId: org.id,
+          lang,
+          refs: facts.coveredRefs ?? [],
+          undo: facts.undo === true,
+          dayPhrase: facts.matchDay ?? null,
+          senderUserId: feeActor,
+          body,
+          senderName: input.senderName ?? null,
+          messageId,
+          now,
+        });
+        return said(r.outcome, r.replyText);
+      }
+      console.log(`[admin-group] ${messageId}: admin_ops read as ${facts.kind === "admin" ? facts.action : facts.kind}, not done from HQ`);
+      // Nothing MatchTime has does it ("other", or nothing read): a dead
+      // end. A known action done elsewhere keeps "not from this group".
+      // One part of several is not a dead end: the message's other parts
+      // speak for it, and "no part did anything" is decided below.
+      if (!several && (facts.kind !== "admin" || facts.action === "other")) {
+        return deadEnd(notHere, facts.kind === "admin" ? ADMIN_NO_ACTION_WHY : "MatchTime could not read what it asks");
+      }
+      return notHere();
+    };
+    const adminOpsRead = async (read: AdminFacts | { kind: "none" }, several: boolean): Promise<Understood | null> => {
+      // SEVERAL ACTIONS IN ONE MESSAGE (2026-11-23, Sutton FC: "switch to
+      // 5aside, then invite local player pool for the remaining slots"
+      // did the switch alone). The extractor lists them in the order
+      // asked; each is done here in that order, each seeing what the one
+      // before changed, and the message gets ONE reply (`joinHqActions`).
+      // An "other" among them is named as not done, never guessed at.
+      if (read.kind !== "admin" || (read.then?.length ?? 0) === 0) return adminAction(read, several);
+      const { then, ...firstAction } = read;
+      const actions: AdminFacts[] = [firstAction, ...(then ?? [])];
+      // A later action runs only on what the ones before it did
+      // (`letsNextActionRun`); an "other" neither runs nor holds back.
+      const results: Array<Understood | null> = [];
+      let held = false;
+      for (const a of actions) {
+        if (held || a.action === "other") {
+          results.push(null);
+          continue;
+        }
+        const r = await adminAction(a, true);
+        results.push(r);
+        if (!r || !letsNextActionRun(r.outcome)) held = true;
+      }
+      return joinHqActions({ route, actions, results, lang, otherRoutes: several });
+    };
+
+    // A message the router could not place while the score waits is read
+    // by the score handling, which says nothing unless it is the score.
+    const unsureWhileScoreWaits = !!score.waiting && route === "unsure";
+    // AN ANSWER TO "WHO SHALL I ASK FOR PLAYERS?" (2026-10-28), in the place
+    // of one by the safe-YES rule's own tests (a reply quoting it, or the
+    // next message after it), from an organiser: the admin extractor reads
+    // the words against the question (MatchTime's last post), whatever the
+    // router called them. A source named is asked; anything else is handled
+    // as it would have been with no question asked.
+    const sourceOptions = actor && weekly ? sourceQuestionAnswered({ quoted, log, now }) : null;
+    if (sourceOptions && actor) {
+      const answer = await readAdminFacts();
+      if (answer?.then?.length) return adminOpsRead(answer, false);
+      const picked = sourcesFromAnswer(answer);
+      console.log(`[admin-group] ${messageId}: in the place of an answer to the source question: ${picked?.join("+") ?? "not an answer"}`);
+      if (picked) return askFromSources(picked, actor, answer?.clubRef ?? null);
+    }
+    // AN ANSWER TO "WHOLE MONTH, OR JUST THE GAMES LEFT?" (2026-11-16), from
+    // an organiser of a monthly club: the admin extractor reads the words,
+    // whatever the router called them (review of #611):
+    //   - it NAMES somebody: it is about that person, the one asked about
+    //     or not ("Riley covers the whole month" right after a question
+    //     about Ben changes Riley's, never Ben's);
+    //   - it names nobody: the question a reply quotes, else the newest
+    //     (`coverageAnswerTarget`), with the month and player from its ask
+    //     ref; when it is not clear which, ONE line asks which player.
+    // Anything else is handled as it would have been with no question.
+    // "Dan covers the whole month": every player named, through
+    // `month-coverage-words.ts`. Never a payment (round 4, option a). Any question it asks
+    // is logged with the WHOLE reply as its words (round 4, item 4).
     const coverageTarget = actor && !weekly ? coverageAnswerTarget({ quoted, log, now }) : null;
     if (coverageTarget && actor) {
       const answer = await readAdminFacts();
+      if (answer?.then?.length) return adminOpsRead(answer, false);
       let r: Awaited<ReturnType<typeof answerCoverageQuestion>> = null;
       if (answer?.action === "month_coverage" && (answer.coveredRefs ?? []).length > 0) {
         r = await coverageWordsHere(answer, actor);
@@ -1114,6 +1300,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     const venueList = actor ? venueListAnswered({ quoted, log, now }) : null;
     if (venueList) {
       const answer = await readAdminFacts();
+      if (answer?.then?.length) return adminOpsRead(answer, false);
       console.log(`[admin-group] ${messageId}: in the place of an answer to MatchTime's list of places: ${answer?.action ?? "not read"}`);
       if (answer?.action === "set_venue") return venueOrRetry(answer, venueList);
     }
@@ -1126,6 +1313,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       const stored = await (input.deps?.latestAskForRetry ?? latestAskFromRecords)({ orgId: org.id, where: "hq", now }).catch(() => null);
       if (stored && now.getTime() - stored.at.getTime() <= RETRY_FOLLOWUP_MS && retryFactsOf(stored, now)) {
         const answer = await readAdminFacts();
+        if (answer?.then?.length) return adminOpsRead(answer, false);
         console.log(`[admin-group] ${messageId}: a tagged follow-up to the organisers' ask (${route ?? "no route"}): ${answer?.action ?? "not read"}`);
         if (answer?.action === "retry_ask" || answer?.action === "set_venue") return venueOrRetry(answer, null);
       }
@@ -1336,6 +1524,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // admin_ops and in the players' group (review #8, 2026-11-09).
         if (!weekly) {
           const f = await readAdminFacts();
+          if (f?.then?.length) return adminOpsRead(f, several);
           return f?.action === "recruit" && f.namedPeople ? dmTagged() : notHere();
         }
         // A club with partner clubs (slice S6, 2026-10-21): "ask Sutton if
@@ -1351,6 +1540,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // pool hears so instead of a post in its group.
         const partners = await activePartnerChoices(org.id).catch(() => []);
         const facts = await readAdminFacts();
+        // Several actions (review of #629): every one, in order.
+        if (facts?.then?.length) return adminOpsRead(facts, several);
         // The people tagged (2026-11-09): DM'd the invite, nobody asked.
         if (facts?.action === "recruit" && facts.namedPeople) return dmTagged();
         if (facts && (facts.action === "set_venue" || facts.action === "retry_ask")) return venueOrRetry(facts, null);
@@ -1375,138 +1566,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // collector may do none of it: the line naming who can (2026-10-20),
         // and the extractor is not asked.
         if (!feeActor) return onlyOrganisers();
-        const facts = (await readAdminFacts()) ?? { kind: "none" as const };
-        // The people tagged (2026-11-09, "DM these people"): their invite,
-        // never a place asked. An organiser's alone (not the collector's).
-        if (facts.kind === "admin" && facts.action === "recruit" && facts.namedPeople) return dmTagged();
-        // Another place named: the MatchTime player pool (L10, "get us a
-        // player from the app"), another club's players (slice S6, "ask
-        // Sutton if anyone can play"), or several ("partner clubs and the
-        // pool", 2026-10-28). Each through the shared door every surface
-        // uses (`pool-ask-words.ts`, `partner-ask-words.ts`); an
-        // organiser's alone, like ask_group (the collector may not).
-        const places = facts.kind === "admin" ? otherPlacesNamed(facts) : null;
-        if (places) {
-          if (!actor) return onlyOrganisers("players");
-          return askFromSources(places, actor, facts.kind === "admin" ? (facts.clubRef ?? null) : null);
-        }
-        // Setting the pitch, or "try again" after a refusal (2026-10-28).
-        if (facts.kind === "admin" && (facts.action === "set_venue" || facts.action === "retry_ask")) return venueOrRetry(facts, null);
-        // Players asked for, no source named (2026-10-28): an organiser's
-        // question back when the club has partners or the pool; otherwise
-        // the one line below, as before.
-        if (facts.kind === "admin" && facts.action === "recruit" && facts.sourceUnsaid) {
-          if (!actor) return onlyOrganisers("players");
-          const which = await askWhichIfUnsaid(facts);
-          if (which) return which;
-        }
-        // Calling a match off, or putting it back on (2026-10-22): an owner's
-        // or admin's alone (the collector may not), weekly or monthly (a
-        // monthly club's cancelled-week credits come with it, 2026-10-29).
-        // The one path the web page uses (`match-cancel.ts`).
-        // A season break (2026-10-29): "no football in December", "we're
-        // back mid January". An organiser's alone, like a cancel.
-        // Quiet hours (2026-10-31): off, on, or new times, through the
-        // settings page's own save core. An organiser's alone.
-        if (facts.kind === "admin" && facts.action === "quiet_hours") {
-          if (!actor) return onlyOrganisers("settings");
-          const r = await applyQuietHoursWords({ orgId: org.id, off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null, lang, now });
-          return said(`hq-${r.outcome}`, r.replyText);
-        }
-        // A game's fewest and most players (2026-11-03, the Vets play 6, 7
-        // or 8 a side), through the activities page's own save core; and
-        // one game switched to another size, through the switch page's own
-        // core. An organiser's alone.
-        if (facts.kind === "admin" && facts.action === "player_numbers") {
-          if (!actor) return onlyOrganisers("settings");
-          const r = await applyPlayerRangeWords({ orgId: org.id, ...playerRangeWordsOf(facts), lang });
-          return said(`hq-${r.outcome}`, r.replyText);
-        }
-        // No squad limit, or a limit back (2026-11-17, the Vets), through
-        // the settings page's own core (`open-squad-save.ts`). An
-        // organiser's alone.
-        if (facts.kind === "admin" && facts.action === "open_squad") {
-          if (!actor) return onlyOrganisers("settings");
-          const { setOpenSquad } = await import("./open-squad-save");
-          const r = await setOpenSquad({ orgId: org.id, on: facts.openSquadOff !== true, actorUserId: actor, now });
-          return said(`hq-${r.outcome}`, r.replyText);
-        }
-        if (facts.kind === "admin" && facts.action === "switch_format") {
-          if (!actor) return onlyOrganisers("settings");
-          // HQ acts on a real tag only; the suggestion is the players' group's.
-          const r = await applySwitchFormatWords({ orgId: org.id, perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: actor, via: "hq", lang, now, explicit: true });
-          return r.replyText ? said(`hq-${r.outcome}`, r.replyText) : null;
-        }
-        // A game's day or time (2026-11-10, Kemal: "@Match Time move
-        // Monday's game to 8:15", "from now on we kick off at 8:15"): one
-        // game, or the weekly game from now on, through the one place a
-        // kickoff moves (`game-move-words.ts`, `activity-kickoff-move.ts`,
-        // the activities page's own code). Quiet: nothing is posted in the
-        // players' group. An organiser's alone. "Which game?" is recorded
-        // as MatchTime's line, so the answer is read with it.
-        if (facts.kind === "admin" && facts.action === "move_game") {
-          if (!actor) return onlyOrganisers("settings");
-          const r = await applyMoveGameWords({ orgId: org.id, words: moveGameWordsOf(facts), games: gamesShown, lang, now });
-          if (r.outcome.startsWith("game-move-which") || r.outcome === "game-move-say-what") {
-            await recordMatchTimeLine({ orgId: org.id, idPrefix: GAME_MOVE_LINE_PREFIX, text: r.replyText, now });
-          }
-          return said(`hq-${r.outcome}`, r.replyText);
-        }
-        if (facts.kind === "admin" && facts.action === "season_break") {
-          if (!actor) return onlyOrganisers("settings");
-          const { applySeasonBreakWords } = await import("./season-break-words");
-          const r = await applySeasonBreakWords({ orgId: org.id, breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [], lang, now });
-          return { route, outcome: r.outcome, replyText: r.replyText };
-        }
-        if (facts.kind === "admin" && (facts.action === "cancel_match" || facts.action === "restore_match")) {
-          // Kemal, 2026-10-22: "it only acts when an admin tags it" (the gate).
-          if (!actor) return onlyOrganisers(facts.action === "cancel_match" ? "cancel" : "restore");
-          const r = await hqCancelOrRestore({
-            orgId: org.id,
-            lang,
-            mode: facts.action === "cancel_match" ? "cancel" : "restore",
-            dayPhrase: facts.matchDay ?? null,
-            pastGame: facts.pastGame === true,
-            addressed: true,
-            now,
-          });
-          return r ? said(r.outcome, r.replyText) : null;
-        }
-        // What a monthly regular covers (2026-11-16, Kemal: "Dan covers the
-        // whole month"): the months page's own write, through
-        // `month-coverage-words.ts`; words that say neither get ONE
-        // question, logged there. An organiser's alone, a monthly club's.
-        if (facts.kind === "admin" && facts.action === "month_coverage") {
-          if (!actor) return onlyOrganisers();
-          if (weekly) return notHere();
-          const r = await coverageWordsHere(facts, actor);
-          return said(`hq-${r.outcome}`, r.replyText);
-        }
-        if (facts.kind === "admin" && facts.action === "fee_waiver") {
-          // MatchTime ASKS; the YES applies it (review of #301, item 2).
-          const r = await proposeFeeFreeInHq({
-            orgId: org.id,
-            lang,
-            refs: facts.coveredRefs ?? [],
-            undo: facts.undo === true,
-            dayPhrase: facts.matchDay ?? null,
-            senderUserId: feeActor,
-            body,
-            senderName: input.senderName ?? null,
-            messageId,
-            now,
-          });
-          return said(r.outcome, r.replyText);
-        }
-        console.log(`[admin-group] ${messageId}: admin_ops read as ${facts.kind === "admin" ? facts.action : facts.kind}, not done from HQ`);
-        // Nothing MatchTime has does it ("other", or nothing read): a dead
-        // end. A known action done elsewhere keeps "not from this group".
-        // One part of several is not a dead end: the message's other parts
-        // speak for it, and "no part did anything" is decided below.
-        if (!several && (facts.kind !== "admin" || facts.action === "other")) {
-          return deadEnd(notHere, facts.kind === "admin" ? ADMIN_NO_ACTION_WHY : "MatchTime could not read what it asks");
-        }
-        return notHere();
+        const read = (await readAdminFacts()) ?? { kind: "none" as const };
+        return adminOpsRead(read, several);
       }
       case "score": {
         // Tagged, and not a score after all: a dead end (2026-11-17), but
@@ -1567,6 +1628,42 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     if (parts.every((p) => !p.result)) return deadEnd(() => said("hq-not-understood", s.hq_not_understood));
     return joinHqParts({ route, parts, lang });
   });
+}
+
+/**
+ * PURE. The admin ACTIONS of one HQ message (2026-11-23), done in order, as
+ * ONE reply: each action's line in that order (a line already said is said
+ * once), and one plain line naming every action that did nothing, in the
+ * sender's words (`actionsNotDoneLine`, the players' group's own line). An
+ * "other" in a message the router also gave other routes (`otherRoutes`) is
+ * that route's part (who plays, the teams), never named here. Null when no
+ * action did anything, as one action that did nothing returns.
+ */
+export function joinHqActions(args: {
+  route: Route | null;
+  actions: readonly AdminFacts[];
+  results: ReadonlyArray<Understood | null>;
+  lang: string | null;
+  otherRoutes: boolean;
+}): Understood | null {
+  const { route, actions, results, lang, otherRoutes } = args;
+  if (results.every((r) => !r)) return null;
+  let replyText: string | null = null;
+  const outcomes: string[] = [];
+  for (const r of results) {
+    if (!r) continue;
+    outcomes.push(r.outcome);
+    if (r.replyText && !(replyText ?? "").includes(r.replyText)) replyText = mergeOneReply(replyText, r.replyText);
+  }
+  const line = actionsNotDoneLine(
+    actions.filter((a, i) => !results[i] && !(otherRoutes && a.action === "other")).map((a) => a.words),
+    lang,
+  );
+  if (line) {
+    replyText = mergeOneReply(replyText, line);
+    outcomes.push("hq-part-not-done");
+  }
+  return { route, outcome: outcomes.join("+"), replyText };
 }
 
 /**

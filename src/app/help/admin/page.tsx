@@ -190,6 +190,13 @@ export default async function AdminGuidePage() {
           make them again.
         </li>
         <li>
+          You can ask for several things in one message, for example{" "}
+          <code>@Match Time make it 5 a side, then ask the pool for the places left</code>.
+          MatchTime does them in the order you ask, each one after the one
+          before it, so the pool is asked for the places left at the new size.
+          It replies once, and if it can&apos;t do one of them it says which.
+        </li>
+        <li>
           When the squad is full and two are waiting on the bench, MatchTime
           suggests going up a size in the players&apos; group and names the
           organisers. Only an organiser&apos;s <strong>yes</strong>, as a reply

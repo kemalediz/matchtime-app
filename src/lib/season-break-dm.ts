@@ -15,6 +15,9 @@ import { extractForRoute } from "./pipeline/extractors";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import { normaliseSquadMode } from "./squad-month-rules";
+import { mergeOneReply } from "./pipeline/clause-peel";
+import { pickAdminAction } from "./admin-actions";
+import { actionsNotDoneLine } from "./multi-instruction-reply";
 
 export interface SeasonBreakDmHandled {
   handled: "season-break-set" | "season-break-unchanged" | "season-break-refused";
@@ -42,10 +45,14 @@ export async function handleSeasonBreakDm(input: {
     const ex = await withOrgAiBudget(org.id, () =>
       extractForRoute(model, "admin_ops", { id: "dm", body: input.text, authorName: input.authorName, tagged: true, history: [], lastBotPost: null, now: input.now }),
     );
-    if (ex.facts.kind !== "admin" || ex.facts.action !== "season_break") return null;
+    // The season break, wherever it sits among the actions read (2026-11-23,
+    // review of #629); any other action is named in the same DM.
+    const { picked, others } = pickAdminAction(ex.facts, (a) => a.action === "season_break");
+    if (!picked) return null;
     const { applySeasonBreakWords } = await import("./season-break-words");
-    const r = await applySeasonBreakWords({ orgId: org.id, breakMonths: ex.facts.breakMonths ?? [], playMonths: ex.facts.playMonths ?? [], lang: org.language, now: input.now });
-    if (input.replyPhone) await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone: input.replyPhone, text: r.replyText } });
+    const r = await applySeasonBreakWords({ orgId: org.id, breakMonths: picked.breakMonths ?? [], playMonths: picked.playMonths ?? [], lang: org.language, now: input.now });
+    const text = mergeOneReply(r.replyText, actionsNotDoneLine(others.map((a) => a.words), org.language)) ?? r.replyText;
+    if (input.replyPhone) await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone: input.replyPhone, text } });
     console.info(`[season-break-dm] user=${input.userId} org=${org.id} ${r.outcome}`);
     return { handled: r.outcome };
   } catch (err) {

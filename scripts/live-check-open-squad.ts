@@ -242,6 +242,8 @@ function shown(f: AdminFacts | null): string {
     const v = (f as unknown as Record<string, unknown>)[k];
     if (v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0)) keep[k] = v;
   }
+  // Several actions (2026-11-23): any action after the first, by name.
+  if (f.then?.length) keep.then = f.then.map((a) => a.action);
   return JSON.stringify(keep);
 }
 
@@ -391,7 +393,9 @@ async function run(c: Case, i: number): Promise<boolean> {
   const f = ex.facts.kind === "admin" ? ex.facts : null;
 
   const routeOk = c.routes === "any" || (route !== null && c.routes.includes(route as Route));
-  const factsOk = c.want(f);
+  // Every case here asks for ONE thing (2026-11-23: the extractor now lists
+  // actions): a second action read into it is a miss too.
+  const factsOk = c.want(f) && !(f?.then?.length);
   const ok = routeOk && factsOk;
   console.log(
     `${ok ? "PASS" : "FAIL"}  ${c.group} ${c.where} [${c.club.label}] ${JSON.stringify(c.text)}${c.quoted ? " (a reply)" : ""}\n` +

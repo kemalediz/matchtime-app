@@ -49,6 +49,9 @@ import { normaliseBenchPickMode } from "./squad-capacity";
 import { extractForRoute } from "./pipeline/extractors";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
+import { mergeOneReply } from "./pipeline/clause-peel";
+import { pickAdminAction } from "./admin-actions";
+import { actionsNotDoneLine } from "./multi-instruction-reply";
 
 export interface PartnerAskFromWordsResult {
   outcome:
@@ -216,9 +219,12 @@ export async function askPartnersFromDmText(args: {
     lastBotPost: null,
     now: args.now,
   });
-  const facts = extracted.facts;
-  if (facts.kind !== "admin" || facts.action !== "recruit" || !facts.partnerClubs) {
-    console.log(`[partner-ask-words] ${args.orgId}: a DM ask the admin extractor did not confirm (${facts.kind === "admin" ? facts.action : facts.kind})`);
+  // The ask to another club, wherever it sits among the actions read
+  // (2026-11-23, review of #629); any other action a DM cannot do here is
+  // named in the same reply, never dropped silently.
+  const { picked: facts, others } = pickAdminAction(extracted.facts, (a) => a.action === "recruit" && a.partnerClubs === true);
+  if (!facts) {
+    console.log(`[partner-ask-words] ${args.orgId}: a DM ask the admin extractor did not confirm (${extracted.facts.kind === "admin" ? extracted.facts.action : extracted.facts.kind})`);
     return t(args.lang).xaskw_not_sure;
   }
   const r = await askPartnersFromWords({
@@ -229,5 +235,5 @@ export async function askPartnersFromDmText(args: {
     lang: args.lang,
     now: args.now,
   });
-  return r.replyText;
+  return mergeOneReply(r.replyText, actionsNotDoneLine(others.map((a) => a.words), args.lang)) ?? r.replyText;
 }

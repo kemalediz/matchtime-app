@@ -25,6 +25,7 @@ import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import { namedSources, type RecruitSource } from "./ask-source-rules";
 import type { ContextMessage } from "./reply-context";
+import { pickAdminAction } from "./admin-actions";
 
 export interface RecruitPlaces {
   /** The places the words named, in order; null when they named none. */
@@ -35,6 +36,10 @@ export interface RecruitPlaces {
    *  no place is asked and no blast is sent; the route DMs those people
    *  (`named-invite.ts`). Present only when true. */
   named?: true;
+  /** The words of the message's OTHER admin actions (2026-11-23, review of
+   *  #629), which this path does not do: the route names them as not done
+   *  when no admin owner does them. Present only when there are some. */
+  notDone?: string[];
 }
 
 export async function recruitPlacesFromWords(args: {
@@ -60,10 +65,13 @@ export async function recruitPlacesFromWords(args: {
       ...(args.reply ? { reply: args.reply } : {}),
       now: args.now,
     });
-    const f = extracted.facts;
-    if (f.kind !== "admin" || f.action !== "recruit") return null;
-    if (f.namedPeople) return { sources: null, clubRef: null, named: true };
-    return { sources: namedSources(f), clubRef: f.clubRef?.trim() || null };
+    // The recruit, wherever it sits among the actions read (review of #629).
+    const { picked: f, others } = pickAdminAction(extracted.facts, (a) => a.action === "recruit");
+    if (!f) return null;
+    const words = others.filter((a) => a.action !== "other").map((a) => a.words ?? "");
+    const notDone = words.length > 0 ? { notDone: words } : {};
+    if (f.namedPeople) return { sources: null, clubRef: null, named: true, ...notDone };
+    return { sources: namedSources(f), clubRef: f.clubRef?.trim() || null, ...notDone };
   } catch (err) {
     console.error(`[recruit-source] ${args.id}: the source could not be read (the recruit stands):`, err instanceof Error ? err.message : "failed");
     return null;

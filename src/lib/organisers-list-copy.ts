@@ -155,9 +155,9 @@ export function organisersGroupReply(reply: string | null, lang: Lang | string |
  * `organisersGroupReply`.
  */
 export function passesOrganisersNet(intent: string | null | undefined): boolean {
-  return (
-    intent === "help" ||
-    intent === UNIFIED_ANSWER_INTENT ||
-    (VENUE_WORDS_OUTCOMES as readonly string[]).includes(intent ?? "")
+  // Several admin actions join their intents with "+" (2026-11-23): the
+  // reply passes when one of its parts does (the pitch's list of places).
+  return (intent ?? "").split("+").some(
+    (part) => part === "help" || part === UNIFIED_ANSWER_INTENT || (VENUE_WORDS_OUTCOMES as readonly string[]).includes(part),
   );
 }

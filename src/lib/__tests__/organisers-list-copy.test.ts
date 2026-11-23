@@ -17,4 +17,14 @@ describe("the unified answer and the organisers-mode net", () => {
     expect(skipsSquadComposition(UNIFIED_ANSWER_INTENT)).toBe(true);
   });
 
+  // Review of #629, item 7: several admin actions join their intents with
+  // "+"; the pitch's numbered list of places still passes the net.
+  it("a joined intent passes when one of its parts does", () => {
+    expect(passesOrganisersNet("venue-which+quiet-hours-off")).toBe(true);
+    expect(passesOrganisersNet("quiet-hours-off+venue-which")).toBe(true);
+    expect(passesOrganisersNet("quiet-hours-off+format-switched")).toBe(false);
+    expect(skipsSquadComposition("quiet-hours-off+venue-which")).toBe(true);
+    expect(skipsSquadComposition("quiet-hours-off+format-switched")).toBe(false);
+  });
+
 });

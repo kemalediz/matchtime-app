@@ -149,6 +149,16 @@ export const MATCH_CHANGE_ACTIONS: ReadonlySet<string> = new Set([
   "player_numbers",
 ]);
 
+/**
+ * PURE. The admin action that speaks for a message with several (review of
+ * #629): the first match change among them (`MATCH_CHANGE_ACTIONS`), else
+ * the first action. `matchChangesFirst` then orders the message as a match
+ * change when any of its actions is one.
+ */
+export function matchChangeOrFirst(actions: readonly string[]): string {
+  return actions.find((a) => MATCH_CHANGE_ACTIONS.has(a)) ?? actions[0] ?? "other";
+}
+
 export interface BatchPart {
   id: string;
   /** The router put this message on an attendance route (a claim). */

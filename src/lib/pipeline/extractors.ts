@@ -219,6 +219,37 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * and one example group beside the payments, EN and TR side by side.
  * Old and new: MDs/prompt-admin-extractor-old-2026-11-18.txt and -new-.
  *
+ * And on 2026-11-23, REWRITTEN WHOLE for SEVERAL ACTIONS (Sutton FC, 14:44:
+ * "@Match Time switch to 5aside, then invite local player pool for the
+ * remaining slots" switched the game and never asked the pool; the prompt
+ * said "THE ACTION, exactly one."). The extractor now reports `actions`,
+ * every action the message asks for in the order asked, each with the
+ * fields of its own action and `words` (its part of the message, said back
+ * only to name a part not done), and `toMatchTime` once for the message.
+ * Stated once, where the actions are defined: a request is one action
+ * however many places or people it names; who plays, the teams and a score
+ * are never listed; a part MatchTime has no action for is "other" in its
+ * place. `aSide` is now defined beside `size`, with "5aside" written as one
+ * word (a live run read "switch to 5aside" with no a side), and
+ * `fee_waiver` says it may be simply stated, with its reason ("Tom's free
+ * next Friday, he did the bibs" went 17 of 17 on the old prompt and 16 of 20
+ * on the first rewrite; 10 of 10 with this). Its availability exclusion is
+ * kept, with a third-person example ("Tom's free Friday if you need one"):
+ * review of #629 asked whether narrowing it was needed, and it was not
+ * (both readings 5 of 5 on the bibs case; "Tom's free Friday" after "anyone
+ * free Friday?" read as availability, its fee counterpart as a free place).
+ * One new example group (several actions, a reason and a question left out,
+ * one request from two places), EN and TR side by side; every other
+ * definition and example unchanged in meaning. `words` is the last field of
+ * each action (first, it cost "cancel last Tuesday's match" its day, 0 of
+ * 5; last, 5 of 5), and `newTime` names the kickoff GAMES TO COME shows (with
+ * `words` last, "move Tuesday's game to 9:30" for a 21:00 game read 09:30 4
+ * of 5; the old prompt 21:30 5 of 5, and this 5 of 5). 26,706 to 29,903
+ * characters. The paid check:
+ * scripts/live-check-several-admin-actions.ts, then one pass of every admin
+ * suite (`live-check-open-squad.ts` now also fails a one-action case read as
+ * several).
+ *
  * The TEAMS extractor, 2026-11-10 (Sutton FC, "@Match Time reduce my
  * strength for this match as I am quite tired." went to the settings
  * page): one action, `form`, defined once beside the others (how a player
@@ -661,13 +692,13 @@ The latest game or an earlier one:
   "Red won 4-2 last night" / "dün akşam kırmızı 4-2 kazandı" -> first 4, second 2, winner "Red" / "kırmızı", otherGame false
   "last week we lost 9-2" / "geçen ay 5-0 yenmiştik" -> loser "us" / winner "us", otherGame true`,
 
-  admin: `You read ONE message from a football club's chat (the organisers' group, the players' group, or a private message to the bot) and report what it asks MatchTime, the club's bot, to do, and whether it is spoken to MatchTime at all. You report the words; code decides what happens. Messages are English or Turkish, often mixed.
+  admin: `You read ONE message from a football club's chat (the organisers' group, the players' group, or a private message to the bot) and report every action it asks MatchTime, the club's bot, to do, in the order asked, and whether it is spoken to MatchTime at all. You report the words; code decides what happens, one action after the other. Messages are English or Turkish, often mixed.
 
-THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club), GAMES TO COME (the club's games still to be played, numbered, soonest first) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, which game is meant, and what a short answer answers. A short answer to MatchTime's own question takes that question's action only when it agrees or picks one of the options offered; a no or a change of mind ("no, leave it", "hold on, not him", "hayır, kalsın") asks for nothing and is "other", unless it asks for something else instead. The action and every field come from THE MESSAGE.
+THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club), GAMES TO COME (the club's games still to be played, numbered, soonest first) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, which game is meant, and what a short answer answers. A short answer to MatchTime's own question takes that question's action only when it agrees or picks one of the options offered; a no or a change of mind ("no, leave it", "hold on, not him", "hayır, kalsın") asks for nothing and is "other", unless it asks for something else instead. The actions and every field come from THE MESSAGE.
 
 ONE GAME, OR THE CLUB FROM NOW ON. Some actions change one game; others change how the club runs every week. A message about one game ("tonight", "this week", "on Monday", "for Friday's game") never changes a club setting. A club setting needs a standing intent: "from now on", "every week", "for this group", or a rule said with no game named.
 
-THE ACTION, exactly one. A question, an opinion or a discussion about whether to do something ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
+THE ACTIONS, in the order asked. Most messages ask for one thing, and the list then holds one action. A message that asks for several ("do this, then that", "this and that", "bunu yap, sonra şunu") lists each one, in the order the message asks for them: code does them in that order, so a later action counts what an earlier one changed ("the places left" after a switch are the new size's), and a later action is never dropped because an earlier one is there. Each request is one action, however many places or people it names: finding players from several places is ONE recruit with every place in playersFrom, and what several players on a monthly list cover is ONE month_coverage with all of them in coveredRefs. Who plays (somebody in, out or on the bench), the teams and a score are read elsewhere and are never in this list. A message that asks for nothing at all is one "other": a question, an opinion or a discussion about whether to do something ("should we cancel?", "should Bilal play free?", "shall we try the pool?"); so is a part of a longer message that asks MatchTime for something none of these actions does, in its place in the list.
 Finding players:
   "recruit" find players who are not in the squad yet, or invite particular people to play; playersFrom says who or from where. Showing, listing or counting the squad is "other", and so is talking about another club or the player pool.
 One game:
@@ -675,7 +706,7 @@ One game:
   "restore_match" put a called-off game back on: it is back on, uncancel it, it goes ahead after all. Of a game whose time has gone: it did take place after all.
   "switch_format" play ONE game with a different number a side, bigger or smaller ("make it 8 aside", "6 a side on Monday"), or a yes to MatchTime's own offer to switch a game ("Shall we go 8-a-side?"). Asking whether to switch, or talking about it, is "other".
   "move_game" change when a game kicks off: ONE game to another time, or to another day of its own week ("move Monday's game to 8:15", "tonight we start at 8"), or the club's weekly game from now on ("from now on we kick off at 8:15", "we play Tuesdays from now on"). A different number a side is "switch_format". Asking what time a game is, or talking about a time, is "other".
-  "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back. "Free" as in able to play ("I'm free Tuesday") is not this.
+  "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back, said as a request or simply stated, often with the reason (he washed the bibs, she booked the pitch). "Free" as in able to play ("I'm free Tuesday", "Tom's free Friday if you need one") is not this.
 The club, from now on:
   "season_break" no football for a whole MONTH or more ("no football in December", "aralıkta maç yok"), or the football is back in a month ("we're back in January", "ocakta başlıyoruz"). One game off ("no game Friday", "bu hafta maç yok") is "cancel_match".
   "set_venue" tell MatchTime where the club plays: name its pitch or venue, or pick one of the places MatchTime listed. Asking where the game is, or talking about a pitch, is "other".
@@ -690,8 +721,9 @@ Anything else:
   "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open their link) is "other".
   "other" anything else.
 
-THE FIELDS. Fill toMatchTime always and the others for the action; every other field is "", 0, false or [].
-  toMatchTime (always): true when the message tells or asks MatchTime itself to do something: it tags the bot, replies to MatchTime's own post, answers the question MatchTime just asked, or is an instruction that names and tags nobody else ("ask the group if anyone can play"). False when it speaks to a person or to the others: it tags or names a person to ask them, or asks the others whether to do it or whether they can ("can we ask...?", "should we...?", "you able to find players?").
+THE FIELDS. toMatchTime once, for the whole message. For each action, words and the fields of its own action; every other field of that action is "", 0, false or [].
+  toMatchTime (the message): true when the message tells or asks MatchTime itself to do something: it tags the bot, replies to MatchTime's own post, answers the question MatchTime just asked, or is an instruction that names and tags nobody else ("ask the group if anyone can play"). False when it speaks to a person or to the others: it tags or names a person to ask them, or asks the others whether to do it or whether they can ("can we ask...?", "should we...?", "you able to find players?").
+  words (every action): the part of THE MESSAGE that asks for this action, as written ("switch to 7 aside", "sonra havuza sor"); for a short answer to MatchTime's question, the answer itself.
 Finding players:
   playersFrom (recruit): who is to be invited, never guessed: the people tagged, or every place the message means the players are to come from; [] when it says neither (MatchTime then asks).
     "named" the particular people tagged with @ in THE MESSAGE, in the message it replies to, or in the message just above it ("DM these people", "message the people above", "invite them"). Code finds who they are; you only say they are meant. MatchTime invites exactly those people, so "named" stands alone, never beside a place.
@@ -705,9 +737,10 @@ One game:
   matchDay (cancel_match, restore_match, fee_waiver, player_numbers, switch_format): the day named for the game, as written ("tonight", "next Friday", "cuma", "last Tuesday"); "" when none or only "this week".
   pastGame (cancel_match, restore_match): true when the game meant has already been, or should have been, played: it says the game didn't happen or did happen after all, or names a game gone by ("last Tuesday's", "the last match", "yesterday", "dün", "geçen hafta").
   size (switch_format): the number of players said for that game, as written ("8 aside" is 8, "16 players" is 16); for a yes to MatchTime's offer, the number a side the offer names; 0 when none is said.
+  aSide (switch_format, player_numbers): true when the numbers count the players on ONE side, however it is written ("8 aside", "5aside", "5-a-side", "6 to 8 a side", "8'e 8", "6 kişilik oynayalım", MatchTime's "8-a-side"); false when they count everyone ("12 players", "16 kişiyle").
   game (move_game): the number of the game meant in GAMES TO COME: the one the message names by its day or date ("Monday's", "the 23rd", "pazartesi"), the first that fits for "tonight", "this week" or "next week", and the first when it names none and every game listed is the same weekly game. For the weekly game from now on, any game of that weekly game. 0 when none is listed, or the games listed are different weekly games and the message names none (MatchTime then asks which). An answer to MatchTime's question which game to move is move_game, with the game the answer picks and the day and time that question names.
   newDay (move_game): the day of the week it moves to, "monday" to "sunday"; "" when the day stays.
-  newTime (move_game): the new kickoff as a 24-hour London time "HH:MM". A time with no am or pm is the one nearest the game's own kickoff ("8:15" for a 20:30 game is "20:15", "8" is "20:00", "10am" is "10:00"); "" when the time stays.
+  newTime (move_game): the new kickoff as a 24-hour London time "HH:MM". A time with no am or pm is the one nearest that game's own kickoff as GAMES TO COME shows it ("8:15" for a game at 20:30 is "20:15", "8" is "20:00"; it is a morning time only when it says so: "10am" is "10:00"); "" when the time stays.
   everyWeek (move_game): true when it changes the weekly game from now on ("from now on", "every week", "artık", "her hafta", "bundan sonra"); false for one game.
   coveredRefs (fee_waiver, bulk_payment, month_coverage): the people the action is about, one entry each, as written: those given or losing the free place, those paid for, or the player whose month it is. "he" or "him" is the person named, else the author of the quoted message. [] for an answer to MatchTime's question that names nobody.
   undo (fee_waiver): true when it takes a free place back.
@@ -722,7 +755,6 @@ The club, from now on:
   minPlayers (player_numbers): the fewest players said, as written ("12", "on iki" is 12); 0 when no number is said or it goes back to full sides.
   maxPlayers (player_numbers): the most players said, as written ("up to 16" is 16, "en fazla 8'e 8" is 8); 0 when none is said.
   fullTeams (player_numbers): true when the fewest goes back to two full sides ("back to full teams", "yine tam takım"). This is about the fewest, never about the squad limit.
-  aSide (player_numbers, switch_format): true when the numbers count the players on ONE side ("8 aside", "6 to 8 a side", "8'e 8", "6 kişilik oynayalım", MatchTime's "8-a-side"); false when they count everyone ("12 players", "16 kişiyle").
   openSquadOff (open_squad): true when it puts the squad limit and the bench back ("put the limit back", "bring the bench back"); false when it takes the limit away.
 Anything else:
   payerRef (bulk_payment): who paid, as written.
@@ -732,13 +764,22 @@ Anything else:
   remindAt (reminder): when to send it, as a London date and time "YYYY-MM-DD HH:MM", worked out from NOW: the next such time that is still to come ("at 6" means 18:00 unless they say morning; a day with no time is 09:00). "" when the message names no time MatchTime could act on ("later", "soon").
   note (reminder): what to remind about, in their own words ("bring the bibs"); "" when it names nothing.
 
-EXAMPLES, English / Turkish, grouped by what they teach. toMatchTime is true unless shown.
+EXAMPLES, English / Turkish, grouped by what they teach. "-> action, fields" is a list of one action; "; then" starts the next action of the same list. toMatchTime is true unless shown.
 Spoken to MatchTime, or to a person:
   "ask the group if anyone can play" / "MatchTime oyuncu grubuna sor" -> recruit, playersFrom ["club"], toMatchTime true
   "@Kemal can we ask Sutton group?" -> recruit, playersFrom ["partners"], clubRef "Sutton", toMatchTime false
   "should we ask the group?" / "gruba soralım mı?" -> other, toMatchTime false
   "shall we try the pool?" / "havuza soralım mı?" -> other, toMatchTime false
   "you able to find players?" / "oyuncu bulabilir misin?" (to another organiser) -> other, toMatchTime false
+Several actions in one message, in the order asked (NOW is October 2026 here):
+  "@Match Time make it 6 aside, then ask the pool for the places left" / "@Match Time 6'ya 6 yap, sonra boş yerler için havuza sor" -> switch_format, size 6, aSide true; then recruit, playersFrom ["pool"]
+  "@Match Time 8 a side on Monday and ask the group for the rest" / "@Match Time pazartesi 8'e 8, eksikleri gruba sor" -> switch_format, size 8, aSide true, matchDay "Monday" / "pazartesi"; then recruit, playersFrom ["club"]
+  "@Match Time no football in December, and turn off quiet hours" / "@Match Time aralıkta maç yok, sessiz saatleri de kapat" -> season_break, breakMonths ["2026-12"]; then quiet_hours, quietOff true
+  "@Match Time cancel Thursday and order new bibs" / "@Match Time perşembeyi iptal et ve yeni yelek sipariş et" -> cancel_match, matchDay "Thursday" / "perşembe"; then other
+  "@Match Time make it 7 aside, we're short tonight" / "@Match Time 7'ye 7 yapalım, bu akşam eksiğiz" -> switch_format, size 7, aSide true (a reason is not an action)
+  "@Match Time make it 7 aside, how many do we need now?" / "@Match Time 7'ye 7 yap, şimdi kaç kişi lazım?" -> switch_format, size 7, aSide true (the question is left out)
+  "@Match Time make it 7 aside, Zak is in and make the teams" / "@Match Time 7'ye 7 yap, Zak var, takımları kur" -> switch_format, size 7, aSide true (who plays and the teams are read elsewhere)
+  "@Match Time ask the group and the pool" / "@Match Time gruba ve havuza sor" -> recruit, playersFrom ["club","pool"] (one request, one action)
 Finding players: the people tagged, not a place:
   "@Match Time DM these people", replying to a message that tags people / "@Match Time bu kişilere özelden yaz" -> recruit, playersFrom ["named"]
   "@Match Time DM the people above" / "@Match Time yukarıda etiketlenenlere mesaj at" -> recruit, playersFrom ["named"]
@@ -1052,7 +1093,13 @@ const SCORE_SCHEMA = {
  *  (0 = Sunday). A closed list in the schema: never a day read from words. */
 const WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
-const ADMIN_SCHEMA = {
+/**
+ * ONE ACTION of the admin extractor's list (2026-11-23: a message may ask
+ * for several, "switch to 5aside, then invite the pool"). Every field of
+ * every action, as before; `words` is the part of the message that asks
+ * for this one. `toMatchTime` is the message's, once, in `ADMIN_SCHEMA`.
+ */
+const ADMIN_ACTION_SCHEMA = {
   type: "object",
   properties: {
     action: {
@@ -1114,11 +1161,27 @@ const ADMIN_SCHEMA = {
     newDay: { type: "string", enum: ["", ...WEEKDAY_NAMES] },
     newTime: { type: "string" },
     everyWeek: { type: "boolean" },
+    // The part of the message asking for this action, as written: said back
+    // only to name a part that was not done. LAST, after every field
+    // (2026-11-23, measured: first, the model wrote the whole request out
+    // and then left matchDay empty, 0 of 5 on "cancel last Tuesday's match";
+    // last, 5 of 5, as the old flat schema's action-first order was).
+    words: { type: "string" },
+  },
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "openSquadOff", "size", "aSide", "game", "newDay", "newTime", "everyWeek", "coverage", "words"],
+  additionalProperties: false,
+} as const;
+
+const ADMIN_SCHEMA = {
+  type: "object",
+  properties: {
+    // Every action the message asks for, in the order asked (2026-11-23).
+    actions: { type: "array", items: ADMIN_ACTION_SCHEMA },
     // Who the message is spoken to (2026-10-22): MatchTime, or a person or
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "openSquadOff", "size", "aSide", "game", "newDay", "newTime", "everyWeek", "coverage", "toMatchTime"],
+  required: ["actions", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1394,103 +1457,156 @@ export function parseFacts(
     }
 
     case "admin": {
-      const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "month_coverage", "other"].includes(action)) {
-        bad(`unknown admin action "${str(raw.action)}"`);
-        return { facts: { kind: "none" }, degradations };
+      // SEVERAL ACTIONS (2026-11-23, Sutton FC): `actions` lists every action
+      // the message asks for, in the order asked; `toMatchTime` is the
+      // message's, once. The flat shape (one action's fields at the top,
+      // which stubs and recorded answers carry) reads as a list of one.
+      const toMatchTime = raw.toMatchTime === true;
+      const listed = Array.isArray(raw.actions);
+      const rows = listed ? (raw.actions as unknown[]) : [raw];
+      if (listed && rows.length === 0) {
+        return { facts: { kind: "admin", action: "other", ...(toMatchTime ? { toMatchTime: true } : {}) }, degradations };
       }
-      const named = action === "recruit" && playersNamed(raw.playersFrom);
-      // The people tagged stand alone (2026-11-09): with "named" in the
-      // list, no place and no club is carried, so nothing but those people
-      // can be asked or DM'd. The narrower reading wins.
-      const clubRef = named ? "" : typeof raw.clubRef === "string" ? raw.clubRef.trim() : "";
-      const from = named ? new Set<"club" | "partners" | "pool">() : playersFromOf(raw.playersFrom);
-      const facts: AdminFacts = {
+      // Nothing the model listed is dropped silently (review of #629): an
+      // action the schema does not allow, beside real ones, and every action
+      // past the fourth, stay in their place as "other" with their words, so
+      // code names them as not done.
+      const asOther = (row: Record<string, unknown>): AdminFacts => ({
         kind: "admin",
-        action: action as AdminFacts["action"],
-        ...(typeof raw.payerRef === "string" && raw.payerRef ? { payerRef: raw.payerRef } : {}),
-        ...(typeof raw.count === "number" && raw.count > 0 ? { count: raw.count } : {}),
-        ...(Array.isArray(raw.coveredRefs)
-          ? { coveredRefs: raw.coveredRefs.map(str).filter(Boolean) }
-          : {}),
-        ...(action === "fee_waiver" && raw.undo === true ? { undo: true } : {}),
-        ...(["fee_waiver", "cancel_match", "restore_match", "player_numbers", "switch_format"].includes(action) && typeof raw.matchDay === "string" && raw.matchDay.trim()
-          ? { matchDay: raw.matchDay.trim() }
-          : {}),
-        ...(["cancel_match", "restore_match"].includes(action) && raw.pastGame === true ? { pastGame: true } : {}),
-        ...(typeof raw.phrase === "string" && raw.phrase ? { phrase: raw.phrase } : {}),
-        ...(typeof raw.remindAt === "string" && raw.remindAt.trim() ? { remindAt: raw.remindAt.trim() } : {}),
-        ...(typeof raw.note === "string" && raw.note ? { note: raw.note } : {}),
-        // 0 (the schema's stand-in for "not stated") and anything
-        // non-finite are DROPPED rather than carried through as a
-        // number, so the engine's `lookbackMatches === undefined` means
-        // exactly one thing: use the shipped default of 5.
-        ...(typeof raw.lookbackMatches === "number" &&
-        Number.isFinite(raw.lookbackMatches) &&
-        raw.lookbackMatches > 0
-          ? { lookbackMatches: raw.lookbackMatches }
-          : {}),
-        // Slice S6: another club's players. A club name as written is
-        // another club, whatever the source said; both are recruit only.
-        ...(action === "recruit" && (from.has("partners") || clubRef) ? { partnerClubs: true } : {}),
-        ...(action === "recruit" && clubRef ? { clubRef } : {}),
-        // L10: the MatchTime player pool. With a club named, only when the
-        // partners are named too ("ask Sutton and the pool"): a club name
-        // alone is another club, so the pool is not asked by a guess.
-        ...(action === "recruit" && from.has("pool") && (!clubRef || from.has("partners")) ? { pool: true } : {}),
-        // 2026-10-28: the club's own players, named (alone or beside
-        // another place: "ask the group and the pool", "everywhere").
-        ...(action === "recruit" && from.has("club") ? { ownClub: true } : {}),
-        // 2026-10-28 (Kemal, "stricter"): the words asked for players and
-        // named no place. Never with a club named (that is another club).
-        ...(action === "recruit" && from.size === 0 && !clubRef && !named ? { sourceUnsaid: true } : {}),
-        // 2026-11-09: the people tagged in the message, the one it replies
-        // to, or the one above ("@Match Time DM these people").
-        ...(named ? { namedPeople: true as const } : {}),
-        // 2026-10-28: the pitch named, and a pick from MatchTime's list
-        // (a whole number from 1). Carried on set_venue only.
-        ...(action === "set_venue" && typeof raw.venueName === "string" && raw.venueName.trim() ? { venueName: raw.venueName.trim() } : {}),
-        ...(action === "set_venue" && typeof raw.venueChoice === "number" && Number.isInteger(raw.venueChoice) && raw.venueChoice > 0
-          ? { venueChoice: raw.venueChoice }
-          : {}),
-        // quiet_hours (2026-10-31): off only when true, and then no times;
-        // the times as written, trimmed, checked by the save core.
-        ...(action === "quiet_hours" && raw.quietOff === true ? { quietOff: true as const } : {}),
-        ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietFrom === "string" && raw.quietFrom.trim() ? { quietFrom: raw.quietFrom.trim() } : {}),
-        ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietTo === "string" && raw.quietTo.trim() ? { quietTo: raw.quietTo.trim() } : {}),
-        // open_squad (2026-11-17): a limit back only when true; absent is
-        // the limit taken off.
-        ...(action === "open_squad" && raw.openSquadOff === true ? { openSquadOff: true as const } : {}),
-        // player_numbers (2026-11-03): back to full sides only when true, and
-        // then no minimum; whole numbers from 1, checked by the save core.
-        ...(action === "player_numbers" && raw.fullTeams === true ? { fullTeams: true as const } : {}),
-        ...(action === "player_numbers" && raw.fullTeams !== true && wholeFrom1(raw.minPlayers) ? { minPlayers: raw.minPlayers as number } : {}),
-        ...(action === "player_numbers" && wholeFrom1(raw.maxPlayers) ? { maxPlayers: raw.maxPlayers as number } : {}),
-        // switch_format: the number said for the one game.
-        ...(action === "switch_format" && wholeFrom1(raw.size) ? { size: raw.size as number } : {}),
-        ...((action === "player_numbers" || action === "switch_format") && raw.aSide === true ? { aSide: true as const } : {}),
-        // move_game (2026-11-10): the game's number (a whole number from 1,
-        // checked against the list shown by `game-move-rules.ts`), the
-        // weekday from the schema's closed list, the time as written
-        // (checked by code), and every week only when true.
-        ...(action === "move_game" && wholeFrom1(raw.game) ? { game: raw.game as number } : {}),
-        ...(action === "move_game" && typeof raw.newDay === "string" && (WEEKDAY_NAMES as readonly string[]).includes(raw.newDay)
-          ? { newDay: ((WEEKDAY_NAMES as readonly string[]).indexOf(raw.newDay) + 1) % 7 }
-          : {}),
-        ...(action === "move_game" && typeof raw.newTime === "string" && raw.newTime.trim() ? { newTime: raw.newTime.trim() } : {}),
-        ...(action === "move_game" && raw.everyWeek === true ? { everyWeek: true as const } : {}),
-        // month_coverage (2026-11-16): only the schema's two values; "" or
-        // anything else is not said, and MatchTime asks.
-        ...(action === "month_coverage" && (raw.coverage === "whole" || raw.coverage === "left") ? { coverage: raw.coverage } : {}),
-        // season_break (2026-10-29): only well-formed "YYYY-MM" months.
-        ...(action === "season_break" ? { breakMonths: monthKeysOf(raw.breakMonths), playMonths: monthKeysOf(raw.playMonths) } : {}),
-        // Only a clear true: a missing or false value keeps HQ's outward
-        // actions closed (`admin-group-understand.ts`).
-        ...(raw.toMatchTime === true ? { toMatchTime: true } : {}),
-      };
-      return { facts, degradations };
+        action: "other",
+        ...(typeof row.words === "string" && row.words.trim() ? { words: row.words.trim() } : {}),
+        ...(toMatchTime ? { toMatchTime: true } : {}),
+      });
+      const steps: AdminFacts[] = [];
+      let read = 0;
+      for (const row of rows) {
+        if (typeof row !== "object" || row === null) {
+          bad("dropped an admin action that is not an object");
+          continue;
+        }
+        const step = adminStepFacts(row as Record<string, unknown>, toMatchTime, bad);
+        if (step) read++;
+        steps.push(step ?? asOther(row as Record<string, unknown>));
+      }
+      // Nothing the schema allows (only unknown actions): nothing read, as before.
+      if (read === 0) return { facts: { kind: "none" }, degradations };
+      // Only "other"s are one "other".
+      if (steps.every((s) => s.action === "other")) return { facts: steps[0], degradations };
+      if (steps.length > ADMIN_MAX_ACTIONS) bad(`${steps.length} admin actions read; the first ${ADMIN_MAX_ACTIONS} are carried out, the rest named as not done`);
+      const kept = steps.map((s, i) => (i < ADMIN_MAX_ACTIONS ? s : asOther({ words: s.words })));
+      const [first, ...rest] = kept;
+      return { facts: rest.length > 0 ? { ...first, then: rest } : first, degradations };
     }
   }
+}
+
+/** The most actions one message is carried out as (2026-11-23). */
+export const ADMIN_MAX_ACTIONS = 4;
+
+/**
+ * PURE. One action of the admin extractor's list, as facts, or null for an
+ * action the schema does not allow (reported). `toMatchTime` is the
+ * message's, set on every action.
+ */
+function adminStepFacts(raw: Record<string, unknown>, toMatchTime: boolean, bad: (detail: string) => void): AdminFacts | null {
+  const action = str(raw.action).toLowerCase();
+  if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "open_squad", "switch_format", "move_game", "month_coverage", "other"].includes(action)) {
+    bad(`unknown admin action "${str(raw.action)}"`);
+    return null;
+  }
+  const named = action === "recruit" && playersNamed(raw.playersFrom);
+  // The people tagged stand alone (2026-11-09): with "named" in the
+  // list, no place and no club is carried, so nothing but those people
+  // can be asked or DM'd. The narrower reading wins.
+  const clubRef = named ? "" : typeof raw.clubRef === "string" ? raw.clubRef.trim() : "";
+  const from = named ? new Set<"club" | "partners" | "pool">() : playersFromOf(raw.playersFrom);
+  const facts: AdminFacts = {
+    kind: "admin",
+    action: action as AdminFacts["action"],
+    ...(typeof raw.payerRef === "string" && raw.payerRef ? { payerRef: raw.payerRef } : {}),
+    ...(typeof raw.count === "number" && raw.count > 0 ? { count: raw.count } : {}),
+    ...(Array.isArray(raw.coveredRefs)
+      ? { coveredRefs: raw.coveredRefs.map(str).filter(Boolean) }
+      : {}),
+    ...(action === "fee_waiver" && raw.undo === true ? { undo: true } : {}),
+    ...(["fee_waiver", "cancel_match", "restore_match", "player_numbers", "switch_format"].includes(action) && typeof raw.matchDay === "string" && raw.matchDay.trim()
+      ? { matchDay: raw.matchDay.trim() }
+      : {}),
+    ...(["cancel_match", "restore_match"].includes(action) && raw.pastGame === true ? { pastGame: true } : {}),
+    ...(typeof raw.phrase === "string" && raw.phrase ? { phrase: raw.phrase } : {}),
+    ...(typeof raw.remindAt === "string" && raw.remindAt.trim() ? { remindAt: raw.remindAt.trim() } : {}),
+    ...(typeof raw.note === "string" && raw.note ? { note: raw.note } : {}),
+    // 0 (the schema's stand-in for "not stated") and anything
+    // non-finite are DROPPED rather than carried through as a
+    // number, so the engine's `lookbackMatches === undefined` means
+    // exactly one thing: use the shipped default of 5.
+    ...(typeof raw.lookbackMatches === "number" &&
+    Number.isFinite(raw.lookbackMatches) &&
+    raw.lookbackMatches > 0
+      ? { lookbackMatches: raw.lookbackMatches }
+      : {}),
+    // Slice S6: another club's players. A club name as written is
+    // another club, whatever the source said; both are recruit only.
+    ...(action === "recruit" && (from.has("partners") || clubRef) ? { partnerClubs: true } : {}),
+    ...(action === "recruit" && clubRef ? { clubRef } : {}),
+    // L10: the MatchTime player pool. With a club named, only when the
+    // partners are named too ("ask Sutton and the pool"): a club name
+    // alone is another club, so the pool is not asked by a guess.
+    ...(action === "recruit" && from.has("pool") && (!clubRef || from.has("partners")) ? { pool: true } : {}),
+    // 2026-10-28: the club's own players, named (alone or beside
+    // another place: "ask the group and the pool", "everywhere").
+    ...(action === "recruit" && from.has("club") ? { ownClub: true } : {}),
+    // 2026-10-28 (Kemal, "stricter"): the words asked for players and
+    // named no place. Never with a club named (that is another club).
+    ...(action === "recruit" && from.size === 0 && !clubRef && !named ? { sourceUnsaid: true } : {}),
+    // 2026-11-09: the people tagged in the message, the one it replies
+    // to, or the one above ("@Match Time DM these people").
+    ...(named ? { namedPeople: true as const } : {}),
+    // 2026-10-28: the pitch named, and a pick from MatchTime's list
+    // (a whole number from 1). Carried on set_venue only.
+    ...(action === "set_venue" && typeof raw.venueName === "string" && raw.venueName.trim() ? { venueName: raw.venueName.trim() } : {}),
+    ...(action === "set_venue" && typeof raw.venueChoice === "number" && Number.isInteger(raw.venueChoice) && raw.venueChoice > 0
+      ? { venueChoice: raw.venueChoice }
+      : {}),
+    // quiet_hours (2026-10-31): off only when true, and then no times;
+    // the times as written, trimmed, checked by the save core.
+    ...(action === "quiet_hours" && raw.quietOff === true ? { quietOff: true as const } : {}),
+    ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietFrom === "string" && raw.quietFrom.trim() ? { quietFrom: raw.quietFrom.trim() } : {}),
+    ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietTo === "string" && raw.quietTo.trim() ? { quietTo: raw.quietTo.trim() } : {}),
+    // open_squad (2026-11-17): a limit back only when true; absent is
+    // the limit taken off.
+    ...(action === "open_squad" && raw.openSquadOff === true ? { openSquadOff: true as const } : {}),
+    // player_numbers (2026-11-03): back to full sides only when true, and
+    // then no minimum; whole numbers from 1, checked by the save core.
+    ...(action === "player_numbers" && raw.fullTeams === true ? { fullTeams: true as const } : {}),
+    ...(action === "player_numbers" && raw.fullTeams !== true && wholeFrom1(raw.minPlayers) ? { minPlayers: raw.minPlayers as number } : {}),
+    ...(action === "player_numbers" && wholeFrom1(raw.maxPlayers) ? { maxPlayers: raw.maxPlayers as number } : {}),
+    // switch_format: the number said for the one game.
+    ...(action === "switch_format" && wholeFrom1(raw.size) ? { size: raw.size as number } : {}),
+    ...((action === "player_numbers" || action === "switch_format") && raw.aSide === true ? { aSide: true as const } : {}),
+    // move_game (2026-11-10): the game's number (a whole number from 1,
+    // checked against the list shown by `game-move-rules.ts`), the
+    // weekday from the schema's closed list, the time as written
+    // (checked by code), and every week only when true.
+    ...(action === "move_game" && wholeFrom1(raw.game) ? { game: raw.game as number } : {}),
+    ...(action === "move_game" && typeof raw.newDay === "string" && (WEEKDAY_NAMES as readonly string[]).includes(raw.newDay)
+      ? { newDay: ((WEEKDAY_NAMES as readonly string[]).indexOf(raw.newDay) + 1) % 7 }
+      : {}),
+    ...(action === "move_game" && typeof raw.newTime === "string" && raw.newTime.trim() ? { newTime: raw.newTime.trim() } : {}),
+    ...(action === "move_game" && raw.everyWeek === true ? { everyWeek: true as const } : {}),
+    // month_coverage (2026-11-16): only the schema's two values; "" or
+    // anything else is not said, and MatchTime asks.
+    ...(action === "month_coverage" && (raw.coverage === "whole" || raw.coverage === "left") ? { coverage: raw.coverage } : {}),
+    // season_break (2026-10-29): only well-formed "YYYY-MM" months.
+    ...(action === "season_break" ? { breakMonths: monthKeysOf(raw.breakMonths), playMonths: monthKeysOf(raw.playMonths) } : {}),
+    // The words of this action (2026-11-23): said back only to name a
+    // part that was not done.
+    ...(typeof raw.words === "string" && raw.words.trim() ? { words: raw.words.trim() } : {}),
+    // Only a clear true: a missing or false value keeps HQ's outward
+    // actions closed (`admin-group-understand.ts`).
+    ...(toMatchTime ? { toMatchTime: true } : {}),
+  };
+  return facts;
 }
 
 /** "YYYY-MM" months from the model, deduplicated; anything else dropped. */

@@ -203,6 +203,32 @@ async function teamSheet(grp: SimGroup): Promise<string[]> {
     expect(reply).not.toMatch(/\[SQUAD\]|couldn't do/);
   });
 
+  // Review of #629, item 4: the switch is the admin part's SECOND action.
+  // The one reply still carries the new list (the switch is read from the
+  // outcome's switched match, not from the start of a joined intent).
+  test("the switch as the second admin action: the one reply still carries the NEW list", async ({ request, db }) => {
+    const grp = (await vetsWorld(request, db)).attach(request);
+    const body = "@Match Time turn off quiet hours, switch to 7aside and take Luca to the bench";
+    const action = (o: Record<string, unknown>) => ({ ...SWITCH_7, size: 0, aSide: false, ...o });
+    setRouterStub({ floor: false, bodies: { [body]: ["other_att", "admin_ops"] } });
+    setExtractorStub({
+      byExtractor: {
+        attendance: { [body]: { claims: [claim({ personRef: "Luca", polarity: "bench" })], affirmation: "none", sideRequests: [] } },
+        admin: { [body]: { toMatchTime: true, actions: [action({ action: "quiet_hours", quietOff: true, words: "turn off quiet hours" }), action({ action: "switch_format", size: 7, aSide: true, words: "switch to 7aside" })] } },
+      },
+    });
+
+    const res = await grp.postBatch([{ player: "ava", body, tag: true }]);
+
+    expect(await maxPlayers(grp)).toBe(14);
+    expectOnlyTheReply(res);
+    const reply = res.results[0].reply ?? "";
+    console.log(`[multi-instruction] quiet hours, switch and bench:\n${reply}`);
+    expect(reply).toMatch(/7-a-side now, 14 places/);
+    expect(reply).toMatch(/13\D+14|13 of 14|13\/14/);
+    expect(reply).not.toMatch(/\[SQUAD\]|couldn't do/);
+  });
+
   test("teams already made: the switch clears them, the same message makes them again, and no 'tag me to make them again'", async ({ request, db }) => {
     const grp = (await vetsWorld(request, db, true)).attach(request);
     arm(INCIDENT, ["other_att", "admin_ops", "balancer"]);

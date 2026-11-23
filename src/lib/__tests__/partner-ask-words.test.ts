@@ -222,4 +222,23 @@ describe("askPartnersFromDmText: a DM the classifier called partner_ask", () => 
     expect(askMock.requestPartnerAsk).not.toHaveBeenCalled();
     expect(reply).toMatch(/wasn't sure/);
   });
+
+  // Review of #629, item 1: two actions in one DM. The ask to the partners
+  // is found wherever it sits, and the action a DM cannot do is named.
+  it("two actions, the ask second: the partners are asked, and the other action is named as not done", async () => {
+    const reply = await askPartnersFromDmText({
+      ...dm,
+      text: "turn off quiet hours and ask Sutton",
+      model: extractor({
+        actions: [
+          { action: "quiet_hours", quietOff: true, words: "turn off quiet hours" },
+          { action: "recruit", playersFrom: ["partners"], clubRef: "Sutton", words: "ask Sutton" },
+        ],
+        toMatchTime: true,
+      }),
+    });
+    expect(askMock.requestPartnerAsk).toHaveBeenCalledTimes(1);
+    expect(reply).toContain("Sutton FC");
+    expect(reply).toContain('I couldn\'t do this part of your message: "turn off quiet hours".');
+  });
 });

@@ -150,7 +150,7 @@ import { runAnswerBatch, ANSWER_HANDLED_BY } from "@/lib/pipeline/answer-batch";
 import { runScoreBatch } from "@/lib/score-engine-batch";
 import { SCORE_HANDLED_BY } from "@/lib/score-engine";
 import { runAdminOpsBatch, type AdminOpsMessageOutcome } from "@/lib/admin-ops-engine-batch";
-import { benchBlock, notDoneLine, partsNotDone } from "@/lib/multi-instruction-reply";
+import { actionsNotDoneLine, benchBlock, notDoneLine, partsNotDone } from "@/lib/multi-instruction-reply";
 import type { Route } from "@/lib/pipeline/types";
 import { isAttendanceRoute, matchChangesFirst } from "@/lib/pipeline/multi-route";
 import { squadLockHold, withExitTasks, type AtExit } from "@/lib/squad-lock-hold";
@@ -2505,7 +2505,7 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
     nextMatchForReply &&
     !organisersMode &&
     (severalPartsBatch ||
-      [...(earlyAdminBatch?.outcomes ?? [])].some(([id, o]) => batchAdminIds.has(id) && o.intent.startsWith("format-switched")))
+      [...(earlyAdminBatch?.outcomes ?? [])].some(([id, o]) => batchAdminIds.has(id) && o.switchedMatchId !== undefined))
   ) {
     if (await squadLock.take(nextMatchForReply.id)) atExit(squadLock.settle);
   }
@@ -3962,7 +3962,7 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
     // the same message, that message carries the batch's one post, built
     // from the database after every part.
     const carriers = [
-      ...[...(earlyAdminBatch?.outcomes ?? [])].filter(([, o]) => o.intent.startsWith("format-switched")).map(([id]) => id),
+      ...[...(earlyAdminBatch?.outcomes ?? [])].filter(([, o]) => o.switchedMatchId !== undefined).map(([id]) => id),
       ...(teamOpsBatch?.alsoShowIds ?? []),
     ].filter((id) => !deterministicTeamPostIds.has(id) && !lateById.has(id));
     const carrier = results.filter((r) => carriers.includes(r.waMessageId)).at(-1);
@@ -4363,6 +4363,13 @@ async function handleAnalyzeRequest(request: Request, atExit: AtExit = () => und
         // Only when MatchTime was tagged: an untagged "Najib is out, we
         // need one more" that changed the squad keeps today's blast.
         last.sourceUnsaid = true;
+      }
+      // The message's OTHER admin actions (review of #629), when no admin
+      // owner does them here: named in its one reply, never dropped silently.
+      const id = last.msg.waMessageId;
+      if (places?.notDone?.length && piMentionsBot(last.msg) && gateRouteById.get(id) !== "admin_ops" && !alsoRoutesById.get(id)?.includes("admin_ops")) {
+        const idx = results.findIndex((x) => x.waMessageId === id);
+        if (idx >= 0) results[idx].reply = mergeOneReply(results[idx].reply, actionsNotDoneLine(places.notDone, org.language));
       }
     }
   }

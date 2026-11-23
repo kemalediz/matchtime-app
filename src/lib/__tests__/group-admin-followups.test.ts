@@ -70,6 +70,13 @@ describe("groupAdminFollowups", () => {
     expect((await run(d, [msg({ body: "@Match Time our pitch is Goals Sutton" })])).get("wa-1")).toEqual({ kind: "venue", words: "Goals Sutton", choice: null });
   });
 
+  // Review of #629, item 1: several actions are not a bare follow-up; the
+  // message goes on to its route, which does every action.
+  it("several actions read: not a follow-up", async () => {
+    const { d } = deps({ latestAsk: async () => ASKED, facts: { actions: [{ action: "set_venue", venueName: "Goals Sutton" }, { action: "quiet_hours", quietOff: true }] } });
+    expect((await run(d, [msg({ body: "@Match Time our pitch is Goals Sutton, and turn off quiet hours" })])).size).toBe(0);
+  });
+
   it("anything else the model reads is not a follow-up: the message carries on as it would have", async () => {
     const { d } = deps({ latestAsk: async () => ASKED, log: async () => [LIST], facts: { action: "other" } });
     expect((await run(d)).size).toBe(0);

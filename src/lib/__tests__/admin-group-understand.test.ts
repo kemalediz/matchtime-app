@@ -2276,6 +2276,105 @@ describe("a game's sizes from HQ", () => {
   });
 });
 
+// 2026-11-23 (Sutton FC, players' group, the same pipeline here): "@Match
+// Time switch to 5aside, then invite local player pool for the remaining
+// slots" did the switch alone. The admin extractor now lists every action,
+// in order; HQ does each through its own case, in that order, and says ONE
+// reply, naming any action that did nothing in the sender's words.
+describe("several admin actions in one HQ message", () => {
+  const deps = (facts: Record<string, unknown>) => ({ routerModel: routeTo("admin_ops"), extractorModel: adminFacts(facts) });
+  const SWITCH_5 = { action: "switch_format", words: "switch to 5aside", size: 5, aSide: true };
+  const POOL = { action: "recruit", words: "invite local player pool for the remaining slots", playersFrom: ["pool"], clubRef: "" };
+  const BODY = "@Match Time switch to 5aside, then invite local player pool for the remaining slots";
+  beforeEach(() => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqLog.hqLogSince.mockResolvedValue([]);
+    partnerWords.activePartnerChoices.mockResolvedValue([]);
+    switchWords.applySwitchFormatWords.mockReset();
+    switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-switched", replyText: "✅ Done: Tuesday is 5-a-side now, 10 places." });
+    hqPool.askPoolFromWords.mockClear();
+  });
+
+  it("the Sutton message: switched, THEN the pool asked, one reply with both lines in order", async () => {
+    const order: string[] = [];
+    switchWords.applySwitchFormatWords.mockImplementation(async () => (order.push("switch"), { outcome: "format-switched", replyText: "✅ Done: Tuesday is 5-a-side now, 10 places." }));
+    hqPool.askPoolFromWords.mockImplementationOnce(async () => (order.push("pool"), { outcome: "hq-pool-asked", replyText: "🔎 Asking nearby players for 3 places." }));
+    const r = await ask(BODY, "admin_ops", { deps: deps({ toMatchTime: true, actions: [SWITCH_5, POOL] }) });
+    expect(order).toEqual(["switch", "pool"]);
+    expect(switchWords.applySwitchFormatWords).toHaveBeenCalledWith(expect.objectContaining({ perSide: 5, via: "hq" }));
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-format-switched+hq-pool-asked", replyText: "✅ Done: Tuesday is 5-a-side now, 10 places.\n\n🔎 Asking nearby players for 3 places." });
+  });
+
+  it("an action MatchTime has no action for is named in the one reply, in the sender's words", async () => {
+    const r = await ask("@Match Time switch to 5aside and order new bibs", "admin_ops", {
+      deps: deps({ toMatchTime: true, actions: [SWITCH_5, { action: "other", words: "order new bibs" }] }),
+    });
+    expect(r?.replyText).toBe("✅ Done: Tuesday is 5-a-side now, 10 places.\n\nI couldn't do this part of your message: \"order new bibs\". Please ask me for it on its own.");
+  });
+
+  it("the switch did not go through (how many a side?): the pool is NOT asked, and is named", async () => {
+    switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-no-size", replyText: "How many a side?" });
+    const r = await ask(BODY, "admin_ops", { deps: deps({ toMatchTime: true, actions: [SWITCH_5, POOL] }) });
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
+    expect(r?.replyText).toBe(
+      "How many a side?\n\nI couldn't do this part of your message: \"invite local player pool for the remaining slots\". Please ask me for it on its own.",
+    );
+  });
+
+  // Review of #629, item 1: the same message routed ask_group in HQ.
+  it("routed ask_group: the whole list is carried out (switch, then the pool), never the first alone", async () => {
+    const order: string[] = [];
+    switchWords.applySwitchFormatWords.mockImplementation(async () => (order.push("switch"), { outcome: "format-switched", replyText: "✅ Done: Tuesday is 5-a-side now, 10 places." }));
+    hqPool.askPoolFromWords.mockImplementationOnce(async () => (order.push("pool"), { outcome: "hq-pool-asked", replyText: "🔎 Asking nearby players for 3 places." }));
+    const r = await ask(BODY, "ask_group", { deps: { routerModel: routeTo("ask_group"), extractorModel: adminFacts({ toMatchTime: true, actions: [SWITCH_5, POOL] }) } });
+    expect(order).toEqual(["switch", "pool"]);
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+    expect(r?.replyText).toBe("✅ Done: Tuesday is 5-a-side now, 10 places.\n\n🔎 Asking nearby players for 3 places.");
+  });
+
+  // Review of #629, item 1: a reader before the route (a tagged follow-up to
+  // the organisers' ask) reads several actions: all of them are done.
+  it("a follow-up read before the route with several actions: every action, in order", async () => {
+    const STORED: StoredAsk = { facts: { kind: "admin", action: "recruit", pool: true, toMatchTime: true }, at: new Date(NOW.getTime() - 60_000) };
+    quietWords.applyQuietHoursWords.mockResolvedValue({ outcome: "quiet-hours-off", replyText: "🌙 Quiet hours are off." });
+    const setVenueFromWords = vi.fn(async () => ({ outcome: "venue-set" as const, replyText: "📍 Done, your pitch is *Goals Sutton*.", set: true }));
+    const r = await ask("@Match Time our pitch is Goals Sutton, and turn off quiet hours", "none", {
+      deps: {
+        routerModel: routeTo("none"),
+        extractorModel: adminFacts({ toMatchTime: true, actions: [{ action: "set_venue", venueName: "Goals Sutton", words: "our pitch is Goals Sutton" }, { action: "quiet_hours", quietOff: true, words: "turn off quiet hours" }] }),
+        latestAskForRetry: vi.fn(async (): Promise<StoredAsk | null> => STORED),
+        setVenueFromWords,
+      },
+    });
+    expect(setVenueFromWords).toHaveBeenCalled();
+    expect(quietWords.applyQuietHoursWords).toHaveBeenCalled();
+    expect(r?.replyText).toBe("📍 Done, your pitch is *Goals Sutton*.\n\n🌙 Quiet hours are off.");
+  });
+
+  it("a switch, then ask the group: the players' group is asked after the switch", async () => {
+    groupAsk.askPlayersGroup.mockResolvedValue({ outcome: "group-asked", replyText: "📣 Asked the group." });
+    const r = await ask("@Match Time switch to 5aside, then ask the group", "admin_ops", {
+      deps: deps({ toMatchTime: true, actions: [SWITCH_5, { action: "recruit", playersFrom: ["club"], clubRef: "", words: "ask the group" }] }),
+    });
+    expect(groupAsk.askPlayersGroup).toHaveBeenCalled();
+    expect(r?.replyText).toBe("✅ Done: Tuesday is 5-a-side now, 10 places.\n\n📣 Asked the group.");
+  });
+
+  // Review of #629, item 6.
+  it("the pool after a switch of another game: asked for the game the switch changed", async () => {
+    switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-switched", replyText: "✅ Done: Thursday is 5-a-side now, 10 places.", matchId: "m-thu" });
+    await ask(BODY, "admin_ops", { deps: deps({ toMatchTime: true, actions: [{ ...SWITCH_5, matchDay: "Thursday" }, POOL] }) });
+    expect(hqPool.askPoolFromWords).toHaveBeenCalledWith(expect.objectContaining({ matchId: "m-thu" }));
+  });
+
+  it("someone who is not an organiser: each action's own refusal, nothing done", async () => {
+    const r = await ask(BODY, "admin_ops", { deps: deps({ toMatchTime: true, actions: [SWITCH_5, POOL] }), organiser: false, senderUserId: "u-2" });
+    expect(switchWords.applySwitchFormatWords).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
+    expect(r?.outcome).toMatch(/hq-only-organisers/);
+  });
+});
+
 // 2026-11-09 (Vets MNF): "@Match Time DM these people" in HQ, quoting a
 // message (a forwarded one too) or the one above: the players' group's own
 // door (`named-invite.ts`), an organiser's alone, never a place asked.
