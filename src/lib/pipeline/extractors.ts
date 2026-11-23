@@ -233,10 +233,19 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * word (a live run read "switch to 5aside" with no a side), and
  * `fee_waiver` says it may be simply stated, with its reason ("Tom's free
  * next Friday, he did the bibs" went 17 of 17 on the old prompt and 16 of 20
- * on the first rewrite; 10 of 10 with this). One new example group (several
- * actions, a reason and a question left out, one request from two places),
- * EN and TR side by side; every other definition and example unchanged in
- * meaning. 26,706 to 29,828 characters. The paid check:
+ * on the first rewrite; 10 of 10 with this). Its availability exclusion is
+ * kept, with a third-person example ("Tom's free Friday if you need one"):
+ * review of #629 asked whether narrowing it was needed, and it was not
+ * (both readings 5 of 5 on the bibs case; "Tom's free Friday" after "anyone
+ * free Friday?" read as availability, its fee counterpart as a free place).
+ * One new example group (several actions, a reason and a question left out,
+ * one request from two places), EN and TR side by side; every other
+ * definition and example unchanged in meaning. `words` is the last field of
+ * each action (first, it cost "cancel last Tuesday's match" its day, 0 of
+ * 5; last, 5 of 5), and `newTime` names the kickoff GAMES TO COME shows (with
+ * `words` last, "move Tuesday's game to 9:30" for a 21:00 game read 09:30 4
+ * of 5; the old prompt 21:30 5 of 5, and this 5 of 5). 26,706 to 29,903
+ * characters. The paid check:
  * scripts/live-check-several-admin-actions.ts, then one pass of every admin
  * suite (`live-check-open-squad.ts` now also fails a one-action case read as
  * several).
@@ -697,7 +706,7 @@ One game:
   "restore_match" put a called-off game back on: it is back on, uncancel it, it goes ahead after all. Of a game whose time has gone: it did take place after all.
   "switch_format" play ONE game with a different number a side, bigger or smaller ("make it 8 aside", "6 a side on Monday"), or a yes to MatchTime's own offer to switch a game ("Shall we go 8-a-side?"). Asking whether to switch, or talking about it, is "other".
   "move_game" change when a game kicks off: ONE game to another time, or to another day of its own week ("move Monday's game to 8:15", "tonight we start at 8"), or the club's weekly game from now on ("from now on we kick off at 8:15", "we play Tuesdays from now on"). A different number a side is "switch_format". Asking what time a game is, or talking about a time, is "other".
-  "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back, said as a request or simply stated, often with the reason (he washed the bibs, she booked the pitch). "Free" as in able to play, said by the player about himself ("I'm free Tuesday"), is not this.
+  "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back, said as a request or simply stated, often with the reason (he washed the bibs, she booked the pitch). "Free" as in able to play ("I'm free Tuesday", "Tom's free Friday if you need one") is not this.
 The club, from now on:
   "season_break" no football for a whole MONTH or more ("no football in December", "aralıkta maç yok"), or the football is back in a month ("we're back in January", "ocakta başlıyoruz"). One game off ("no game Friday", "bu hafta maç yok") is "cancel_match".
   "set_venue" tell MatchTime where the club plays: name its pitch or venue, or pick one of the places MatchTime listed. Asking where the game is, or talking about a pitch, is "other".
@@ -731,7 +740,7 @@ One game:
   aSide (switch_format, player_numbers): true when the numbers count the players on ONE side, however it is written ("8 aside", "5aside", "5-a-side", "6 to 8 a side", "8'e 8", "6 kişilik oynayalım", MatchTime's "8-a-side"); false when they count everyone ("12 players", "16 kişiyle").
   game (move_game): the number of the game meant in GAMES TO COME: the one the message names by its day or date ("Monday's", "the 23rd", "pazartesi"), the first that fits for "tonight", "this week" or "next week", and the first when it names none and every game listed is the same weekly game. For the weekly game from now on, any game of that weekly game. 0 when none is listed, or the games listed are different weekly games and the message names none (MatchTime then asks which). An answer to MatchTime's question which game to move is move_game, with the game the answer picks and the day and time that question names.
   newDay (move_game): the day of the week it moves to, "monday" to "sunday"; "" when the day stays.
-  newTime (move_game): the new kickoff as a 24-hour London time "HH:MM". A time with no am or pm is the one nearest the game's own kickoff ("8:15" for a 20:30 game is "20:15", "8" is "20:00", "10am" is "10:00"); "" when the time stays.
+  newTime (move_game): the new kickoff as a 24-hour London time "HH:MM". A time with no am or pm is the one nearest that game's own kickoff as GAMES TO COME shows it ("8:15" for a game at 20:30 is "20:15", "8" is "20:00"; it is a morning time only when it says so: "10am" is "10:00"); "" when the time stays.
   everyWeek (move_game): true when it changes the weekly game from now on ("from now on", "every week", "artık", "her hafta", "bundan sonra"); false for one game.
   coveredRefs (fee_waiver, bulk_payment, month_coverage): the people the action is about, one entry each, as written: those given or losing the free place, those paid for, or the player whose month it is. "he" or "him" is the person named, else the author of the quoted message. [] for an answer to MatchTime's question that names nobody.
   undo (fee_waiver): true when it takes a free place back.
@@ -1458,20 +1467,33 @@ export function parseFacts(
       if (listed && rows.length === 0) {
         return { facts: { kind: "admin", action: "other", ...(toMatchTime ? { toMatchTime: true } : {}) }, degradations };
       }
+      // Nothing the model listed is dropped silently (review of #629): an
+      // action the schema does not allow, beside real ones, and every action
+      // past the fourth, stay in their place as "other" with their words, so
+      // code names them as not done.
+      const asOther = (row: Record<string, unknown>): AdminFacts => ({
+        kind: "admin",
+        action: "other",
+        ...(typeof row.words === "string" && row.words.trim() ? { words: row.words.trim() } : {}),
+        ...(toMatchTime ? { toMatchTime: true } : {}),
+      });
       const steps: AdminFacts[] = [];
+      let read = 0;
       for (const row of rows) {
         if (typeof row !== "object" || row === null) {
           bad("dropped an admin action that is not an object");
           continue;
         }
         const step = adminStepFacts(row as Record<string, unknown>, toMatchTime, bad);
-        if (step) steps.push(step);
+        if (step) read++;
+        steps.push(step ?? asOther(row as Record<string, unknown>));
       }
-      if (steps.length === 0) return { facts: { kind: "none" }, degradations };
-      // An "other" beside a real action stays in its place: code names it as
-      // not done. Only "other"s are one "other".
-      const kept = steps.some((s) => s.action !== "other") ? steps.slice(0, ADMIN_MAX_ACTIONS) : [steps[0]];
-      if (steps.length > ADMIN_MAX_ACTIONS) bad(`${steps.length} admin actions read; the first ${ADMIN_MAX_ACTIONS} are carried`);
+      // Nothing the schema allows (only unknown actions): nothing read, as before.
+      if (read === 0) return { facts: { kind: "none" }, degradations };
+      // Only "other"s are one "other".
+      if (steps.every((s) => s.action === "other")) return { facts: steps[0], degradations };
+      if (steps.length > ADMIN_MAX_ACTIONS) bad(`${steps.length} admin actions read; the first ${ADMIN_MAX_ACTIONS} are carried out, the rest named as not done`);
+      const kept = steps.map((s, i) => (i < ADMIN_MAX_ACTIONS ? s : asOther({ words: s.words })));
       const [first, ...rest] = kept;
       return { facts: rest.length > 0 ? { ...first, then: rest } : first, degradations };
     }

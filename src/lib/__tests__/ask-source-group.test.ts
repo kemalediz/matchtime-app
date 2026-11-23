@@ -62,6 +62,24 @@ describe("groupSourceAnswers", () => {
     expect(log.recordGroupOrganiserLine).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-1", waMessageId: "wa-1", senderUserId: "u-admin" }));
   });
 
+  // Review of #629, item 1: an answer that also asks for something else is
+  // not a bare answer; the message goes on to its route, which does all of it.
+  it("several actions read: not an answer (its route carries out every action)", async () => {
+    const several: PipelineModel = {
+      name: "stub",
+      async complete() {
+        return {
+          text: JSON.stringify({ toMatchTime: true, actions: [{ action: "recruit", playersFrom: ["pool"] }, { action: "quiet_hours", quietOff: true }] }),
+          stopReason: "end_turn",
+          usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0,
+          ms: 0,
+        };
+      },
+    };
+    expect((await run([msg({ body: "the pool, and turn off quiet hours" })], several)).size).toBe(0);
+  });
+
   it("\"both\": the partners and the pool", async () => {
     const r = await run([msg({ body: "both" })], extractor(["partners", "pool"]));
     expect(r.get("wa-1")?.sources).toEqual(["partners", "pool"]);

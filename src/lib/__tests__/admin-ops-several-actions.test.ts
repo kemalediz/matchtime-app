@@ -227,6 +227,47 @@ describe("several admin actions in one message", () => {
     expect(out?.poolAskRequest).not.toBeNull();
   });
 
+  // Review of #629, item 6: "make Thursday 5 a side, then ask the pool" when
+  // the next game is Monday: the pool is asked for the game the switch changed.
+  it("the pool after a switch of another game: the ask is for the game the switch changed", async () => {
+    const { out } = await run(BODY, { toMatchTime: true, actions: [{ ...SWITCH_5, matchDay: "Thursday" }, POOL] }, {
+      over: { applySwitchFormatWords: async () => ({ outcome: "format-switched", replyText: "✅ Done: Thursday is 5-a-side now, 10 places.", matchId: "m-thu" }) },
+    });
+    expect(out?.poolAskRequest).toEqual({ matchId: "m-thu" });
+  });
+
+  // Review of #629, item 7: an "other" action is named, never run, and
+  // leaves no "no deterministic handler" line on the operator note.
+  it("an 'other' action leaves no operator-note noise, first or later", async () => {
+    const OTHER = step({ action: "other", words: "order new bibs" });
+    for (const actions of [[SWITCH_5, OTHER], [OTHER, SWITCH_5]]) {
+      const { res, out } = await run(BODY, { toMatchTime: true, actions });
+      expect(res.degradations.join(" ")).not.toMatch(/no deterministic handler/);
+      expect(out?.reply).toContain('"order new bibs"');
+    }
+  });
+
+  // Review of #629, item 5: a message whose match change is not its first
+  // action still counts as a match change for the batch's order.
+  it("applyNow is told a match change when ANY action of the message is one", async () => {
+    const QUIET = step({ action: "quiet_hours", words: "turn off quiet hours", quietOff: true });
+    const { model } = stubModel({ [BODY]: { toMatchTime: true, actions: [QUIET, SWITCH_5] } });
+    const seen: Array<[string, string]> = [];
+    await runAdminOpsBatch({
+      orgId: "org-1",
+      now: NOW,
+      messages: [msg(BODY)],
+      history: [],
+      enabled: new Set<Route>(["admin_ops"]),
+      deps: deps(model, []),
+      applyNow: (actions) => {
+        seen.push(...actions);
+        return new Set();
+      },
+    });
+    expect(seen).toEqual([["wa-1", "switch_format"]]);
+  });
+
   it("one action is exactly as before: one state read, one outcome", async () => {
     const { out, log } = await run("@Match Time make it 5 aside", { toMatchTime: true, actions: [SWITCH_5] });
     expect(log).toEqual(["loadState@14", "switch 5"]);

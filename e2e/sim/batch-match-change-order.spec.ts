@@ -260,6 +260,42 @@ async function statusOf(grp: SimGroup): Promise<string> {
     expect(adminReads(CANCEL)).toBe(1);
   });
 
+  // Review of #629, items 4 and 5: the switch is the message's SECOND
+  // action ("turn off quiet hours and switch to 7 aside"). It is still a
+  // match change done before the INs, and the batch still posts ONE list.
+  test("the switch as a message's second action, then two INs: done first, places against 14, one list", async ({ request, db }) => {
+    const grp = (
+      await suttonWorld(request, db, {
+        attendance: confirmed("ava", "bea", "eli", "fin", "gus", "hal", "ian", "jon", "kit", "lev", "max", "ned", "oli"),
+        cancelled: false,
+        maxPlayers: 16,
+      })
+    ).attach(request);
+    await db.run(`UPDATE "Activity" SET "minPlayers" = 12, "maxPlayers" = 16 WHERE id = $1`, [grp.activityId]);
+    const BOTH = "@Match Time turn off quiet hours and switch to 7aside";
+    setRouterStub({ floor: false, bodies: { [IN]: "self_att", [BOTH]: "admin_ops" } });
+    setExtractorStub({
+      byExtractor: {
+        attendance: { [IN]: SELF_IN },
+        admin: {
+          [BOTH]: {
+            toMatchTime: true,
+            actions: [admin("quiet_hours", { quietOff: true, words: "turn off quiet hours" }), admin("switch_format", { size: 7, aSide: true, words: "switch to 7aside" })],
+          },
+        },
+      },
+    });
+
+    const res = await grp.postBatch([{ player: "cal", body: IN }, { player: "ava", body: BOTH, tag: true }, { player: "dov", body: IN }]);
+    console.log(`[batch-order] second action: ${JSON.stringify(res.results)}\n[posts] ${JSON.stringify(res.groupPosts)}`);
+
+    expect((await db.one<{ maxPlayers: number }>(`SELECT "maxPlayers" FROM "Match" WHERE id = $1`, [grp.matchId!]))!.maxPlayers).toBe(14);
+    expect(await grp.attendanceOf("cal")).toMatchObject({ status: "CONFIRMED" });
+    expect(await grp.attendanceOf("dov")).toMatchObject({ status: "BENCH" });
+    expect(res.dms).toEqual([]);
+    expect(res.groupPosts).toEqual([]);
+  });
+
   for (const order of ["switch first", "switch last"] as const) {
     test(`a switch to 7 a side and two INs (${order}): places counted against 14, one list, no DM`, async ({ request, db }) => {
       // Thirteen in for a sixteen-place game played 6, 7 or 8 a side.

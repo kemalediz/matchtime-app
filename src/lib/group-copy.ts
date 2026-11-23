@@ -373,12 +373,15 @@ export const UNIFIED_ANSWER_INTENT = "unified_answer";
  *  numbered list of places is not a squad list. */
 export function skipsSquadComposition(intent: string | null | undefined): boolean {
   if (!intent) return false;
-  return (
-    TEAM_POST_INTENTS.has(intent) ||
-    STATS_ANSWER_INTENTS.has(intent) ||
-    intent === "help" ||
-    intent === UNIFIED_ANSWER_INTENT ||
-    (VENUE_WORDS_OUTCOMES as readonly string[]).includes(intent)
+  // Several admin actions join their intents with "+" (2026-11-23): one
+  // part that skips (the pitch's list of places) skips the reply.
+  return intent.split("+").some(
+    (part) =>
+      TEAM_POST_INTENTS.has(part) ||
+      STATS_ANSWER_INTENTS.has(part) ||
+      part === "help" ||
+      part === UNIFIED_ANSWER_INTENT ||
+      (VENUE_WORDS_OUTCOMES as readonly string[]).includes(part),
   );
 }
 

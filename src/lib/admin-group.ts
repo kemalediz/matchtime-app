@@ -62,6 +62,7 @@ import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rule
 import { HQ_CANCEL_NOTHING_DONE } from "./match-cancel";
 import { piMentionsBot } from "./interaction-contract";
 import { cardSafeText } from "./guest-card/vcard";
+import { outcomeParts } from "./outcome-parts";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -168,8 +169,19 @@ const NO_TICK: ReadonlySet<string> = new Set([
 ]);
 export const HQ_TICK = "✅";
 
+/**
+ * PURE. The tick for an HQ outcome. A message with several parts or actions
+ * joins its outcomes with "+" (2026-11-23, review of #629): the tick goes on
+ * only when some part was done, never for refusals, questions back and
+ * "this part was not done" lines alone.
+ */
+export function tickFor(outcome: string | null): string | null {
+  if (!outcome) return HQ_TICK;
+  return outcomeParts(outcome).some((part) => !NO_TICK.has(part) && part !== "hq-part-not-done") ? HQ_TICK : null;
+}
+
 function acted(orgId: string, outcome: string | null, replyText: string | null): AdminGroupMessageResult {
-  return { handled: true, orgId, outcome, replyText, react: outcome && NO_TICK.has(outcome) ? null : HQ_TICK };
+  return { handled: true, orgId, outcome, replyText, react: tickFor(outcome) };
 }
 
 function parseTimestamp(ts: string | null | undefined): Date | null {

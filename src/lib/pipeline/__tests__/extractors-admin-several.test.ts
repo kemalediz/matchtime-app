@@ -102,19 +102,27 @@ describe("the admin facts: a list of actions, in the order asked", () => {
     expect(f).not.toHaveProperty("then");
   });
 
-  it("an unknown action in the list is dropped with a degradation; the rest stand", () => {
+  // Review of #629, item 8: nothing the model listed is dropped silently.
+  it("an unknown action beside a real one is kept as 'other' with its words, so it is named as not done", () => {
     const r = parseFacts(
       "admin",
-      JSON.stringify({ toMatchTime: true, actions: [step({ action: "launch_rocket" }), step({ action: "recruit", playersFrom: ["pool"] })] }),
+      JSON.stringify({ toMatchTime: true, actions: [step({ action: "launch_rocket", words: "launch the rocket" }), step({ action: "recruit", playersFrom: ["pool"] })] }),
       "m1",
     );
-    expect(r.facts).toMatchObject({ kind: "admin", action: "recruit", pool: true });
+    expect(r.facts).toMatchObject({ kind: "admin", action: "other", words: "launch the rocket" });
+    expect((r.facts as AdminFacts).then).toEqual([expect.objectContaining({ action: "recruit", pool: true })]);
     expect(r.degradations.map((d) => d.detail).join(" ")).toMatch(/unknown admin action "launch_rocket"/);
   });
 
-  it("at most four actions are carried", () => {
+  it("an unknown action alone is still nothing read (as before)", () => {
+    expect(parseFacts("admin", JSON.stringify({ toMatchTime: true, actions: [step({ action: "launch_rocket" })] }), "m1").facts).toEqual({ kind: "none" });
+  });
+
+  it("past four actions, the rest are kept as 'other' with their words: carried out four, the rest named", () => {
     const f = admin({ toMatchTime: true, actions: Array.from({ length: 6 }, (_, i) => step({ action: "quiet_hours", words: `q${i}` })) });
-    expect(1 + (f.then?.length ?? 0)).toBe(4);
+    const all = [f, ...(f.then ?? [])];
+    expect(all.map((a) => a.action)).toEqual(["quiet_hours", "quiet_hours", "quiet_hours", "quiet_hours", "other", "other"]);
+    expect(all.slice(4).map((a) => a.words)).toEqual(["q4", "q5"]);
   });
 });
 

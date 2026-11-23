@@ -200,6 +200,7 @@ import {
   type EngineReminderWrite,
 } from "./admin-ops-engine";
 import { compose } from "./pipeline/compose";
+import { matchChangeOrFirst } from "./pipeline/multi-route";
 import { mergeOneReply } from "./pipeline/clause-peel";
 import { actionsNotDoneLine, letsNextActionRun } from "./multi-instruction-reply";
 import { decide as decideDefault } from "./pipeline/engine";
@@ -510,6 +511,10 @@ export interface AdminOpsBatchArgs {
   /** What an earlier pass of this batch already read (`deferred`): those
    *  messages are not read again, and the games shown are the same. */
   preRead?: AdminOpsPreRead;
+  /** Internal (`runAdminOpsBatch`): the messages whose facts here are one
+   *  later action of several. An action MatchTime has no handler for here
+   *  is then named in the message's one reply, never answered on its own. */
+  actionsOfSeveral?: ReadonlySet<string>;
 }
 
 /** One pass's result, with what the steps after it need. */
@@ -564,14 +569,16 @@ export async function runAdminOpsBatch(args: AdminOpsBatchArgs): Promise<AdminOp
   for (const id of steps.keys()) holdIfNotThrough(id, 0);
   const longest = Math.max(...[...steps.values()].map((s) => s.length));
   for (let k = 1; k < longest; k++) {
-    for (const [id, s] of steps) if (s.length > k && held.has(id)) outcomesById.get(id)!.push(undefined);
-    const ids = [...steps].filter(([id, s]) => s.length > k && !held.has(id)).map(([id]) => id);
+    // Held, or an "other" (nothing to run): no outcome, named as not done.
+    for (const [id, s] of steps) if (s.length > k && (held.has(id) || s[k].action === "other")) outcomesById.get(id)!.push(undefined);
+    const ids = [...steps].filter(([id, s]) => s.length > k && !held.has(id) && s[k].action !== "other").map(([id]) => id);
     if (ids.length === 0) continue;
     const pass = await runAdminOpsPass({
       ...args,
       messages: args.messages.filter((m) => ids.includes(m.waMessageId)),
       preRead: { facts: new Map(ids.map((id) => [id, steps.get(id)![k]])), games: games ?? [] },
       applyNow: undefined,
+      actionsOfSeveral: new Set(ids),
     });
     result.degradations.push(...pass.degradations);
     result.cost = { usd: result.cost.usd + pass.cost.usd, calls: result.cost.calls + pass.cost.calls, ms: result.cost.ms + pass.cost.ms };
@@ -648,7 +655,25 @@ export function mergeActionOutcomes(p: {
   partOfSeveral: boolean;
   lang: string | null;
 }): AdminOpsMessageOutcome | undefined {
-  const did = p.outcomes.filter(actionDid);
+  // An ask after a size switch is for the game the switch changed (review
+  // of #629: "make Thursday 5 a side, then ask the pool", the next game a
+  // Monday). The engine's ask names the club's next game; it is moved to
+  // the switched one. A recruit names no game of its own.
+  let switched: string | undefined;
+  const aimed = p.outcomes.map((o) => {
+    if (!o) return o;
+    const out =
+      switched && (o.poolAskRequest || o.partnerAskRequest)
+        ? {
+            ...o,
+            ...(o.poolAskRequest ? { poolAskRequest: { ...o.poolAskRequest, matchId: switched } } : {}),
+            ...(o.partnerAskRequest ? { partnerAskRequest: { ...o.partnerAskRequest, matchId: switched } } : {}),
+          }
+        : o;
+    if (actionDid(o) && o.switchedMatchId) switched = o.switchedMatchId;
+    return out;
+  });
+  const did = aimed.filter(actionDid);
   if (did.length === 0) return p.outcomes.find((o) => o !== undefined);
   const notDone = p.actions.filter((a, i) => !actionDid(p.outcomes[i]) && !(p.partOfSeveral && a.action === "other"));
   const join = (pick: (o: AdminOpsMessageOutcome) => string | null): string | null =>
@@ -662,7 +687,7 @@ export function mergeActionOutcomes(p: {
     ? mergeOneReply(join((o) => o.replyIfTeamsMade ?? o.reply), notDoneLine)
     : null;
   const first = did[0];
-  const switched = did.find((o) => o.switchedMatchId)?.switchedMatchId;
+  const switchedId = did.find((o) => o.switchedMatchId)?.switchedMatchId;
   return {
     waMessageId: first.waMessageId,
     route: first.route,
@@ -682,7 +707,7 @@ export function mergeActionOutcomes(p: {
     namedInviteRequest: did.some((o) => o.namedInviteRequest),
     writeFailed: false,
     ...(teamsMade ? { replyIfTeamsMade: teamsMade } : {}),
-    ...(switched ? { switchedMatchId: switched } : {}),
+    ...(switchedId ? { switchedMatchId: switchedId } : {}),
   };
 }
 
@@ -814,7 +839,9 @@ async function runAdminOpsPass(args: AdminOpsBatchArgs): Promise<AdminOpsPassRes
     const actions = new Map<string, string>();
     for (const m of candidates) {
       const f = factsById.get(m.waMessageId);
-      if (f?.kind === "admin") actions.set(m.waMessageId, (f as AdminFacts).action);
+      // Several actions (review of #629): a match change anywhere among
+      // them makes the message a match change for the batch's order.
+      if (f?.kind === "admin") actions.set(m.waMessageId, matchChangeOrFirst([f, ...(f.then ?? [])].map((a) => a.action)));
     }
     const now_ = args.applyNow(actions);
     const later = candidates.filter((m) => factsById.has(m.waMessageId) && !now_.has(m.waMessageId));
@@ -1097,6 +1124,11 @@ async function runAdminOpsPass(args: AdminOpsBatchArgs): Promise<AdminOpsPassRes
       // one: "rate the players via the link from Matchtime DM'ed to you"
       // (2026-09-10) names MatchTime without addressing it, and must not
       // be answered with "I can't do that".
+      //
+      // ONE ACTION OF SEVERAL (review of #629): not answered on its own and
+      // not on the note; the message's one reply names it as not done
+      // (`mergeActionOutcomes`).
+      if (steps.has(m.waMessageId) || args.actionsOfSeveral?.has(m.waMessageId)) continue;
       if (m.tagged && (m.taggedExplicitly === true)) {
         degradations.push(
           `${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${m.waMessageId}: admin action "other" has no ` +

@@ -45,6 +45,14 @@ describe("recruitPlacesFromWords", () => {
     expect(await ask(extractor({ action: "recruit", playersFrom: ["partners"], clubRef: "Sutton" }))).toEqual({ sources: ["partners"], clubRef: "Sutton" });
   });
 
+  // Review of #629, item 1: the recruit is found wherever it sits among
+  // several actions, and the others are reported so they can be named.
+  it("several actions, the recruit second: its places, and the other actions' words", async () => {
+    expect(
+      await ask(extractor({ actions: [{ action: "switch_format", size: 5, aSide: true, words: "switch to 5aside" }, { action: "recruit", playersFrom: ["pool"], words: "ask the pool" }] })),
+    ).toEqual({ sources: ["pool"], clubRef: null, notDone: ["switch to 5aside"] });
+  });
+
   it("nowhere said: sources null (the organiser is asked when the club has more)", async () => {
     expect(await ask(extractor({ action: "recruit", playersFrom: [] }))).toEqual({ sources: null, clubRef: null });
   });

@@ -31,6 +31,7 @@ import type { QuotedMessage } from "./admin-group-confirm-rules";
 import { namedSources, type RecruitSource } from "./ask-source-rules";
 import { extractForRouteTraced } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
+import { severalActions } from "./admin-actions";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import type { QuotedGroupMessage } from "./reply-context";
 import { RETRY_FOLLOWUP_MS, latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./refused-ask-retry";
@@ -117,7 +118,9 @@ export async function groupAdminFollowups(args: {
         ...(m.reply ? { reply: m.reply } : {}),
         now,
       }).catch(() => null);
-      const facts = extracted?.facts.kind === "admin" ? extracted.facts : null;
+      // Several actions (review of #629): not a bare follow-up; the message's
+      // own route carries out every action, in order.
+      const facts = extracted?.facts.kind === "admin" && !severalActions(extracted.facts) ? extracted.facts : null;
       if (facts?.action === "set_venue") {
         const words = list ? parseVenuePickRef(list.askRef) : null;
         // A number picks from THE list's words; a name is its own words.

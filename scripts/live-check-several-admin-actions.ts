@@ -117,6 +117,8 @@ const ERDAL: Club = {
   ],
   hq: [{ fromMatchTime: false, text: "salı sayı az" }],
 };
+/** FNF's organisers, short of a player for Friday. */
+const FEE: Club = { ...FNF, label: "FNF, one short", hq: [{ fromMatchTime: false, text: "anyone free Friday? we're one short" }] };
 const VETS: Club = {
   label: "Vets",
   organiser: "Davide",
@@ -168,7 +170,9 @@ function shown(f: AdminFacts | null): string {
 
 type Where = "PG" | "HQ";
 interface Case {
-  group: "A" | "B" | "C";
+  group: "A" | "B" | "C" | "D";
+  /** D only: the reading need not be spoken to MatchTime. */
+  anyTo?: boolean;
   club: Club;
   where: Where;
   text: string;
@@ -198,6 +202,10 @@ const CASES: Case[] = [
   { group: "C", club: SUTTON, where: "PG", text: "@Match Time go 7 a side tonight, how many are we now?", routes: "any", want: exactly(side(7)), expect: "switch_format 7 only", why: "a question beside an action (held out)" },
   { group: "C", club: SUTTON, where: "PG", text: "@Match Time ask the lads and the player pool for Tuesday", routes: OPS, want: exactly(is("recruit", (a) => a.ownClub === true && a.pool === true)), expect: "ONE recruit, club and pool", why: "one request, two places (held out)" },
   { group: "C", club: SUTTON, where: "PG", text: "@Match Time make it 5 aside", routes: OPS, want: exactly(side(5)), expect: "switch_format 5 only", why: "one action" },
+
+  // ── D. A free place, or free to play (review of #629, item 9) ──
+  { group: "D", club: FEE, where: "HQ", text: "Tom's free Friday", routes: "any", want: exactly(is("other")), anyTo: true, expect: "other (free to play)", why: "an organiser's availability, after \"anyone free Friday?\"" },
+  { group: "D", club: FEE, where: "HQ", text: "Tom's free Friday, he washed the bibs", routes: "any", want: exactly(is("fee_waiver", (a) => (a.coveredRefs ?? []).join() === "Tom")), expect: "fee_waiver Tom", why: "its free-place counterpart" },
 ];
 
 // ── Running a case through the production path ───────────────────────
@@ -228,7 +236,7 @@ async function run(c: Case, i: number): Promise<boolean> {
   const f = ex.facts.kind === "admin" ? ex.facts : null;
 
   const routeOk = c.routes === "any" || (route !== null && c.routes.includes(route as Route));
-  const factsOk = c.want(f) && f?.toMatchTime === true;
+  const factsOk = c.want(f) && (c.anyTo === true || f?.toMatchTime === true);
   const ok = routeOk && factsOk;
   console.log(
     `${ok ? "PASS" : "FAIL"}  ${c.group} ${c.where} [${c.club.label}] ${JSON.stringify(c.text)}\n` +
@@ -242,18 +250,19 @@ async function run(c: Case, i: number): Promise<boolean> {
 async function main() {
   const only = process.env.ONLY;
   const cases = CASES.filter((c) => !only || c.text.includes(only));
-  const totals = { A: [0, 0], B: [0, 0], C: [0, 0] } as Record<Case["group"], [number, number]>;
+  const totals = { A: [0, 0], B: [0, 0], C: [0, 0], D: [0, 0] } as Record<Case["group"], [number, number]>;
   console.log(`\n== Several admin actions in one message: ${cases.length} cases, each once ==\n`);
   for (const [i, c] of cases.entries()) {
     const ok = await run(c, i);
     totals[c.group][ok ? 0 : 1]++;
   }
-  const pass = totals.A[0] + totals.B[0] + totals.C[0];
-  const fail = totals.A[1] + totals.B[1] + totals.C[1];
+  const pass = totals.A[0] + totals.B[0] + totals.C[0] + totals.D[0];
+  const fail = totals.A[1] + totals.B[1] + totals.C[1] + totals.D[1];
   console.log(
     `\nA. every action, in order: ${totals.A[0]} passed, ${totals.A[1]} failed` +
       `\nB. a part with no action: ${totals.B[0]} passed, ${totals.B[1]} failed` +
       `\nC. stays one action: ${totals.C[0]} passed, ${totals.C[1]} failed` +
+      `\nD. a free place, or free to play: ${totals.D[0]} passed, ${totals.D[1]} failed` +
       `\n\n${pass} passed, ${fail} failed. Model calls: ${calls}. Cost: $${usd.toFixed(4)} (dev key).`,
   );
 }

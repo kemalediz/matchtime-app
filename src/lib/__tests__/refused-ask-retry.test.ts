@@ -27,6 +27,13 @@ describe("retryFactsOf", () => {
     expect(retryFactsOf({ facts: recruit({ sourceUnsaid: true }), at: ASKED }, NOW)).toBeNull();
   });
 
+  // Review of #629: the ask was the SECOND action of its message ("switch to
+  // 5aside, then invite the pool"); try again repeats that ask, never the switch.
+  it("the ask as a later action of its message: that ask is repeated", () => {
+    const stored: AdminFacts = { kind: "admin", action: "switch_format", size: 5, aSide: true, toMatchTime: true, then: [recruit({ pool: true })] };
+    expect(retryFactsOf({ facts: stored, at: ASKED }, NOW)).toEqual({ kind: "admin", action: "recruit", pool: true, toMatchTime: true });
+  });
+
   it("nothing stored, another action, or an ask too long ago: nothing to repeat", () => {
     expect(retryFactsOf(null, NOW)).toBeNull();
     expect(retryFactsOf({ facts: { kind: "admin", action: "bulk_payment", count: 4 }, at: ASKED }, NOW)).toBeNull();

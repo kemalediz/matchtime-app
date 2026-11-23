@@ -17,6 +17,7 @@ import type { Route } from "./pipeline/types";
 import { isAttendanceRoute } from "./pipeline/multi-route";
 import { multiInstructionCopy, type InstructionPart } from "./i18n/multi-instruction";
 import { t } from "./i18n/t";
+import { outcomeParts } from "./outcome-parts";
 
 /**
  * PURE. The bench, as the squad post numbers it, for a message whose squad
@@ -63,28 +64,59 @@ export function notDoneLine(parts: readonly Route[], lang?: string | null): stri
  * (`admin-ops-engine-batch.ts`) and HQ (`admin-group-understand.ts`) say it
  * the same way, with the same copy as `notDoneLine`.
  */
-/**
- * The outcome codes of the admin cores that mean the action WENT THROUGH:
- * the change is made, or was already so ("unchanged"), or the ask was
- * made. Without the "hq-" prefix HQ puts on some. Anything else (a
- * question back, "which game?", a refusal, no match) did not.
- */
-const ACTION_DONE_CODES: ReadonlySet<string> = new Set([
-  "format-switched", "format-switched-activity", "format-unchanged",
-  "quiet-hours-on", "quiet-hours-off", "quiet-hours-unchanged",
-  "player-range-set", "player-range-cleared", "player-range-unchanged",
-  "season-break-set", "season-break-unchanged",
-  "open-squad-on", "open-squad-off", "open-squad-unchanged",
-  "game-move-moved", "game-move-weekly-moved", "game-move-weekly-unchanged",
-  "venue-set",
-  "match-cancelled", "match-restored", "match-not-played", "match-played-restored",
-  "match_cancelled", "match_restored", "match_not_played", "match_played_restored",
-  "pool-asked", "xask-words-asked", "group-asked", "named-done",
-]);
+export function actionsNotDoneLine(words: ReadonlyArray<string | undefined>, lang?: string | null): string | null {
+  if (words.length === 0) return null;
+  const copy = multiInstructionCopy(lang);
+  const names = [...new Set(words.map((w) => (w && w.trim() ? `"${w.trim()}"` : copy.part.other)))];
+  return copy.notDone({ parts: copy.join(names), count: names.length });
+}
 
-/** The organisers-only refusal (players' group, HQ): nothing changed, and
- *  every later action checks the same right itself, so it holds none back. */
-const ORGANISERS_ONLY_CODES: ReadonlySet<string> = new Set(["organisers_only", "only-organisers"]);
+/**
+ * EVERY OUTCOME CODE AN ADMIN ACTION'S CORE RETURNS, classified once
+ * (review of #629): "through" when the change is made, was already so, or
+ * the ask was made; "held" for a question back, no game, a refusal or a
+ * failure; "refused-right" for the organisers-only refusal, which changes
+ * nothing and holds nothing back (each later action checks the same right
+ * itself). `multi-instruction-reply-actions.test.ts` scans the cores for
+ * their codes and fails on one missing here, so this cannot drift.
+ */
+export const ACTION_OUTCOMES: Readonly<Record<string, "through" | "held" | "refused-right">> = {
+  // format-switch-words.ts, format-resize.ts
+  "format-switched": "through", "format-switched-activity": "through", "format-unchanged": "through",
+  "format-no-match": "held", "format-not-a-suggestion": "held", "format-open-squad": "held", "format-suggestion-stale": "held",
+  "format-too-late": "held", "format-no-range": "held", "format-no-size": "held", "format-not-allowed": "held", "closed-format-switch": "held",
+  // quiet-hours-words.ts
+  "quiet-hours-on": "through", "quiet-hours-off": "through", "quiet-hours-unchanged": "through", "quiet-hours-refused": "held",
+  // player-range-words.ts, open-squad-save.ts
+  "player-range-set": "through", "player-range-cleared": "through", "player-range-unchanged": "through",
+  "player-range-no-game": "held", "player-range-refused": "held", "player-range-which": "held",
+  "open-squad-on": "through", "open-squad-off": "through", "open-squad-unchanged": "through",
+  // season-break-words.ts
+  "season-break-set": "through", "season-break-unchanged": "through", "season-break-refused": "held",
+  // game-move-words.ts, and its "stayed" reasons
+  "game-move-moved": "through", "game-move-weekly-moved": "through", "game-move-weekly-unchanged": "through", "game-move-stayed-unchanged": "through",
+  "game-move-invalid": "held", "game-move-no-games": "held", "game-move-say-what": "held", "game-move-which": "held", "game-move-which-weekly": "held",
+  "game-move-stayed-started": "held", "game-move-stayed-set-by-hand": "held", "game-move-stayed-into-the-past": "held",
+  "game-move-stayed-other-month": "held", "game-move-stayed-unreadable-time": "held", "game-move-stayed-gone": "held",
+  // venue-from-words.ts
+  "venue-set": "through", "venue-no-name": "held", "venue-none": "held", "venue-unavailable": "held", "venue-which": "held",
+  // month-coverage-words.ts
+  "month-coverage-done": "through", "month-coverage-same": "through", "month-coverage-merged": "through",
+  "month-coverage-asked": "held", "month-coverage-confirm": "held", "month-coverage-expired": "held", "month-coverage-failed": "held",
+  "month-coverage-which": "held", "month-coverage-who": "held",
+  // match-cancel.ts: the players' group's codes, and HQ's
+  match_cancelled: "through", match_restored: "through", match_not_played: "through", match_played_restored: "through",
+  match_cancel_none: "held", match_cancel_use_admin_group: "held", match_cancel_organisers_only: "refused-right",
+  "match-cancelled": "through", "match-restored": "through", "match-not-played": "through", "match-played-restored": "through",
+  // pool-ask-words.ts, partner-ask-words.ts, admin-group-ask-group.ts, named-invite.ts
+  "hq-pool-asked": "through", "hq-pool-no-match": "held", "hq-pool-not-asked": "held",
+  "xask-words-asked": "through", "xask-words-ambiguous": "held", "xask-words-no-game": "held", "xask-words-no-match": "held",
+  "xask-words-no-partner": "held", "xask-words-not-asked": "held",
+  "group-asked": "through", "group-ask-already": "through", "group-ask-full": "held", "group-ask-no-match": "held",
+  "named-done": "through", "named-failed": "held", "named-full": "held", "named-no-match": "held", "named-nobody-tagged": "held",
+  // The organisers-only line: the players' group's, and HQ's ("hq-only-organisers")
+  organisers_only: "refused-right", "only-organisers": "refused-right",
+};
 
 /**
  * PURE. May the next admin action of the same message run, after one whose
@@ -92,19 +124,13 @@ const ORGANISERS_ONLY_CODES: ReadonlySet<string> = new Set(["organisers_only", "
  * invite the pool for the remaining slots" read no "a side", the switch
  * asked "How many a side?", and the pool was asked for the places at the
  * OLD size)? Only when this one went through, or was the organisers-only
- * refusal. A code joined with "+" (several places asked) goes through when
- * any part did. The later actions that may not run are named as not done.
+ * refusal (`ACTION_OUTCOMES`), HQ's "hq-" prefix read through. A code
+ * joined with "+" (several places asked) goes through when any part did.
+ * An unknown code holds. The later actions not run are named as not done.
  */
 export function letsNextActionRun(outcome: string): boolean {
-  return outcome.split("+").some((c) => {
-    const code = c.replace(/^hq-/, "");
-    return ACTION_DONE_CODES.has(code) || ORGANISERS_ONLY_CODES.has(code);
+  return outcomeParts(outcome).some((c) => {
+    const kind = ACTION_OUTCOMES[c] ?? ACTION_OUTCOMES[c.replace(/^hq-/, "")];
+    return kind === "through" || kind === "refused-right";
   });
-}
-
-export function actionsNotDoneLine(words: ReadonlyArray<string | undefined>, lang?: string | null): string | null {
-  if (words.length === 0) return null;
-  const copy = multiInstructionCopy(lang);
-  const names = [...new Set(words.map((w) => (w && w.trim() ? `"${w.trim()}"` : copy.part.other)))];
-  return copy.notDone({ parts: copy.join(names), count: names.length });
 }
