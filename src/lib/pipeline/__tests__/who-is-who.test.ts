@@ -199,6 +199,22 @@ describe("the prompt", () => {
   });
 });
 
+describe("the prompt: a whole name is that member (FNF HQ 2026-11-24, Umar and Umar Noor)", () => {
+  it("rules first that a name which is exactly one member's whole name, or one member's listed nickname, is that member, even when it starts another member's name", () => {
+    expect(WHO_IS_WHO_SYSTEM).toContain("exactly one member's whole name");
+    expect(WHO_IS_WHO_SYSTEM).toContain('"Umar out" | "Umar yok", MEMBERS has Umar and Umar Noor: member, Umar.');
+    expect(WHO_IS_WHO_SYSTEM).toContain('"Umar Noor in" | "Umar Noor var", MEMBERS has Umar and Umar Noor: member, Umar Noor.');
+  });
+  it("still asks when the name is nobody's whole name and fits two members", () => {
+    expect(WHO_IS_WHO_SYSTEM).toContain('"Umar is in" | "Umar geliyor", MEMBERS has Umar Noor and Umar Khan and no member called just Umar: ambiguous, both refs.');
+    expect(WHO_IS_WHO_SYSTEM).toContain('"David is in" | "David geliyor", MEMBERS has David Aksoy and David Russo: ambiguous, both refs.');
+  });
+  it("states each verdict rule once: the old first-name rule is not left beside the new order", () => {
+    expect(WHO_IS_WHO_SYSTEM.match(/WHICH VERDICT/g)?.length).toBe(1);
+    expect(WHO_IS_WHO_SYSTEM).not.toContain("A member is named by their full name, first name or surname");
+  });
+});
+
 describe("which names the facts quote (structured fields only)", () => {
   it("attendance: named third parties and who they replace; never the sender, a relation or a group", () => {
     const f = attendanceFacts([
