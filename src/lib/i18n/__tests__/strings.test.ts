@@ -552,6 +552,7 @@ const SAMPLES: SampleArgs = {
   sj_err_one_club: null,
   pg_err_player_owns_account: null,
   pg_err_number_on_matchtime: null,
+  pg_err_already_player: { name: "Umar" },
   pg_err_club_not_approved: null,
   pg_err_merge_keep_owned: null,
   score_entry_enter: null,

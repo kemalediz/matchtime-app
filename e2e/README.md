@@ -188,7 +188,7 @@ site.
 | Analyzer apply path | `api/analyzer.spec.ts` | IN → CONFIRMED (react ✅); IN on full squad → BENCH (🪑, capacity respected); OUT → DROPPED + open BenchSlotOffer; **third-party BENCH demote** (CONFIRMED→BENCH, slot freed, exactly one row, no offer, no dup announce); **bench-demote safety net** (reply claims move, no registerFor → server synthesises the demote); waMessageId dedupe |
 | DM reply | `api/dm-reply.spec.ts` | opt-out keyword → `ratingDmOptOut` set + ack BotJob only after write; re-opt-in clears; unknown sender ignored with zero writes |
 | Scheduler | `api/due-posts.spec.ts` | morning rate-DMs to all confirmed players EXCEPT opted-out; evening reminders skip opted-out AND already-rated (clock pinned via x-test-now) |
-| Dedup helper + squad-from-list | `api/resolve-and-pricing.spec.ts` → `helpers/lib-tests.ts` (tsx) | `findExistingOrgMember`: phone wins, alias hit, unique exact, unique fuzzy, ambiguous→null, unknown→null; `normaliseName`; `resolveOrProvisionSquadName` reuse vs provision |
+| Dedup helper + squad-from-list | `api/resolve-and-pricing.spec.ts` → `helpers/lib-tests.ts` (tsx) | `findExistingOrgMember`: phone wins, alias hit, unique exact, unique fuzzy (single word only), typed surname→null, ambiguous→null, unknown→null; `normaliseName`; `resolveOrProvisionSquadName` reuse vs provision |
 | Fee math | `api/resolve-and-pricing.spec.ts` | `totalForMethod`/`priceMethods`/`platformFeePence` against hardcoded oracles |
 
 ### Covered — group simulator (`e2e/sim/`, the WhatsApp regression net)

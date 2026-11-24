@@ -3,8 +3,10 @@
  *
  *   - provisional NEW row shows the player's NAME (zero-width collapse
  *     regression, 2026-06-11) — checked at mobile width
- *   - add-player-by-name dedup: existing unique name is REUSED (no ghost),
- *     ambiguous name still creates a fresh player
+ *   - add-player-by-name dedup: a name already playing here is REUSED (no
+ *     ghost) and the page says so; a new full name that shares only a first
+ *     name ("Riley Noor" beside "Riley Rater", FNF 2026-11-23) and an
+ *     ambiguous name both create a fresh player
  *   - merge flow: duplicate merged away
  *   - mobile-width render: no horizontal overflow (incl. admin subnav)
  *   - the banner keeps the space after the name ("Hamzahposted", 2026-09-29)
@@ -93,7 +95,7 @@ test("banner spaces the name, and each row shows the club rating beside the seed
   }
 });
 
-test("adding an existing unique name reuses the member — no ghost", async ({ page, db }) => {
+test("adding a name that is already a player says so, adds nothing and makes no ghost", async ({ page, db }) => {
   await signInAs(page, U.admin, "/admin/players");
   await page.waitForURL("**/admin/players");
   await expect(page.locator(`input[value="${NAME.player}"]`)).toBeVisible({ timeout: 30_000 });
@@ -104,9 +106,30 @@ test("adding an existing unique name reuses the member — no ghost", async ({ p
   await page.getByPlaceholder(/name \(e\.g\./i).fill(NAME.player);
   await page.getByRole("button", { name: "Add", exact: true }).click();
 
-  await expect(page.getByText("Added existing player to this group")).toBeVisible();
+  // FNF 2026-11-23: an add that changed nothing used to say "Added".
+  await expect(page.getByText(`${NAME.player} is already in your players list, so nothing was added.`, { exact: false })).toBeVisible();
   expect(await db.count(`SELECT COUNT(*) FROM "User"`)).toBe(usersBefore); // reused
   expect(await db.count(`SELECT COUNT(*) FROM "User" WHERE name = $1`, [NAME.player])).toBe(1);
+});
+
+// FNF HQ, Mon 23 Nov 2026: "Umar Noor" could not be added because the club
+// had one "Umar" and the add took the first word for him. A typed surname
+// is a different person unless it is that member's own name.
+test("adding a new full name that shares only a first name creates the new player", async ({ page, db }) => {
+  await signInAs(page, U.admin, "/admin/players");
+  await page.waitForURL("**/admin/players");
+  await expect(page.locator(`input[value="${NAME.rater}"]`)).toBeVisible({ timeout: 30_000 });
+
+  const usersBefore = await db.count(`SELECT COUNT(*) FROM "User"`);
+
+  await page.getByRole("button", { name: /add player/i }).click();
+  await page.getByPlaceholder(/name \(e\.g\./i).fill("Riley Noor");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  await expect(page.getByText("Added Riley Noor")).toBeVisible();
+  expect(await db.count(`SELECT COUNT(*) FROM "User"`)).toBe(usersBefore + 1);
+  expect(await db.count(`SELECT COUNT(*) FROM "User" WHERE name = 'Riley Noor'`)).toBe(1);
+  expect(await db.count(`SELECT COUNT(*) FROM "User" WHERE name = $1`, [NAME.rater])).toBe(1);
 });
 
 test("adding an ambiguous name still creates a fresh player", async ({ page, db }) => {

@@ -4554,6 +4554,8 @@ export const tr: Strings = {
   pg_err_player_owns_account:
     "Bu oyuncu MatchTime'daki numarasını ve adını kendisi yönetiyor, bu yüzden bunları yalnızca kendisi değiştirebilir.",
   pg_err_number_on_matchtime: "Bu numara zaten MatchTime'da kayıtlı, bu yüzden buraya eklenemez.",
+  pg_err_already_player: (p) =>
+    `Bu oyuncu zaten oyuncu listenizde, bu yüzden bir şey eklenmedi: ${p.name}. Yeni biriyse tam adını ya da numarasını girin.`,
   pg_err_club_not_approved: "Kulübünüz onaylandıktan sonra oyuncuları düzenleyebilirsiniz.",
   pg_err_merge_keep_owned:
     "Bu oyuncu hesabını kendisi yönetiyor, bu yüzden saklanan kayıt onunki olmalı. Diğer kaydı onun kaydıyla birleştirin.",

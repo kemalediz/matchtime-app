@@ -55,6 +55,13 @@ async function main() {
     ok("findExistingOrgMember: unique fuzzy first-token");
   }
   {
+    // FNF 2026-11-23: a typed surname is somebody new unless it is the
+    // member's own name ("Umar Noor" is not the club's only "Umar").
+    const hit = await findExistingOrgMember(ORG_ID, { name: "Riley Noor" });
+    assert.equal(hit, null, "a different surname is not reused on the first word");
+    ok("findExistingOrgMember: typed surname → no first-word reuse");
+  }
+  {
     const hit = await findExistingOrgMember(ORG_ID, { name: "Omar" });
     assert.equal(hit, null, "ambiguous (two Omars) → null, caller creates fresh");
     ok("findExistingOrgMember: ambiguous → null");

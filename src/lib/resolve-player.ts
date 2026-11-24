@@ -94,11 +94,17 @@ export async function findExistingOrgMember(
   if (equals.length > 1) return null;
 
   // ── 4. Exactly one conservative first-token fuzzy match ────────────────
-  //   Same rule resolveOrProvisionByName uses: first tokens equal, or one is a
-  //   prefix of the other when both are long enough. Uniqueness is the guard —
-  //   ambiguous fuzzy (e.g. "Ed" matching both "Ediz" and "Edward") returns
-  //   null rather than guessing.
-  const inputFirst = key.split(/\s+/).filter(Boolean)[0] ?? "";
+  //   Only for a SINGLE typed word ("Riley" for "Riley Rater"): that is the
+  //   admin being brief. A typed surname is deliberate, so a name with one
+  //   that is not a member's own name (step 3) or an alias (step 2) is
+  //   somebody new: FNF 2026-11-23, "Umar Noor" was taken for the club's
+  //   only "Umar", a different man, and could not be added.
+  //   Then: first tokens equal, or one is a prefix of the other when both
+  //   are long enough. Uniqueness is the guard: ambiguous fuzzy (e.g. "Ed"
+  //   matching both "Ediz" and "Edward") returns null rather than guessing.
+  const tokens = key.split(/\s+/).filter(Boolean);
+  if (tokens.length !== 1) return null;
+  const inputFirst = tokens[0];
   const fuzzy = candidates.filter((c) => {
     if (!c.user.name) return false;
     const dbFirst = normaliseName(c.user.name).split(/\s+/).filter(Boolean)[0] ?? "";

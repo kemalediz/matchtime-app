@@ -475,8 +475,11 @@ export async function createPlayer(
       where: { userId_orgId: { userId: nameMatch.userId, orgId } },
       select: { id: true, leftAt: true },
     });
+    // Already playing here: nothing to add. Say who the name was taken
+    // for, never "Added" (FNF 2026-11-23: an add that changed nothing
+    // said "Added existing player to this group").
     if (mem && !mem.leftAt) {
-      return { ok: true, userId: nameMatch.userId, created: false, rejoined: false };
+      return { ok: false, error: s.pg_err_already_player({ name: nameMatch.name ?? name }) };
     }
     if (mem && mem.leftAt) {
       await db.membership.update({ where: { id: mem.id }, data: { leftAt: null, removedByOrganiserAt: null } });
