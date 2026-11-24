@@ -6300,6 +6300,10 @@ export const en = {
   pg_err_player_owns_account:
     "This player manages their own number and name on MatchTime, so only they can change them.",
   pg_err_number_on_matchtime: "That number is already on MatchTime, so it can't be added here.",
+  // The Add form's typed name is a player already active here (FNF
+  // 2026-11-23: the page said "Added" when nothing was added).
+  pg_err_already_player: (p: { name: string }) =>
+    `${p.name} is already in your players list, so nothing was added. If this is somebody new, add their full name or their number.`,
   pg_err_club_not_approved: "You can edit players once your club is approved.",
   pg_err_merge_keep_owned:
     "This player manages their own account, so their record has to be the one you keep. Merge the other record into theirs.",

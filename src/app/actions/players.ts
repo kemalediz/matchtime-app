@@ -475,8 +475,11 @@ export async function createPlayer(
       where: { userId_orgId: { userId: nameMatch.userId, orgId } },
       select: { id: true, leftAt: true },
     });
+    // Already playing here: nothing to add. Say who the name was taken
+    // for, never "Added" (FNF 2026-11-23: an add that changed nothing
+    // said "Added existing player to this group").
     if (mem && !mem.leftAt) {
-      return { ok: true, userId: nameMatch.userId, created: false, rejoined: false };
+      return { ok: false, error: s.pg_err_already_player({ name: nameMatch.name ?? name }) };
     }
     if (mem && mem.leftAt) {
       await db.membership.update({ where: { id: mem.id }, data: { leftAt: null, removedByOrganiserAt: null } });
@@ -1068,7 +1071,9 @@ async function ensureOrgPlayer(
   // Dedup BEFORE creating: reuse an existing member only on a strong,
   // unambiguous signal (alias / unique exact-or-fuzzy name). Ambiguous names
   // fall through to a fresh create so we never collapse two distinct people.
-  const match = await findExistingOrgMember(orgId, { name });
+  // firstWord off: the form promised a new player when no name matched
+  // exactly, so one typed word never quietly picks somebody else.
+  const match = await findExistingOrgMember(orgId, { name }, { firstWord: false });
   if (match) {
     await ensureMembership(match.userId, orgId);
     return { ok: true, userId: match.userId, created: false };

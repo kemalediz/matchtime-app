@@ -35,6 +35,7 @@ import { normalisePhone } from "@/lib/phone";
 export async function findExistingOrgMember(
   orgId: string,
   input: { name?: string | null; phone?: string | null },
+  opts: { firstWord?: boolean } = {},
 ): Promise<{ userId: string; name: string | null } | null> {
   // ── 1. Phone is the strongest, unambiguous signal ──────────────────────
   const phoneInput = (input.phone ?? "").trim();
@@ -94,11 +95,35 @@ export async function findExistingOrgMember(
   if (equals.length > 1) return null;
 
   // ── 4. Exactly one conservative first-token fuzzy match ────────────────
-  //   Same rule resolveOrProvisionByName uses: first tokens equal, or one is a
-  //   prefix of the other when both are long enough. Uniqueness is the guard —
-  //   ambiguous fuzzy (e.g. "Ed" matching both "Ediz" and "Edward") returns
-  //   null rather than guessing.
-  const inputFirst = key.split(/\s+/).filter(Boolean)[0] ?? "";
+  //   Only for a SINGLE typed word ("Riley" for "Riley Rater"): that is the
+  //   admin being brief. A typed surname is deliberate, so a name with one
+  //   that is not a member's own name (step 3) or an alias (step 2) is
+  //   somebody new: FNF 2026-11-23, "Umar Noor" was taken for the club's
+  //   only "Umar", a different man, and could not be added.
+  //   Then: first tokens equal, or one is a prefix of the other when both
+  //   are long enough. Uniqueness is the guard: ambiguous fuzzy (e.g. "Ed"
+  //   matching both "Ediz" and "Edward") returns null rather than guessing.
+  //   Add-to-match passes firstWord: false, because its form tells the
+  //   admin a name with no exact match "creates a new player".
+  const typed = nameWords(name);
+  if (typed.length > 1) {
+    // ── 3b. A typed full name: the one member whose name has the same
+    //   words give or take extras (emoji, "(GK)", a middle name or a full
+    //   stop either side). A one-word stored name never counts here, which
+    //   is the FNF case: "Umar Noor" is not the club's "Umar".
+    const fits = candidates.filter((c) => {
+      if (!c.user.name) return false;
+      const stored = nameWords(c.user.name);
+      const storedSet = new Set(stored);
+      const typedSet = new Set(typed);
+      return typed.every((w) => storedSet.has(w)) || (stored.length > 1 && stored.every((w) => typedSet.has(w)));
+    });
+    return fits.length === 1 ? { userId: fits[0].user.id, name: fits[0].user.name } : null;
+  }
+  if (opts.firstWord === false) return null;
+  const tokens = key.split(/\s+/).filter(Boolean);
+  if (tokens.length !== 1) return null;
+  const inputFirst = tokens[0];
   const fuzzy = candidates.filter((c) => {
     if (!c.user.name) return false;
     const dbFirst = normaliseName(c.user.name).split(/\s+/).filter(Boolean)[0] ?? "";
@@ -115,4 +140,13 @@ export async function findExistingOrgMember(
 
   // Zero or ambiguous → no safe match; caller creates a new record.
   return null;
+}
+
+/** A name's words for comparison: normalised, with emoji and punctuation
+ *  dropped ("Umar Noor ⚽" and "Umar Noor." are both umar, noor). */
+function nameWords(s: string): string[] {
+  return normaliseName(s)
+    .split(" ")
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ""))
+    .filter(Boolean);
 }
