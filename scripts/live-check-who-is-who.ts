@@ -100,6 +100,10 @@ const WITH_FORMER: Member[] = [...CLUB, m("oldham", "Oldham Jones")];
 const LOOKALIKES: Member[] = [...TURKISH, m("emrah", "Emrah Kaya")];
 /** A member the club knows by first name only. */
 const TARIQ: Member[] = [...CLUB, m("tariq", "Tariq")];
+/** FNF HQ 2026-11-24: "Umar" and "Umar Noor", each the other's start. */
+const TWO_UMARS: Member[] = [...CLUB, m("umar", "Umar"), m("umar-noor", "Umar Noor")];
+/** No member called just Umar: "Umar" fits two. */
+const UMAR_SURNAMES: Member[] = [...CLUB, m("umar-noor", "Umar Noor"), m("umar-khan", "Umar Khan")];
 
 /** What the name must come to: a member's key, "none" (nobody in the
  *  club, or not looked up at all because the extractor read a relation),
@@ -154,6 +158,12 @@ const CASES: Case[] = [
   { group: "NEW", text: "Alim's in", from: "Kemal", route: "other_att", roster: LOOKALIKES, want: [["alim", "none"]], why: "lookalike: Alim is not Ali" },
   { group: "NEW", text: "Alim geliyor", from: "Kemal", route: "other_att", roster: LOOKALIKES, want: [["alim", "none"]], why: "lookalike, TR" },
   { group: "NEW", text: "I'm out", from: "David", route: "sender", want: [["david", "ask"]], why: "a phoneless WhatsApp 'David' is never Davide; strict (B3c): not sure, an unknown sender, Davide untouched" },
+  // ── FNF HQ 2026-11-24: a whole name is that member ────────────────
+  { group: "NEW", text: "@Match Time umar out", from: "Kemal", route: "other_att", roster: TWO_UMARS, want: [["umar", "umar"]], why: "THE INCIDENT: Umar is Umar's whole name, not Umar Noor" },
+  { group: "NEW", text: "@Match Time\nUmar out\nUmar Noor In", from: "Kemal", route: "other_att", roster: TWO_UMARS, want: [["umar", "umar"], ["umar noor", "umar-noor"]], why: "the incident: both whole names" },
+  { group: "NEW", text: "@Match Time Umar yok, Umar Noor var", from: "Kemal", route: "other_att", roster: TWO_UMARS, want: [["umar", "umar"], ["umar noor", "umar-noor"]], why: "the incident, TR" },
+  { group: "NEW", text: "Umar is in", from: "Kemal", route: "other_att", roster: UMAR_SURNAMES, want: [["umar", "ask"]], why: "nobody is called just Umar: two fit, ask" },
+  { group: "NEW", text: "Umar geliyor", from: "Kemal", route: "other_att", roster: UMAR_SURNAMES, want: [["umar", "ask"]], why: "the same, TR" },
   { group: "REGRESSION", text: "@Match Time Tom OUT", from: "Kemal", route: "other_att", want: [["tom", "tom"]], why: "a first name" },
   { group: "REGRESSION", text: "Glazers OUT", from: "Kemal", route: "other_att", want: [["glazers", "glazers"]], why: "FNF HQ 2026-10-24: a name that is a word" },
   { group: "REGRESSION", text: "AH out", from: "Kemal", route: "other_att", want: [["ah", "ah"]], why: "the club's alias" },
@@ -209,7 +219,10 @@ async function runCase(c: Case): Promise<{ ok: boolean; line: string }> {
   const parts: string[] = [];
   let ok = true;
   for (const [name, want] of c.want) {
-    const ref = asked.find((r) => fold(r) === fold(name) || fold(r).split(/\s+/).includes(fold(name)) || fold(r).endsWith(fold(name)) || fold(r).startsWith(fold(name)));
+    // The quote that IS the name first: "umar" must not land on "Umar Noor".
+    const ref =
+      asked.find((r) => fold(r) === fold(name)) ??
+      asked.find((r) => fold(r).split(/\s+/).includes(fold(name)) || fold(r).endsWith(fold(name)) || fold(r).startsWith(fold(name)));
     let got: string;
     if (!ref) got = "none"; // not looked up: the extractor read no named person by it
     else {
