@@ -82,3 +82,40 @@ describe("what is still reused", () => {
     expect(await findExistingOrgMember("fnf", { name: "Omar" })).toBeNull();
   });
 });
+
+describe("the same person written a little differently (review of #631)", () => {
+  it("a stored name with an emoji or a note in brackets", async () => {
+    roster = [member("u-umar", "Umar Noor ⚽"), member("u-gk", "Sam Keeper (GK)")];
+    expect(await findExistingOrgMember("fnf", { name: "Umar Noor" })).toEqual({ userId: "u-umar", name: "Umar Noor ⚽" });
+    expect(await findExistingOrgMember("fnf", { name: "Sam Keeper" })).toEqual({ userId: "u-gk", name: "Sam Keeper (GK)" });
+  });
+
+  it("a stored middle name or initial", async () => {
+    roster = [member("u-umar", "Umar A Noor")];
+    expect(await findExistingOrgMember("fnf", { name: "Umar Noor" })).toEqual({ userId: "u-umar", name: "Umar A Noor" });
+  });
+
+  it("a typed middle name or a full stop", async () => {
+    roster = [member("u-umar", "Umar Noor")];
+    expect(await findExistingOrgMember("fnf", { name: "Umar Ali Noor" })).toEqual({ userId: "u-umar", name: "Umar Noor" });
+    expect(await findExistingOrgMember("fnf", { name: "Umar Noor." })).toEqual({ userId: "u-umar", name: "Umar Noor" });
+  });
+
+  it("still never a one-word stored name for a typed full name (FNF)", async () => {
+    roster = [member("u-umar", "Umar ⚽")];
+    expect(await findExistingOrgMember("fnf", { name: "Umar Noor" })).toBeNull();
+  });
+
+  it("two members who both fit is nobody", async () => {
+    roster = [member("a", "Umar Noor ⚽"), member("b", "Umar A Noor")];
+    expect(await findExistingOrgMember("fnf", { name: "Umar Noor" })).toBeNull();
+  });
+});
+
+describe("add-to-match keeps the form's promise (review of #631)", () => {
+  it("with firstWord off, one typed word is only an exact name", async () => {
+    roster = [member("u-umar", "Umar Noor")];
+    expect(await findExistingOrgMember("fnf", { name: "Umar" }, { firstWord: false })).toBeNull();
+    expect(await findExistingOrgMember("fnf", { name: "umar noor" }, { firstWord: false })).toEqual({ userId: "u-umar", name: "Umar Noor" });
+  });
+});
