@@ -160,8 +160,8 @@ For each name, verdict is one of:
 member is "" unless the verdict is "member"; candidates is [] unless it is "ambiguous". Never use a ref that is not on MEMBERS. Answer every name, once, under its id.
 
 WHICH VERDICT, for a name someone wrote in a message (no "(WhatsApp name)" mark), asked in this order:
-1. Is it exactly one member's whole name, or a nickname listed for exactly one member (case, accents, emoji and a Turkish case ending aside)? Then it is that member, even when the same word is also the start or part of another member's name: with "Umar" and "Umar Noor" both on MEMBERS, "Umar" is Umar and "Umar Noor" is Umar Noor. Only the message itself can say otherwise (rule 4).
-2. Otherwise, does it name a member another way: their first name or surname, an obvious nickname or shortening of their name ("habibi" for Habib, "Moham" for Mohammed), a plain misspelling of it ("Davdie" for Davide), or, for a member the club knows by a first name only, that first name with a surname added ("Tariq Shah" for the member "Tariq")? When exactly one member fits, that member. When two or more fit, ambiguous with all of them.
+1. Is it exactly one member's whole name or listed nickname (case, accents, emoji and a Turkish case ending aside), with no other member having it as their whole name or a nickname? Then it is that member, even when the same word is also the start or part of another member's name: with "Umar" and "Umar Noor" both on MEMBERS, "Umar" is Umar and "Umar Noor" is Umar Noor. Two exceptions: when that member is former and a current member also fits by rule 2, it is ambiguous with both; and the message itself can say it is somebody else (rule 4).
+2. Otherwise, does it name a member another way: their first name or surname, an obvious nickname or shortening of their name ("habibi" for Habib, "Moham" for Mohammed), a plain misspelling of it ("Davdie" for Davide), or, for a member the club knows by a first name only, that first name with a surname added ("Tariq Shah" for the member "Tariq") when no other member has that first name? When exactly one member fits, that member. When two or more fit, ambiguous with all of them.
 3. A different name that only looks like a member's is somebody else: David is not Davide, Sami is not Samir, Emre is not Emrah, Ali is not Alim, Daniel is not Daniela. None, unless a listed nickname or the message itself says it is that member.
 4. A person the message describes ("my brother Ali", "a mate from work, Tom", "David, Kemal's son"): when no member has that name, none. When a member has it, that member only if the description fits him; when it does not (the relative's family name is not his, the message calls him a guest, a newcomer or someone who has never played), ambiguous with that member as the candidate, so the sender is asked.
 FOR A (WhatsApp name), stricter, because nobody in the club chose it: member only by rule 1 (a member's full name or one of their listed nicknames, case, accents and emoji aside), or when the message itself makes it plain it is that member. Any likeness that rule 2 would accept is not enough here, and is ambiguous with the member or members it could be, never none: a shortening, a misspelling, a different first name, or a first name with a surname the club does not have for him ("Tariq Shah" for the member "Tariq"). None only when no member could be meant at all.
@@ -171,10 +171,10 @@ Member, by a whole name or a listed nickname:
 - "Umar out" | "Umar yok", MEMBERS has Umar and Umar Noor: member, Umar.
 - "Umar Noor in" | "Umar Noor var", MEMBERS has Umar and Umar Noor: member, Umar Noor.
 - "AH in" | "AH var", MEMBERS has Abdul-Hamid Khan (also: "ah"): member, Abdul-Hamid Khan.
-- "put Ali in, Mehmet's out, take Aydın off the bench" | "Ali'yi ekle, Mehmet'in yerine Can, Aydın'ı yedekten çıkar", one Ali, Mehmet, Can and Aydın on MEMBERS: each that member.
-- "Oldham's back tonight" | "Oldham bu akşam geliyor", MEMBERS has Oldham Jones (former): member, Oldham Jones.
 Member, another way, the only one who fits:
 - "Tom out" | "Tom yok", MEMBERS has Tom Hughes and no other Tom: member, Tom Hughes.
+- "put Ali in, Can for Mehmet, take Aydın off the bench" | "Ali'yi ekle, Mehmet'in yerine Can, Aydın'ı yedekten çıkar", one Ali, Mehmet, Can and Aydın on MEMBERS: each that member.
+- "Oldham's back tonight" | "Oldham bu akşam geliyor", MEMBERS has Oldham Jones (former): member, Oldham Jones.
 - "habibi is in" | "habibi geliyor", MEMBERS has Habib Karimi: member, Habib Karimi.
 - "Moham can't make it" | "Moham gelemiyor", MEMBERS has Mohammed Iqbal: member, Mohammed Iqbal.
 - "Davdie is out" | "Davdie yok", MEMBERS has Davide Russo: member, Davide Russo.
@@ -189,6 +189,8 @@ None:
 Ambiguous:
 - "David is in" | "David geliyor", MEMBERS has David Aksoy and David Russo: ambiguous, both refs.
 - "Umar is in" | "Umar geliyor", MEMBERS has Umar Noor and Umar Khan and no member called just Umar: ambiguous, both refs.
+- "Umar Khan is in" | "Umar Khan geliyor", MEMBERS has Umar and Umar Noor: ambiguous, both refs.
+- "Umar in" | "Umar var", MEMBERS has Umar (former) and Umar Noor: ambiguous, both refs.
 - "Mo's in" | "Mo var", MEMBERS has Mohammed Iqbal and Mojib Rahimi and no nickname Mo: ambiguous, both refs.
 - "David - Kemal's son, is on the bench" | "David, Kemal'in oğlu, yedekte", MEMBERS has David Aksoy and Kemal Ediz: ambiguous, David Aksoy (Kemal's son would be an Ediz).
 WhatsApp names:

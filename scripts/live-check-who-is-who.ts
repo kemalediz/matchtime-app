@@ -102,6 +102,7 @@ const LOOKALIKES: Member[] = [...TURKISH, m("emrah", "Emrah Kaya")];
 const TARIQ: Member[] = [...CLUB, m("tariq", "Tariq")];
 /** FNF HQ 2026-11-24: "Umar" and "Umar Noor", each the other's start. */
 const TWO_UMARS: Member[] = [...CLUB, m("umar", "Umar"), m("umar-noor", "Umar Noor")];
+const FORMER_UMAR: Member[] = [...CLUB, m("umar", "Umar"), m("umar-noor", "Umar Noor")];
 /** No member called just Umar: "Umar" fits two. */
 const UMAR_SURNAMES: Member[] = [...CLUB, m("umar-noor", "Umar Noor"), m("umar-khan", "Umar Khan")];
 
@@ -162,6 +163,9 @@ const CASES: Case[] = [
   { group: "NEW", text: "@Match Time umar out", from: "Kemal", route: "other_att", roster: TWO_UMARS, want: [["umar", "umar"]], why: "THE INCIDENT: Umar is Umar's whole name, not Umar Noor" },
   { group: "NEW", text: "@Match Time\nUmar out\nUmar Noor In", from: "Kemal", route: "other_att", roster: TWO_UMARS, want: [["umar", "umar"], ["umar noor", "umar-noor"]], why: "the incident: both whole names" },
   { group: "NEW", text: "@Match Time Umar yok, Umar Noor var", from: "Kemal", route: "other_att", roster: TWO_UMARS, want: [["umar", "umar"], ["umar noor", "umar-noor"]], why: "the incident, TR" },
+  { group: "NEW", text: "Umar Khan is in", from: "Kemal", route: "other_att", roster: TWO_UMARS, want: [["umar khan", "ask"]], why: "review #632: a surname added to a first name two members share is asked" },
+  { group: "NEW", text: "Umar in", from: "Kemal", route: "other_att", roster: FORMER_UMAR, former: ["umar"], want: [["umar", "ask"]], why: "review #632: a former member's exact name does not beat a current first-name fit" },
+  { group: "NEW", text: "@Match Time Umar'ı çıkar", from: "Kemal", route: "other_att", roster: TWO_UMARS, want: [["umar", "umar"]], why: "review #632: exact name with a Turkish case ending" },
   { group: "NEW", text: "Umar is in", from: "Kemal", route: "other_att", roster: UMAR_SURNAMES, want: [["umar", "ask"]], why: "nobody is called just Umar: two fit, ask" },
   { group: "NEW", text: "Umar geliyor", from: "Kemal", route: "other_att", roster: UMAR_SURNAMES, want: [["umar", "ask"]], why: "the same, TR" },
   { group: "REGRESSION", text: "@Match Time Tom OUT", from: "Kemal", route: "other_att", want: [["tom", "tom"]], why: "a first name" },
