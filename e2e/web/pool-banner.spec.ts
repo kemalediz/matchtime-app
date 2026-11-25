@@ -13,6 +13,8 @@
  * turns join into share at once, and a dismiss in one tab hides it in
  * another. No model, no messages, Google is a stub: $0.
  */
+import os from "node:os";
+import path from "node:path";
 import type { Page } from "@playwright/test";
 import { test, expect, signInAs, U } from "../fixtures";
 import { setPoolPlatform } from "../helpers/pool-platform";
@@ -27,7 +29,8 @@ const EN = poolBannerCopy("en");
 const TR = poolBannerCopy("tr");
 const PHONE = { width: 375, height: 740 };
 const DESKTOP = { width: 1280, height: 900 };
-const SHOTS = "/private/tmp/claude-501/-Users-kemal-Projects-Cressoft-Sports-matchtime/53efc5e1-1f7c-48ce-a74b-cc3c6361bf47/scratchpad/pool-banner-v2";
+// Review screenshots: the OS temp folder, so this runs on any machine.
+const SHOTS = path.join(os.tmpdir(), "matchtime-pool-banner");
 const SHARE_KEY = `org-${ORG_ID}:pool-club-share`;
 
 test.describe.configure({ mode: "serial" });
