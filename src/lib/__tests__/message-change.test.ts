@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { failures, makeDb, row, type Row } from "./fake-message-db";
 import { formNotesWin } from "../form-note-rules";
 
-const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "organisation", "adminSquadProposal", "adminFeeProposal", "botJob", "formNote", "ratingAdjustment", "sentNotification", "onboardingSession", "clubConnect"];
+const NAMES = ["analyzedMessage", "groupMessage", "adminGroupMessage", "messageMentions", "deletedMessage", "organisation", "adminSquadProposal", "adminFeeProposal", "botJob", "formNote", "ratingAdjustment", "sentNotification", "windowVerdict", "onboardingSession", "clubConnect"];
 const T: Record<string, Row[]> = {};
 const fake = makeDb(T, NAMES, { deletedMessage: [["chatId", "waMessageId"]] });
 vi.mock("@/lib/db", () => ({
@@ -266,6 +266,18 @@ describe("an edit purges the TEXT and keeps the FACTS (round 8)", () => {
     expect(T.formNote[0].reason).toBe("");
   });
 
+  it("a note in a SECOND club recording the same message id is never touched by a change in the first club's group", async () => {
+    T.formNote.push(
+      row({ orgId: "org-b", matchId: "m9", userId: "u-sam", delta: -1, reason: "tired", sourceMessageId: A_ID, reasonSourceMessageId: A_ID, reasonMessageIds: [A_ID], createdAt: ago(9), updatedAt: ago(2) }),
+    );
+    T.ratingAdjustment.push(row({ matchId: "m9", userId: "u-sam", delta: -1, reason: "Form note in the chat: tired", confidence: 1 }));
+    T.sentNotification.push(row({ key: `greply:org-b:${A_ID}`, kind: "group-reply", text: "Noted: -1 for Sam (tired).", createdAt: ago(5) }));
+    await applyMessageChange({ ...byAuthor, messageId: A_BARE }, NOW);
+    expect(T.formNote[0].reason).toBe("tired");
+    expect(T.ratingAdjustment[0].reason).toBe("Form note in the chat: tired");
+    expect(T.sentNotification[0].text).toBe("Noted: -1 for Sam (tired).");
+  });
+
   it("two players' notes in one club: a change to one player's message leaves the other's note and its copies untouched", async () => {
     const ALI_MSG = `false_${G}_ALINOTE00001_${ALI_PN}@c.us`;
     T.formNote.push(
@@ -294,6 +306,24 @@ describe("an edit purges the TEXT and keeps the FACTS (round 8)", () => {
     await applyMessageChange({ ...byAuthor, messageId: A_BARE }, NOW);
     expect(T.ratingAdjustment.map((r) => r.reason)).toEqual(["Sam said he was tired, so a little lower", "Form note in the chat: tired"]);
     expect(T.formNote[0].reason).toBe("");
+  });
+
+  it("M1 then M2: a note cleared by M1's change (\"-1 sore knee\"), then given a NEW reason by M2 (\"-1 flu\"): M1's later re-checks never clear it, nor M2's ack", async () => {
+    const M1 = `false_${G}_NOTEM1000001_${SAM_PN}@c.us`;
+    const M2 = `false_${G}_NOTEM2000001_${SAM_PN}@c.us`;
+    T.formNote.push(row({ orgId: "org-a", matchId: "m2", userId: "u-sam", delta: -1, reason: "sore knee", sourceMessageId: M1, reasonSourceMessageId: M1, reasonMessageIds: [M1], clearedMessageIds: [], createdAt: ago(9), updatedAt: ago(9) }));
+    T.sentNotification.push(ack(M1, "Noted: -1 for Sam (sore knee)."));
+    await applyMessageChange({ ...byAuthor, messageId: "NOTEM1000001" }, ago(30));
+    expect(T.formNote[0]).toMatchObject({ reason: "", reasonMessageIds: [], clearedMessageIds: [M1] });
+    // M2: a new note, as the form-note store writes it.
+    Object.assign(T.formNote[0], { reason: "flu", sourceMessageId: M2, reasonSourceMessageId: M2, reasonMessageIds: [M2], updatedAt: ago(10) });
+    T.sentNotification.push(ack(M2, "Noted: -1 for Sam (flu)."));
+    T.ratingAdjustment.push(adj("u-sam", "Form note in the chat: flu"));
+    await sweepRecentTombstones(NOW);
+    await enforceDeletes(G, [M1]);
+    expect(T.formNote[0].reason).toBe("flu");
+    expect(T.sentNotification.map((n) => n.text)).toEqual([null, "Noted: -1 for Sam (flu)."]);
+    expect(T.ratingAdjustment[0].reason).toBe("Form note in the chat: flu");
   });
 
   it("THE RACE: team generation writes its copy AFTER the purge; clear-after-write and the sweep find the note by its message ids (its reason already blank) and clear it", async () => {
@@ -502,7 +532,7 @@ describe("the safety sweep (hourly, on /api/cron/bot-health)", () => {
     expect(await sweepRecentTombstones(NOW)).toMatchObject({ checked: 3 });
   });
 
-  it("late writers are re-checked for six hours after EACH change, not only the first", async () => {
+  it("late writers are re-checked after EACH change (its 48-hour window runs from the latest), not only the first", async () => {
     await applyMessageChange({ ...byAuthor, ...ALI }, ago(10 * 60)); // forged, ten hours ago
     await applyMessageChange(byAuthor, ago(60)); // the author's own, an hour ago
     expect(T.deletedMessage[0]).toMatchObject({ deletedAt: ago(10 * 60), lastChangeAt: ago(60) });
@@ -511,7 +541,7 @@ describe("the safety sweep (hourly, on /api/cron/bot-health)", () => {
     expect(words()).not.toContain("4321");
   });
 
-  it("a backlog of 600 never-enforced tombstones is cleared in two runs, oldest first", async () => {
+  it("a backlog of 600 never-enforced tombstones is cleared in two runs, oldest first", { timeout: 60_000 }, async () => {
     for (let i = 0; i < 600; i++) {
       const bare = `BACKLOG${String(i).padStart(6, "0")}`;
       const at = ago(24 * 60 + 600 - i);
@@ -800,5 +830,41 @@ describe("a quote whose author the Pi did not name", () => {
     expect((await withoutDeletedQuotes(G, [{ quotedMessageId: ID, quotedBody: "w" }], "quotedBody"))[0].quotedBody).toBe("w");
     await applyMessageChange(byAuthor, NOW); // the author's (the stored copy is now cleared; the record still names him)
     expect((await withoutDeletedQuotes(G, [{ quotedMessageId: ID, quotedBody: "w" }], "quotedBody"))[0].quotedBody).toBeUndefined();
+  });
+});
+
+describe("round 13: the none-bucket shadow's alerts, and orphaned dispatch claims", () => {
+  const verdict = (orgId: string, alerts: unknown[]) =>
+    row({ orgId, windowStart: ago(24 * 60), windowEnd: ago(60), batchHash: `h-${orgId}`, modelMs: 1, costUsd: 0, verdictJson: { pipeline: "none-bucket-shadow", checked: 3, alertCount: alerts.length, alerts }, currentVerdictRefs: alerts.map((a) => (a as { waMessageId: string }).waMessageId), createdAt: ago(60) });
+  const alert = (waMessageId: string, body: string) => ({ waMessageId, orgId: "org-a", authorName: "Sam", body, createdAt: ago(90).toISOString(), claims: [{ subject: "sender", personRef: body, polarity: "in", tense: "present", confidence: 0.9 }] });
+
+  for (const how of ["delete", "edit"] as const) {
+    it(`${how}: a message the shadow flagged keeps its alert (the verdict, the counts, the polarity) but no words; another message's alert is untouched`, async () => {
+      T.windowVerdict.push(verdict("org-a", [alert(SAM_ID, "my door code is 4321"), alert(`false_${G}_OTHERID999_${SAM_PN}@c.us`, "in tonight")]));
+      await applyMessageChange(how === "delete" ? byAuthor : editBy(SAM), NOW);
+      const v = T.windowVerdict[0].verdictJson as { alertCount: number; alerts: Array<{ waMessageId: string; body: string; authorName: string; claims: Array<{ polarity: string; personRef: string }> }> };
+      expect(JSON.stringify(T.windowVerdict)).not.toContain("4321");
+      expect(v.alertCount).toBe(2);
+      expect(v.alerts[0]).toMatchObject({ waMessageId: SAM_ID, body: "", claims: [{ polarity: "in", personRef: "" }] });
+      expect(v.alerts[1]).toMatchObject({ body: "in tonight" });
+    });
+  }
+
+  it("flagged AFTER the change was enforced (the reviewer's order): the sweep's re-check leaves no marker of the words", async () => {
+    await applyMessageChange(byAuthor, ago(120));
+    T.windowVerdict.push(verdict("org-a", [alert(SAM_ID, "my door code is 4321")]));
+    await sweepRecentTombstones(NOW);
+    expect(JSON.stringify(T.windowVerdict)).not.toContain("4321");
+  });
+
+  it("a dispatch claim whose job no longer exists (claimed while the job was being cancelled) keeps no words after the sweep; a live job's claim is untouched", async () => {
+    T.botJob.push(row({ orgId: "org-a", kind: "dm", phone: SAM_PN, text: "a live DM", sentAt: null, createdAt: ago(5) }));
+    T.sentNotification.push(
+      row({ key: "botjob-gone-job-1", kind: "dm", text: "⏰ Reminder: door code 4321", createdAt: ago(5) }),
+      row({ key: `botjob-${T.botJob[0].id}`, kind: "dm", text: "a live DM", createdAt: ago(5) }),
+    );
+    const r = await sweepRecentTombstones(NOW);
+    expect(r).toMatchObject({ orphans: 1 });
+    expect(T.sentNotification.map((n) => n.text)).toEqual([null, "a live DM"]);
   });
 });

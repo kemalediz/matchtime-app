@@ -102,7 +102,7 @@ import { TOMBSTONE_UPSERT_SQL } from "./message-change-sql";
 import { groupReplyKey, hqReplyKey } from "./reply-context";
 import { listAskRef } from "./admin-group-log";
 import { feeAskRef } from "./fee-waiver-rules";
-import { heldQuestionOf, isTextFree, sameJson, textFreeTrace, withHeldQuestion } from "./message-change-trace";
+import { heldQuestionOf, isTextFree, sameJson, textFreeFacts, textFreeTrace, withHeldQuestion } from "./message-change-trace";
 
 export const DELETED_MESSAGE_RETENTION_DAYS = 14;
 const WINDOW_MS = DELETED_MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
@@ -307,6 +307,7 @@ type Tx = Pick<
   | "formNote"
   | "ratingAdjustment"
   | "sentNotification"
+  | "windowVerdict"
 >;
 
 /** The prefix of a reminder DM's `BotJob.aboutKey`: the message that asked for it (`owner-deps.ts`). */
@@ -330,7 +331,22 @@ interface Copies {
   archived: Array<{ id: string; waMessageId: string; senderPhone: string | null }>;
   hq: Array<{ id: string; waMessageId: string; prefix: string; text: string; pipelineTrace: unknown }>;
   mentions: Array<{ id: string; waMessageId: string }>;
-  notes: Array<{ id: string; orgId: string; matched: string; matchedPhone: string | null; heldIds: string[]; matchId: string; userId: string; reason: string }>;
+  notes: Array<{
+    id: string;
+    orgId: string;
+    matched: string;
+    matchedPhone: string | null;
+    /** "recorded": the note records this message now; "cleared": an earlier change of it cleared the note (only its late copies are looked at). */
+    via: "recorded" | "cleared";
+    heldIds: string[];
+    clearedIds: string[];
+    sourceMessageId: string | null;
+    reasonSourceMessageId: string | null;
+    matchId: string;
+    userId: string;
+    reason: string;
+  }>;
+  verdicts: Array<{ id: string; verdictJson: unknown }>;
   squadProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
   feeProposals: Array<{ id: string; orgId: string; waMessageId: string; resolvedAt: Date | null }>;
   reminders: Array<{ id: string; storedId: string; sent: boolean }>;
@@ -360,7 +376,7 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
       select: { id: true, waMessageId: true, senderPhone: true, body: true },
     })
   ).filter((r) => isStoredIdOf(r.waMessageId, chatId, messageId, { bare: true }) && r.body !== "");
-  const none = { hq: [], mentions: [], notes: [], squadProposals: [], feeProposals: [], reminders: [] };
+  const none = { hq: [], mentions: [], notes: [], verdicts: [], squadProposals: [], feeProposals: [], reminders: [] };
   if (orgIds.length === 0) return { analyzed, archived, ...none };
   const hq = (
     await tx.adminGroupMessage.findMany({
@@ -390,14 +406,34 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
   const notes = (
     await tx.formNote.findMany({
       where: { orgId: { in: orgIds }, updatedAt: { gte: since } },
-      select: { id: true, orgId: true, sourceMessageId: true, reasonSourceMessageId: true, reasonMessageIds: true, matchId: true, userId: true, reason: true },
+      select: { id: true, orgId: true, sourceMessageId: true, reasonSourceMessageId: true, reasonMessageIds: true, clearedMessageIds: true, matchId: true, userId: true, reason: true },
     })
   ).flatMap((r) => {
     // ONE RULE (round 12): the note's recorded messages, or for an older note
-    // with none recorded, its two source ids.
+    // with none recorded, its two source ids. A message whose change already
+    // cleared the note is no longer recorded (round 13): it is kept in
+    // `clearedMessageIds`, for its late copies only.
     const held = [...new Set((r.reasonMessageIds?.length ? r.reasonMessageIds : [r.sourceMessageId, r.reasonSourceMessageId]).filter((x): x is string => !!x))];
-    const matched = held.find((x) => isStoredIdOf(x, chatId, messageId));
-    return matched ? [{ id: r.id, orgId: r.orgId, matched, matchedPhone: null as string | null, heldIds: held, matchId: r.matchId, userId: r.userId, reason: r.reason }] : [];
+    const cleared = r.clearedMessageIds ?? [];
+    const recorded = held.find((x) => isStoredIdOf(x, chatId, messageId));
+    const matched = recorded ?? cleared.find((x) => isStoredIdOf(x, chatId, messageId));
+    if (!matched) return [];
+    return [
+      {
+        id: r.id,
+        orgId: r.orgId,
+        matched,
+        matchedPhone: null as string | null,
+        via: recorded ? ("recorded" as const) : ("cleared" as const),
+        heldIds: held,
+        clearedIds: cleared,
+        sourceMessageId: r.sourceMessageId,
+        reasonSourceMessageId: r.reasonSourceMessageId,
+        matchId: r.matchId,
+        userId: r.userId,
+        reason: r.reason,
+      },
+    ];
   });
   // Who wrote the matched message: its stored copy's phone, as the
   // AnalyzedMessage clear uses (an id stored under a LID, a delete naming
@@ -405,8 +441,15 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
   for (const n of notes) {
     n.matchedPhone = analyzed.find((a) => a.waMessageId === n.matched)?.authorPhone ?? null;
   }
+  // The nightly none-bucket shadow's verdicts (`pipeline/none-shadow.ts`):
+  // an alert keeps the message's text, keyed by its id (`currentVerdictRefs`).
+  const verdicts = (
+    await tx.windowVerdict.findMany({ where: { orgId: { in: orgIds }, createdAt: { gte: since } }, select: { id: true, verdictJson: true, currentVerdictRefs: true } })
+  )
+    .filter((v) => (v.currentVerdictRefs ?? []).some((ref) => isStoredIdOf(ref, chatId, messageId, { bare: true })))
+    .map((v) => ({ id: v.id, verdictJson: v.verdictJson as unknown }));
   // What MatchTime was about to do because of the message: only a delete cancels it.
-  if (!withMade) return { analyzed, archived, hq, mentions, notes, squadProposals: [], feeProposals: [], reminders: [] };
+  if (!withMade) return { analyzed, archived, hq, mentions, notes, verdicts, squadProposals: [], feeProposals: [], reminders: [] };
   const proposalWhere = { orgId: { in: orgIds }, createdAt: { gte: since }, OR: idWhere(chatId, messageId) };
   const squadProposals = (await tx.adminSquadProposal.findMany({ where: proposalWhere, select: { id: true, orgId: true, waMessageId: true, resolvedAt: true } })).filter((r) =>
     isStoredIdOf(r.waMessageId, chatId, messageId),
@@ -427,7 +470,7 @@ async function copiesOf(tx: Tx, chatId: string, messageId: string, at: Date, org
       return { id: r.id, storedId: key.slice(prefix.length), sent: r.sentAt !== null };
     })
     .filter((r) => isStoredIdOf(r.storedId, chatId, messageId));
-  return { analyzed, archived, hq, mentions, notes, squadProposals, feeProposals, reminders };
+  return { analyzed, archived, hq, mentions, notes, verdicts, squadProposals, feeProposals, reminders };
 }
 
 /**
@@ -465,6 +508,8 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   };
   const applies = (storedId: string, storedPhone?: string | null, prefix = "") => mode(storedId, storedPhone, prefix) !== null;
   let deferred = false;
+  /** The phone a stored copy of the message was written under (for a LID-only id). */
+  const analyzedPhone = (id: string) => c.analyzed.find((a) => a.waMessageId === id)?.authorPhone ?? null;
 
   // AnalyzedMessage: one row at a time (each trace is its own).
   for (const r of c.analyzed) {
@@ -525,22 +570,67 @@ async function clearCopies(tx: Tx, chatId: string, messageId: string, t: Tombsto
   // that is still valid only loses words.
   for (const n of c.notes) {
     if (!applies(n.matched, n.matchedPhone)) {
-      if (n.reason !== "") out.refused++;
+      if (n.reason !== "" && n.via === "recorded") out.refused++;
       continue;
     }
-    if (n.reason !== "") {
-      out.notes += (await tx.formNote.updateMany({ where: { id: n.id, NOT: { reason: "" } }, data: { reason: "" } })).count;
+    const isThis = (id: string | null) => !!id && isStoredIdOf(id, chatId, messageId);
+    if (n.via === "recorded") {
+      // The note's reason and every copy, then the message stops being one the
+      // note records (round 13): a later message's NEW reason is never cleared
+      // by this message's re-checks. Its id moves to `clearedMessageIds`.
+      if (n.reason !== "") out.notes += (await tx.formNote.updateMany({ where: { id: n.id, NOT: { reason: "" } }, data: { reason: "" } })).count;
+      const keys = n.heldIds.flatMap((id) => [groupReplyKey(n.orgId, id), hqReplyKey(n.orgId, id)]);
+      out.notes += (await tx.sentNotification.updateMany({ where: { key: { in: keys }, NOT: { text: null } }, data: { text: null } })).count;
+      await tx.formNote.update({
+        where: { id: n.id },
+        data: {
+          reasonMessageIds: n.heldIds.filter((id) => !isThis(id)),
+          clearedMessageIds: [...new Set([...n.clearedIds, n.matched])],
+          ...(isThis(n.sourceMessageId) ? { sourceMessageId: null } : {}),
+          ...(isThis(n.reasonSourceMessageId) ? { reasonSourceMessageId: null } : {}),
+        },
+      });
+    } else if (n.reason !== "") {
+      // Cleared before, and a newer message has written a reason since: that
+      // reason and its copies are the newer message's. Only this message's
+      // own ack is looked at.
+      out.notes += (
+        await tx.sentNotification.updateMany({ where: { key: { in: [groupReplyKey(n.orgId, n.matched), hqReplyKey(n.orgId, n.matched)] }, NOT: { text: null } }, data: { text: null } })
+      ).count;
+      continue;
     }
     // EVERY copy team generation made of a note's reason for that player in
     // that match: only `formNoteReason` writes this prefix, so the rating
-    // adjuster's own rows are never touched, and no text is rebuilt.
+    // adjuster's own rows are never touched, and no text is rebuilt. Again on
+    // a re-check while the note has no reason (a copy written after the purge).
     out.notes += (
       await tx.ratingAdjustment.updateMany({ where: { matchId: n.matchId, userId: n.userId, reason: { startsWith: forms.FORM_NOTE_REASON_PREFIX } }, data: { reason: "" } })
     ).count;
-    // MatchTime's acknowledgements ("Noted: -0.5 for Pete Power (tired) ..."),
-    // claimed under each message the note records: the WHOLE text goes.
-    const keys = n.heldIds.flatMap((id) => [groupReplyKey(n.orgId, id), hqReplyKey(n.orgId, id)]);
-    out.notes += (await tx.sentNotification.updateMany({ where: { key: { in: keys }, NOT: { text: null } }, data: { text: null } })).count;
+    if (n.via === "cleared") {
+      out.notes += (
+        await tx.sentNotification.updateMany({ where: { key: { in: [groupReplyKey(n.orgId, n.matched), hqReplyKey(n.orgId, n.matched)] }, NOT: { text: null } }, data: { text: null } })
+      ).count;
+    }
+  }
+  // The none-bucket shadow's alerts for this message: the verdict, its counts
+  // and the reading stay; the words (the body, the claims' refs) go. For a
+  // delete and an edit alike.
+  for (const v of c.verdicts) {
+    const json = (v.verdictJson ?? {}) as { alerts?: Array<Record<string, unknown>> };
+    if (!Array.isArray(json.alerts)) continue;
+    let changed = false;
+    const alerts = json.alerts.map((a) => {
+      const id = typeof a.waMessageId === "string" ? a.waMessageId : "";
+      if (!isStoredIdOf(id, chatId, messageId, { bare: true })) return a;
+      const phone = analyzedPhone(id);
+      if (!applies(id, phone)) return a;
+      const next = { ...a, body: "", claims: textFreeFacts(a.claims ?? []) };
+      if (JSON.stringify(next) !== JSON.stringify(a)) changed = true;
+      return next;
+    });
+    if (!changed) continue;
+    await tx.windowVerdict.update({ where: { id: v.id }, data: { verdictJson: { ...json, alerts } as object } });
+    out.analyzed++;
   }
   // FOR A DELETE ONLY: what MatchTime was about to do because of the message.
   // An HQ proposal made from it (a pasted list, a fee): an open one is
@@ -907,7 +997,32 @@ export const SWEEP_RECHECK_MS = 48 * 60 * 60 * 1000;
  * Then the ones 14 days past their latest change are pruned. Idempotent;
  * each message is a handful of indexed reads. Never throws.
  */
-export async function sweepRecentTombstones(now: Date = new Date()): Promise<{ checked: number; cleared: number; pruned: number }> {
+/**
+ * A DM's dispatch claim whose job no longer exists keeps no words (round 13):
+ * `due-posts` can claim a reminder (writing `botjob-<id>` with its text) in
+ * the moment a delete cancels the job, and the cancelled job can then no
+ * longer be found by its message. Every `botjob-*` claim of the last 48
+ * hours whose BotJob is gone loses its text. Never throws.
+ */
+async function clearOrphanedDispatchClaims(now: Date): Promise<number> {
+  try {
+    const claims = await db.sentNotification.findMany({
+      where: { key: { startsWith: "botjob-" }, createdAt: { gte: new Date(now.getTime() - SWEEP_RECHECK_MS) }, NOT: { text: null } },
+      select: { id: true, key: true },
+    });
+    if (claims.length === 0) return 0;
+    const ids = claims.map((c) => c.key.slice("botjob-".length));
+    const live = new Set((await db.botJob.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((j) => j.id));
+    const orphans = claims.filter((c) => !live.has(c.key.slice("botjob-".length))).map((c) => c.id);
+    if (orphans.length === 0) return 0;
+    return (await db.sentNotification.updateMany({ where: { id: { in: orphans } }, data: { text: null } })).count;
+  } catch (err) {
+    console.error("[message-change] orphaned dispatch claims not cleared:", err instanceof Error ? err.message : "failed");
+    return 0;
+  }
+}
+
+export async function sweepRecentTombstones(now: Date = new Date()): Promise<{ checked: number; cleared: number; pruned: number; orphans: number }> {
   try {
     const since = new Date(now.getTime() - WINDOW_MS);
     const pruned = (await db.deletedMessage.deleteMany({ where: { lastChangeAt: { lt: since } } })).count;
@@ -935,9 +1050,10 @@ export async function sweepRecentTombstones(now: Date = new Date()): Promise<{ c
       }
     }
     if (cleared > 0) console.log(`[message-change] sweep: ${cleared} of ${rows.length} deleted or edited message(s) had copies cleared`);
-    return { checked: rows.length, cleared, pruned };
+    const orphans = await clearOrphanedDispatchClaims(now);
+    return { checked: rows.length, cleared, pruned, orphans };
   } catch (err) {
     console.error("[message-change] sweep failed:", err instanceof Error ? err.message : "failed");
-    return { checked: 0, cleared: 0, pruned: 0 };
+    return { checked: 0, cleared: 0, pruned: 0, orphans: 0 };
   }
 }

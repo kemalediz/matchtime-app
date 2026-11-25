@@ -10,16 +10,17 @@
 -- Also one index on "GroupMessage" ("waChatId", "createdAt"): the purge and
 -- the sweep find a message's archived copy by its group, not by a scan.
 --
--- And two columns on "FormNote": "reasonSourceMessageId", the message that
--- WROTE a note's reason (kept when a later message only changes the
--- amount), and "reasonMessageIds", every message whose words were ever in
--- the note or its acknowledgement, so a delete or an edit of any of them
--- clears every copy.
+-- And three columns on "FormNote": "reasonSourceMessageId", the message
+-- that WROTE a note's reason (kept when a later message only changes the
+-- amount); "reasonMessageIds", every message whose words are in the note or
+-- its acknowledgement, so a delete or an edit of any of them clears every
+-- copy; and "clearedMessageIds", the messages whose change already cleared
+-- it (so their re-checks never clear a newer reason).
 --
 --   npx tsx scripts/apply-deleted-message-migration.ts            # DRY RUN
 --   npx tsx scripts/apply-deleted-message-migration.ts --apply    # do it
 -- or
---   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261116120000_deleted_messages/migration.sql
+--   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261116130000_deleted_messages/migration.sql
 --
 -- "changes" holds EACH change on its own ({reason, byAdmin, senderJids,
 -- senderPhones, at}), appended atomically (the same change once, at most
@@ -36,8 +37,9 @@
 -- late writers. Recorded only for a group linked to a club.
 --
 -- ORDER: APPLY THIS BEFORE DEPLOYING THE SERVER. Without it EVERY form-note
--- write fails, for every club (the form-note store writes the two new
--- "FormNote" columns), not only the message-change route. Deployed without it,
+-- write fails, for every club (the form-note store writes the new "FormNote"
+-- columns), and so does every form-note read that selects all its columns,
+-- not only the message-change route. Deployed without it,
 -- /api/whatsapp/message-change answers 500 (the Pi keeps the change in its
 -- durable outbox and retries with backoff, so nothing is lost), the doors
 -- read "no tombstone" and change nothing, and the sweep logs and does
@@ -48,8 +50,8 @@
 -- Additive. One NEW table "DeletedMessage" (no foreign key), its unique
 -- index and two indexes; one NEW index on the existing "GroupMessage" (a
 -- plain CREATE INDEX: it holds a write lock on "GroupMessage" while it
--- builds, which on the archive's size is well under a second); two NEW
--- columns on "FormNote" (one nullable, one with a constant default: no
+-- builds, which on the archive's size is well under a second); three NEW
+-- columns on "FormNote" (one nullable, two with a constant default: no
 -- rewrite, instant). No row changes.
 --
 -- IDEMPOTENT: IF NOT EXISTS everywhere. ONE transaction; SET LOCAL only.
@@ -63,6 +65,7 @@
 --   DROP INDEX IF EXISTS "GroupMessage_waChatId_createdAt_idx";
 --   ALTER TABLE "FormNote" DROP COLUMN IF EXISTS "reasonSourceMessageId";
 --   ALTER TABLE "FormNote" DROP COLUMN IF EXISTS "reasonMessageIds";
+--   ALTER TABLE "FormNote" DROP COLUMN IF EXISTS "clearedMessageIds";
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -89,5 +92,6 @@ CREATE INDEX IF NOT EXISTS "DeletedMessage_enforcedAt_lastChangeAt_idx" ON "Dele
 CREATE INDEX IF NOT EXISTS "GroupMessage_waChatId_createdAt_idx" ON "GroupMessage"("waChatId", "createdAt");
 ALTER TABLE "FormNote" ADD COLUMN IF NOT EXISTS "reasonSourceMessageId" TEXT;
 ALTER TABLE "FormNote" ADD COLUMN IF NOT EXISTS "reasonMessageIds" TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "FormNote" ADD COLUMN IF NOT EXISTS "clearedMessageIds" TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 COMMIT;

@@ -111,6 +111,11 @@ function factsWithoutText(v: unknown, key: string | null = null): unknown {
   return out;
 }
 
+/** PURE. Facts (or a list of them, e.g. the none-bucket shadow's claims) by the same allowlist. */
+export function textFreeFacts(facts: unknown): unknown {
+  return factsWithoutText(facts);
+}
+
 /** PURE. The trace with no free text (see the header). Null stays null. */
 export function textFreeTrace(trace: unknown): Obj | null {
   if (trace === null || trace === undefined) return null;
