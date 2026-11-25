@@ -75,4 +75,18 @@ describe("claimHourlySweep", () => {
     existing.add("org-org1:monthly-played-sweep:2026-11-25T08");
     expect(await claimHourlySweep("org1", NOW)).toBe(false);
   });
+
+  it("logs a failed claim, but not a lost race (P2002)", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    findUnique.mockImplementationOnce(async () => null);
+    existing.add("org-org1:monthly-played-sweep:2026-11-25T08");
+    await claimHourlySweep("org1", NOW);
+    expect(spy).not.toHaveBeenCalled();
+    create.mockImplementationOnce(async () => {
+      throw new Error("db down");
+    });
+    expect(await claimHourlySweep("org1", new Date("2026-11-25T10:00:00Z"))).toBe(false);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
 });

@@ -1154,8 +1154,8 @@ async function withRecentlyClosed(orgId: string, running: RunningMonth[], now: D
  * writes WAL, and on Supabase (`archive_timeout` 120 s) any WAL inside a
  * two-minute window forces a whole 16 MB WAL segment to disk. That one
  * failing INSERT kept prod writing a segment every two minutes around the
- * clock. The read costs nothing on disk; the unique key still settles a
- * race between two polls.
+ * clock. A read does not write a failed row to the WAL; the unique key
+ * still settles a race between two polls.
  */
 export async function claimHourlySweep(orgId: string, now: Date): Promise<boolean> {
   try {
@@ -1184,7 +1184,12 @@ export async function claimHourlySweep(orgId: string, now: Date): Promise<boolea
       .deleteMany({ where: { key: { startsWith: `org-${orgId}:msu:` }, createdAt: { lt: new Date(Date.now() - 45 * DAY_MS) } } })
       .catch(() => {});
     return true;
-  } catch {
+  } catch (err) {
+    // Losing the hour's race to another poll is normal; anything else is
+    // worth a line (the played games are simply not swept this poll).
+    if ((err as { code?: unknown } | null)?.code !== "P2002") {
+      console.error(`[monthly-week] hourly sweep claim for ${orgId} failed:`, err instanceof Error ? err.message : err);
+    }
     return false;
   }
 }

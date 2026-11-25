@@ -425,6 +425,18 @@ describe("sweepPartnerAsks", () => {
     expect(noticeMock.sendAdminNotice).not.toHaveBeenCalled();
   });
 
+  it("Disk IO (2026-11-25): once told, a later poll READS the no-post-id claim and never retries the insert (a failed insert still writes WAL)", async () => {
+    const noId = { ...posted, postWaMessageId: null, postedAt: new Date(NOW.getTime() - 11 * 60_000) };
+    dbMock.partnerAsk.findMany.mockResolvedValue([noId]);
+    dbMock.partnerAsk.findUnique.mockResolvedValue(noId);
+    dbMock.sentNotification.findUnique.mockImplementation(async (q: { where: { key: string } }) =>
+      q.where.key === "xask:ask1:no-post-id" ? { id: "sn1" } : null,
+    );
+    await sweepPartnerAsks("fnf", NOW);
+    expect(dbMock.sentNotification.create).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ key: "xask:ask1:no-post-id" }) }));
+    expect(noticeMock.sendAdminNotice).not.toHaveBeenCalled();
+  });
+
   it("never throws", async () => {
     dbMock.partnerAsk.findMany.mockRejectedValue(new Error("db down"));
     await expect(sweepPartnerAsks("fnf", NOW)).resolves.toEqual({ closed: 0 });

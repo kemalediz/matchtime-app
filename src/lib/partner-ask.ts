@@ -1065,8 +1065,13 @@ async function reportMissingPostId(
 ): Promise<void> {
   if (ask.status !== "posted" || ask.postWaMessageId || !ask.postedAt) return;
   if (now.getTime() - ask.postedAt.getTime() < MISSING_POST_ID_AFTER_MS) return;
+  // Read before claiming (Disk IO, 2026-11-25): this runs on every 30 s
+  // poll while the post has no id, and an INSERT that fails on the unique
+  // key still writes a dead row to the WAL. The key stays the race guard.
+  const key = `xask:${ask.id}:no-post-id`;
+  if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return;
   try {
-    await db.sentNotification.create({ data: { key: `xask:${ask.id}:no-post-id`, kind: "xask-no-post-id", matchId: ask.matchId } });
+    await db.sentNotification.create({ data: { key, kind: "xask-no-post-id", matchId: ask.matchId } });
   } catch {
     return; // claimed already: told once
   }

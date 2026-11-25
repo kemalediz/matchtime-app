@@ -1043,7 +1043,12 @@ async function priceAsk(
   if (!month.listOpenedAt || month.pricedAt) return;
   const regulars = activeRegulars(month).length;
   if (!priceAskDue({ now, listOpenedAt: month.listOpenedAt, firstKickoff: month.firstKickoff, regulars, maxRegulars: month.maxRegulars })) return;
-  if (!(await claimOnce(`${paymentKeyPrefix(month.orgId)}price-ask:${month.id}`, "admin-notice"))) return;
+  // Read before claiming (Disk IO, 2026-11-25): this runs on every 30 s
+  // poll until the month is priced, and an INSERT that fails on the unique
+  // key still writes a dead row to the WAL. The key stays the race guard.
+  const askKey = `${paymentKeyPrefix(month.orgId)}price-ask:${month.id}`;
+  if (await db.sentNotification.findUnique({ where: { key: askKey }, select: { id: true } })) return;
+  if (!(await claimOnce(askKey, "admin-notice"))) return;
   const price = org.billingStatus === "exempt" ? null : planPricePence(org.billingPlan, org.billingPricePence);
   const fee = monthFeeShare({ pricePence: price, regulars, games: month.kickoffs.length });
   const tip = fee && price ? buildMonthFeeTip({ pricePence: price, regulars, games: month.kickoffs.length, ...fee, lang: month.language }) : null;

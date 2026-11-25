@@ -97,6 +97,10 @@ export async function sendDueUnpaidLists(orgId: string, now: Date = new Date()):
     if (!summary) continue;
 
     const key = unpaidListKey(m.id);
+    // Read before claiming (Disk IO, 2026-11-25): this runs on every 30 s
+    // poll for three days, and an INSERT that fails on the unique key still
+    // writes a dead row to the WAL. The key stays the race guard.
+    if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) continue;
     try {
       await db.sentNotification.create({ data: { key, kind: "admin-notice", matchId: m.id } });
     } catch {
