@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "allowImportingTsExtensions": true, "noEmit": true, "incremental": false },
+  "include": ["../next-env.d.ts", "../src/**/*.ts", "../src/**/*.tsx", "./_tmp-vets-nov2-plan.ts", "./_tmp-vets-nov2-plan.test.ts", "./_tmp-vets-nov2-ratings.ts", "./_tmp-vets-nov-add.ts"],
+  "exclude": ["../node_modules", "../whatsapp-bot"]
+}
