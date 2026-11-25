@@ -764,12 +764,49 @@ export async function tellGuestsMoved(askId: string, now: Date = new Date()): Pr
  * pool's. Written when he takes a place on the asking club's match (a
  * confirmed place or the bench), and marked when he gives it up.
  */
-async function recordPartnerGuestPlace(a: { orgId: string; matchId: string; userId: string; fromOrgId: string; partnerAskId: string }): Promise<void> {
+async function recordPartnerGuestPlace(a: { orgId: string; matchId: string; userId: string; fromOrgId: string; partnerAskId: string | null }): Promise<void> {
   await db.guestPlace.upsert({
     where: { matchId_userId: { matchId: a.matchId, userId: a.userId } },
     create: { orgId: a.orgId, matchId: a.matchId, userId: a.userId, source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId },
     update: { source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId, poolOfferId: null, result: "booked", resultAt: null, resultById: null, settledAt: null },
   });
+}
+
+/**
+ * A partner club's player who PLAYED a game the club recorded after it was
+ * played, with no ask (2026-11-03: the Vets' Mon 2 Nov game, played before
+ * the club went live on MatchTime; a Sutton FC player guested). He gets a
+ * volunteer's marks exactly: a guest membership (a PLAYER, `guestVia`
+ * "partner", his home club, this match; a past guest's row is reused),
+ * his place through `registerAttendance` with cause "partner-ask", and a
+ * partner `GuestPlace` with no ask. An ordinary member of the club is
+ * written as a member (no guest marks, no guest place). The caller makes
+ * him a past guest afterwards (`retirePastGuests`) when the game is over.
+ */
+export async function recordPlayedPartnerGuest(a: {
+  orgId: string;
+  matchId: string;
+  userId: string;
+  fromOrgId: string;
+  event: Omit<AttendanceEventContext, "cause">;
+}): Promise<{ kind: "guest" | "member"; status: string }> {
+  const mem = await db.membership.findUnique({
+    where: { userId_orgId: { userId: a.userId, orgId: a.orgId } },
+    select: { leftAt: true, guestFromOrgId: true, guestMatchId: true, guestVia: true },
+  });
+  const ordinary = !!mem && !mem.leftAt && !isGuestMembership(mem);
+  if (!ordinary) {
+    await db.membership.upsert({
+      where: { userId_orgId: { userId: a.userId, orgId: a.orgId } },
+      create: { userId: a.userId, orgId: a.orgId, role: "PLAYER", guestVia: "partner", guestFromOrgId: a.fromOrgId, guestMatchId: a.matchId },
+      update: { role: "PLAYER", leftAt: null, guestVia: "partner", guestFromOrgId: a.fromOrgId, guestMatchId: a.matchId },
+    });
+  }
+  const row = await registerAttendance(a.userId, a.matchId, { event: { ...a.event, cause: "partner-ask" }, actorIsAdmin: true });
+  if (!ordinary && (row.status === "CONFIRMED" || row.status === "BENCH")) {
+    await recordPartnerGuestPlace({ orgId: a.orgId, matchId: a.matchId, userId: a.userId, fromOrgId: a.fromOrgId, partnerAskId: null });
+  }
+  return { kind: ordinary ? "member" : "guest", status: row.status };
 }
 
 /** A booked guest place given up: in time ("withdrawn") or late. */
