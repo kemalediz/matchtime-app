@@ -38,14 +38,32 @@
  *
  * ── This route can never cost the club a message ──────────────────────
  *
- * It writes one row and returns. It touches no match, no attendance, no
+ * It writes at most one row and returns. It touches no match, no attendance, no
  * outbound queue. On the Pi side `postHeartbeat` swallows every failure,
  * so a 500 here is invisible to message delivery — which is the correct
  * relationship between a monitoring path and the thing it monitors.
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { parseHeartbeat } from "@/lib/bot-health";
+import { heartbeatNeedsWrite, parseHeartbeat } from "@/lib/bot-health";
+
+const STORED_FIELDS = {
+  waGroupId: true,
+  lastHeartbeatAt: true,
+  processStartedAt: true,
+  botVersion: true,
+  degradedCapabilities: true,
+  seen: true,
+  buffered: true,
+  synthetic: true,
+  reconstructed: true,
+  notGroup: true,
+  degradedEnrichment: true,
+  nameless: true,
+  reactFailures: true,
+  flushFailures: true,
+  droppedMessages: true,
+} as const;
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -70,6 +88,30 @@ export async function POST(request: Request) {
   if (!org) return NextResponse.json({ ok: true, ignored: "unknown-group" });
 
   const now = new Date();
+
+  // SKIP A HEARTBEAT THAT SAYS NOTHING NEW (Disk IO, 2026-11-25). Any
+  // write forces a 16 MB WAL segment out within two minutes, and the Pi
+  // reports every 10 minutes per club. A changed counter, restart, version
+  // or degraded capability is still written at once; only the bare
+  // liveness time waits, for at most HEARTBEAT_REFRESH_MS. See
+  // `heartbeatNeedsWrite` in bot-health.ts for the margin under the alarm.
+  const stored = await db.botHealth.findUnique({ where: { orgId: org.id }, select: STORED_FIELDS });
+  if (
+    !heartbeatNeedsWrite(
+      stored,
+      {
+        waGroupId: parsed.groupId,
+        processStartedAt: parsed.processStartedAt,
+        botVersion: parsed.botVersion,
+        counters: parsed.counters,
+        degradedCapabilities: parsed.degradedCapabilities,
+      },
+      now,
+    )
+  ) {
+    return NextResponse.json({ ok: true, unchanged: true });
+  }
+
   const row = {
     waGroupId: parsed.groupId,
     lastHeartbeatAt: now,
@@ -87,6 +129,12 @@ export async function POST(request: Request) {
     create: { orgId: org.id, ...row },
     update: row,
   });
+  // Read the row back now, while its page is still inside this write's own
+  // WAL window. With data checksums on, the first read that sets hint bits
+  // on a tuple after a checkpoint logs a full page image. Without this, the
+  // NEXT heartbeat's read (10 minutes later, after a checkpoint) would be
+  // the first visitor and would write WAL on the very tick it skips.
+  await db.botHealth.findUnique({ where: { orgId: org.id }, select: { id: true } }).catch(() => null);
 
   return NextResponse.json({ ok: true });
 }

@@ -300,6 +300,70 @@ export function parseHeartbeat(raw: unknown): ParsedHeartbeat | null {
   };
 }
 
+/**
+ * How old the stored "still alive" time may get before an otherwise
+ * unchanged heartbeat writes it again (Disk IO, 2026-11-25).
+ *
+ * Supabase forces a whole 16 MB WAL segment to disk for any write inside a
+ * 2-minute window (`archive_timeout = 120 s`), and the checkpoint after it
+ * can force a second. The Pi reports every 10 minutes for every club, so an
+ * unchanged heartbeat written every time cost six of those bursts an hour.
+ *
+ * 25 minutes, so the stored time is at most about 30 minutes old on a live
+ * Pi (the next 10-minute tick after the window closes). That leaves more
+ * than one full tick of margin under `HEARTBEAT_SILENT_MS` (45 minutes), so
+ * the silence alarm cannot fire on a Pi that is still reporting. A Pi that
+ * dies is still flagged; the alarm just counts from the last WRITTEN beat,
+ * which can be up to 20 minutes before the last beat it sent.
+ */
+export const HEARTBEAT_REFRESH_MS = 25 * MINUTE;
+
+/** The stored `BotHealth` fields a heartbeat would overwrite. */
+export interface StoredHeartbeat extends HealthCounters {
+  waGroupId: string | null;
+  lastHeartbeatAt: Date | null;
+  processStartedAt: Date | null;
+  botVersion: string | null;
+  degradedCapabilities: string[];
+}
+
+/** One heartbeat as the route would write it, minus the time. */
+export interface IncomingHeartbeat {
+  waGroupId: string;
+  processStartedAt: Date | null;
+  botVersion: string | null;
+  counters: HealthCounters;
+  degradedCapabilities: string[];
+}
+
+/**
+ * Whether this heartbeat has to be written.
+ *
+ * Everything a reader acts on (the counters, the process start, the version,
+ * the degraded capabilities, the group id) is written the moment it differs
+ * from the stored row, so no alert is ever delayed. Only the bare liveness
+ * time is held back, for at most `HEARTBEAT_REFRESH_MS`.
+ */
+export function heartbeatNeedsWrite(
+  stored: StoredHeartbeat | null,
+  incoming: IncomingHeartbeat,
+  now: Date,
+): boolean {
+  if (!stored || !stored.lastHeartbeatAt) return true;
+  const age = now.getTime() - stored.lastHeartbeatAt.getTime();
+  if (age < 0 || age >= HEARTBEAT_REFRESH_MS) return true;
+  if (stored.waGroupId !== incoming.waGroupId) return true;
+  if (stored.botVersion !== incoming.botVersion) return true;
+  if ((stored.processStartedAt?.getTime() ?? null) !== (incoming.processStartedAt?.getTime() ?? null)) {
+    return true;
+  }
+  if (COUNTER_KEYS.some((k) => stored[k] !== incoming.counters[k])) return true;
+  const a = stored.degradedCapabilities;
+  const b = incoming.degradedCapabilities;
+  if (a.length !== b.length || a.some((c, i) => c !== b[i])) return true;
+  return false;
+}
+
 export interface HeartbeatSnapshot {
   /** When the Pi last reported. */
   at: Date;
