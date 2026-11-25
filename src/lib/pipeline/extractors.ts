@@ -31,6 +31,7 @@ import {
   degradation,
   extractJson,
   HAIKU_CALL,
+  SONNET_CALL,
   type ModelCall,
   type ModelRequest,
   type PipelineModel,
@@ -90,7 +91,7 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * free-places and admin-group.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
-  attendance: HAIKU_CALL,
+  attendance: SONNET_CALL,
   question: HAIKU_CALL,
   teams: HAIKU_CALL,
   score: HAIKU_CALL,
