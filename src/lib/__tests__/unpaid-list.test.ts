@@ -21,6 +21,7 @@ const h = vi.hoisted(() => ({
     matches: [] as Array<Record<string, unknown>>,
     matchWhere: null as unknown,
     claimed: new Set<string>(),
+    createAttempts: 0,
     claimsDeleted: [] as string[],
     notices: [] as Array<{ orgId: string; text: string }>,
     noticeFails: false,
@@ -37,7 +38,9 @@ vi.mock("../db", () => ({
       },
     },
     sentNotification: {
+      findUnique: async ({ where }: { where: { key: string } }) => (h.state.claimed.has(where.key) ? { id: "x" } : null),
       create: async ({ data }: { data: { key: string } }) => {
+        h.state.createAttempts += 1;
         if (h.state.claimed.has(data.key)) throw Object.assign(new Error("unique"), { code: "P2002" });
         h.state.claimed.add(data.key);
         return data;
@@ -105,6 +108,7 @@ beforeEach(() => {
   h.state.matches = [completedMatch()];
   h.state.matchWhere = null;
   h.state.claimed = new Set();
+  h.state.createAttempts = 0;
   h.state.claimsDeleted = [];
   h.state.notices = [];
   h.state.noticeFails = false;
@@ -164,6 +168,14 @@ describe("the admin unpaid list (U1)", () => {
   it("once: a later poll finds the claim and sends nothing", async () => {
     await sendDueUnpaidLists("org-fnf", SUN_1005);
     await sendDueUnpaidLists("org-fnf", new Date(SUN_1005.getTime() + 10 * 60_000));
+    expect(h.state.notices).toHaveLength(1);
+  });
+
+  it("Disk IO (2026-11-25): a later poll READS the claim and never retries the insert (a failed insert still writes WAL)", async () => {
+    await sendDueUnpaidLists("org-fnf", SUN_1005);
+    expect(h.state.createAttempts).toBe(1);
+    for (let i = 1; i <= 5; i++) await sendDueUnpaidLists("org-fnf", new Date(SUN_1005.getTime() + i * 30_000));
+    expect(h.state.createAttempts).toBe(1);
     expect(h.state.notices).toHaveLength(1);
   });
 

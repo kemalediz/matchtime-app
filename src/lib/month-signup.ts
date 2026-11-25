@@ -462,7 +462,12 @@ export async function openDueMonthLists(orgId: string, now: Date = new Date()): 
 async function tellMonthHeld(args: { orgId: string; activityId: string; monthStart: string; firstKickoff: Date; lang: string | null; now: Date }): Promise<void> {
   try {
     const month = monthNameLabel(args.lang, args.firstKickoff);
-    const first = await claimOnce(`${signupKeyPrefix(args.orgId)}held:${args.monthStart}:${args.activityId}`, "admin-notice");
+    const heldKey = `${signupKeyPrefix(args.orgId)}held:${args.monthStart}:${args.activityId}`;
+    // READ before claiming (Disk IO, 2026-11-25). This runs on every 30 s
+    // poll until the month starts, and an INSERT that fails on the unique
+    // key still writes a dead row to the WAL. The keys stay the race guard.
+    const notice = await db.sentNotification.findUnique({ where: { key: heldKey }, select: { createdAt: true } });
+    const first = notice ? false : await claimOnce(heldKey, "admin-notice");
     // The day before the month's first game (or later that day), still not
     // started: ONE more nudge, never in the same poll as the first notice
     // and so never before it (PR #464 review). Worded from the kick-off
@@ -470,13 +475,13 @@ async function tellMonthHeld(args: { orgId: string; activityId: string; monthSta
     // nothing, weekly or monthly, is posted for the month
     // (`bot-scheduler.ts` reads the held key).
     if (!first) {
-      const notice = await db.sentNotification.findUnique({
-        where: { key: `${signupKeyPrefix(args.orgId)}held:${args.monthStart}:${args.activityId}` },
-        select: { createdAt: true },
-      });
       // Never within 12 hours of the first notice (PR #464 review, round 3).
+      // A poll that lost the race for the first notice has no row in hand
+      // and simply waits for the next poll.
       if (!notice || !heldNudgeDue({ now: args.now, firstKickoff: args.firstKickoff, firstNoticeAt: notice.createdAt })) return;
-      if (!(await claimOnce(`${signupKeyPrefix(args.orgId)}held-again:${args.monthStart}:${args.activityId}`, "admin-notice"))) return;
+      const againKey = `${signupKeyPrefix(args.orgId)}held-again:${args.monthStart}:${args.activityId}`;
+      if (await db.sentNotification.findUnique({ where: { key: againKey }, select: { id: true } })) return;
+      if (!(await claimOnce(againKey, "admin-notice"))) return;
       await sendAdminNotice({
         orgId: args.orgId,
         now: args.now,

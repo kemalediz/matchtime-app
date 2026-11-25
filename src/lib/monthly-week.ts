@@ -1145,11 +1145,23 @@ async function withRecentlyClosed(orgId: string, running: RunningMonth[], now: D
   return closed.length === 0 ? running : [...running, ...closed];
 }
 
-/** True once per club per London hour (the first poll of the hour). */
-async function claimHourlySweep(orgId: string, now: Date): Promise<boolean> {
+/**
+ * True once per club per London hour (the first poll of the hour).
+ *
+ * READ FIRST, then insert (Disk IO, 2026-11-25). This runs on every poll,
+ * every 30 seconds. It used to INSERT the hour's key every time and read
+ * the unique violation as "already claimed", but a failed INSERT still
+ * writes WAL, and on Supabase (`archive_timeout` 120 s) any WAL inside a
+ * two-minute window forces a whole 16 MB WAL segment to disk. That one
+ * failing INSERT kept prod writing a segment every two minutes around the
+ * clock. A read does not write a failed row to the WAL; the unique key
+ * still settles a race between two polls.
+ */
+export async function claimHourlySweep(orgId: string, now: Date): Promise<boolean> {
   try {
     const prefix = `org-${orgId}:monthly-played-sweep:`;
     const key = `${prefix}${formatLondon(now, "yyyy-MM-dd'T'HH")}`;
+    if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return false;
     await db.sentNotification.create({ data: { key, kind: "monthly-sweep" } });
     // Only the current hour's row is ever needed, and the scheduler loads
     // every `org-<id>:` key on each poll: drop the earlier ones, and the
@@ -1172,7 +1184,12 @@ async function claimHourlySweep(orgId: string, now: Date): Promise<boolean> {
       .deleteMany({ where: { key: { startsWith: `org-${orgId}:msu:` }, createdAt: { lt: new Date(Date.now() - 45 * DAY_MS) } } })
       .catch(() => {});
     return true;
-  } catch {
+  } catch (err) {
+    // Losing the hour's race to another poll is normal; anything else is
+    // worth a line (the played games are simply not swept this poll).
+    if ((err as { code?: unknown } | null)?.code !== "P2002") {
+      console.error(`[monthly-week] hourly sweep claim for ${orgId} failed:`, err instanceof Error ? err.message : err);
+    }
     return false;
   }
 }
