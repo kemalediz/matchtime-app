@@ -47,9 +47,27 @@ export const guestCardEn = {
   reply_ask_club: (p: { clubs: string[] }) =>
     `Which club is he playing for, ${p.clubs.length > 1 ? `${p.clubs.slice(0, -1).join(", ")} or ${p.clubs[p.clubs.length - 1]}` : p.clubs[0]}? Tell me with the club's name, for example *add him for ${p.clubs[0]}*.`,
   reply_no_country_code: "I couldn't read that number. Please send it with the country code, starting with +.",
+  /** A day that is not on the list (review of #621): asked, never guessed. */
+  reply_ask_game: (p: { games: string[]; example: string }) =>
+    `Which game is he for? The coming games are ${p.games.length > 1 ? `${p.games.slice(0, -1).join(", ")} and ${p.games[p.games.length - 1]}` : p.games[0]}. Tell me the day, for example *add him for ${p.example}*.`,
+  /** An organiser of several clubs, by DM, naming none. */
+  reply_ask_club: (p: { clubs: string[] }) =>
+    `Which club is he playing for, ${p.clubs.length > 1 ? `${p.clubs.slice(0, -1).join(", ")} or ${p.clubs[p.clubs.length - 1]}` : p.clubs[0]}? Tell me with the club's name, for example *add him for ${p.clubs[0]}*.`,
+  reply_no_country_code: "I couldn't read that number. Please send it with the country code, starting with +.",
+  /** A day that is not on the list (review of #621): asked, never guessed. */
+  reply_ask_game: (p: { games: string[]; example: string }) =>
+    `Which game is he for? The coming games are ${p.games.length > 1 ? `${p.games.slice(0, -1).join(", ")} and ${p.games[p.games.length - 1]}` : p.games[0]}. Tell me the day, for example *add him for ${p.example}*.`,
+  /** An organiser of several clubs, by DM, naming none. */
+  reply_ask_club: (p: { clubs: string[] }) =>
+    `Which club is he playing for, ${p.clubs.length > 1 ? `${p.clubs.slice(0, -1).join(", ")} or ${p.clubs[p.clubs.length - 1]}` : p.clubs[0]}? Tell me with the club's name, for example *add him for ${p.clubs[0]}*.`,
+  reply_no_country_code: "I couldn't read that number. Please send it with the country code, starting with +.",
 
   // ── His OUT by DM ────────────────────────────────────────────────────
   out_dm: (p: { club: string; day: string }) => `No problem, I've taken you off *${p.club}*'s game on ${p.day}.`,
+  /** An organiser took the guest off the game (the organisers' words, not the pool's). */
+  removed_dm: (p: { club: string; day: string }) => `The organisers of *${p.club}* took you out of the game on ${p.day}.`,
+  /** An organiser took the guest off the game (the organisers' words, not the pool's). */
+  removed_dm: (p: { club: string; day: string }) => `The organisers of *${p.club}* took you out of the game on ${p.day}.`,
   /** An organiser took the guest off the game (the organisers' words, not the pool's). */
   removed_dm: (p: { club: string; day: string }) => `The organisers of *${p.club}* took you out of the game on ${p.day}.`,
   out_notice: (p: { name: string; organiser: string | null; day: string }) =>
