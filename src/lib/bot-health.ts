@@ -75,7 +75,9 @@ const DAY = 24 * HOUR;
  * the whole point — an empty buffer is the failure we are hunting, so the
  * report cannot be conditional on having something to say).
  *
- * 45 minutes is four missed ticks.
+ * 45 minutes is four missed ticks. The stored time is not every tick,
+ * though: an unchanged heartbeat is only written every 15 minutes
+ * (`HEARTBEAT_REFRESH_MS`), so it can lag the last beat by up to about 20.
  *   - 20 minutes would fire on one bad Wi-Fi moment plus one missed tick,
  *     and on a slightly slow `scripts/deploy-pi.sh` restart. A weekly
  *     false page is a muted channel.
@@ -300,6 +302,71 @@ export function parseHeartbeat(raw: unknown): ParsedHeartbeat | null {
   };
 }
 
+/**
+ * How old the stored "still alive" time may get before an otherwise
+ * unchanged heartbeat writes it again (Disk IO, 2026-11-25).
+ *
+ * Supabase forces a whole 16 MB WAL segment to disk for any write inside a
+ * 2-minute window (`archive_timeout = 120 s`), and the checkpoint after it
+ * can force a second. The Pi reports every 10 minutes for every club, so an
+ * unchanged heartbeat written every time cost six of those bursts an hour.
+ *
+ * 15 minutes, so an unchanged heartbeat is written on every second
+ * 10-minute tick and the stored time can lag the last beat the Pi sent by
+ * up to about 20 minutes. Rounded up to the tick, that still leaves room
+ * for two dropped POSTs in a row (a failed refresh tick plus one more,
+ * about 40 minutes) under `HEARTBEAT_SILENT_MS` (45 minutes), so the
+ * silence alarm does not fire on a Pi that is still reporting. A Pi that
+ * dies is still flagged; the alarm counts from the last WRITTEN beat.
+ */
+export const HEARTBEAT_REFRESH_MS = 15 * MINUTE;
+
+/** The stored `BotHealth` fields a heartbeat would overwrite. */
+export interface StoredHeartbeat extends HealthCounters {
+  waGroupId: string | null;
+  lastHeartbeatAt: Date | null;
+  processStartedAt: Date | null;
+  botVersion: string | null;
+  degradedCapabilities: string[];
+}
+
+/** One heartbeat as the route would write it, minus the time. */
+export interface IncomingHeartbeat {
+  waGroupId: string;
+  processStartedAt: Date | null;
+  botVersion: string | null;
+  counters: HealthCounters;
+  degradedCapabilities: string[];
+}
+
+/**
+ * Whether this heartbeat has to be written.
+ *
+ * Everything a reader acts on (the counters, the process start, the version,
+ * the degraded capabilities, the group id) is written the moment it differs
+ * from the stored row, so no alert is ever delayed. Only the bare liveness
+ * time is held back, for at most `HEARTBEAT_REFRESH_MS`.
+ */
+export function heartbeatNeedsWrite(
+  stored: StoredHeartbeat | null,
+  incoming: IncomingHeartbeat,
+  now: Date,
+): boolean {
+  if (!stored || !stored.lastHeartbeatAt) return true;
+  const age = now.getTime() - stored.lastHeartbeatAt.getTime();
+  if (age < 0 || age >= HEARTBEAT_REFRESH_MS) return true;
+  if (stored.waGroupId !== incoming.waGroupId) return true;
+  if (stored.botVersion !== incoming.botVersion) return true;
+  if ((stored.processStartedAt?.getTime() ?? null) !== (incoming.processStartedAt?.getTime() ?? null)) {
+    return true;
+  }
+  if (COUNTER_KEYS.some((k) => stored[k] !== incoming.counters[k])) return true;
+  const a = stored.degradedCapabilities;
+  const b = incoming.degradedCapabilities;
+  if (a.length !== b.length || a.some((c, i) => c !== b[i])) return true;
+  return false;
+}
+
 export interface HeartbeatSnapshot {
   /** When the Pi last reported. */
   at: Date;
@@ -467,7 +534,9 @@ export function assessBotHealth(input: HealthInput): HealthFinding[] {
       brokenSince: hb.at,
       headline: `The WhatsApp bot has not reported for ${ageText(now - hb.at.getTime())}.`,
       detail:
-        "It reports every 10 minutes whether or not it has anything to say, so this " +
+        "It reports every 10 minutes whether or not it has anything to say. An " +
+        "unchanged report only refreshes the stored time every 15 minutes, so that " +
+        "time can lag the last report by up to about 20 minutes. Even so, this " +
         "means the process is down, the Pi is offline, or it cannot reach the API. " +
         "Nothing typed in the group is being recorded and nothing queued will be " +
         "posted. Check the Pi: `systemctl status matchtime-bot`, then redeploy with " +

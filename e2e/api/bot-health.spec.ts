@@ -139,6 +139,63 @@ test("a second heartbeat updates the SAME row — one per org, forever", async (
   expect(rows[0].seen).toBe(99);
 });
 
+test("an unchanged heartbeat inside the refresh window leaves the row alone (Disk IO)", async ({
+  request,
+  db,
+}) => {
+  await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  const [first] = await db.all<{ at: Date }>(
+    `SELECT "lastHeartbeatAt" AS at FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+
+  const same = await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  expect(same.status()).toBe(200);
+  expect((await same.json()).unchanged).toBe(true);
+  const [after] = await db.all<{ at: Date }>(
+    `SELECT "lastHeartbeatAt" AS at FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  expect(new Date(after.at).getTime()).toBe(new Date(first.at).getTime());
+
+  // A moved counter is written at once, whatever the window says.
+  const moved = await heartbeat(request, {
+    groupId: E2E.GROUP_ID,
+    counters: { ...CLEAN_COUNTERS, droppedMessages: 1 },
+  });
+  expect((await moved.json()).unchanged).toBeUndefined();
+  const [written] = await db.all<{ droppedMessages: number }>(
+    `SELECT "droppedMessages" FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  expect(written.droppedMessages).toBe(1);
+});
+
+test("an unchanged heartbeat refreshes a stored time older than the window", async ({
+  request,
+  db,
+}) => {
+  await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  await db.run(
+    `UPDATE "BotHealth" SET "lastHeartbeatAt" = now() - interval '16 minutes' WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  const [before] = await db.all<{ at: Date }>(
+    `SELECT "lastHeartbeatAt" AS at FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+
+  const res = await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  expect((await res.json()).unchanged).toBeUndefined();
+  const [after] = await db.all<{ at: Date }>(
+    `SELECT "lastHeartbeatAt" AS at FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  expect(new Date(after.at).getTime()).toBeGreaterThan(
+    new Date(before.at).getTime() + 15 * 60 * 1000,
+  );
+});
+
 test("a heartbeat for a group MatchTime does not know is accepted and dropped", async ({
   request,
   db,
