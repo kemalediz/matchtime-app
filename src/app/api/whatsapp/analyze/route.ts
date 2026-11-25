@@ -284,6 +284,11 @@ import {
   resolveSwapSide,
   type SwapCandidate,
 } from "@/lib/team-slot-swap";
+import {
+  hasSwapVerb,
+  looksLikeColourSwapPhrase,
+  looksLikeLabelSwapPhrase,
+} from "@/lib/colour-swap-phrase";
 import { decidePastedRosterRegistration } from "@/lib/pasted-roster-registration";
 import {
   describeMentionOutcomes,
@@ -3841,31 +3846,12 @@ async function handleTeamSwapIfApplicable(
  * through to normal handling.
  */
 /**
- * The LITERAL-colour half of the colour-swap detection: "swap/flip the
- * colours", "swap red and yellow". No database, no org labels, no
- * `await` — which is the whole reason it is a function of its own.
- *
- * The clause peel needs to choose WHICH clause of a message the colour
- * swap belongs to, and it must do that before deciding whether to spend
- * a query at all. Lifted verbatim out of `handleColorSwapIfApplicable`,
- * which still calls it, so there is one definition and the peel can
- * never disagree with the handler about what a colour swap looks like.
- *
- * It is deliberately NOT the whole test: an org with custom team labels
- * ("swap the Bibs and the Skins") is recognised only inside the handler,
- * where the match row says what this org calls its sides. When this
- * returns false the peel hands the handler the WHOLE body, so that
- * branch is reached exactly as it was before clause peeling existed.
+ * The LITERAL-colour half of the detection (`looksLikeColourSwapPhrase`)
+ * lives in `lib/colour-swap-phrase.ts` since 2026-09-17, with the
+ * Turkish forms and its own test. The clause peel above and this handler
+ * import the same function, so the peel can never disagree with the
+ * handler about what a colour swap looks like.
  */
-function looksLikeColourSwapPhrase(rawBody: string): boolean {
-  const body = (rawBody || "").trim();
-  return (
-    /\b(swap|switch|flip|reverse|invert|change)\b[\s\S]{0,40}\bcolou?rs?\b/i.test(body) ||
-    /\bcolou?rs?\b[\s\S]{0,40}\b(swap|switch|flip|reverse|invert|change)\b/i.test(body) ||
-    /\bswap\b[\s\S]{0,25}\b(red|yellow|reds|yellows)\b[\s\S]{0,25}\b(red|yellow|reds|yellows)\b/i.test(body)
-  );
-}
-
 async function handleColorSwapIfApplicable(
   orgId: string,
   rawBody: string,
@@ -3874,13 +3860,13 @@ async function handleColorSwapIfApplicable(
 
   // Fast path: "swap/flip the colours" or "swap red and yellow" need no DB
   // lookup — the literal colour words / "colours" keyword are enough.
-  const hasSwapVerb = /\b(swap|switch|flip|reverse|invert|change)\b/i.test(body);
+  const swapVerb = hasSwapVerb(body);
   let isColourSwap = looksLikeColourSwapPhrase(body);
 
   // Cheap pre-gate before touching the DB: only orgs with a swap verb in
   // the message can possibly be a "swap <labelA> and <labelB>" — anything
   // without a swap verb can't be a colour swap at all.
-  if (!isColourSwap && !hasSwapVerb) return null;
+  if (!isColourSwap && !swapVerb) return null;
 
   const match = await db.match.findFirst({
     where: {
@@ -3907,18 +3893,8 @@ async function handleColorSwapIfApplicable(
   // Red/Yellow stay covered by the regexes above as a fallback.
   if (!isColourSwap) {
     const cfgLabels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
-    const labelAlts = cfgLabels
-      .map((l) => l.trim())
-      .filter((l) => l && !/^(red|yellow)$/i.test(l))
-      .map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    if (labelAlts.length === 2) {
-      const alt = `(?:${labelAlts.join("|")})`;
-      const labelSwap = new RegExp(
-        `\\bswap\\b[\\s\\S]{0,25}${alt}[\\s\\S]{0,25}${alt}`,
-        "i",
-      );
-      if (labelSwap.test(body)) isColourSwap = true;
-    }
+    const customLabels = cfgLabels.map((l) => l.trim()).filter((l) => l && !/^(red|yellow)$/i.test(l));
+    if (looksLikeLabelSwapPhrase(body, customLabels)) isColourSwap = true;
     if (!isColourSwap) return null;
   }
 

@@ -18,19 +18,44 @@
  * quotes (Phase 3). `copy.tr.snap` shows exactly which: its English
  * cases are the remaining work.
  *
- * Three Turkish sentences quote a command the group would TYPE:
- * "takımları oluştur" (match_day_locked_line, teams_not_generated,
- * swap_deferred, intro_teams) and "takımları yeniden oluştur"
- * (bench_claim_team). The teams extractor's prompt is English and
- * Turkish command words are Phase 3 work, so whether those phrases
- * trigger team generation is untested; `swap X Y` is kept as the
- * literal typed command for the same reason.
+ * ── THE TYPED TEAM COMMANDS (2026-09-17) ────────────────────────────
+ *
+ * Every sentence in this file that tells the group what to TYPE for the
+ * teams quotes one of these, and `__tests__/strings.test.ts` enforces
+ * it. One form per action, so a player who copies a post types a
+ * command the router, the teams extractor and the two deterministic
+ * pre-peels are all taught to read:
+ *
+ *   generate       takımları kur          (match_day_locked_line,
+ *                                          teams_not_generated,
+ *                                          swap_deferred, intro_teams,
+ *                                          onbHowToUseMe, onbHelpExplainer)
+ *   regenerate     takımları yeniden kur  (bench_claim_team)
+ *   show           takımları göster       (onbHowToUseMe, onbHelpExplainer)
+ *   swap players   X ile Y'yi değiştir    (teams_post_footer, intro_teams;
+ *                                          "Ali ile Can'ı değiştir" in the
+ *                                          help)
+ *   swap colours   renkleri değiştir      (not quoted; read by
+ *                                          `lib/colour-swap-phrase.ts`)
+ *
+ * "kur" over Phase 2's "oluştur": "takım kurmak" is the idiom for
+ * forming a team, "takımları oluştur" is a calque of "create the teams";
+ * the onboarding help, the copy the owner reviewed first, already said
+ * "takımları kur" and "takımları göster"; and it is five characters
+ * shorter on a phone. Both read 10 of 10 at the router and the teams
+ * extractor before either was in a prompt (`scripts/dryrun-pipeline.ts`
+ * TT1, TT2), so the choice was made on the language, not the model,
+ * and the extractor still reads "takımları oluştur" for anyone who
+ * copies an older post. Readers: `pipeline/router.ts` rule 17,
+ * `pipeline/extractors.ts` (teams), `lib/team-slot-swap.ts`
+ * `parseSwapNames`, `lib/colour-swap-phrase.ts`.
  *
  * ── CONVENTIONS FOR THE TURKISH (from the design, section 4.4) ──────
  *
  *   - WhatsApp formatting, not markdown: bold is `*single asterisks*`,
  *     no headings, no backticks except for literal commands the user
- *     should type (`swap X Y` stays a backtick because it is typed).
+ *     should type (`X ile Y'yi değiştir` stays a backtick because it is
+ *     typed).
  *   - Keep the emoji the English copy uses in the same positions
  *     (📋, 🙏, ✅, 🥁, ⚽, 🪑); the group learns them once and they are
  *     language-free.
@@ -84,7 +109,7 @@ export const tr: Strings = {
   // ── row 2: formatTeamsPost ───────────────────────────────────────
 
   teams_post_header: (p) => `⚽ *Bu akşamın takımları*, ${p.kickoff}, ${p.venue}`,
-  teams_post_footer: "İtirazı olan? `swap X Y` yazın, admin onaylar.",
+  teams_post_footer: "İtirazı olan? `X ile Y'yi değiştir` yazın, admin onaylar.",
 
   // ── row 43: buildSquadCompletePost ───────────────────────────────
 
@@ -167,7 +192,7 @@ export const tr: Strings = {
   match_day_header: (p) => `⚽ *Bu akşam ${p.timeLabel}*, *${p.activityName}*, ${p.venue}`,
   match_day_teams_signoff: "Akşam görüşürüz 🙌",
   match_day_locked_line:
-    "Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@MatchTime takımları oluştur* yazın 👇",
+    "Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@MatchTime takımları kur* yazın 👇",
 
   // ── row 72: buildDailyInListFallback ─────────────────────────────
 
@@ -233,7 +258,7 @@ export const tr: Strings = {
 
   // ── rows 32 to 42: the acks ────────────────────────────────────────
 
-  teams_not_generated: "Takımlar henüz oluşturulmadı, 'takımları oluştur' yazın, hallederim.",
+  teams_not_generated: "Takımlar henüz kurulmadı, 'takımları kur' yazın, hallederim.",
   score_ack: (p) => `Tamam 👍 ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}, kaydettim.`,
   payment_ack: (p) => `Not aldım 🙌 ${p.firstName} ${p.count} kişinin ödemesini yaptı.`,
   reminder_ack_resolved: (p) => `👍 Tamam, ${p.whenLabel} sana DM atarım.`,
@@ -312,7 +337,7 @@ export const tr: Strings = {
 
   bench_claim_team: (p) =>
     `🎟 *${p.claimer}* yeri aldı, *${p.teamLabel}* takımında *${p.dropped}* yerine oynuyor 🙌\n\n` +
-    `_Yeni kadroyla takımları yeniden dengelemek isterseniz "takımları yeniden oluştur" yazın._`,
+    `_Yeni kadroyla takımları yeniden dengelemek isterseniz "takımları yeniden kur" yazın._`,
   bench_claim_replacing: (p) =>
     `✅ *${p.claimer}* kadroda, *${p.dropped}* yerine geliyor, kadro *${p.confirmed}/${p.maxPlayers}* 🙌`,
   bench_claim_open: (p) => `✅ *${p.claimer}* açık yeri aldı, kadro *${p.confirmed}/${p.maxPlayers}* 🙌`,
@@ -451,11 +476,11 @@ export const tr: Strings = {
   recruit_nobody_new: (p) => `*${p.matchName}* için şu an sorulacak yeni oyuncu yok. 👍`,
   swap_deferred: (p) =>
     `*${p.a}* ve *${p.b}* zaten kadroda, kimse çıkarılmadı. ` +
-    `Takımlar henüz oluşturulmadı; *takımları oluştur* yazın, kurayım (sonra ikisini farklı takımlara koyabilirim).`,
+    `Takımlar henüz kurulmadı; *takımları kur* yazın, kurayım (sonra ikisini farklı takımlara koyabilirim).`,
   team_swap_done: (p) => `🔁 *${p.a}* ve *${p.b}* yer değiştirdi, kimse çıkarılmadı. Güncel takımlar:`,
   slot_transfer_done: (p) =>
     `🔁 *${p.to}*, *${p.teamLabel}* takımında *${p.from}* yerine oynuyor; ` +
-    `takımlar aynı, yeniden oluşturulmadı, kimsenin katılımı değişmedi. Güncel takımlar:`,
+    `takımlar aynı, yeniden kurulmadı, kimsenin katılımı değişmedi. Güncel takımlar:`,
   colour_swap_done: "🎨 Renkler değişti, takımlar aynı, taraflar ters döndü:",
 
   // ── row 67: the bot intro ──────────────────────────────────────────
@@ -467,7 +492,7 @@ export const tr: Strings = {
   intro_what_i_do: "Yaptıklarım:",
   intro_attendance: `🗓  *Katılım*, buraya "VARIM" / "YOKUM" yazın (ya da uygulamadan işaretleyin), sizi kadroya ekler ya da çıkarırım. Onay için mesajınıza ✅ koyarım, ayrıca mesaj atmam.`,
   intro_daily: `🗒  *Günlük hatırlatma*, kadro dolana kadar her gün 17:00'de kadro listesini yeniden paylaşırım, kaç kişi eksik hep birlikte görürüz.`,
-  intro_teams: `⚽  *Takımlar*, "takımları oluştur" deyin, dengeli takımları paylaşırım. İtirazı olan \`swap X Y\` yazsın, admin onaylar.`,
+  intro_teams: `⚽  *Takımlar*, "takımları kur" deyin, dengeli takımları paylaşırım. İtirazı olan \`X ile Y'yi değiştir\` yazsın, admin onaylar.`,
   intro_rating_bit: "her maçtan sonra herkese puanlama linkini DM'den gönderirim (kayıt yok, tıklamanız yeterli)",
   intro_mom_bit: "maçın adamını uygulamadan ya da paylaştığım anketten seçin, herkes oy verince (en geç maçtan 5 gün sonra) kazananı açıklarım",
   intro_ratings_line: (p) => `🏆  *Puanlama ve maçın adamı*, ${p.bits.join("; ")}.`,

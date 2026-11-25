@@ -391,4 +391,19 @@ describe("the router prompt reads Turkish", () => {
       [...taught.entries()].some(([body, route]) => /hadi|maç|😂/.test(body) && route === "none"),
     ).toBe(true);
   });
+
+  // 2026-09-17: the Turkish string table tells a group to type
+  // "takımları kur" / "takımları göster" (strings.test.ts pins the
+  // forms). The router must send those to `balancer`, and be shown
+  // that a remark ABOUT the teams is still banter.
+  it("teaches the Turkish team commands as balancer, and a remark about the teams as none", () => {
+    expect(ROUTER_SYSTEM_PROMPT).toContain('"takımları kur"');
+    expect(ROUTER_SYSTEM_PROMPT).toContain('"takımları göster"');
+    const taught = new Map(
+      [...ROUTER_SYSTEM_PROMPT.matchAll(/^\s*"([^"]+)"\s+->\s*([a-z_]+)\s*$/gm)].map((m) => [m[1]!, m[2]!]),
+    );
+    expect(taught.get("@Match Time takımları kur")).toBe("balancer");
+    expect(taught.get("takımları göster")).toBe("balancer");
+    expect(taught.get("dünkü takımlar çok dengesizdi 😂")).toBe("none");
+  });
 });

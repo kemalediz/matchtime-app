@@ -287,6 +287,49 @@ describe("parseSwapNames", () => {
   for (const body of NO) {
     it(`declines "${body}"`, () => expect(parseSwapNames(body)).toBeNull());
   }
+
+  // ── Turkish (2026-09-17): "X ile Y'yi değiştir" ─────────────────────
+  //
+  // Verb-final: the two names come BEFORE "değiştir", joined by "ile"
+  // (with) or "ve" (and), or by a comitative suffix on the first name
+  // ("Ali'yle"). Turkish orthography puts an apostrophe between a proper
+  // noun and its suffix, so the suffix is stripped at the apostrophe and
+  // the NAME is what reaches the roster: "Can'ı" -> "can", "Ali'yle" ->
+  // "ali". Without the apostrophe the token is taken whole ("Canı") and
+  // resolves to nobody, which is a refusal, not a wrong swap.
+  const YES_TR: Array<[string, string, string]> = [
+    ["@Match Time Ali ile Can'ı değiştir", "ali", "can"],
+    ["Ali ile Can'ı değiştir", "ali", "can"],
+    ["Ali ve Can'ı değiştir", "ali", "can"],
+    ["Ali'yle Can'ı değiştir", "ali", "can"],
+    ["Ali'yi Can'la değiştir", "ali", "can"],
+    ["Ali ile Can'ı yer değiştir", "ali", "can"],
+    ["Ali ile Can'ın yerlerini değiştir", "ali", "can"],
+    ["Elvin ile Raihan'ı değiştirin", "elvin", "raihan"],
+    ["Ömer ile Şükrü'yü değiştir", "ömer", "şükrü"],
+    ["Ali ile Can'ı DEĞİŞTİR", "ali", "can"],
+  ];
+  for (const [body, a, b] of YES_TR) {
+    it(`reads "${body}"`, () => expect(parseSwapNames(body)).toEqual({ a, b }));
+  }
+
+  const NO_TR = [
+    // The colour swap, in both Turkish forms: the colour peel runs
+    // first, and even alone these must never reach the roster.
+    "renkleri değiştir",
+    "@Match Time renkleri değiştir",
+    "kırmızıyla sarıyı değiştir",
+    "Kırmızı ile Sarı'yı değiştir",
+    // "change the teams" names no player.
+    "takımları değiştir",
+    "@Match Time takımları değiştir",
+    // A remark, not a request: no verb.
+    "Ali ile Can aynı takımda",
+    "Ali ile Ali'yi değiştir",
+  ];
+  for (const body of NO_TR) {
+    it(`declines "${body}"`, () => expect(parseSwapNames(body)).toBeNull());
+  }
 });
 
 // ── NAME RESOLUTION ────────────────────────────────────────────────────

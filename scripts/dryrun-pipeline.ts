@@ -104,7 +104,8 @@
  * Q1–Q24 (`QUESTIONS=1`) are tagged questions; T1–T7
  * (`TEAMS=1`) are the generate-teams phrasings measured over 120 days of
  * the live group, where `generate_teams_request` is the single most
- * common tagged command. Each carries an `expect`
+ * common tagged command, and TT1–TT9 are the Turkish team commands the
+ * Turkish string table tells a group to type. Each carries an `expect`
  * string: what a human decided the right answer is. The harness does NOT
  * grade against it — it prints it next to what happened so you can. (The
  * graded, CI-runnable version of this idea is `e2e/corpus/`.)
@@ -930,6 +931,9 @@ type TeamCase = {
   body: string;
   /** Default true. `false` is a real case: the tag is REQUIRED. */
   tagged?: boolean;
+  /** Recent chat for THIS case instead of the English `HISTORY`; the
+   *  Turkish cases run under `HISTORY_TR`, as the TR attendance table does. */
+  history?: Array<{ author: string | null; body: string }>;
   expect: "GENERATES" | "HANDED BACK" | "NOT OWNED";
   why: string;
 };
@@ -1012,6 +1016,103 @@ const TEAM_CASES: TeamCase[] = [
       "ACTIONY_INTENTS, so the shipped interaction contract already refuses an untagged " +
       "one. Since §10 step 8 that refusal means SILENCE plus an operator note rather than " +
       "the mega-prompt answering — which is why it is in this table rather than assumed",
+  },
+
+  // ── TT: the Turkish team commands (2026-09-17) ─────────────────────
+  //
+  // Phase 2 (#96) made the Turkish group posts TELL players to type
+  // "takımları oluştur" while the onboarding help said "takımları kur",
+  // and neither had been measured against the router or the teams
+  // extractor. One typed form per action is now chosen and every
+  // Turkish string aligned to it; this table is where the choice was
+  // measured, `REPEAT=10`, before and after the prompts learnt it.
+  //
+  //   generate      "takımları kur"          (TT2 keeps the Phase 2
+  //                                           wording as the comparison)
+  //   regenerate    "takımları yeniden kur"
+  //   show          "takımları göster"       -> HANDED BACK to answer-batch
+  //   swap players  "X ile Y'yi değiştir"    -> HANDED BACK: the pre-peel
+  //                                           in route.ts owns it (T6)
+  //   swap colours  "renkleri değiştir"      -> HANDED BACK, same reason
+  //
+  // The two untagged forms at the end must NOT generate, exactly as T7.
+  {
+    id: "TT1",
+    who: "Kemal",
+    body: "@Match Time takımları kur",
+    history: HISTORY_TR,
+    expect: "GENERATES",
+    why: "the chosen generate form: route balancer, action generate",
+  },
+  {
+    id: "TT2",
+    who: "Kemal",
+    body: "@Match Time takımları oluştur",
+    history: HISTORY_TR,
+    expect: "GENERATES",
+    why: "the Phase 2 wording, kept so a player who types what an older post said still gets teams",
+  },
+  {
+    id: "TT3",
+    who: "Kemal",
+    body: "@Match Time takımları yeniden kur",
+    history: HISTORY_TR,
+    expect: "GENERATES",
+    why: "regenerate: 'yeniden' (again) must still extract as generate, as 'regenerate' does in T4",
+  },
+  {
+    id: "TT4",
+    who: "Kemal",
+    body: "@Match Time takımları göster",
+    history: HISTORY_TR,
+    expect: "HANDED BACK",
+    why: "show: answer-batch.ts owns it; the reason line must name action \"show\", never generate (c408649)",
+  },
+  {
+    id: "TT5",
+    who: "Kemal",
+    body: "@Match Time Ali ile Can'ı değiştir",
+    history: HISTORY_TR,
+    expect: "NOT OWNED",
+    why:
+      "swap two players. In production `parseSwapNames` owns it on the raw body before any " +
+      "model runs. Past that, rule 4 routes a named-player swap other_att (the English " +
+      "\"swap David and Abid\" example), so this module never sees it: measured other_att 10/10 " +
+      "before the Turkish lines went in. NOT OWNED here is correct; what must never appear is GENERATES",
+  },
+  {
+    id: "TT6",
+    who: "Kemal",
+    body: "@Match Time renkleri değiştir",
+    history: HISTORY_TR,
+    expect: "HANDED BACK",
+    why: "swap colours: looksLikeColourSwapPhrase owns it in production; the model must not read a regenerate",
+  },
+  {
+    id: "TT7",
+    who: "Kemal",
+    body: "@Match Time kırmızıyla sarıyı değiştir",
+    history: HISTORY_TR,
+    expect: "HANDED BACK",
+    why: "swap colours by their Turkish labels: same owner as TT6",
+  },
+  {
+    id: "TT8",
+    who: "Kemal",
+    body: "takımları kur",
+    tagged: false,
+    history: HISTORY_TR,
+    expect: "NOT OWNED",
+    why: "UNTAGGED generate: the tag is required in every language (T7)",
+  },
+  {
+    id: "TT9",
+    who: "Kemal",
+    body: "dünkü takımlar çok dengesizdi 😂",
+    tagged: false,
+    history: HISTORY_TR,
+    expect: "NOT OWNED",
+    why: "untagged banter ABOUT the teams: must not generate; route none is the ideal, anything untagged is refused anyway",
   },
 ];
 
@@ -1537,7 +1638,7 @@ async function runTeams(orgId: string, state: SquadState, now: Date): Promise<vo
             gated: false,
           },
         ],
-        history: HISTORY,
+        history: c.history ?? HISTORY,
         enabled: new Set<Route>(["balancer"]),
         deps: {
           model,

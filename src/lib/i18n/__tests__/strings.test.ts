@@ -324,10 +324,56 @@ describe("string tables: the Turkish is translated", () => {
 
   it("no Turkish entry contains an English instruction token the group is never told to type", () => {
     // The Turkish group is told to write *VARIM*; an "*IN*" left in a
-    // Turkish sentence is a half-moved string. (`swap X Y` is allowed:
-    // it is the literal typed command, see teams_post_footer.)
+    // Turkish sentence is a half-moved string. `swap X Y` was allowed
+    // here until 2026-09-17 as "the literal typed command"; it is
+    // English, and the Turkish typed command is now `X ile Y'yi
+    // değiştir` (the test below).
     for (const key of KEYS) {
-      expect(render(tr, key), `tr.${key}`).not.toMatch(/\*IN\*|\bsay IN\b|\breply IN\b/);
+      expect(render(tr, key), `tr.${key}`).not.toMatch(/\*IN\*|\bsay IN\b|\breply IN\b|swap X Y/);
+    }
+  });
+});
+
+describe("string tables: the Turkish quotes ONE typed form per team command", () => {
+  // 2026-09-17. Phase 2 told players "takımları oluştur" in five group
+  // posts while the onboarding help said "takımları kur", and neither
+  // had been measured against the router or the teams extractor. One
+  // form per action is chosen (`scripts/dryrun-pipeline.ts` TT1-TT9 is
+  // the measurement) and every Turkish sentence that tells the group
+  // what to type must quote it, so a player who copies a post types a
+  // command the bot is taught to read:
+  //
+  //   generate       takımları kur
+  //   regenerate     takımları yeniden kur
+  //   show           takımları göster
+  //   swap players   X ile Y'yi değiştir   (e.g. "Ali ile Can'ı değiştir")
+  //   swap colours   renkleri değiştir
+  const GENERATE = /takımları (?:yeniden )?kur\b/u;
+  const SWAP_PLAYERS = /\p{L}+ ile \p{L}+'\p{L}+ değiştir/u;
+
+  it("every sentence that asks for the teams to be built quotes 'takımları kur' or 'takımları yeniden kur'", () => {
+    for (const key of [
+      "match_day_locked_line",
+      "teams_not_generated",
+      "swap_deferred",
+      "bench_claim_team",
+      "intro_teams",
+      "onbHowToUseMe",
+      "onbHelpExplainer",
+    ] as const) {
+      expect(render(tr, key), `tr.${key}`).toMatch(GENERATE);
+    }
+  });
+
+  it("every sentence that invites an objection quotes the Turkish swap form, not `swap X Y`", () => {
+    for (const key of ["teams_post_footer", "intro_teams", "onbHelpExplainer"] as const) {
+      expect(render(tr, key), `tr.${key}`).toMatch(SWAP_PLAYERS);
+    }
+  });
+
+  it("no Turkish entry still tells the group to type the retired Phase 2 wording", () => {
+    for (const key of KEYS) {
+      expect(render(tr, key), `tr.${key}`).not.toMatch(/takımları (?:yeniden )?oluştur\b|swap X Y/u);
     }
   });
 });

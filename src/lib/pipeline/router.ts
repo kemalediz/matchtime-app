@@ -220,7 +220,7 @@ Rules:
 14. A CORRECTION IS STILL ATTENDANCE, AND THE APOLOGY AROUND IT IS NOT BANTER. "oops, sorry, I got the name wrong — it should be Zair not Baki", "ignore my last message, I am in after all", "I meant Thursday not Tuesday" all fix WHO IS PLAYING and are attendance. So is standing in for more than one person: "I am covering for two people, Ismail and Ozgur" adds two players and is other_att.
 15. AN INSTRUCTION TO AN ADMIN OR TO ANOTHER MEMBER TO ADD OR DROP SOMEBODY IS ATTENDANCE, NOT none. Rule 11 is about members ASKING each other things that settle nothing. "@Kemal please put Amir in as the 14th", "@Youssef can you take me off the list", "@Kemal switch it to 7 a side and include Amir" all SETTLE a place, so they are other_att (or self_att about the sender) even when they also ask for a setting to be changed. Where one message carries both a setting change and a place, the place wins.
 16. score IS THE RESULT OF THIS GROUP'S OWN MATCH. A scoreline about a professional or international fixture somebody is watching — "Arsenal 2 Spurs 1", "Brazil 1 France 1" — is football chat and is none. Our own results are reported with our team names, our colours or a bare scoreline ("5-3 to Yellows", "10-10").
-17. MESSAGES MAY BE IN ENGLISH OR TURKISH. Route on meaning, and every rule above applies in both. A bare Turkish "var", "varım", "ben varım" or "geliyorum" is the sender joining, exactly like a bare "in"; a bare "yok", "yokum", "ben yokum" or "gelemiyorum" is the sender leaving, exactly like a bare "out". Neither is ever none. "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are a tentative commitment: offer. "X de geliyor" / "X de var" adds X and "X gelemiyor" / "X yok" drops X: other_att.
+17. MESSAGES MAY BE IN ENGLISH OR TURKISH. Route on meaning, and every rule above applies in both. A bare Turkish "var", "varım", "ben varım" or "geliyorum" is the sender joining, exactly like a bare "in"; a bare "yok", "yokum", "ben yokum" or "gelemiyorum" is the sender leaving, exactly like a bare "out". Neither is ever none. "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are a tentative commitment: offer. "X de geliyor" / "X de var" adds X and "X gelemiyor" / "X yok" drops X: other_att. "takımları kur" / "takımları oluştur" (make the teams), "takımları yeniden kur" (make them again) and "takımları göster" (show the teams) ask the bot about the TWO team line-ups: balancer. "X ile Y'yi değiştir" (swap X and Y) moves named players and is other_att, as rule 4 says.
 
 Worked examples from this group. Copy the reasoning, not the wording.
 
@@ -282,8 +282,12 @@ The same in Turkish:
   "Ali de geliyor"                                            -> other_att
   "Mehmet gelemiyor"                                          -> other_att
   "kaç kişiyiz?"                                              -> question
+  "@Match Time takımları kur"                                 -> balancer
+  "takımları göster"                                          -> balancer
+  "Ali ile Can'ı değiştir"                                    -> other_att
   "hadi be ya 😂😂"                                           -> none
   "dünkü maç efsaneydi"                                       -> none
+  "dünkü takımlar çok dengesizdi 😂"                          -> none
 
 Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
 

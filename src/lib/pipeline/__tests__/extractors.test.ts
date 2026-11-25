@@ -384,6 +384,23 @@ describe("parseFacts (other routes)", () => {
     expect(p).toMatch(/keep that word verbatim; do not guess their name/);
   });
 
+  it("the teams prompt reads the Turkish command forms the string table tells a group to type", () => {
+    // 2026-09-17. One typed form per action (strings.test.ts pins them
+    // in the Turkish table); the extractor is told what each one asks
+    // for, the Phase 1 way: a language line and the shapes, no more.
+    const p = EXTRACTOR_PROMPTS.teams;
+    expect(p).toMatch(/ENGLISH or TURKISH/);
+    expect(p).toContain('"takımları kur"');
+    expect(p).toContain('"takımları yeniden kur"');
+    expect(p).toContain('"takımları göster"');
+    expect(p).toMatch(/değiştir/);
+    // The Turkish labels map onto the enum the schema admits.
+    expect(p).toMatch(/Kırmızı.*RED/);
+    expect(p).toMatch(/Sarı.*YELLOW/);
+    // The Phase 2 wording keeps reading, so an older post's instruction still works.
+    expect(p).toContain('"takımları oluştur"');
+  });
+
   it("admin", () => {
     const { facts } = parseFacts(
       "admin",

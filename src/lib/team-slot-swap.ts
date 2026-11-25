@@ -175,7 +175,7 @@ export function parseSwapNames(rawBody: string): { a: string; b: string } | null
   const m = body.match(
     /\b(?:swap|switch)\s+([\p{L}'-]{2,})\b\s*(?:with|and|for|&|,|<->|>|\/)?\s*([\p{L}'-]{2,})\b/iu,
   );
-  if (!m) return null;
+  if (!m) return parseSwapNamesTurkish(body);
   const a = m[1].toLowerCase();
   const b = m[2].toLowerCase();
   if (a === b) return null;
@@ -186,6 +186,41 @@ export function parseSwapNames(rawBody: string): { a: string; b: string } | null
     "side", "sides", "please", "pls",
   ]);
   if (STOP.has(a) || STOP.has(b)) return null;
+  return { a, b };
+}
+
+/**
+ * The Turkish form (2026-09-17): "X ile Y'yi değiştir", the command the
+ * Turkish string table tells a group to type. Verb-final, so the two
+ * names come BEFORE "değiştir", joined by "ile" (with) or "ve" (and) or
+ * by a comitative suffix on the first ("Ali'yle Can'ı"). Turkish
+ * orthography separates a proper noun from its suffix with an
+ * apostrophe, so the suffix is cut at the apostrophe and the bare NAME
+ * reaches the roster: "Can'ı" -> "can", "Şükrü'yü" -> "şükrü". A name
+ * with no apostrophe is taken whole, so "Canı" resolves to nobody and
+ * the handler falls through: a refusal, never a wrong swap.
+ *
+ * Only tried when the English pattern found nothing, so every English
+ * message parses exactly as it did. Lower-cased with plain
+ * `toLowerCase()` (the verb pattern tolerates the U+0307 that a capital
+ * İ leaves behind); `toLocaleLowerCase("tr")` would turn an English
+ * capital I in a name into ı and stop it resolving.
+ */
+const TR_SWAP =
+  /(?<![\p{L}'])([\p{L}-]{2,})(?:'\p{L}{1,4})?\s+(?:ile\s+|ve\s+)?([\p{L}-]{2,})(?:'\p{L}{1,4})?\s+(?:yer\p{L}*\s+)?de[ğg]i̇?[şs]ti̇?r/u;
+
+function parseSwapNamesTurkish(body: string): { a: string; b: string } | null {
+  const m = body.toLowerCase().match(TR_SWAP);
+  if (!m) return null;
+  const a = m[1];
+  const b = m[2];
+  if (a === b) return null;
+  // Not a player: the bot's own name, the joining words, and the two
+  // things a Turkish group swaps that are not people. "renkleri
+  // değiştir" and "kırmızıyla sarıyı değiştir" belong to the colour
+  // peel, which runs first; "takımları değiştir" names nobody.
+  const STOP_TR = /^(?:match|time|matchtime|ile|ve|yer|renk|k[ıi]rm[ıi]z[ıi]|sar[ıi]|tak[ıi]m|lütfen)/u;
+  if (STOP_TR.test(a) || STOP_TR.test(b)) return null;
   return { a, b };
 }
 
