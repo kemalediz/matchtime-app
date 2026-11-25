@@ -14,10 +14,7 @@ const dbMock = vi.hoisted(() => ({
 }));
 vi.mock("../db", () => ({ db: dbMock }));
 const months = vi.hoisted(() => ({ value: [] as unknown[] }));
-vi.mock("../month-signup", async (orig) => {
-  const real = await orig<typeof import("../month-signup")>();
-  return { isRegularMember: real.isRegularMember, loadLiveMonths: async () => months.value, renderSignupList: () => ({ text: "📋 List for November", hash: "h" }) };
-});
+vi.mock("../month-signup", () => ({ loadLiveMonths: async () => months.value, renderSignupList: () => ({ text: "📋 List for November", hash: "h" }) }));
 vi.mock("../monthly-week", () => ({ loadMonthlyWeek: async () => null, renderWeekList: async () => ({ text: "" }) }));
 vi.mock("../player-display-name", () => ({ loadSeenAs: async () => new Map(), resolvePlayerName: (p: { name: string | null }) => p.name }));
 vi.mock("../month-seed-hq", () => ({ comingMonth: async () => null }));

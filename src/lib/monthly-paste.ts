@@ -42,6 +42,7 @@ import type { MonthlyList } from "./monthly-list";
 import { placeListLines, unplacedLineNames } from "./monthly-line-placement";
 import { askWhoTheyAre, createNewcomer, joinMonthAsOrganiser } from "./month-newcomers";
 import type { NewcomerLine } from "./month-newcomer-rules";
+import { pastedLineOf } from "./month-signup-rules";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek, weekListKeyPrefix } from "./monthly-week";
 import {
   buildPasteGuestsAddedDm,
@@ -77,9 +78,6 @@ export interface MonthlyPasteResult {
   /** Whatever the member typed around the list ("can't make it lads"),
    *  for the rest of the pipeline. "" when the message was only a list. */
   residual: string;
-  /** A regular's games on it did not fit the games he covers: not recorded,
-   *  and he is asked which he will play (2026-11-16). No ✅. */
-  asked?: boolean;
 }
 
 /**
@@ -368,19 +366,13 @@ export async function handleMonthlyPaste(args: {
           failures.push(a.name);
           continue;
         }
-        // The organisers' line, if it comes to that, quotes HIS line of the paste.
-        const { pastedLineOf } = await import("./month-signup");
-        const words = pastedLineOf(args.text ?? null, { name: a.name });
-        const j = await joinMonthAsOrganiser({ orgId, monthId: week.monthId, userId, line: a.line, organiserUserId: sender.userId, weekDay, words, now });
+        const j = await joinMonthAsOrganiser({ orgId, monthId: week.monthId, userId, line: a.line, organiserUserId: sender.userId, weekDay, words: pastedLineOf(args.text ?? null, { name: a.name }), now });
         if (!j.ok) {
           failures.push(a.name);
           continue;
         }
         if (j.changed) applied.push(`${a.kind === "new" ? "new-" : ""}${j.outcome}:${a.name}`);
-        // Held for his answer (2026-11-16): he is NOT on the month, so the
-        // who-is-this DM never says he is.
-        if (j.held) applied.push(`games-${j.heldAsked ? "asked" : "noted"}:${a.name}`);
-        else if (a.kind === "new") toAsk.push({ name: a.name, userId, line: a.line });
+        if (a.kind === "new") toAsk.push({ name: a.name, userId, line: a.line });
         continue;
       }
       if (a.kind === "ask") {
@@ -504,6 +496,19 @@ export async function handleMonthlyPaste(args: {
     }
   }
 
+  // "4 only" beside a regular: their own line, or an organiser's paste.
+  // Anybody else's note is left alone. The one setter works out the money.
+  const entries = [...args.reading.list.slots, ...args.reading.list.sections.cantPlay, ...args.reading.list.sections.reserves, ...args.reading.list.sections.other];
+  const lineOf = (userId: string) =>
+    pastedLineOf(args.text ?? null, entries.find((e) => e.facts?.memberId === userId) ?? { name: roster.find((r) => r.userId === userId)?.name ?? "" });
+  for (const g of outcome.games) {
+    if (!g.self && !senderIsAdmin) continue;
+    // Loaded here: month-signup imports this module's neighbours. The one
+    // fit rule (2026-11-16) quotes his line when it changes the count.
+    const { commitMonthGames } = await import("./month-signup");
+    if (await commitMonthGames(week.monthId, g.userId, g.games, lineOf(g.userId))) applied.push(`games:${g.games}:${g.userId}`);
+  }
+
   // The member who brought guests is told who was added, once per paste.
   if (guestsAdded.length > 0 && sender.userId) {
     const phone = phoneOf.get(sender.userId);
@@ -575,40 +580,12 @@ export async function handleMonthlyPaste(args: {
     }
   }
 
-  // Who the names MatchTime does not know by name are, numbered by phone,
-  // to the organiser only.
+  // LAST of his DMs, so it is the one his reply answers: who the names
+  // MatchTime does not know by name are, numbered by phone, to him only.
   if (toAsk.length > 0 && sender.userId) {
-    const askedWho = await askWhoTheyAre({ orgId, monthId: week.monthId, organiserUserId: sender.userId, sourceRef: args.waMessageId, names: toAsk, now });
-    if (askedWho) applied.push(`asked-who:${toAsk.map((n) => n.name).join("|")}`);
+    const asked = await askWhoTheyAre({ orgId, monthId: week.monthId, organiserUserId: sender.userId, sourceRef: args.waMessageId, names: toAsk, now });
+    if (asked) applied.push(`asked-who:${toAsk.map((n) => n.name).join("|")}`);
   }
-
-  // "4 only" beside a regular: their own line, or an organiser's paste.
-  // Anybody else's note is left alone. The one setter works out the money.
-  // Checked against the games HE covers (2026-11-16): one that does not fit
-  // is not recorded, and HE gets the "which of them?" question, the LAST DM
-  // of this paste, after the who-is-this one too (a reply answers the
-  // newest; a question about games is never answered by mistake). The
-  // organisers' line, if it comes to that, quotes his own line.
-  let asked = false;
-  const gamesFor = outcome.games.filter((g) => g.self || senderIsAdmin);
-  if (gamesFor.length > 0) {
-    // Loaded here: month-signup imports this module's neighbours.
-    const { guardedRegularGames, loadSignupMonth, pastedLineOf } = await import("./month-signup");
-    const month = await loadSignupMonth(week.monthId);
-    const entries = [...list.slots, ...list.sections.cantPlay, ...list.sections.reserves, ...list.sections.other];
-    for (const g of gamesFor) {
-      if (!month) break;
-      const words = pastedLineOf(args.text ?? null, entries.find((e) => e.facts?.memberId === g.userId) ?? null);
-      const done = await guardedRegularGames({ month, userId: g.userId, games: g.games, words, original: args.text ?? null, writtenBy: g.self ? null : sender.name, now });
-      if (done === "stored") applied.push(`games:${g.games}:${g.userId}`);
-      else if (done === "asked" || done === "noted") {
-        asked = true;
-        applied.push(`games-${done}:${g.userId}`);
-      }
-    }
-  }
-  if (applied.some((x) => x.startsWith("games-asked:") || x.startsWith("games-noted:"))) asked = true;
-
 
   // The group has just seen this list: when it is the list as MatchTime
   // now has it, record that, so the scheduler does not post it straight
@@ -626,13 +603,12 @@ export async function handleMonthlyPaste(args: {
   }
 
   return {
-    // Asking who somebody is, or about his games, changes nothing yet.
-    changed: applied.some((x) => !x.startsWith("asked-who:") && !x.startsWith("games-asked:") && !x.startsWith("games-noted:")),
+    // Asking who somebody is changes nothing yet.
+    changed: applied.some((x) => !x.startsWith("asked-who:")),
     applied,
     ignored: outcome.ignored,
     notAdded: outcome.notAdded,
     failures,
     residual: args.reading.residual,
-    asked,
   };
 }

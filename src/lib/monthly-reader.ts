@@ -17,6 +17,7 @@ import { db } from "./db";
 import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
 import { formatLondon } from "./london-time";
 import { coverFor } from "./squad-month-rules";
+import { isRegularMember } from "./month-signup-rules";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./pipeline/llm";
 import {
   buildMonthlyReaderUserTurn,
@@ -49,7 +50,7 @@ export const MONTHLY_READER_MAX_TOKENS = 8_192;
  */
 export async function loadMonthlyReaderContext(args: { orgId: string; matchId: string | null; now?: Date }): Promise<MonthlyReaderContext> {
   const now = args.now ?? new Date();
-  const { isRegularMember, loadLiveMonths, renderSignupList } = await import("./month-signup");
+  const { loadLiveMonths, renderSignupList } = await import("./month-signup");
   const { loadMonthlyWeek, renderWeekList } = await import("./monthly-week");
   const months = await loadLiveMonths(args.orgId, now);
   const week = args.matchId ? await loadMonthlyWeek(args.matchId) : null;
@@ -127,7 +128,9 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     members,
     months: monthBlocks,
     // What each REGULAR covers (2026-11-16): a pay-as-you-go or bench row is
-    // not on the list as a regular, so its player covers the games left.
+    // not on the list as a regular, so its player covers the games left (a
+    // leaver who paid included: what he says is about the games left, and
+    // `setMonthMemberGames` adds the games he played before he left).
     cover: months.map((m) => ({
       label: labelOf(m),
       games: m.kickoffs.map((k) => ({ day: day(k), played: k.getTime() <= now.getTime() })),
