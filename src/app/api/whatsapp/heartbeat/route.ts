@@ -129,12 +129,6 @@ export async function POST(request: Request) {
     create: { orgId: org.id, ...row },
     update: row,
   });
-  // Read the row back now, while its page is still inside this write's own
-  // WAL window. With data checksums on, the first read that sets hint bits
-  // on a tuple after a checkpoint logs a full page image. Without this, the
-  // NEXT heartbeat's read (10 minutes later, after a checkpoint) would be
-  // the first visitor and would write WAL on the very tick it skips.
-  await db.botHealth.findUnique({ where: { orgId: org.id }, select: { id: true } }).catch(() => null);
 
   return NextResponse.json({ ok: true });
 }

@@ -171,6 +171,31 @@ test("an unchanged heartbeat inside the refresh window leaves the row alone (Dis
   expect(written.droppedMessages).toBe(1);
 });
 
+test("an unchanged heartbeat refreshes a stored time older than the window", async ({
+  request,
+  db,
+}) => {
+  await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  await db.run(
+    `UPDATE "BotHealth" SET "lastHeartbeatAt" = now() - interval '16 minutes' WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  const [before] = await db.all<{ at: Date }>(
+    `SELECT "lastHeartbeatAt" AS at FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+
+  const res = await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  expect((await res.json()).unchanged).toBeUndefined();
+  const [after] = await db.all<{ at: Date }>(
+    `SELECT "lastHeartbeatAt" AS at FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  expect(new Date(after.at).getTime()).toBeGreaterThan(
+    new Date(before.at).getTime() + 15 * 60 * 1000,
+  );
+});
+
 test("a heartbeat for a group MatchTime does not know is accepted and dropped", async ({
   request,
   db,

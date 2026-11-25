@@ -93,6 +93,12 @@ describe("heartbeatNeedsWrite", () => {
     expect(heartbeatNeedsWrite(stored(), incoming({ waGroupId: "other@g.us" }), NOW)).toBe(true);
   });
 
+  it("treats processStartedAt null on both sides as unchanged", () => {
+    expect(
+      heartbeatNeedsWrite(stored({ processStartedAt: null }), incoming({ processStartedAt: null }), NOW),
+    ).toBe(false);
+  });
+
   it("writes at once when a capability degrades or recovers", () => {
     expect(
       heartbeatNeedsWrite(stored(), incoming({ degradedCapabilities: ["participant-sync"] }), NOW),
@@ -107,29 +113,48 @@ describe("heartbeatNeedsWrite", () => {
     expect(heartbeatNeedsWrite(future, incoming(), NOW)).toBe(true);
   });
 
-  it("a live Pi on a 10-minute tick never looks silent to the 45-minute alarm", () => {
-    // Simulate a quiet day: unchanged heartbeats every tick, with some
-    // jitter on each tick. Track the stored time and check its age at
-    // every instant a reader could look, just before each tick.
+  /** Run `ticks` heartbeat ticks (10 min apart, up to 40 s late) through
+   *  the rule. `dropped(i)` says which POSTs never arrive. Returns the
+   *  largest age of the stored time a reader could see just before any
+   *  tick, and how many writes there were. */
+  function simulate(ticks: number, dropped: (i: number) => boolean = () => false) {
     let last: Date | null = null;
     let writes = 0;
     let worstAge = 0;
     const start = NOW.getTime();
-    for (let i = 0; i < 6 * 24; i++) {
-      const jitter = (i % 3) * 20 * 1000; // up to 40 s late
-      const at = new Date(start + i * TICK + jitter);
+    for (let i = 0; i < ticks; i++) {
+      const at = new Date(start + i * TICK + (i % 3) * 20 * 1000);
       if (last) worstAge = Math.max(worstAge, at.getTime() - last.getTime());
+      if (dropped(i)) continue;
       if (heartbeatNeedsWrite(last ? stored({ lastHeartbeatAt: last }) : null, incoming(), at)) {
         last = at;
         writes += 1;
       }
     }
-    expect(worstAge).toBeLessThan(HEARTBEAT_SILENT_MS - 10 * MINUTE);
-    // Two writes an hour instead of six.
-    expect(writes).toBeLessThanOrEqual(2 * 24 + 1);
+    return { worstAge, writes };
+  }
+
+  it("a live Pi on a 10-minute tick never looks silent, and writes three times an hour", () => {
+    const { worstAge, writes } = simulate(6 * 24);
+    expect(worstAge).toBeLessThanOrEqual(20 * MINUTE + 40 * 1000);
+    expect(worstAge).toBeLessThan(HEARTBEAT_SILENT_MS);
+    expect(writes).toBeLessThanOrEqual(3 * 24 + 1);
   });
 
-  it("the refresh window leaves at least one full tick of margin under the silence alarm", () => {
-    expect(HEARTBEAT_REFRESH_MS + TICK).toBeLessThan(HEARTBEAT_SILENT_MS);
+  it("dropped POSTs, including a failed refresh tick plus one more, never raise a false pi-silent", () => {
+    // Writes land on ticks 0, 2, 4, ... Drop the refresh tick 2 AND tick 3:
+    // the next write is tick 4, about 40 minutes after the stored time.
+    const both = simulate(12, (i) => i === 2 || i === 3);
+    expect(both.worstAge).toBeGreaterThanOrEqual(40 * MINUTE);
+    expect(both.worstAge).toBeLessThan(HEARTBEAT_SILENT_MS);
+    // One dropped beat at any position.
+    for (let d = 1; d < 24; d++) {
+      expect(simulate(24, (i) => i === d).worstAge).toBeLessThan(HEARTBEAT_SILENT_MS);
+    }
+  });
+
+  it("the refresh window rounded up to the next tick, plus two dropped ticks, stays under the alarm", () => {
+    const writtenEvery = Math.ceil(HEARTBEAT_REFRESH_MS / TICK) * TICK;
+    expect(writtenEvery + 2 * TICK).toBeLessThan(HEARTBEAT_SILENT_MS);
   });
 });
