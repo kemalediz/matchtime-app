@@ -622,7 +622,20 @@ export async function handleTeamCommand(args: {
   // #574). No call for a command that names nobody.
   const candidates = [...new Map([...sheet.players, ...sheet.squad].map((p) => [p.userId, p])).values()];
   const names = commandNames(command);
-  const club = names.length === 0 ? [] : deps?.club ? await deps.club(candidates) : await loadClubWhoRoster(orgId, candidates, "on the teams or in the squad");
+  // The organisers' own posted sheet (2026-11-27) is about the players in
+  // THIS game: who-is-who is shown the confirmed players only, so a member
+  // not playing never takes a name from one who is (FNF: plain "Umar" off
+  // the game, "Umar Noor" playing, the sheet's "Umar"). Two confirmed
+  // players a name could be stay ambiguous. Every other command keeps the
+  // whole club (review of #574, #632).
+  const club =
+    names.length === 0
+      ? []
+      : args.posted
+        ? sheet.squad.map((p) => ({ userId: p.userId, name: p.name, aliases: p.aliases, note: "playing this game" }))
+        : deps?.club
+          ? await deps.club(candidates)
+          : await loadClubWhoRoster(orgId, candidates, "on the teams or in the squad");
   const clubNameOf = new Map(club.map((m) => [m.userId, m.name || (m.aliases ?? [])[0] || "?"]));
   const { people } = await identifyRefs({
     picker: deps?.identify ?? personPickerFor(),

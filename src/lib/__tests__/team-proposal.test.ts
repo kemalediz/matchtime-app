@@ -1165,6 +1165,75 @@ describe("the organisers' own teams, posted untagged in HQ (FNF 2026-11-27)", ()
     nothingSaid();
   });
 
+  // FNF prod, 27 Nov: member "Umar" was taken off this game on 24 Nov (he
+  // had been booked by mistake for Umar Noor); "Umar Noor" plays. The sheet
+  // says "Umar" and means Umar Noor. A posted sheet is about the players in
+  // this game, so its names are placed among the CONFIRMED players only.
+  describe("names are placed among the game's confirmed players", () => {
+    const squadOf = (rows: Array<[string, string, boolean]>) => {
+      store.tables.user = rows.map(([id, name]) => ({ id, name }));
+      store.tables.membership = rows.map(([userId], i) => ({ id: `mem-${i}`, orgId: ORG, userId, leftAt: null, role: "PLAYER" }));
+      store.tables.attendance = rows.filter(([, , playing]) => playing).map(([userId], i) => ({ id: `att-${i}`, matchId: MATCH, userId, status: "CONFIRMED" }));
+      // The membership fake returns rows without the user relation: join it.
+      const mem = dbMock.membership as { findMany: ReturnType<typeof vi.fn> };
+      mem.findMany.mockImplementation(async () =>
+        (store.tables.membership ?? []).map((m) => ({ ...m, user: store.tables.user.find((u) => u.id === m.userId) ?? null })),
+      );
+    };
+
+    it("prod's shape: 'Umar' with plain Umar not playing and Umar Noor confirmed is Umar Noor", async () => {
+      squadOf([
+        ["u-ali", "Ali Khan", true],
+        ["u-bilal", "Bilal Ahmed", true],
+        ["u-tom", "Tom Third", true],
+        ["u-noor", "Umar Noor", true],
+        ["u-umar", "Umar", false],
+      ]);
+      const r = await post(["Ali", "Tom"], ["Bilal", "Umar"]);
+      expect(r).toEqual({ outcome: "teams-posted", applied: true });
+      expect(teamOf("u-noor")).toBe("YELLOW");
+      expect(teamOf("u-umar")).toBeUndefined();
+    });
+
+    it("plain Umar confirmed and Umar Noor not: 'Umar' is plain Umar", async () => {
+      squadOf([
+        ["u-ali", "Ali Khan", true],
+        ["u-bilal", "Bilal Ahmed", true],
+        ["u-tom", "Tom Third", true],
+        ["u-umar", "Umar", true],
+        ["u-noor", "Umar Noor", false],
+      ]);
+      expect((await post(["Ali", "Tom"], ["Bilal", "Umar"])).applied).toBe(true);
+      expect(teamOf("u-umar")).toBe("YELLOW");
+      expect(teamOf("u-noor")).toBeUndefined();
+    });
+
+    it("both confirmed: 'Umar' is plain Umar, 'Umar Noor' is Umar Noor (#632's whole-name rule)", async () => {
+      squadOf([
+        ["u-ali", "Ali Khan", true],
+        ["u-bilal", "Bilal Ahmed", true],
+        ["u-umar", "Umar", true],
+        ["u-noor", "Umar Noor", true],
+      ]);
+      expect((await post(["Ali", "Umar"], ["Bilal", "Umar Noor"])).applied).toBe(true);
+      expect([teamOf("u-umar"), teamOf("u-noor")]).toEqual(["RED", "YELLOW"]);
+    });
+
+    it("two confirmed players 'Umar' could be, neither plainly Umar: never guessed, nothing written", async () => {
+      squadOf([
+        ["u-ali", "Ali Khan", true],
+        ["u-bilal", "Bilal Ahmed", true],
+        ["u-tom", "Tom Third", true],
+        ["u-noor", "Umar Noor", true],
+        ["u-khan", "Umar Khan", true],
+        ["u-sam", "Sam Six", true],
+      ]);
+      const r = await post(["Ali", "Tom", "Umar"], ["Bilal", "Sam", "Umar Khan"]);
+      expect(r.applied).toBe(false);
+      expect(store.tables.teamAssignment ?? []).toEqual([]);
+    });
+  });
+
   it("the game a posted sheet could be: the next game with two or more confirmed; none otherwise", async () => {
     expect(await postedTeamsGame(ORG, NOON)).toBe(MATCH);
     store.tables.attendance = store.tables.attendance.slice(0, 1);

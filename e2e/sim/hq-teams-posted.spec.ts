@@ -18,8 +18,11 @@
  * chat stays untouched and silent; a sheet with a name MatchTime cannot
  * place on one confirmed player writes nothing.
  *
- * FNF's own roster (`helpers/fnf-club.ts`): "Hamza" plays, "Hamzah" (the
- * owner) does not; "Umar" plays, "Umar Noor" does not; "AH" is the club's
+ * FNF's own roster (`helpers/fnf-club.ts`), shaped as prod was that night:
+ * "Hamza" plays, "Hamzah" (the owner) does not; "Umar Noor" plays and the
+ * member called plain "Umar" does not (booked by mistake for Umar Noor and
+ * taken off on 24 Nov), so the sheet's "Umar" is Umar Noor: a posted sheet's
+ * names are placed among the game's confirmed players. "AH" is the club's
  * alias for Abdul-Hafeez.
  *
  *   STUBBED (always runs): the teams extractor is stubbed (what the real
@@ -34,7 +37,7 @@
  */
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
-import { FNF_HQ, fnfIdOf, seedFnfClub } from "../helpers/fnf-club";
+import { FNF_HQ, FNF_MEMBERS, fnfIdOf, seedFnfClub } from "../helpers/fnf-club";
 import { E2E } from "../helpers/env";
 import { clearPipelineStubs, setExtractorStub, setRouterStub, stubCalls } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
@@ -45,7 +48,8 @@ const KEY = { "x-api-key": E2E.WHATSAPP_API_KEY };
 
 const RED = ["Alamgir", "Yorel", "Wasim", "Shehryar", "Rafi", "Feroz", "Hamza", "Mojib", "Yaseen"];
 const YELLOW_WRITTEN = ["Imti", "Mo", "Akram", "Niro", "Clarence", "Imz", "AH", "Seb", "Umar"];
-const YELLOW = ["Imti", "Mo", "Akram", "Niro", "Clarence", "Imz", "Abdul-Hafeez", "Seb", "Umar"];
+/** Prod, 27 Nov: the sheet's "Umar" is Umar Noor, the one Umar playing. */
+const YELLOW = ["Imti", "Mo", "Akram", "Niro", "Clarence", "Imz", "Abdul-Hafeez", "Seb", "Umar Noor"];
 const INCIDENT = `Captains:\n\n${RED.join(", ")}\n\n${YELLOW_WRITTEN.join(", ")}`;
 const CHAT = "who's bringing the bibs tonight?";
 const GRAPHIC_ASK = "@Raihan please do graphic for the teams";
@@ -54,9 +58,16 @@ const GRAPHIC_ASK = "@Raihan please do graphic for the teams";
 const SQUAD = [...RED, ...YELLOW];
 const MT_SPLIT: Array<[string, "RED" | "YELLOW"]> = SQUAD.map((n, i) => [n, i % 2 === 0 ? "RED" : "YELLOW"]);
 
-async function seed(db: TestDb): Promise<void> {
-  await seedFnfClub(db, { playing: SQUAD, bench: ["Hamzah", "Umar Noor"] });
-  for (const [i, [name, team]] of MT_SPLIT.entries()) {
+/** Which Umars play: prod's night (Umar Noor), the reverse (plain Umar),
+ *  both, or Umar Noor and a second "Umar Khan" with no plain Umar playing. */
+type Umars = "prod" | "plain" | "both" | "two";
+async function seed(db: TestDb, umars: Umars = "prod"): Promise<void> {
+  const nine = YELLOW.slice(0, 8);
+  const playing =
+    umars === "prod" ? SQUAD : umars === "plain" ? [...RED, ...nine, "Umar"] : umars === "both" ? [...RED.slice(0, 8), ...nine, "Umar", "Umar Noor"] : [...RED.slice(0, 8), ...nine, "Umar Noor", "Umar Khan"];
+  const members = umars === "two" ? [...FNF_MEMBERS, { name: "Umar Khan" }] : FNF_MEMBERS;
+  await seedFnfClub(db, { members, playing, bench: ["Hamzah"] });
+  for (const [i, [name, team]] of playing.map((n, j): [string, "RED" | "YELLOW"] => [n, j % 2 === 0 ? "RED" : "YELLOW"]).entries()) {
     await db.run(`INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES ($1, $2, $3, $4::"Team")`, [`e2e-fnf-ta-${i}`, MATCH.upcoming, fnfIdOf(name), team]);
   }
   await db.run(`UPDATE "Match" SET status = 'TEAMS_GENERATED' WHERE id = $1`, [MATCH.upcoming]);
@@ -130,9 +141,11 @@ test.describe("the organisers' own teams, posted untagged in HQ (stubbed)", () =
     expect(out.react ?? null).toBeNull();
     expect(out.outcome).toBe("hq-teams-posted");
     expect(await teamsNow(db)).toEqual(expected(RED, YELLOW));
-    // "Hamza" is Hamza, not the owner Hamzah; "Umar" is Umar, not Umar Noor.
+    // "Hamza" is Hamza, not the owner Hamzah; "Umar" is Umar Noor, the one
+    // Umar playing, not the member called plain Umar who is off the game.
     expect((await teamsNow(db))[fnfIdOf("Hamzah")]).toBeUndefined();
-    expect((await teamsNow(db))[fnfIdOf("Umar Noor")]).toBeUndefined();
+    expect((await teamsNow(db))[fnfIdOf("Umar Noor")]).toBe("YELLOW");
+    expect((await teamsNow(db))[fnfIdOf("Umar")]).toBeUndefined();
     expect(await matchStatus(db)).toBe("TEAMS_PUBLISHED");
     const proposal = await db.one<{ state: string; by: string | null }>(`SELECT state, "approvedByUserId" AS by FROM "AdminTeamProposal" WHERE "matchId" = $1`, [MATCH.upcoming]);
     expect(proposal).toEqual({ state: "approved", by: U.admin });
@@ -186,17 +199,39 @@ test.describe("the organisers' own teams, posted untagged in HQ (stubbed)", () =
     expect(await jobsSince(db, since)).toBe(0);
   });
 
-  test("a name two members could be: never guessed, nothing written", async ({ request, db }) => {
+  test("plain Umar playing and Umar Noor not: the sheet's 'Umar' is plain Umar", async ({ request, db }) => {
     resetDb();
-    await seed(db);
-    setExtractorStub({
-      byExtractor: { teams: { [INCIDENT]: setRaw({ red: RED, yellow: YELLOW_WRITTEN }) } },
-      people: { [INCIDENT]: { Umar: { verdict: "ambiguous", names: ["Umar", "Umar Noor"] } } },
-    });
+    await seed(db, "plain");
+    setExtractorStub({ byExtractor: { teams: { [INCIDENT]: setRaw({ red: RED, yellow: YELLOW_WRITTEN }) } } });
     const out = await say(request, INCIDENT);
+    expect(out.outcome).toBe("hq-teams-posted");
+    expect((await teamsNow(db))[fnfIdOf("Umar")]).toBe("YELLOW");
+    expect((await teamsNow(db))[fnfIdOf("Umar Noor")]).toBeUndefined();
+  });
+
+  test("both Umars playing: 'Umar' is plain Umar and 'Umar Noor' is Umar Noor", async ({ request, db }) => {
+    resetDb();
+    await seed(db, "both");
+    const sides = { red: [...RED.slice(0, 8), "Umar"], yellow: [...YELLOW_WRITTEN.slice(0, 8), "Umar Noor"] };
+    const TEXT = `${sides.red.join(", ")}\n\n${sides.yellow.join(", ")}`;
+    setExtractorStub({ byExtractor: { teams: { [TEXT]: setRaw(sides) } } });
+    const out = await say(request, TEXT);
+    expect(out.outcome).toBe("hq-teams-posted");
+    expect((await teamsNow(db))[fnfIdOf("Umar")]).toBe("RED");
+    expect((await teamsNow(db))[fnfIdOf("Umar Noor")]).toBe("YELLOW");
+  });
+
+  test("two playing Umars, neither plainly 'Umar': never guessed, nothing written", async ({ request, db }) => {
+    resetDb();
+    await seed(db, "two");
+    const sides = { red: [...RED.slice(0, 8), "Umar"], yellow: [...YELLOW_WRITTEN.slice(0, 8), "Umar Khan"] };
+    const TEXT = `${sides.red.join(", ")}\n\n${sides.yellow.join(", ")}`;
+    setExtractorStub({ byExtractor: { teams: { [TEXT]: setRaw(sides) } } });
+    const before = await teamsNow(db);
+    const out = await say(request, TEXT);
     expect(out.replyText ?? null).toBeNull();
     expect(out.outcome).toBe("hq-teams-posted-not-applied");
-    expect(await teamsNow(db)).toEqual(mtSplit());
+    expect(await teamsNow(db)).toEqual(before);
   });
 
   test("the same teams from someone who is not an organiser: never read", async ({ request, db }) => {
@@ -218,7 +253,7 @@ test.describe("the organisers' own teams, posted untagged in HQ (stubbed)", () =
   const usage = async (db: TestDb) =>
     db.one<{ calls: number; cost: number }>(`SELECT coalesce(sum(calls), 0)::int AS calls, coalesce(sum("costUsd"), 0)::float AS cost FROM "OrgAiUsage" WHERE "orgId" = $1`, [ORG_ID]);
 
-  test("the incident: set, Hamza is Hamza and Umar is Umar, silent", async ({ request, db }) => {
+  test("the incident, prod's shape: set, Hamza is Hamza and Umar is Umar Noor, silent", async ({ request, db }) => {
     resetDb();
     await seed(db);
     const out = await say(request, INCIDENT);
