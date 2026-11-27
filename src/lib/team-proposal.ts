@@ -41,6 +41,19 @@
  * quotes, "set" makes a pasted sheet the teams. Both only after every fact
  * holds (`checkSheetFacts`), and both as a proposal needing YES.
  *
+ * THE ORGANISERS' OWN TEAMS, POSTED UNTAGGED (Kemal, 2026-11-27: "this
+ * group is manually doing the teams, not using MT"). FNF's admins write the
+ * night's two teams in HQ to each other, untagged. The teams extractor reads
+ * an organiser's untagged message (`hq-teams-posted.ts`) and, when it writes
+ * out both teams, `setPostedTeams` makes them the teams: the same checks as
+ * a pasted sheet (every name placed on ONE confirmed player by who-is-who,
+ * nobody twice, every confirmed player on a side, the sides even), then the
+ * same write, and the teams are FINAL, approved by the organiser who sent
+ * them, as their YES would. Nothing is said or posted anywhere, and no YES
+ * is asked. Anything that does not hold writes nothing (logged, ids and
+ * counts): a half-applied sheet would be wrong teams nobody asked for. A
+ * later posted sheet replaces an earlier one.
+ *
  * NO TEAM SHEET PICTURE ON ITS OWN (Kemal, 2026-10-30: "it can only be
  * generated when they tag matchtime while asking to generate"). Neither the
  * approval nor a later change draws one; the graphics route does, when
@@ -181,7 +194,12 @@ export type TeamReplyOutcome =
   | "teams-set"
   | "teams-restore-same"
   | "teams-restore-none"
-  | "teams-sheet-invalid";
+  | "teams-sheet-invalid"
+  /** The organisers' own teams, posted untagged in HQ (2026-11-27): set
+   *  and final, nothing said. */
+  | "teams-posted"
+  /** Posted untagged, and exactly the teams as they stand: approved. */
+  | "teams-posted-same";
 
 export interface TeamReply {
   outcome: TeamReplyOutcome;
@@ -544,9 +562,13 @@ export async function handleTeamCommand(args: {
   /** The message, for who-is-who to read its names in (2026-11-09). */
   body?: string;
   senderName?: string | null;
+  /** The organisers' own teams posted untagged in HQ (2026-11-27,
+   *  `setPostedTeams`): a "set" only, final at once, nothing said. */
+  posted?: boolean;
   deps?: TeamProposalDeps;
 }): Promise<TeamReply> {
   const { orgId, lang, now, deps, command } = args;
+  if (args.posted && command.kind !== "set") return { outcome: "teams-not-asked", replyText: null };
   const s = t(lang);
   const announce = await announces(deps, orgId);
 
@@ -641,7 +663,7 @@ export async function handleTeamCommand(args: {
   }
 
   if (command.kind === "restore" || command.kind === "set") {
-    return setWholeSheet({ ...args, command, match, sheet, announce, people, clubNameOf });
+    return setWholeSheet({ ...args, command, match, sheet, announce, people, clubNameOf, posted: args.posted === true });
   }
 
   // No teams yet: a pair or a side is a build that keeps them; a move is not.
@@ -1130,6 +1152,10 @@ async function setWholeSheet(a: {
   people: PersonPicks | undefined;
   clubNameOf: ReadonlyMap<string, string>;
   announce: boolean;
+  /** The organisers' own teams posted untagged (2026-11-27): final at
+   *  once, no proposal, no sheet kept, nothing said. */
+  posted?: boolean;
+  senderUserId?: string;
 }): Promise<TeamReply> {
   const { lang, now, match, sheet } = a;
   const s = t(lang);
@@ -1149,10 +1175,19 @@ async function setWholeSheet(a: {
       if (res.kind === "one") target.push({ userId: res.userId, team: n.team });
       else if (!problems.some((p) => p.raw === n.name)) problems.push({ raw: n.name, res });
     }
-    if (problems.length) return { outcome: "teams-name-unclear", replyText: buildNameProblems(lang, problems, "squad") };
+    if (problems.length) {
+      if (a.posted) {
+        const count = (k: NameResolution["kind"]) => problems.filter((p) => p.res.kind === k).length;
+        console.log(
+          `[team-proposal] ${a.messageId}: posted teams on match ${match.id} not applied: ${problems.length} name(s) not placed (${count("unknown")} unknown, ${count("ambiguous")} ambiguous, ${count("unsure")} unsure)`,
+        );
+      }
+      return { outcome: "teams-name-unclear", replyText: buildNameProblems(lang, problems, "squad") };
+    }
     const seen = new Set<string>();
     const twice = [...new Set(target.filter((x) => (seen.has(x.userId) ? true : (seen.add(x.userId), false))).map((x) => x.userId))];
     if (twice.length) {
+      if (a.posted) console.log(`[team-proposal] ${a.messageId}: posted teams on match ${match.id} not applied: ${twice.length} player(s) on both sides`);
       return { outcome: "teams-sheet-invalid", replyText: s.tp_sheet_twice({ names: twice.map((id) => sheet.nameOf.get(id) ?? "?").join(", ") }) };
     }
   }
@@ -1176,6 +1211,10 @@ async function setWholeSheet(a: {
     console.log(`[team-proposal] ${a.messageId}: ${a.command.kind} on match ${match.id} refused: ${check.notPlaying.length} not playing, ${check.missing.length} missing, ${check.uneven ? "uneven" : "even"}`);
     return { outcome: "teams-sheet-invalid", replyText: lines.join(" ") };
   }
+
+  // The organisers' own teams (2026-11-27): written if they differ, then
+  // final, approved by the sender, and nothing said or kept as a sheet.
+  if (a.posted) return setPostedSheet({ ...a, target });
 
   // Exactly the teams as they stand: nothing to write.
   if (sheet.slots.every((x) => x.playing) && sameSheet(sidesOf(sheet), target)) {
@@ -1201,4 +1240,90 @@ async function setWholeSheet(a: {
   const lead = earlier ? s.tp_restored_earlier({ day: dayLabel(lang, earlier.createdAt), time: formatLondon(earlier.createdAt, "HH:mm") }) : s.tp_set_pasted;
   console.log(`[team-proposal] ${a.messageId}: ${earlier ? "an earlier sheet" : "a pasted sheet"} set on match ${match.id}, ${target.length} on the teams, proposed`);
   return { outcome: earlier ? "teams-restored" : "teams-set", replyText: `${lead}\n\n${await propose(after, lang, now, a.announce)}` };
+}
+
+/**
+ * THE ORGANISERS' OWN TEAMS, POSTED UNTAGGED IN HQ (2026-11-27), once every
+ * fact holds (`setWholeSheet`). The same write as a pasted sheet when they
+ * differ from the teams as they stand, then final as a YES makes them
+ * (`answerTeamsYes`): the proposal approved by the sender with these teams
+ * as the ones told, the match TEAMS_PUBLISHED. So no "Teams ready"
+ * proposal, no reminder and no YES follow. Nothing is said in HQ, nothing
+ * is posted in the players' group, and no sheet is kept (MatchTime posted
+ * none). A pasted squad list waiting for YES is left alone.
+ */
+async function setPostedSheet(a: {
+  orgId: string;
+  messageId: string;
+  now: Date;
+  match: MatchRow;
+  sheet: Sheet;
+  target: SheetSide[];
+  senderUserId?: string;
+}): Promise<TeamReply> {
+  const { match, sheet, target, now } = a;
+  const same = sheet.slots.every((x) => x.playing) && sameSheet(sidesOf(sheet), target);
+  await db.$transaction(async (tx) => {
+    await lockTeamSlots(tx as unknown as SlotFillTx, match.id);
+    if (!same) {
+      await tx.teamAssignment.deleteMany({ where: { matchId: match.id } });
+      await tx.teamAssignment.createMany({ data: target.map((x) => ({ matchId: match.id, userId: x.userId, team: x.team })) });
+    }
+    if (match.status !== "TEAMS_PUBLISHED") await tx.match.update({ where: { id: match.id }, data: { status: "TEAMS_PUBLISHED" } });
+  });
+  const after = await loadSheet(match, null);
+  const approved = { state: "approved", approvedAt: now, approvedByUserId: a.senderUserId ?? null, toldSheet: after.slots as unknown as object };
+  await db.adminTeamProposal.upsert({
+    where: { matchId: match.id },
+    create: { orgId: a.orgId, matchId: match.id, askedAt: now, ...approved },
+    update: approved,
+  });
+  console.log(`[team-proposal] ${a.messageId}: posted teams set on match ${match.id}, ${target.length} on the teams${same ? " (as they stood)" : ""}, final, nothing said`);
+  return { outcome: same ? "teams-posted-same" : "teams-posted", replyText: null };
+}
+
+/**
+ * The organisers' own teams, posted untagged in HQ (2026-11-27): the two
+ * sides the teams extractor read, made the teams of the club's next game
+ * when every fact holds, silently. `applied` is false when nothing was
+ * written (a name not placed on one confirmed player, someone twice, a
+ * confirmed player left out, uneven sides, no game).
+ */
+export async function setPostedTeams(args: {
+  orgId: string;
+  red: string[];
+  yellow: string[];
+  senderUserId: string;
+  messageId: string;
+  now: Date;
+  body?: string;
+  senderName?: string | null;
+  deps?: TeamProposalDeps;
+}): Promise<{ outcome: TeamReplyOutcome; applied: boolean }> {
+  const r = await handleTeamCommand({
+    orgId: args.orgId,
+    lang: null,
+    command: { kind: "set", red: args.red, yellow: args.yellow },
+    senderUserId: args.senderUserId,
+    messageId: args.messageId,
+    now: args.now,
+    addressed: false,
+    posted: true,
+    ...(args.body !== undefined ? { body: args.body } : {}),
+    ...(args.senderName !== undefined ? { senderName: args.senderName } : {}),
+    ...(args.deps ? { deps: args.deps } : {}),
+  });
+  return { outcome: r.outcome, applied: r.outcome === "teams-posted" || r.outcome === "teams-posted-same" };
+}
+
+/**
+ * Is there a game whose teams an organiser's posted sheet could be? The
+ * club's next game (the one a pasted sheet is for), not played, with at
+ * least two confirmed players. A fact, read before any model is asked.
+ */
+export async function postedTeamsGame(orgId: string, now: Date): Promise<string | null> {
+  const match = await commandMatch(orgId, now, { kind: "set", red: [], yellow: [] });
+  if (!match) return null;
+  const confirmed = await db.attendance.count({ where: { matchId: match.id, status: "CONFIRMED" } });
+  return confirmed >= 2 ? match.id : null;
 }

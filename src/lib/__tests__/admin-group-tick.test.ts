@@ -22,6 +22,12 @@ describe("tickFor", () => {
     expect(tickFor("hq-game-move-which+hq-part-not-done")).toBeNull();
   });
 
+  it("the organisers' own teams posted untagged (2026-11-27): silent, so no tick, applied or not", () => {
+    expect(tickFor("hq-teams-posted")).toBeNull();
+    expect(tickFor("hq-teams-posted-same")).toBeNull();
+    expect(tickFor("hq-teams-posted-not-applied")).toBeNull();
+  });
+
   it("joined: a part done gets the tick", () => {
     expect(tickFor("hq-format-switched+hq-pool-asked")).toBe(HQ_TICK);
     expect(tickFor("hq-format-switched+hq-part-not-done")).toBe(HQ_TICK);

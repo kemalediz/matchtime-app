@@ -791,6 +791,15 @@ export default async function AdminGuidePage() {
         played, so ratings and Man of the Match count the right players.
         Nothing is posted in the players&apos; group.
       </p>
+      <p>
+        Make your teams yourselves? Post them in your admin group as you
+        always do, one list for each side, no tag needed. MatchTime quietly
+        uses them as the next game&apos;s teams, final, so its reminders,
+        ratings and Man of the Match follow your teams. It says nothing and
+        posts nothing. If it can&apos;t tell who a name is, or someone in the
+        squad is left out, it leaves the teams as they were. Post them again
+        and the new teams replace the old ones.
+      </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="scores-ratings">7. Scores, ratings and Man of the Match</h2>
@@ -917,7 +926,8 @@ export default async function AdminGuidePage() {
         a friend is coming). You and your admins can also move a player to
         the bench without tagging it. Anything else needs a message that
         tags <strong>@Match Time</strong>. In your admin group it acts only on
-        messages that tag it. To tag it, type @ and pick Match Time from the
+        messages that tag it, with one quiet exception: the two teams you post
+        there become the teams. To tag it, type @ and pick Match Time from the
         list. Typing the name or replying to MatchTime is not enough. The
         rest of the chat is left alone.
       </p>

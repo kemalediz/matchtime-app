@@ -40,6 +40,7 @@ describe("the HQ topics, English", () => {
         `🟥🟦 *Teams*: ${tag}`,
         `🟥🟦 *"@Match Time show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`,
         `↩️ Reply to one of my earlier team sheets with *"@Match Time use these"*, or tag me and paste the two teams: I bring those teams back for your *@Match Time YES*.`,
+        `📝 Post your own two teams here without tagging me, one list for each side: I quietly use them as the next game's teams, final. If I can't tell who a name is, or someone in the squad is left out, I leave the teams as they were.`,
         `🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams. On match day after kickoff, these and *"@Match Time put Ben in for Sam"* fix the game just played, and nothing is posted in the players' group.`,
         `✅ *@Match Time YES*: make the proposed teams final.`,
       ].join("\n"),

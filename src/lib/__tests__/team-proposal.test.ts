@@ -134,7 +134,9 @@ vi.mock("@/lib/resolve-or-provision-name", () => provision);
 import {
   answerTeamsYes,
   handleTeamCommand,
+  postedTeamsGame,
   replaceOnPlayedGame,
+  setPostedTeams,
   setAsideTeamProposal,
   teamProposalJobs,
   type TeamProposalDeps,
@@ -1063,6 +1065,112 @@ describe("restore and set: the teams of an earlier sheet, or of a pasted one, as
     seedSheet();
     const r = await handleTeamCommand({ addressed: true, orgId: ORG, lang: "tr", command: { kind: "set", red: ["Ali", "Tom"], yellow: ["Bilal", "Shehryar"] }, senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
     expect(r.replyText?.startsWith("Gönderdiğiniz takımlar bunlar. *@Match Time EVET* yazmanız gerekiyor.")).toBe(true);
+  });
+});
+
+// FNF HQ, Fri 27 Nov 2026: an admin wrote the night's two teams to the
+// other admins, untagged, and MatchTime kept its own earlier split (Kemal:
+// "this group is manually doing the teams, not using MT"). The organisers'
+// own teams become the teams, final, with nothing said anywhere; any fact
+// that does not hold writes nothing.
+describe("the organisers' own teams, posted untagged in HQ (FNF 2026-11-27)", () => {
+  const post = (red: string[], yellow: string[], deps = quiet, now = NOON, messageId = "wa-posted") =>
+    setPostedTeams({ orgId: ORG, red, yellow, senderUserId: "u-admin", messageId, now, deps });
+  const nothingSaid = () => {
+    expect(store.tables.botJob ?? []).toEqual([]);
+    expect(hqLog.recordMatchTimeQuestion).not.toHaveBeenCalled();
+    expect(store.tables.adminTeamSheet ?? []).toEqual([]);
+  };
+
+  it("over MatchTime's own proposed teams: the posted teams are the teams, final, approved by the sender, nothing said", async () => {
+    seedSheet();
+    await cmd("teams");
+    vi.clearAllMocks();
+    store.tables.adminTeamSheet = [];
+    const r = await post(["Ali", "Tom"], ["Bilal", "shez"]);
+    expect(r).toEqual({ outcome: "teams-posted", applied: true });
+    expect([teamOf("u-ali"), teamOf("u-tom"), teamOf("u-bilal"), teamOf("u-sheh")]).toEqual(["RED", "RED", "YELLOW", "YELLOW"]);
+    expect((store.tables.match[0] as Row).status).toBe("TEAMS_PUBLISHED");
+    expect(proposal()).toMatchObject({ state: "approved", approvedAt: NOON, approvedByUserId: "u-admin" });
+    expect((proposal().toldSheet as Array<{ userId: string; team: string }>).map((x) => [x.userId, x.team])).toEqual([
+      ["u-ali", "RED"],
+      ["u-tom", "RED"],
+      ["u-bilal", "YELLOW"],
+      ["u-sheh", "YELLOW"],
+    ]);
+    nothingSaid();
+    // Nothing waits for a YES any more.
+    expect(await yes()).toBeNull();
+  });
+
+  it("with no teams yet: set and final, and no 'Teams ready' proposal or reminder follows", async () => {
+    const r = await post(["Ali", "Tom"], ["Bilal", "Shehryar"]);
+    expect(r.applied).toBe(true);
+    expect(store.tables.teamAssignment).toHaveLength(4);
+    expect(proposal()).toMatchObject({ orgId: ORG, matchId: MATCH, state: "approved" });
+    nothingSaid();
+    expect(await tick(NOON)).toBe(0);
+    expect(await tick(new Date("2026-10-16T17:00:00.000Z"))).toBe(0);
+    expect(generate).not.toHaveBeenCalled();
+    expect(store.tables.botJob ?? []).toEqual([]);
+  });
+
+  it("a club where MatchTime posts the teams: still nothing in the players' group", async () => {
+    seedSheet();
+    expect((await post(["Ali", "Tom"], ["Bilal", "Shehryar"], loud)).applied).toBe(true);
+    expect(groupJobs()).toEqual([]);
+    nothingSaid();
+  });
+
+  it("a later posted sheet replaces the earlier one", async () => {
+    await post(["Ali", "Tom"], ["Bilal", "Shehryar"]);
+    const r = await post(["Ali", "Bilal"], ["Tom", "Shehryar"], quiet, new Date(NOON.getTime() + 60_000), "wa-posted-2");
+    expect(r).toEqual({ outcome: "teams-posted", applied: true });
+    expect([teamOf("u-ali"), teamOf("u-bilal"), teamOf("u-tom"), teamOf("u-sheh")]).toEqual(["RED", "RED", "YELLOW", "YELLOW"]);
+    expect(store.tables.teamAssignment).toHaveLength(4);
+    expect(proposal()).toMatchObject({ state: "approved" });
+  });
+
+  it("exactly the teams as they stand: nothing rewritten, made final", async () => {
+    seedSheet();
+    await cmd("teams");
+    const before = store.tables.teamAssignment.map((r) => ({ ...r }));
+    const r = await post(["Ali", "Bilal"], ["Tom", "Shehryar"]);
+    expect(r).toEqual({ outcome: "teams-posted-same", applied: true });
+    expect(store.tables.teamAssignment).toEqual(before);
+    expect(proposal()).toMatchObject({ state: "approved" });
+    expect((store.tables.match[0] as Row).status).toBe("TEAMS_PUBLISHED");
+  });
+
+  it("a name it cannot place, a name twice, uneven sides, a confirmed player left out, a player not playing: nothing written, nothing said", async () => {
+    seedSheet();
+    await cmd("teams");
+    vi.clearAllMocks();
+    store.tables.adminTeamSheet = [];
+    const before = store.tables.teamAssignment.map((r) => ({ ...r }));
+    const proposed = { ...proposal() };
+    store.tables.attendance.push({ id: "att-z", matchId: MATCH, userId: "u-zara", status: "DROPPED" });
+    for (const [red, yellow] of [
+      [["Ali", "Zed"], ["Tom", "Shehryar"]],
+      [["Ali", "Bilal"], ["Tom", "Ali Khan"]],
+      [["Ali", "Bilal", "Tom"], ["Shehryar"]],
+      [["Ali"], ["Tom"]],
+      [["Ali", "Bilal", "Zara"], ["Tom", "Shehryar"]],
+    ]) {
+      expect((await post(red, yellow)).applied).toBe(false);
+    }
+    expect(store.tables.teamAssignment).toEqual(before);
+    expect(proposal()).toEqual(proposed);
+    expect((store.tables.match[0] as Row).status).toBe("TEAMS_GENERATED");
+    nothingSaid();
+  });
+
+  it("the game a posted sheet could be: the next game with two or more confirmed; none otherwise", async () => {
+    expect(await postedTeamsGame(ORG, NOON)).toBe(MATCH);
+    store.tables.attendance = store.tables.attendance.slice(0, 1);
+    expect(await postedTeamsGame(ORG, NOON)).toBeNull();
+    store.tables.match = [];
+    expect(await postedTeamsGame(ORG, NOON)).toBeNull();
   });
 });
 

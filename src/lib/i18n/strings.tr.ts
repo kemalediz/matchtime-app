@@ -1275,6 +1275,7 @@ export const tr: Strings = {
     if (p.topic === "teams" && p.squad) {
       lines.push(`🟥🟦 *"@Match Time takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`);
       lines.push(`↩️ Önceki takım listelerimden birine *"@Match Time bunları kullan"* diye yanıt verin ya da beni etiketleyip iki takımı yapıştırın: o takımları *@Match Time EVET* yazmanız için geri getiririm.`);
+      lines.push(`📝 Kendi iki takımınızı beni etiketlemeden buraya yazın, her takım için bir liste: bunları sessizce bir sonraki maçın takımları olarak, kesinleşmiş hâlde kullanırım. Bir ismin kim olduğunu anlayamazsam ya da kadrodan biri dışarıda kalırsa takımları olduğu gibi bırakırım.`);
       lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik. Maç günü başlama saatinden sonra bunlar ve *"@Match Time Sam yerine Ben'i koy"* oynanan maçı düzeltir; oyuncu grubuna bir şey gönderilmez.`);
       lines.push(`✅ *@Match Time EVET*: önerilen takımları kesinleştiririm.`);
     }

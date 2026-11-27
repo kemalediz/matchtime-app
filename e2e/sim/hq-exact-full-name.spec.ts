@@ -28,7 +28,8 @@
  *   MT_SIM_LIVE_LLM=1 npx tsx e2e/run.ts sim/hq-exact-full-name.spec.ts
  */
 import { test, expect, resetDb } from "../fixtures";
-import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
+import { MATCH, ORG_ID, PHONE } from "../helpers/constants";
+import { FNF_HQ, FNF_MEMBERS, fnfIdOf, seedFnfClub, type FnfMember } from "../helpers/fnf-club";
 import { E2E } from "../helpers/env";
 import { changeReading, clearHqSquadReaderStub, clearPipelineStubs, engineOn } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
@@ -36,87 +37,17 @@ import type { APIRequestContext } from "@playwright/test";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 const KEY = { "x-api-key": E2E.WHATSAPP_API_KEY };
-const HQ = "120363777000000092@g.us";
+const HQ = FNF_HQ;
 
-/** FNF's members in membership order (prod, read-only, 24 Nov), "?" left out. */
-const MEMBERS: Array<{ name: string; role?: "OWNER" | "ADMIN"; aliases?: string[] }> = [
-  { name: "Hamzah", role: "OWNER" },
-  { name: "Raihan", role: "ADMIN" },
-  { name: "Imz", role: "ADMIN" },
-  ...["Rafi"].map((name) => ({ name })),
-  { name: "Abdul-Hafeez", aliases: ["ah"] },
-  ...["AK", "Nasir", "Wasim", "Mo", "Akram", "Bilal", "Hamza", "Kieran", "Maj", "Mojib", "Seb", "Yorel", "Feroz", "Mahir", "Ali", "Alamgir", "Habib", "Yaseen"].map((name) => ({ name })),
-  { name: "Najib", aliases: ["uncle najib", "uncle"] },
-  ...["Uways", "Umar", "Leo"].map((name) => ({ name })),
-  { name: "Imti", aliases: ["imtiaz"] },
-  ...["Monts", "Hanad", "Imran", "Omar Laher", "Naim", "Anfal", "Omar", "Andrew", "Maahi", "Shehryar", "Niro", "Irfan", "Mez", "Yusuf", "Youcef", "Morgan", "Bilz", "Kieran R"].map((name) => ({ name })),
-  { name: "Kemal", role: "ADMIN" },
-  ...["Shaq", "Juned", "Qash", "Clarence", "Biggz", "Lil Mo", "Umar Noor"].map((name) => ({ name })),
-];
+const MEMBERS = FNF_MEMBERS;
 
 /** 18 playing, then the bench, Umar on it by mistake. */
 const PLAYING = ["Mo", "Mojib", "Alamgir", "Feroz", "Yaseen", "Rafi", "Abdul-Hafeez", "Najib", "Hamzah", "Yorel", "Akram", "Shehryar", "Maj", "Niro", "Imti", "Seb", "Clarence", "Imz"];
 const BENCH = ["Wasim", "Bilal", "Andrew", "Umar"];
 
-/** The sender, an organiser, plays the part of Imz (the fixture admin's phone). */
-const idOf = (name: string): string =>
-  name === "Imz" ? U.admin : name === "Hamzah" ? U.collector : `e2e-fnf-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+const idOf = fnfIdOf;
 
-async function seedFnf(db: TestDb, members = MEMBERS, bench = BENCH): Promise<void> {
-  await db.run(
-    `UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group', "benchPickMode" = 'organiser', language = 'en' WHERE id = $1`,
-    [ORG_ID, HQ],
-  );
-  await db.run(`DELETE FROM "UserAlias" WHERE "orgId" = $1`, [ORG_ID]);
-  await db.run(`DELETE FROM "Membership" WHERE "orgId" = $1`, [ORG_ID]);
-  const base = Date.now() - 60 * 24 * 60 * 60 * 1000;
-  for (const [i, m] of members.entries()) {
-    const id = idOf(m.name);
-    if (id === U.admin || id === U.collector) {
-      await db.run(`UPDATE "User" SET name = $2 WHERE id = $1`, [id, m.name]);
-    } else {
-      await db.run(`INSERT INTO "User" (id, name, email, "updatedAt") VALUES ($1, $2, $3, now()) ON CONFLICT (id) DO UPDATE SET name = $2`, [
-        id,
-        m.name,
-        `${id}@e2e.test`,
-      ]);
-    }
-    await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role, "createdAt") VALUES ($1, $2, $3, $4, $5)`, [
-      `e2e-fnf-mem-${i}`,
-      id,
-      ORG_ID,
-      m.role ?? "PLAYER",
-      new Date(base + i * 60_000),
-    ]);
-    for (const alias of m.aliases ?? []) {
-      await db.run(`INSERT INTO "UserAlias" (id, "orgId", "userId", alias, source) VALUES ($1, $2, $3, $4, 'manual')`, [
-        `e2e-fnf-al-${i}-${alias.replace(/\s+/g, "-")}`,
-        ORG_ID,
-        id,
-        alias,
-      ]);
-    }
-  }
-  await db.run(`UPDATE "Match" SET "maxPlayers" = 18 WHERE id = $1`, [MATCH.upcoming]);
-  await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
-  await db.run(`DELETE FROM "Attendance" WHERE "matchId" = $1`, [MATCH.upcoming]);
-  const listedAt = Date.now() - 24 * 60 * 60 * 1000;
-  const rows: Array<[string, "CONFIRMED" | "BENCH"]> = [...PLAYING.map((n) => [n, "CONFIRMED"] as [string, "CONFIRMED"]), ...bench.map((n) => [n, "BENCH"] as [string, "BENCH"])];
-  for (const [i, [name, status]] of rows.entries()) {
-    await db.run(`INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt") VALUES ($1, $2, $3, $4::"AttendanceStatus", $5, now())`, [
-      `e2e-fnf-att-${i}`,
-      MATCH.upcoming,
-      idOf(name),
-      status,
-      i + 1,
-    ]);
-    await db.run(
-      `INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "toStatus", "toPosition", cause, "actorKind", "sourceRef", at)
-       VALUES ($1, $2, $3, $4, $5::"AttendanceStatus", $6, 'test-fixture', 'system', 'e2e:seed', $7)`,
-      [`e2e-fnf-ev-${i}`, MATCH.upcoming, idOf(name), ORG_ID, status, i + 1, new Date(listedAt + i * 60_000)],
-    );
-  }
-}
+const seedFnf = (db: TestDb, members: FnfMember[] = MEMBERS, bench = BENCH): Promise<void> => seedFnfClub(db, { members, playing: PLAYING, bench });
 
 const statusOf = async (db: TestDb, name: string): Promise<string | null> =>
   (await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, idOf(name)]))?.status ?? null;

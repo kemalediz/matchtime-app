@@ -151,6 +151,12 @@ const monthPayment = vi.hoisted(() => ({ handleCollectorPaidReply: vi.fn(async (
 vi.mock("@/lib/month-payment", () => monthPayment);
 vi.mock("../month-payment", () => monthPayment);
 
+// The organisers' own teams posted untagged (2026-11-27): its own tests
+// (`hq-teams-posted.test.ts`); nothing posted by default.
+const posted = vi.hoisted(() => ({ readPostedTeams: vi.fn<(input: unknown) => Promise<unknown>>(async () => null) }));
+vi.mock("@/lib/hq-teams-posted", () => posted);
+vi.mock("../hq-teams-posted", () => posted);
+
 import { understandAdminMessage } from "../admin-group-understand";
 
 const NOW = new Date("2026-10-16T09:10:00Z");
@@ -301,6 +307,57 @@ describe("HQ is quiet unless MatchTime is tagged (FNF HQ 2026-10-30 23:56 UTC)",
     const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "other" }) };
     dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
     expect((await ask(`@Match Time ${INCIDENT}`, "admin_ops", { deps }))?.replyText).toBe("I can't do that from this group.");
+  });
+});
+
+// FNF HQ, Fri 27 Nov 2026: an admin wrote the night's two teams to the
+// other admins, untagged. Kemal: "this group is manually doing the teams,
+// not using MT". The one thing read untagged in HQ, and still silent.
+describe("the organisers' own teams, posted untagged (FNF HQ 2026-11-27)", () => {
+  const TEAMS = "Captains:\n\nAlamgir, Yorel, Wasim\n\nImti, Mo, Akram";
+
+  it("an organiser's untagged message goes to the posted-teams reader; set, the outcome is kept and nothing is said", async () => {
+    posted.readPostedTeams.mockResolvedValue({ outcome: "hq-teams-posted" });
+    const r = await ask(TEAMS, "none", { botMentioned: false });
+    expect(r).toEqual({ route: null, outcome: "hq-teams-posted", replyText: null });
+    expect(posted.readPostedTeams).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", messageId: "wa-9", senderUserId: "u-admin", senderName: "Raihan", now: NOW }));
+    const call = posted.readPostedTeams.mock.calls[0][0] as unknown as { body: () => Promise<string> };
+    expect(await call.body()).toBe(TEAMS);
+    expect(dbMock.adminGroupMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ hqOutcome: "hq-teams-posted" }) }));
+    // No router call, no other reader, nothing recorded as said.
+    expect(requests).toHaveLength(0);
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+    expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
+    expect(hqLog.recordMatchTimeQuestion).not.toHaveBeenCalled();
+  });
+
+  it("not the teams: silent as before", async () => {
+    posted.readPostedTeams.mockResolvedValue(null);
+    expect(await ask("who's bringing the bibs?", "none", { botMentioned: false })).toBeNull();
+    expect(posted.readPostedTeams).toHaveBeenCalledTimes(1);
+    expect(dbMock.adminGroupMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { hqOutcome: "silent" } }));
+  });
+
+  it("the reader failing: silent, never heard in HQ", async () => {
+    posted.readPostedTeams.mockRejectedValue(new Error("db down"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await ask(TEAMS, "none", { botMentioned: false })).toBeNull();
+    err.mockRestore();
+    expect(dbMock.adminGroupMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { hqOutcome: "silent" } }));
+  });
+
+  it("a member who is not an organiser, someone MatchTime does not know, a monthly club: never read", async () => {
+    expect(await ask(TEAMS, "none", { botMentioned: false, organiser: false, member: true, senderUserId: "u-p" })).toBeNull();
+    expect(await ask(TEAMS, "none", { botMentioned: false, organiser: false, senderUserId: null })).toBeNull();
+    expect(await ask(TEAMS, "none", { botMentioned: false, org: { ...ORG, squadMode: "monthly" } })).toBeNull();
+    expect(posted.readPostedTeams).not.toHaveBeenCalled();
+  });
+
+  it("tagged: the shared pipeline, as before, not the posted-teams reader", async () => {
+    paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
+    await ask(`@Match Time ${TEAMS}`, "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "set", sides: { red: ["Alamgir"], yellow: ["Imti"] } }) } });
+    expect(posted.readPostedTeams).not.toHaveBeenCalled();
+    expect(teams.handleTeamCommand).toHaveBeenCalled();
   });
 });
 
