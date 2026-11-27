@@ -15,9 +15,11 @@
  *
  *   0. ONLY A REAL TAG (Kemal, 2026-10-31: "real tag pls"). A message
  *      without the Pi's real mention flag for MatchTime is recorded in the
- *      day's log and nothing else: no model reads it, nothing is said, no
- *      tick (`admin-group-understand.ts` holds the gate; the pick below
- *      checks the same flag).
+ *      day's log and nothing else: nothing is said, no tick
+ *      (`admin-group-understand.ts` holds the gate; the pick below checks
+ *      the same flag). The one thing read untagged: an organiser writing
+ *      out both teams of the next game, made the teams silently
+ *      (2026-11-27, `hq-teams-posted.ts`).
  *   1. A TAGGED REPLY TO AN OPEN PICK ROUND (MatchTime's own numbered bench
  *      list), read by the pick reader, a model, against that list (2026-10-30,
  *      `organiser-pick-reader.ts`; the collector's PAID digest answer is
@@ -63,6 +65,7 @@ import { HQ_CANCEL_NOTHING_DONE } from "./match-cancel";
 import { piMentionsBot } from "./interaction-contract";
 import { cardSafeText } from "./guest-card/vcard";
 import { outcomeParts } from "./outcome-parts";
+import { HQ_TEAMS_POSTED_OUTCOMES } from "./hq-teams-posted-rules";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -166,6 +169,9 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-game-move-invalid",
   "hq-game-move-weekly-unchanged",
   ...["started", "set-by-hand", "into-the-past", "other-month", "unreadable-time", "unchanged", "gone"].map((r) => `hq-game-move-stayed-${r}`),
+  // The organisers' own teams, posted untagged (2026-11-27): silent, so
+  // not even a tick, applied or not.
+  ...HQ_TEAMS_POSTED_OUTCOMES,
 ]);
 export const HQ_TICK = "✅";
 
@@ -221,6 +227,8 @@ export async function handleAdminGroupMessage(input: AdminGroupMessage): Promise
       momChosenBy: true,
       // The HQ help's pool line (admin-group-help.ts `hqHelpGates`).
       featurePlayerPool: true,
+      // Who announces the teams: the HQ help's posted-teams line (2026-11-27).
+      listAnnouncer: true,
     },
   });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };

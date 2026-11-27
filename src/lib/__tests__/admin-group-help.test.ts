@@ -24,9 +24,25 @@ const ALL = { squad: true, graphics: true, picks: true, paid: true };
 /** Every topic's lines for a club, as "help <topic>" shows them, one after another. */
 const topics = (p: HqHelpGates & { lang: string }) => HQ_HELP_TOPICS.map((tp) => buildHqTopicLines(tp, p)).filter(Boolean).join("\n");
 
+describe("the posted-teams line (2026-11-27)", () => {
+  it("only where the organisers announce the teams, EN and TR", () => {
+    const g = { squad: true, graphics: true, picks: true, paid: false };
+    expect(buildHqTopicLines("teams", { lang: "en", ...g, ownTeams: true })).toContain("📝 Post your own two teams here without tagging me");
+    expect(buildHqTopicLines("teams", { lang: "tr", ...g, ownTeams: true })).toContain("📝 Kendi iki takımınızı beni etiketlemeden");
+    expect(buildHqTopicLines("teams", { lang: "en", ...g, ownTeams: false })).not.toContain("📝");
+    expect(buildHqTopicLines("teams", { lang: "tr", ...g })).not.toContain("📝");
+  });
+
+  it("the gate: a weekly club whose organisers announce", () => {
+    expect(hqHelpGates({ squadMode: "weekly", listAnnouncer: "organisers" }).ownTeams).toBe(true);
+    expect(hqHelpGates({ squadMode: "weekly", listAnnouncer: "matchtime" }).ownTeams).toBe(false);
+    expect(hqHelpGates({ squadMode: "monthly", listAnnouncer: "organisers" }).ownTeams).toBe(false);
+  });
+});
+
 describe("the HQ topics, English", () => {
   it("a live weekly club whose organisers pick (FNF): each topic in full", () => {
-    const g = { lang: "en", squad: true, graphics: true, picks: true, paid: false };
+    const g = { lang: "en", squad: true, graphics: true, picks: true, paid: false, ownTeams: true };
     const tag = `tag me in every message here (type *@*, pick *Match Time*), for example:`;
     expect(buildHqTopicLines("squad", g)).toBe(
       [
@@ -40,6 +56,7 @@ describe("the HQ topics, English", () => {
         `🟥🟦 *Teams*: ${tag}`,
         `🟥🟦 *"@Match Time show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`,
         `↩️ Reply to one of my earlier team sheets with *"@Match Time use these"*, or tag me and paste the two teams: I bring those teams back for your *@Match Time YES*.`,
+        `📝 Post your own two teams here without tagging me, one list for each side: I quietly use them as the next game's teams, final. If I can't tell who a name is, or someone in the squad is left out, I leave the teams as they were.`,
         `🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams. On match day after kickoff, these and *"@Match Time put Ben in for Sam"* fix the game just played, and nothing is posted in the players' group.`,
         `✅ *@Match Time YES*: make the proposed teams final.`,
       ].join("\n"),

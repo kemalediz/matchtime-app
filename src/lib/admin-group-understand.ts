@@ -90,6 +90,11 @@
  * HQ 2026-10-30 23:56 UTC: Raihan's untagged "FNF refresh needed 👀" got
  * "I can't do that from this group." MatchTime's own posts in HQ (the team
  * sheet, deadlines, asks) are sent by the scheduler, not by this door.
+ * ONE EXCEPTION, STILL SILENT (Kemal, 2026-11-27): an organiser's untagged
+ * message of a weekly club with a game coming is read by the teams
+ * extractor, and when it writes out both teams they become that game's
+ * teams, with no reply and no tick (`hq-teams-posted.ts`). FNF make their
+ * teams by hand in HQ.
  *
  * The caller (`admin-group.ts`) has found the club live, claimed the
  * message id, and, for a member of the club, tried MatchTime's numbered
@@ -138,6 +143,7 @@ import { hqCancelOrRestore } from "./match-cancel";
 import { WHICH_ASK_REF, decideApproval, lateQuestionRef, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
 import { organisersContext, type PendingWithLabel } from "./admin-group-context";
 import { piMentionsBot } from "./interaction-contract";
+import { readPostedTeams } from "./hq-teams-posted";
 import { answerClosedPartnerAskYes, answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
@@ -215,6 +221,9 @@ export interface UnderstandInput {
     momChosenBy?: string | null;
     /** The HQ help's pool line (2026-10-28), with `poolEnv`. */
     featurePlayerPool?: boolean | null;
+    /** Who announces the teams (`list-announcer.ts`): the HQ help's line
+     *  on posted teams (2026-11-27). */
+    listAnnouncer?: string | null;
   };
   messageId: string;
   text: string;
@@ -489,6 +498,30 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // message it quotes still gives the context. MatchTime's own posts here
     // (the team sheet, deadlines, asks) are not this door's.
     if (!piMentionsBot({ botMentioned: input.botMentioned })) {
+      // THE ORGANISERS' OWN TEAMS (Kemal, 2026-11-27: "this group is
+      // manually doing the teams, not using MT"). One exception, and still
+      // silent: an organiser's untagged message that writes out both teams
+      // of a weekly club's next game becomes those teams, with no reply and
+      // no tick (`hq-teams-posted.ts`). Read by the shared teams extractor
+      // only while there is such a game; anything else it reads is their
+      // own conversation, as above.
+      if (input.organiser && weekly && input.senderUserId) {
+        const posted = await readPostedTeams({
+          orgId: org.id,
+          messageId,
+          body: () => nameMentions(org.id, input.text, input.mentionNames),
+          senderUserId: input.senderUserId,
+          senderName: input.senderName,
+          now,
+          members: (body) => teamsMembersNamed(org.id, body),
+          ...(input.deps?.extractorModel ? { deps: { extractorModel: input.deps.extractorModel } } : {}),
+        }).catch((err: unknown) => {
+          // A failure here is never heard in HQ: the message stays theirs.
+          console.error(`[admin-group] ${messageId}: reading the posted teams failed:`, err instanceof Error ? err.message : "failed");
+          return null;
+        });
+        if (posted) return { route: null, outcome: posted.outcome, replyText: null };
+      }
       console.log(`[admin-group] ${messageId}: not asked of MatchTime: silent`);
       return null;
     }
