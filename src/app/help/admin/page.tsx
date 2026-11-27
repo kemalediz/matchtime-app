@@ -792,13 +792,15 @@ export default async function AdminGuidePage() {
         Nothing is posted in the players&apos; group.
       </p>
       <p>
-        Make your teams yourselves? Post them in your admin group as you
-        always do, one list for each side, no tag needed. MatchTime quietly
-        uses them as the next game&apos;s teams, final, so its reminders,
-        ratings and Man of the Match follow your teams. It says nothing and
-        posts nothing. If it can&apos;t tell who a name is, or someone in the
-        squad is left out, it leaves the teams as they were. Post them again
-        and the new teams replace the old ones.
+        Do your organisers announce the teams and make them yourselves? Post
+        them in your admin group as you always do, one list for each side,
+        no tag needed, within two days of the game. MatchTime quietly uses
+        them as that game&apos;s teams, final, so ratings and Man of the Match follow
+        your teams. It doesn&apos;t reply to that message or post anything
+        about it. If a player drops out later, your admin group gets the
+        usual note of what changed in the teams. If it can&apos;t tell who a
+        name is, or someone in the squad is left out, it leaves the teams as
+        they were. Post them again and the new teams replace the old ones.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
@@ -926,8 +928,8 @@ export default async function AdminGuidePage() {
         a friend is coming). You and your admins can also move a player to
         the bench without tagging it. Anything else needs a message that
         tags <strong>@Match Time</strong>. In your admin group it acts only on
-        messages that tag it, with one quiet exception: the two teams you post
-        there become the teams. To tag it, type @ and pick Match Time from the
+        messages that tag it, with one quiet exception: when your organisers
+        announce the teams, the two teams you post there become the teams. To tag it, type @ and pick Match Time from the
         list. Typing the name or replying to MatchTime is not enough. The
         rest of the chat is left alone.
       </p>

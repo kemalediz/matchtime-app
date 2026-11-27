@@ -70,7 +70,10 @@ async function seed(db: TestDb, umars: Umars = "prod"): Promise<void> {
   for (const [i, [name, team]] of playing.map((n, j): [string, "RED" | "YELLOW"] => [n, j % 2 === 0 ? "RED" : "YELLOW"]).entries()) {
     await db.run(`INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES ($1, $2, $3, $4::"Team")`, [`e2e-fnf-ta-${i}`, MATCH.upcoming, fnfIdOf(name), team]);
   }
-  await db.run(`UPDATE "Match" SET status = 'TEAMS_GENERATED' WHERE id = $1`, [MATCH.upcoming]);
+  // Tonight, as FNF's game was: kicking off 2 hours from now. The
+  // organisers announce the teams (prod FNF: listAnnouncer "organisers").
+  await db.run(`UPDATE "Match" SET status = 'TEAMS_GENERATED', date = $2 WHERE id = $1`, [MATCH.upcoming, new Date(Date.now() + 2 * 3600_000)]);
+  await db.run(`UPDATE "Organisation" SET "listAnnouncer" = 'organisers' WHERE id = $1`, [ORG_ID]);
 }
 
 async function teamsNow(db: TestDb): Promise<Record<string, string>> {
@@ -232,6 +235,42 @@ test.describe("the organisers' own teams, posted untagged in HQ (stubbed)", () =
     expect(out.replyText ?? null).toBeNull();
     expect(out.outcome).toBe("hq-teams-posted-not-applied");
     expect(await teamsNow(db)).toEqual(before);
+  });
+
+  test("a club where MatchTime announces the teams: untouched, no model call", async ({ request, db }) => {
+    resetDb();
+    await seed(db);
+    await db.run(`UPDATE "Organisation" SET "listAnnouncer" = 'matchtime' WHERE id = $1`, [ORG_ID]);
+    setExtractorStub({ byExtractor: { teams: { [INCIDENT]: setRaw({ red: RED, yellow: YELLOW_WRITTEN }) } } });
+    const since = new Date(Date.now() - 1000);
+    const out = await say(request, INCIDENT);
+    expect(out.replyText ?? null).toBeNull();
+    expect(out.react ?? null).toBeNull();
+    expect(await teamsNow(db)).toEqual(mtSplit());
+    expect(await matchStatus(db)).toBe("TEAMS_GENERATED");
+    expect(await jobsSince(db, since)).toBe(0);
+    expect(stubCalls(E2E.EXTRACTOR_STUB_FILE)).toHaveLength(0);
+  });
+
+  test("a recap with the next game 6 days away: nothing written, no model call", async ({ request, db }) => {
+    resetDb();
+    await seed(db);
+    await db.run(`UPDATE "Match" SET date = $2 WHERE id = $1`, [MATCH.upcoming, new Date(Date.now() + 6 * 24 * 3600_000)]);
+    const RECAP = `Last night:\n\n${RED.join(", ")}\n\n${YELLOW_WRITTEN.join(", ")}`;
+    setExtractorStub({ byExtractor: { teams: { [RECAP]: setRaw({ red: RED, yellow: YELLOW_WRITTEN }) } } });
+    const out = await say(request, RECAP);
+    expect(out.replyText ?? null).toBeNull();
+    expect(await teamsNow(db)).toEqual(mtSplit());
+    expect(stubCalls(E2E.EXTRACTOR_STUB_FILE)).toHaveLength(0);
+  });
+
+  test("chat naming few members ('lol', 'who has the bibs'): no model call", async ({ request, db }) => {
+    resetDb();
+    await seed(db);
+    setExtractorStub({});
+    for (const text of ["lol", "who has the bibs?"]) expect((await say(request, text)).replyText ?? null).toBeNull();
+    expect(stubCalls(E2E.EXTRACTOR_STUB_FILE)).toHaveLength(0);
+    expect(await teamsNow(db)).toEqual(mtSplit());
   });
 
   test("the same teams from someone who is not an organiser: never read", async ({ request, db }) => {

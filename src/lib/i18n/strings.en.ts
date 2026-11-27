@@ -1555,6 +1555,8 @@ export const en = {
     paid: boolean;
     free?: boolean;
     pool?: boolean;
+    /** The organisers announce the teams: their posted teams are used (2026-11-27). */
+    ownTeams?: boolean;
   }): string => {
     const lines: string[] = [];
     if (p.topic === "squad" && p.squad) {
@@ -1564,7 +1566,7 @@ export const en = {
     if (p.topic === "teams" && p.squad) {
       lines.push(`🟥🟦 *"@Match Time show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`);
       lines.push(`↩️ Reply to one of my earlier team sheets with *"@Match Time use these"*, or tag me and paste the two teams: I bring those teams back for your *@Match Time YES*.`);
-      lines.push(`📝 Post your own two teams here without tagging me, one list for each side: I quietly use them as the next game's teams, final. If I can't tell who a name is, or someone in the squad is left out, I leave the teams as they were.`);
+      if (p.ownTeams) lines.push(`📝 Post your own two teams here without tagging me, one list for each side: I quietly use them as the next game's teams, final. If I can't tell who a name is, or someone in the squad is left out, I leave the teams as they were.`);
       lines.push(`🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams. On match day after kickoff, these and *"@Match Time put Ben in for Sam"* fix the game just played, and nothing is posted in the players' group.`);
       lines.push(`✅ *@Match Time YES*: make the proposed teams final.`);
     }

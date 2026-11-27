@@ -221,6 +221,9 @@ export interface UnderstandInput {
     momChosenBy?: string | null;
     /** The HQ help's pool line (2026-10-28), with `poolEnv`. */
     featurePlayerPool?: boolean | null;
+    /** Who announces the teams (`list-announcer.ts`): the HQ help's line
+     *  on posted teams (2026-11-27). */
+    listAnnouncer?: string | null;
   };
   messageId: string;
   text: string;

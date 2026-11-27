@@ -1227,7 +1227,7 @@ async function setWholeSheet(a: {
 
   // The organisers' own teams (2026-11-27): written if they differ, then
   // final, approved by the sender, and nothing said or kept as a sheet.
-  if (a.posted) return setPostedSheet({ ...a, target });
+  if (a.posted) return setPostedSheet({ orgId: a.orgId, messageId: a.messageId, now, match, target, ...(a.senderUserId ? { senderUserId: a.senderUserId } : {}) });
 
   // Exactly the teams as they stand: nothing to write.
   if (sheet.slots.every((x) => x.playing) && sameSheet(sidesOf(sheet), target)) {
@@ -1270,29 +1270,45 @@ async function setPostedSheet(a: {
   messageId: string;
   now: Date;
   match: MatchRow;
-  sheet: Sheet;
   target: SheetSide[];
   senderUserId?: string;
 }): Promise<TeamReply> {
-  const { match, sheet, target, now } = a;
-  const same = sheet.slots.every((x) => x.playing) && sameSheet(sidesOf(sheet), target);
-  await db.$transaction(async (tx) => {
+  const { match, target, now } = a;
+  // Everything decided and written under the per-match slot lock, from the
+  // rows as they are then (review of #638): whether the teams already are
+  // these, the write, the status and the approval with the teams told, so
+  // the due-posts poll's change notice and a bench claim cannot interleave.
+  const done = await db.$transaction(async (tx) => {
     await lockTeamSlots(tx as unknown as SlotFillTx, match.id);
+    // A game that finished meanwhile is never reopened: nothing written.
+    const fresh = await tx.match.findUnique({ where: { id: match.id }, select: { status: true } });
+    if (!fresh || !(ACTIVE as string[]).includes(fresh.status)) return null;
+    const confirmedRows = await tx.attendance.findMany({ where: { matchId: match.id, status: "CONFIRMED" }, select: { userId: true } });
+    const confirmed = new Set(confirmedRows.map((r) => r.userId));
+    const rows = await tx.teamAssignment.findMany({ where: { matchId: match.id }, orderBy: { id: "asc" } });
+    const same =
+      rows.every((r) => confirmed.has(r.userId)) && sameSheet(rows.map((r) => ({ userId: r.userId, team: r.team as SheetTeam })), target);
     if (!same) {
       await tx.teamAssignment.deleteMany({ where: { matchId: match.id } });
       await tx.teamAssignment.createMany({ data: target.map((x) => ({ matchId: match.id, userId: x.userId, team: x.team })) });
     }
-    if (match.status !== "TEAMS_PUBLISHED") await tx.match.update({ where: { id: match.id }, data: { status: "TEAMS_PUBLISHED" } });
+    await tx.match.updateMany({ where: { id: match.id, status: { in: ACTIVE } }, data: { status: "TEAMS_PUBLISHED" } });
+    const after = same ? rows : await tx.teamAssignment.findMany({ where: { matchId: match.id }, orderBy: { id: "asc" } });
+    const told: SheetSlot[] = after.map((r) => ({ slotId: r.id, userId: r.userId, team: r.team as SheetTeam, playing: confirmed.has(r.userId) }));
+    const approved = { state: "approved", approvedAt: now, approvedByUserId: a.senderUserId ?? null, toldSheet: told as unknown as object };
+    await tx.adminTeamProposal.upsert({
+      where: { matchId: match.id },
+      create: { orgId: a.orgId, matchId: match.id, askedAt: now, ...approved },
+      update: approved,
+    });
+    return { same };
   });
-  const after = await loadSheet(match, null);
-  const approved = { state: "approved", approvedAt: now, approvedByUserId: a.senderUserId ?? null, toldSheet: after.slots as unknown as object };
-  await db.adminTeamProposal.upsert({
-    where: { matchId: match.id },
-    create: { orgId: a.orgId, matchId: match.id, askedAt: now, ...approved },
-    update: approved,
-  });
-  console.log(`[team-proposal] ${a.messageId}: posted teams set on match ${match.id}, ${target.length} on the teams${same ? " (as they stood)" : ""}, final, nothing said`);
-  return { outcome: same ? "teams-posted-same" : "teams-posted", replyText: null };
+  if (!done) {
+    console.log(`[team-proposal] ${a.messageId}: posted teams on match ${match.id} not applied: the game is no longer open`);
+    return { outcome: "teams-no-match", replyText: null };
+  }
+  console.log(`[team-proposal] ${a.messageId}: posted teams set on match ${match.id}, ${target.length} on the teams${done.same ? " (as they stood)" : ""}, final, nothing said`);
+  return { outcome: done.same ? "teams-posted-same" : "teams-posted", replyText: null };
 }
 
 /**
@@ -1313,6 +1329,10 @@ export async function setPostedTeams(args: {
   senderName?: string | null;
   deps?: TeamProposalDeps;
 }): Promise<{ outcome: TeamReplyOutcome; applied: boolean }> {
+  // The same facts as the read (`postedTeamsGame`), checked again here so
+  // no caller sets the teams of a club MatchTime announces, or a game
+  // outside the window.
+  if (!(await postedTeamsGame(args.orgId, args.now, args.deps))) return { outcome: "teams-no-match", applied: false };
   const r = await handleTeamCommand({
     orgId: args.orgId,
     lang: null,
@@ -1329,14 +1349,26 @@ export async function setPostedTeams(args: {
   return { outcome: r.outcome, applied: r.outcome === "teams-posted" || r.outcome === "teams-posted-same" };
 }
 
+/** How far either side of a posted sheet its game may kick off (review of
+ *  #638): a recap the day after never sets next week's teams. */
+export const POSTED_TEAMS_WINDOW_MS = 48 * 60 * 60 * 1000;
+
 /**
- * Is there a game whose teams an organiser's posted sheet could be? The
- * club's next game (the one a pasted sheet is for), not played, with at
- * least two confirmed players. A fact, read before any model is asked.
+ * Is there a game whose teams an organiser's posted sheet could be? Facts
+ * only, read before any model is asked:
+ *   - the club's ORGANISERS announce the teams (`listAnnouncer`
+ *     "organisers", FNF): in a club where MatchTime announces them, its own
+ *     proposal, YES and players' group post stay the way teams are made;
+ *   - the club's next game (the one a pasted sheet is for), not completed
+ *     or cancelled, kicking off within 48 hours of the message either side
+ *     (after kickoff too, until it is completed: FNF's 27 Nov sheet came 3
+ *     minutes after kickoff);
+ *   - at least two confirmed players.
  */
-export async function postedTeamsGame(orgId: string, now: Date): Promise<string | null> {
+export async function postedTeamsGame(orgId: string, now: Date, deps?: TeamProposalDeps): Promise<string | null> {
+  if (!(await announces(deps, orgId))) return null;
   const match = await commandMatch(orgId, now, { kind: "set", red: [], yellow: [] });
-  if (!match) return null;
+  if (!match || Math.abs(match.date.getTime() - now.getTime()) > POSTED_TEAMS_WINDOW_MS) return null;
   const confirmed = await db.attendance.count({ where: { matchId: match.id, status: "CONFIRMED" } });
   return confirmed >= 2 ? match.id : null;
 }

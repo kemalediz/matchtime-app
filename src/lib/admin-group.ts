@@ -227,6 +227,8 @@ export async function handleAdminGroupMessage(input: AdminGroupMessage): Promise
       momChosenBy: true,
       // The HQ help's pool line (admin-group-help.ts `hqHelpGates`).
       featurePlayerPool: true,
+      // Who announces the teams: the HQ help's posted-teams line (2026-11-27).
+      listAnnouncer: true,
     },
   });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };

@@ -88,6 +88,10 @@ export interface HqHelpGates {
   free?: boolean;
   /** A weekly club the player pool is open for: asking it in words. */
   pool?: boolean;
+  /** A weekly club whose organisers announce the teams (`listAnnouncer`
+   *  "organisers"): their own two teams posted untagged become the teams
+   *  (2026-11-27, `hq-teams-posted.ts`). */
+  ownTeams?: boolean;
 }
 
 /** The admin group's help topics (Kemal, 2026-11-10): the short menu's
@@ -134,7 +138,7 @@ const HQ_MORE_TOPICS = ["payments", "partners", "pool", "mom", "ratings", "remin
 /** One HQ topic's full lines for this club, under its heading; "" when the
  *  club has nothing in it. */
 export function buildHqTopicLines(topic: HqHelpTopic, p: HqHelpGates & { lang: string | null | undefined }): string {
-  return t(p.lang).hq_help_topic({ topic, squad: p.squad, graphics: p.graphics, picks: p.picks, paid: p.paid, free: p.free === true, pool: p.pool === true });
+  return t(p.lang).hq_help_topic({ topic, squad: p.squad, graphics: p.graphics, picks: p.picks, paid: p.paid, free: p.free === true, pool: p.pool === true, ownTeams: p.ownTeams === true });
 }
 
 /**
@@ -262,6 +266,7 @@ export function hqHelpGates(
     paymentCollectionEnabled?: boolean | null;
     paymentTrackingEnabled?: boolean | null;
     featurePlayerPool?: boolean | null;
+    listAnnouncer?: string | null;
   },
   /** The pool switch as the request resolved it (`pool/switch-env.ts`).
    *  Absent (the introduction): the pool line is left out. */
@@ -280,6 +285,7 @@ export function hqHelpGates(
     // The pool (2026-10-28): asked in words from HQ by a weekly club only
     // (admin-group-pool.ts), and only while it is open for the club.
     pool: !monthly && !!poolEnv && poolOffersOpenForClub({ featurePlayerPool: org.featurePlayerPool === true }, poolEnv),
+    ownTeams: !monthly && organisersAnnounce(org),
   };
 }
 

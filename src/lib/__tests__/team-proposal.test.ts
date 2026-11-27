@@ -1115,10 +1115,17 @@ describe("the organisers' own teams, posted untagged in HQ (FNF 2026-11-27)", ()
     expect(store.tables.botJob ?? []).toEqual([]);
   });
 
-  it("a club where MatchTime posts the teams: still nothing in the players' group", async () => {
+  it("a club where MatchTime announces the teams: untouched, its own proposal and YES stay the way", async () => {
     seedSheet();
-    expect((await post(["Ali", "Tom"], ["Bilal", "Shehryar"], loud)).applied).toBe(true);
-    expect(groupJobs()).toEqual([]);
+    await cmd("teams", loud);
+    vi.clearAllMocks();
+    store.tables.adminTeamSheet = [];
+    const before = store.tables.teamAssignment.map((r) => ({ ...r }));
+    const proposed = { ...proposal() };
+    expect(await post(["Ali", "Tom"], ["Bilal", "Shehryar"], loud)).toEqual({ outcome: "teams-no-match", applied: false });
+    expect(store.tables.teamAssignment).toEqual(before);
+    expect(proposal()).toEqual(proposed);
+    expect((store.tables.match[0] as Row).status).toBe("TEAMS_GENERATED");
     nothingSaid();
   });
 
@@ -1240,6 +1247,74 @@ describe("the organisers' own teams, posted untagged in HQ (FNF 2026-11-27)", ()
     expect(await postedTeamsGame(ORG, NOON)).toBeNull();
     store.tables.match = [];
     expect(await postedTeamsGame(ORG, NOON)).toBeNull();
+  });
+
+  it("a club whose teams MatchTime announces: no game for a posted sheet, so nothing is read", async () => {
+    expect(await postedTeamsGame(ORG, NOON, loud)).toBeNull();
+    expect(await postedTeamsGame(ORG, NOON, quiet)).toBe(MATCH);
+    announcer.loadOrganisersAnnounce.mockResolvedValue(false);
+    expect(await postedTeamsGame(ORG, NOON)).toBeNull();
+  });
+
+  it("only a game kicking off within 48 hours of the message, either side: tonight's sheet 3 minutes after kickoff applies", async () => {
+    const afterKickoff = new Date(KICKOFF.getTime() + 3 * 60_000);
+    expect(await postedTeamsGame(ORG, afterKickoff)).toBe(MATCH);
+    expect((await post(["Ali", "Tom"], ["Bilal", "Shehryar"], quiet, afterKickoff)).applied).toBe(true);
+    expect(await postedTeamsGame(ORG, new Date(KICKOFF.getTime() - 49 * 3600_000))).toBeNull();
+    expect(await postedTeamsGame(ORG, new Date(KICKOFF.getTime() - 47 * 3600_000))).toBe(MATCH);
+  });
+
+  it("a recap the day after: tonight's game is completed and next week's is 6 days away, so nothing", async () => {
+    (store.tables.match[0] as Row).status = "COMPLETED";
+    const NEXT = new Date(KICKOFF.getTime() + 7 * 24 * 3600_000);
+    store.tables.match.push({ id: "m-next", activityId: "act", date: NEXT, status: "UPCOMING", teamLabels: [], maxPlayers: 4 });
+    for (const [userId] of PLAYERS.slice(0, 4)) store.tables.attendance.push({ id: `att-n-${userId}`, matchId: "m-next", userId, status: "CONFIRMED" });
+    const dayAfter = new Date(KICKOFF.getTime() + 15 * 3600_000);
+    expect(await postedTeamsGame(ORG, dayAfter)).toBeNull();
+  });
+
+  it("the match finished before the write: nothing written, the status never reopened", async () => {
+    seedSheet();
+    const before = store.tables.teamAssignment.map((r) => ({ ...r }));
+    dbMock.$transaction = vi.fn(async (fn: (tx: unknown) => unknown) => {
+      (store.tables.match[0] as Row).status = "COMPLETED";
+      return fn(dbMock);
+    });
+    const r = await post(["Ali", "Tom"], ["Bilal", "Shehryar"]);
+    expect(r.applied).toBe(false);
+    expect((store.tables.match[0] as Row).status).toBe("COMPLETED");
+    expect(store.tables.teamAssignment).toEqual(before);
+    expect(proposal()).toBeUndefined();
+  });
+
+  it("'same' and the approval are decided inside the transaction, from the rows as they are then", async () => {
+    seedSheet();
+    let inside = false;
+    const upsert = (dbMock.adminTeamProposal as { upsert: ReturnType<typeof vi.fn> }).upsert;
+    const seenInside: boolean[] = [];
+    upsert.mockImplementation(async (a: { where: Record<string, unknown>; create: Record<string, unknown>; update: Record<string, unknown> }) => {
+      seenInside.push(inside);
+      const row = { id: "atp-1", ...a.create } as Row;
+      store.tables.adminTeamProposal = [row];
+      return row;
+    });
+    dbMock.$transaction = vi.fn(async (fn: (tx: unknown) => unknown) => {
+      // The teams changed between the read and the lock: Bilal and Tom swapped.
+      (store.tables.teamAssignment.find((x) => x.userId === "u-bilal") as Row).team = "YELLOW";
+      (store.tables.teamAssignment.find((x) => x.userId === "u-tom") as Row).team = "RED";
+      inside = true;
+      try {
+        return await fn(dbMock);
+      } finally {
+        inside = false;
+      }
+    });
+    // The sheet equals the teams as first read, not as they are under the lock.
+    const r = await post(["Ali", "Bilal"], ["Tom", "Shehryar"]);
+    expect(r).toEqual({ outcome: "teams-posted", applied: true });
+    expect([teamOf("u-bilal"), teamOf("u-tom")]).toEqual(["RED", "YELLOW"]);
+    expect(seenInside).toEqual([true]);
+    expect((proposal().toldSheet as Array<{ userId: string; team: string }>).find((x) => x.userId === "u-bilal")?.team).toBe("RED");
   });
 });
 

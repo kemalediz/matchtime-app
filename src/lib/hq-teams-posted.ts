@@ -9,10 +9,13 @@
  * forward to setup teams, this group is manually doing the teams, not
  * using MT".
  *
- * So an ORGANISER's untagged HQ message of a WEEKLY club is read by the
- * shared teams extractor (the one the players' group and a tagged HQ
- * message use, Haiku, cheap), only while the club has a next game with
- * confirmed players (a fact, checked first: no game, no model call). Only
+ * So an ORGANISER's untagged HQ message of a WEEKLY club whose ORGANISERS
+ * announce the teams is read by the shared teams extractor (the one the
+ * players' group and a tagged HQ message use, Haiku, cheap). Facts first,
+ * and no model call unless they hold: a game for it (`postedTeamsGame`:
+ * kicking off within 48 hours, not completed or cancelled, confirmed
+ * players), and a message naming at least 4 different club members (the
+ * name scan the CLUB MEMBERS NAMED line is built from, read once). Only
  * its "set" reading, both teams written out in the message, does
  * anything: `setPostedTeams` (team-proposal.ts) places every name on one
  * confirmed player by who-is-who and makes them the teams, final, if every
@@ -31,6 +34,8 @@ import { teamCommandFromFacts } from "./team-proposal-rules";
 import { postedTeamsGame, setPostedTeams, type TeamProposalDeps } from "./team-proposal";
 import { HQ_TEAMS_POSTED, HQ_TEAMS_POSTED_NOT_APPLIED, HQ_TEAMS_POSTED_SAME } from "./hq-teams-posted-rules";
 
+/** The fewest different club members a posted sheet names before it is read. */
+export const MIN_MEMBERS_NAMED = 4;
 
 export interface PostedTeamsInput {
   orgId: string;
@@ -40,8 +45,9 @@ export interface PostedTeamsInput {
   senderUserId: string;
   senderName: string | null;
   now: Date;
-  /** The club members the message names, for the CLUB MEMBERS NAMED line. */
-  members?: (body: string) => Promise<string[]>;
+  /** The club members the message names (`membersNamedIn`): the cheap
+   *  check before the model, and the CLUB MEMBERS NAMED line. */
+  members: (body: string) => Promise<string[]>;
   deps?: { extractorModel?: PipelineModel; teams?: TeamProposalDeps };
 }
 
@@ -53,9 +59,13 @@ export interface PostedTeamsInput {
  */
 export async function readPostedTeams(input: PostedTeamsInput): Promise<{ outcome: string } | null> {
   const { orgId, messageId, now } = input;
-  const matchId = await postedTeamsGame(orgId, now).catch(() => null);
+  const matchId = await postedTeamsGame(orgId, now, input.deps?.teams).catch(() => null);
   if (!matchId) return null;
   const body = await input.body();
+  // Two teams name many players; "lol" or "who has the bibs" names few.
+  // Fewer than 4 different members named: no model call (review of #638).
+  const members = await input.members(body).catch(() => [] as string[]);
+  if (new Set(members).size < MIN_MEMBERS_NAMED) return null;
   const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
   const extracted = await extractForRouteTraced("balancer", model, "balancer", {
     id: messageId,
@@ -65,7 +75,7 @@ export async function readPostedTeams(input: PostedTeamsInput): Promise<{ outcom
     tagged: false,
     history: [],
     lastBotPost: null,
-    members: input.members ? await input.members(body).catch(() => []) : [],
+    members,
     now,
   }).catch(() => null);
   if (!extracted || extracted.facts.kind !== "teams") return null;

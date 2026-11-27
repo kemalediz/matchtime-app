@@ -32,6 +32,8 @@ const teamsModel = (facts: Record<string, unknown> | "fail"): PipelineModel => (
   },
 });
 
+const NAMED = ["Alamgir", "Yorel", "Wasim", "Imti", "AH (Abdul-Hafeez)"];
+const members = vi.fn<(body: string) => Promise<string[]>>(async () => NAMED);
 const read = (text: string, model: PipelineModel) =>
   readPostedTeams({
     orgId: "org-fnf",
@@ -40,7 +42,7 @@ const read = (text: string, model: PipelineModel) =>
     senderUserId: "u-raihan",
     senderName: "Raihan",
     now: NOW,
-    members: async () => ["Alamgir", "Yorel"],
+    members,
     deps: { extractorModel: model },
   });
 
@@ -49,6 +51,7 @@ beforeEach(() => {
   requests.length = 0;
   teams.postedTeamsGame.mockResolvedValue("m-fri");
   teams.setPostedTeams.mockResolvedValue({ outcome: "teams-posted", applied: true });
+  members.mockImplementation(async () => NAMED);
 });
 
 describe("an organiser's untagged HQ message, read for the two teams", () => {
@@ -65,7 +68,24 @@ describe("an organiser's untagged HQ message, read for the two teams", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0].label).toBe("extractor:teams");
     expect(requests[0].user).not.toContain("who tagged the bot");
-    expect(requests[0].user).toContain("Alamgir, Yorel");
+    expect(requests[0].user).toContain("Alamgir, Yorel, Wasim, Imti, AH (Abdul-Hafeez)");
+    // The name scan runs once: the cheap check and the members line share it.
+    expect(members).toHaveBeenCalledTimes(1);
+  });
+
+  it("chat naming fewer than 4 club members ('lol', 'who has the bibs', 'Ali and Habib again'): no model call, nothing done", async () => {
+    for (const named of [[], ["Ali"], ["Ali", "Habib", "Tom"]]) {
+      members.mockImplementation(async () => named);
+      expect(await read("lol", teamsModel({ action: "set", sides: { red: RED, yellow: YELLOW } }))).toBeNull();
+    }
+    expect(requests).toHaveLength(0);
+    expect(teams.setPostedTeams).not.toHaveBeenCalled();
+  });
+
+  it("four distinct members named: read", async () => {
+    members.mockImplementation(async () => ["Ali", "Habib", "Tom", "Sam"]);
+    await read("Ali Habib / Tom Sam", teamsModel({ action: "show" }));
+    expect(requests).toHaveLength(1);
   });
 
   it("no game to set teams for: no model call, nothing done", async () => {
